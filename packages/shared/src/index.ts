@@ -166,6 +166,8 @@ export const RULES = {
   overchargeTime: 1.5,
   raiseCharge: 2.5,
   raiseRange: 200,
+  graveLife: 10,
+  thrallRise: 0.9,
   thrallCooldown: 20,
   hatHp: 5,
   hatLife: 30,
@@ -186,6 +188,7 @@ export const RULES = {
   zombieSpread: 56,
   zombieRise: 0.45,
   zombieMarkPick: 70,
+  zombieGuardRadius: 110,
 } as const;
 export const TEAMS: Team[] = ['blue', 'red', 'green', 'violet'];
 export const TEAM_NAMES: Record<Team, string> = {
@@ -252,15 +255,15 @@ export interface Input {
   trap: boolean;
   volley: boolean;
   special: boolean;
-  /** E: cycles which squad follows the cursor. */
+  /** E: toggles automatic zombies (no guard circle, no cursor squad). */
   command: boolean;
-  /** ⌘E / Ctrl+E: tags or untags the zombie under the cursor. */
+  /** ⌘E / Ctrl+E: moves the zombie under the cursor between the guard circle and the cursor. */
   mark: boolean;
   aimX: number;
   aimY: number;
 }
-/** Which zombies follow the cursor: the untagged (violet), the tagged (red) or none. */
-export type ZombieCommand = 'violet' | 'red' | 'auto';
+/** Guards stay in the red circle around their necromancer; cursor zombies follow the mouse. */
+export type ZombieRole = 'guard' | 'cursor';
 export const idleInput = (seq = 0, angle = 0): Input => ({
   seq,
   x: 0,
@@ -372,7 +375,8 @@ export interface Player extends Vec {
   hatAlive: boolean;
   thrallAlive: boolean;
   activeExecutions: number;
-  zombieCommand: ZombieCommand;
+  /** E: every zombie hunts on its own instead of guarding or following the cursor. */
+  zombieAuto: boolean;
   aimX: number;
   aimY: number;
 }
@@ -424,8 +428,7 @@ export interface Zombie extends Vec {
   frozenLeft: number;
   classId?: ClassId;
   name?: string;
-  /** Tagged with ⌘E: the red squad, commanded apart from the violet one. */
-  marked: boolean;
+  role: ZombieRole;
   execution: number | null;
   slot: number;
   rise: number;
@@ -454,6 +457,13 @@ export interface GameEvent extends Vec {
 }
 /** Zombies from the charged summon (hat, its minions, thrall) never use the normal cap. */
 export const countsTowardLimit = (z: Zombie) => !z.bonus;
+/** Where a rival fell: a necromancer can raise it until it crumbles, even after they respawn. */
+export interface Grave extends Vec {
+  classId: ClassId;
+  name: string;
+  team: Team;
+  left: number;
+}
 export interface Snapshot {
   tick: number;
   phase: Phase;
@@ -466,6 +476,7 @@ export interface Snapshot {
   flags: Flag[];
   arrows: Arrow[];
   zombies: Zombie[];
+  graves: Grave[];
   traps: Trap[];
   score: Record<Team, number>;
   winner: Team | 'draw' | null;
@@ -868,7 +879,7 @@ export function newPlayer(
     hatAlive: false,
     thrallAlive: false,
     activeExecutions: 0,
-    zombieCommand: 'violet',
+    zombieAuto: false,
     aimX: -1,
     aimY: -1,
   };
@@ -895,6 +906,7 @@ export class Duel {
     flags: [],
     arrows: [],
     zombies: [],
+    graves: [],
     traps: [],
     score: emptyScore(),
     winner: null,
@@ -1002,6 +1014,7 @@ export class Duel {
     const s = this.state;
     s.arrows = [];
     s.zombies = [];
+    s.graves = [];
     s.traps = [];
     this.paths.clear();
     s.flags = s.bases
@@ -1086,6 +1099,14 @@ export class Duel {
     this.drop(target);
     this.event('hit', target, source.team);
     if (target.hp === 0) {
+      this.state.graves.push({
+        x: target.x,
+        y: target.y,
+        classId: target.classId,
+        name: target.name,
+        team: target.team,
+        left: RULES.graveLife,
+      });
       target.respawnLeft = RULES.respawn;
       target.windup = 0;
       target.dashLeft = 0;
@@ -1153,7 +1174,7 @@ export class Duel {
       execution: null,
       slot: id % 4,
       rise: 0,
-      marked: false,
+      role: 'guard',
       ...extra,
     };
   }
@@ -1171,6 +1192,7 @@ export class Duel {
         this.newZombie(p, ahead, p, {
           kind: 'hat',
           bonus: true,
+          role: 'cursor',
           hp: RULES.hatHp,
           maxHp: RULES.hatHp,
           life: RULES.hatLife,
@@ -1201,17 +1223,24 @@ export class Duel {
   }
   private raise(p: Player, ahead: Vec) {
     const s = this.state;
-    if (s.zombies.some((z) => z.owner === p.id)) return false;
-    const corpse = s.players
-      .filter(
-        (q) =>
-          q.team !== p.team && q.hp <= 0 && !q.eliminated && distance(p, q) <= RULES.raiseRange,
-      )
-      .sort((a, b) => distance(p, a) - distance(p, b))[0];
-    if (corpse) p.thrall = { classId: corpse.classId, name: corpse.name };
-    else if (!p.thrall || p.thrallCd > 0) return false;
+    // One thrall at a time; the necromancer's other zombies may stay alive.
+    if (s.zombies.some((z) => z.owner === p.id && z.kind === 'thrall')) return false;
+    // The raising mandala opens under the cursor, kept inside the white raise circle.
+    const aim = p.aimX >= 0 ? { x: p.aimX, y: p.aimY } : ahead;
+    const angle = Math.atan2(aim.y - p.y, aim.x - p.x);
+    const spot = (r: number) => ({ x: p.x + Math.cos(angle) * r, y: p.y + Math.sin(angle) * r });
+    let reach = Math.min(RULES.raiseRange, distance(p, aim));
+    while (reach > 0 && blocked(spot(reach).x, spot(reach).y, RULES.zombieRadius)) reach -= 8;
+    const at = spot(Math.max(0, reach));
+    // The fallen rival whose grave is closest to the mandala rises there.
+    const corpse = s.graves
+      .filter((g) => g.team !== p.team && distance(p, g) <= RULES.raiseRange)
+      .sort((a, b) => distance(at, a) - distance(at, b))[0];
+    if (corpse) {
+      p.thrall = { classId: corpse.classId, name: corpse.name };
+      s.graves = s.graves.filter((g) => g !== corpse);
+    } else if (!p.thrall || p.thrallCd > 0) return false;
     const bound = p.thrall!;
-    const at = corpse ? { x: corpse.x, y: corpse.y } : ahead;
     const hp = CLASSES[bound.classId].hp;
     s.zombies.push(
       this.newZombie(p, at, p, {
@@ -1222,6 +1251,9 @@ export class Duel {
         life: 9999,
         classId: bound.classId,
         name: bound.name,
+        role: 'cursor',
+        // Claws out of the mandala before it can move or strike.
+        rise: RULES.thrallRise,
       }),
     );
     p.thrallAlive = true;
@@ -1263,11 +1295,12 @@ export class Duel {
         .map((z) => z.execution),
     ).size;
   }
-  /** Whether `z` belongs to the squad that follows its owner's cursor instead of hunting alone. */
-  private obeys(z: Zombie, owner = this.state.players.find((p) => p.id === z.owner)) {
-    return !!owner && owner.hp > 0 && owner.aimX >= 0 && owner.zombieCommand === (z.marked ? 'red' : 'violet');
+  /** Normal zombies guard the red circle around the necromancer; the hat zombie, its minions and the thrall follow the mouse. */
+  private zombieMode(z: Zombie, owner = this.state.players.find((p) => p.id === z.owner)) {
+    if (!owner || owner.hp <= 0 || owner.zombieAuto) return 'auto' as const;
+    return z.role === 'cursor' && owner.aimX >= 0 ? ('cursor' as const) : ('guard' as const);
   }
-  /** ⌘E tags or untags the owner's zombie nearest the cursor; E cycles which squad follows it. */
+  /** ⌘E moves the zombie nearest the cursor between the guard circle and the cursor; E toggles automatic. */
   private commandZombies(p: Player, input: Input) {
     const own = this.state.zombies.filter((z) => z.owner === p.id && z.hp > 0);
     if (input.mark && input.aimX >= 0) {
@@ -1275,14 +1308,9 @@ export class Duel {
       const pick = own
         .filter((z) => distance(z, aim) <= RULES.zombieMarkPick)
         .sort((a, b) => distance(a, aim) - distance(b, aim))[0];
-      if (pick) pick.marked = !pick.marked;
+      if (pick) pick.role = pick.role === 'guard' ? 'cursor' : 'guard';
     }
-    const red = own.some((z) => z.marked);
-    if (input.command) {
-      const order: ZombieCommand[] = red ? ['violet', 'red', 'auto'] : ['violet', 'auto'];
-      p.zombieCommand = order[(order.indexOf(p.zombieCommand) + 1) % order.length];
-    }
-    if (p.zombieCommand === 'red' && !red) p.zombieCommand = 'violet';
+    if (input.command) p.zombieAuto = !p.zombieAuto;
     // Orders apply at once instead of on the next staggered re-plan.
     for (const z of own) z.retarget = 0;
   }
@@ -1308,14 +1336,14 @@ export class Duel {
    * so the pack closes in from several directions instead of queueing behind each other.
    */
   private formation(z: Zombie, center: Vec, near: number, far = near): Vec {
-    // Idle zombies group by what they do: the squad on the cursor apart from the ones at rest.
-    const obeys = this.obeys(z);
+    // Idle zombies group by what they do: guards around the necromancer apart from the cursor squad.
+    const mode = this.zombieMode(z);
     const pack = this.state.zombies.filter(
       (q) =>
-        q.hp > 0 && q.owner === z.owner && q.target === z.target && (z.target !== null || this.obeys(q) === obeys),
+        q.hp > 0 && q.owner === z.owner && q.target === z.target && (z.target !== null || this.zombieMode(q) === mode),
     );
     const bearing = (q: Vec) => Math.atan2(q.y - center.y, q.x - center.x);
-    const key = `${z.owner}:${z.target ?? obeys}`;
+    const key = `${z.owner}:${z.target ?? mode}`;
     this.packSeen.add(key);
     let sx = 0,
       sy = 0;
@@ -1364,10 +1392,17 @@ export class Duel {
         .filter((q) => q.team !== z.team && q.hp > 0)
         .map((q) => ({ id: q.id, at: q as Vec, carrying: false })),
     ];
-    // The squad on the cursor only attacks the rival the cursor is on; the rest hunt nearby.
-    const marked = this.obeys(z) ? this.markedTarget(z.owner, candidates) : undefined;
+    // Cursor zombies only attack the rival under the cursor, guards only whoever steps into the
+    // red circle around their necromancer, and automatic ones hunt anyone nearby.
+    const owner = s.players.find((p) => p.id === z.owner);
+    const mode = this.zombieMode(z, owner);
+    const marked = mode === 'cursor' ? this.markedTarget(z.owner, candidates) : undefined;
     const near = candidates.filter((c) =>
-      marked === undefined ? distance(z, c.at) <= RULES.zombieAggro : c.id === marked,
+      mode === 'cursor'
+        ? c.id === marked
+        : mode === 'guard'
+          ? distance(owner!, c.at) <= RULES.zombieGuardRadius
+          : distance(z, c.at) <= RULES.zombieAggro,
     );
     // Siblings already chasing a target make it less attractive, so a pack splits up.
     const score = (c: (typeof candidates)[number]) =>
@@ -1409,6 +1444,7 @@ export class Duel {
   }
   private stepZombies(dt: number) {
     const s = this.state;
+    s.graves = s.graves.filter((g) => (g.left -= dt) > 0);
     const minions: Zombie[] = [];
     for (const z of s.zombies) {
       if (z.hp <= 0) continue;
@@ -1426,6 +1462,7 @@ export class Duel {
       if (!target) z.target = null;
       const owner = s.players.find((p) => p.id === z.owner);
       const pace = z.kind === 'thrall' ? 1.1 : 1;
+      const mode = this.zombieMode(z, owner);
       if (z.rise > 0) {
         z.rise = Math.max(0, z.rise - dt);
         continue;
@@ -1443,8 +1480,8 @@ export class Duel {
         if (z.spawnLeft <= 0 && owner) {
           z.spawnLeft = RULES.hatSpawnEvery;
           const behind = { x: z.x - Math.cos(z.angle) * 24, y: z.y - Math.sin(z.angle) * 24 };
-          // The hat zombie's own minions skip the normal summon limit.
-          minions.push(this.newZombie(owner, behind, z, { bonus: true }));
+          // The hat zombie's minions skip the summon limit and are the ones that follow the cursor.
+          minions.push(this.newZombie(owner, behind, z, { bonus: true, role: 'cursor' }));
           this.event('summon', z, z.team, z.angle, 'necromancer');
         }
       }
@@ -1475,10 +1512,10 @@ export class Duel {
           ? gap > range * 0.7
             ? target
             : undefined
-          : leader && this.obeys(z, owner)
+          : leader && mode === 'cursor'
             ? this.formation(z, { x: leader.aimX, y: leader.aimY }, RULES.zombieSpread)
-            : leader && distance(z, leader) > 70
-            ? leader
+            : leader && (mode === 'guard' || distance(z, leader) > 70)
+            ? this.formation(z, leader, RULES.zombieSpread)
             : undefined;
         if (goal) this.walkZombie(z, goal, dt, pace);
         continue;
@@ -1504,7 +1541,7 @@ export class Duel {
         continue;
       }
       const leader = owner && owner.hp > 0 ? owner : undefined;
-      const aim = leader && this.obeys(z, owner) ? { x: leader.aimX, y: leader.aimY } : undefined;
+      const aim = leader && mode === 'cursor' ? { x: leader.aimX, y: leader.aimY } : undefined;
       // Far away the pack fans out wide; the ring tightens as each zombie closes in, and
       // only from its own spot does it lunge at the target.
       const spot = target && this.formation(z, target, RULES.zombieFlankRadius, RULES.zombieApproachRadius);
@@ -1515,7 +1552,7 @@ export class Duel {
         : aim
           ? this.formation(z, aim, RULES.zombieSpread)
           : leader
-            ? distance(z, leader) > 70
+            ? mode === 'guard' || distance(z, leader) > 70
               ? this.formation(z, leader, RULES.zombieSpread)
               : undefined
             : s.flags
@@ -1531,7 +1568,8 @@ export class Duel {
           b = list[j],
           gap = distance(a, b);
         if (gap >= 20) continue;
-        const angle = gap > 1e-6 ? Math.atan2(b.y - a.y, b.x - a.x) : i + j;
+        // Pushed a little sideways so two zombies meeting head-on slide past instead of locking.
+        const angle = (gap > 1e-6 ? Math.atan2(b.y - a.y, b.x - a.x) : i + j) + 0.5;
         translate(a, (-Math.cos(angle) * (20 - gap)) / 2, (-Math.sin(angle) * (20 - gap)) / 2);
         translate(b, (Math.cos(angle) * (20 - gap)) / 2, (Math.sin(angle) * (20 - gap)) / 2);
       }
@@ -1549,10 +1587,7 @@ export class Duel {
     }
     for (const key of this.packBearings.keys()) if (!this.packSeen.has(key)) this.packBearings.delete(key);
     this.packSeen.clear();
-    for (const p of s.players) {
-      p.activeExecutions = this.activeExecutions(p.id);
-      if (p.zombieCommand === 'red' && !s.zombies.some((z) => z.owner === p.id && z.marked)) p.zombieCommand = 'violet';
-    }
+    for (const p of s.players) p.activeExecutions = this.activeExecutions(p.id);
   }
   step(inputs: Map<string, Input>, dt = RULES.tick as number) {
     const s = this.state;

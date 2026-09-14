@@ -63,7 +63,6 @@ export class Arena extends Phaser.Scene {
       hp: Phaser.GameObjects.Graphics;
       fx: Phaser.GameObjects.Graphics;
       label?: Phaser.GameObjects.Text;
-      mark?: Phaser.GameObjects.Text;
       aura: Phaser.GameObjects.Graphics;
       x: number;
       y: number;
@@ -380,6 +379,33 @@ export class Arena extends Phaser.Scene {
       this.fade(this.add.ellipse(e.x, e.y + 8, 36, 14).setStrokeStyle(3, 0xb06cff, 0.9).setDepth(4), { scale: 3.4 }, 700);
     }
   }
+  /** Original raising mandala on the ground: counter-rotating rune squares, orbiting petals, glowing core. */
+  private drawMandala(g: Phaser.GameObjects.Graphics, x: number, y: number, radius: number, time: number, alpha: number) {
+    const flat = 0.45,
+      spin = time * 0.0015;
+    const at = (angle: number, r: number) => ({ x: x + Math.cos(angle) * r, y: y + Math.sin(angle) * r * flat });
+    g.fillStyle(0x7dffb0, alpha * 0.2);
+    g.fillEllipse(x, y, radius * 0.9, radius * 0.9 * flat);
+    g.lineStyle(2, 0x7dffb0, alpha);
+    g.strokeEllipse(x, y, radius * 2, radius * 2 * flat);
+    g.lineStyle(1, 0xe8fff0, alpha * 0.8);
+    g.strokeEllipse(x, y, radius * 1.35, radius * 1.35 * flat);
+    for (const [turn, dir] of [
+      [0, 1],
+      [Math.PI / 4, -1],
+    ]) {
+      g.lineStyle(1, 0x7dffb0, alpha * 0.9);
+      g.strokePoints(
+        [0, 1, 2, 3].map((i) => at(spin * dir + turn + (i * Math.PI) / 2, radius * 0.95)),
+        true,
+      );
+    }
+    for (let i = 0; i < 8; i++) {
+      const petal = at(-spin * 1.5 + (i * Math.PI) / 4, radius * 0.68);
+      g.fillStyle(0xbfffd6, alpha * 0.85);
+      g.fillCircle(petal.x, petal.y, 1.8);
+    }
+  }
   /** Charged fire: roaring core, long flickering flame trail, corona and orbiting embers. */
   private drawBlaze(p: { x: number; y: number }, angle: number, power: number, time: number, core: number) {
     const g = this.arrows,
@@ -675,27 +701,12 @@ export class Arena extends Phaser.Scene {
     else if (z.windup > 0) v.body.setTint(0xff6b5e);
     else v.body.clearTint();
     v.label?.setPosition(v.x, v.y - 34);
-    // ⌘E tags a zombie with a floating E and turns its area red (the red squad).
-    if (z.marked && !v.mark)
-      v.mark = this.add
-        .text(v.x, v.y, 'E', {
-          fontFamily: 'monospace',
-          fontSize: '12px',
-          fontStyle: 'bold',
-          color: '#ff5a4a',
-          stroke: '#2a0606',
-          strokeThickness: 3,
-        })
-        .setOrigin(0.5)
-        .setDepth(15);
-    else if (!z.marked && v.mark) {
-      v.mark.destroy();
-      v.mark = undefined;
-    }
-    v.mark?.setPosition(v.x, v.y - (z.kind === 'thrall' ? 46 : 36) + Math.sin(time * 0.006) * 1.5);
-    const squad = z.marked ? { dark: 0x240b0b, glow: 0x8f2d2d, line: 0xff5a4a } : { dark: 0x1a0b24, glow: 0x6b2d8f, line: 0xb06cff };
-    const commanded =
-      z.owner === this.localId && this.predicted?.zombieCommand === (z.marked ? 'red' : 'violet');
+    // Guards glow red like the circle they keep to; the cursor squad glows violet.
+    const squad =
+      z.role === 'guard'
+        ? { dark: 0x240b0b, glow: 0x8f2d2d, line: 0xff5a4a }
+        : { dark: 0x1a0b24, glow: 0x6b2d8f, line: 0xb06cff };
+    const commanded = z.owner === this.localId && this.predicted?.zombieAuto === false;
     const pulse = 0.5 + Math.sin(time * 0.006 + z.slot) * 0.5;
     v.aura.clear();
     v.aura.fillStyle(squad.dark, 0.45 + pulse * 0.15);
@@ -707,6 +718,7 @@ export class Arena extends Phaser.Scene {
       v.aura.strokeEllipse(v.x, v.y + 8, 36, 13);
     }
     if (rising > 0) {
+      if (z.kind === 'thrall') this.drawMandala(v.aura, v.x, v.y + 8, 32, time, 0.35 + rising * 0.55);
       v.aura.lineStyle(2, squad.line, 0.2 + rising * 0.6);
       v.aura.strokeEllipse(v.x, v.y + 8, 40 + (1 - rising) * 10, 16 + (1 - rising) * 4);
       for (let i = 0; i < 6; i++) {
@@ -896,7 +908,6 @@ export class Arena extends Phaser.Scene {
       v.hp.destroy();
       v.fx.destroy();
       v.label?.destroy();
-      v.mark?.destroy();
       v.aura.destroy();
       this.zombieVisuals.delete(id);
     }
@@ -914,6 +925,18 @@ export class Arena extends Phaser.Scene {
         this.traps.lineBetween(trap.x+Math.cos(a)*16,trap.y+Math.sin(a)*16,trap.x+Math.cos(a)*10,trap.y+Math.sin(a)*10);
       }
       this.traps.fillStyle(color,.2); this.traps.fillCircle(trap.x,trap.y,3);
+    }
+    // Graves of fallen rivals: a necromancer can raise them until they crumble.
+    for (const g of s.graves) {
+      const fade = Math.min(1, g.left / 2);
+      this.traps.fillStyle(0x7dffb0, 0.1 * fade);
+      this.traps.fillEllipse(g.x, g.y + 5, 28, 9);
+      this.traps.fillStyle(0x6f6a5c, 0.85 * fade);
+      this.traps.fillRoundedRect(g.x - 6, g.y - 12, 12, 16, { tl: 5, tr: 5, bl: 1, br: 1 });
+      this.traps.lineStyle(1, 0x2c2a24, 0.9 * fade);
+      this.traps.strokeRoundedRect(g.x - 6, g.y - 12, 12, 16, { tl: 5, tr: 5, bl: 1, br: 1 });
+      this.traps.lineBetween(g.x, g.y - 9, g.x, g.y - 1);
+      this.traps.lineBetween(g.x - 3, g.y - 6, g.x + 3, g.y - 6);
     }
     this.arrows.clear();
     for (const a of s.arrows) {
@@ -974,30 +997,57 @@ export class Arena extends Phaser.Scene {
       );
       this.aim.strokeCircle(p.x + Math.cos(a) * 48, p.y + Math.sin(a) * 48, 3);
       if (CLASSES[p.classId].summon && p.specialCharge >= RULES.overchargeTime) {
-        const flicker = 0.5 + Math.sin(time * 0.02) * 0.5;
-        const corpse = s.players
-          .filter((q) => q.team !== p.team && q.hp <= 0 && !q.eliminated && distance(q, p) <= RULES.raiseRange)
-          .sort((m, n) => distance(m, p) - distance(n, p))[0];
-        if (corpse && !s.zombies.some((z) => z.owner === this.localId)) {
-          this.aim.lineStyle(2, 0x7dffb0, 0.45 + flicker * 0.45);
-          this.aim.lineBetween(p.x, p.y - 4, corpse.x, corpse.y);
-        } else {
-          this.aim.lineStyle(1, 0x8a8f8a, 0.2 + flicker * 0.4);
-          this.aim.strokeCircle(p.x, p.y - 4, 36);
+        // White twinkling perimeter: how far away the raising mandala can open.
+        const twinkle = 0.5 + Math.sin(time * 0.025) * 0.5;
+        const pointer = this.controls.aimFromPointer;
+        const toward = pointer ? Math.atan2(this.controls.aimY - p.y, this.controls.aimX - p.x) : a;
+        const reach = pointer
+          ? Math.min(RULES.raiseRange, Math.hypot(this.controls.aimX - p.x, this.controls.aimY - p.y))
+          : 26;
+        const spot = { x: p.x + Math.cos(toward) * reach, y: p.y + Math.sin(toward) * reach };
+        const grave = s.graves
+          .filter((g) => g.team !== p.team && distance(g, p) <= RULES.raiseRange)
+          .sort((m, n) => distance(m, spot) - distance(n, spot))[0];
+        const ready = !p.thrallAlive && (!!grave || (!!p.thrall && p.thrallCd <= 0));
+        this.aim.lineStyle(2, 0xffffff, ready ? 0.3 + twinkle * 0.6 : 0.1 + twinkle * 0.15);
+        this.aim.strokeCircle(p.x, p.y, RULES.raiseRange);
+        for (let i = 0; i < 16; i++) {
+          const around = time * 0.0006 + (i * Math.PI) / 8,
+            glint = 0.5 + Math.sin(time * 0.013 + i * 2.3) * 0.5;
+          this.aim.fillStyle(0xffffff, glint * (ready ? 0.95 : 0.3));
+          this.aim.fillCircle(
+            p.x + Math.cos(around) * RULES.raiseRange,
+            p.y + Math.sin(around) * RULES.raiseRange,
+            0.8 + glint * 1.6,
+          );
+        }
+        if (ready) {
+          const full = Math.min(
+            1,
+            (p.specialCharge - RULES.overchargeTime) / (RULES.raiseCharge - RULES.overchargeTime),
+          );
+          this.drawMandala(this.aim, spot.x, spot.y + 8, 28, time, 0.25 + full * 0.6);
+          if (grave) {
+            this.aim.lineStyle(1, 0x7dffb0, 0.2 + twinkle * 0.35);
+            this.aim.lineBetween(grave.x, grave.y, spot.x, spot.y);
+          }
         }
       }
-      // The cursor area takes the color of the squad that follows it (none in automatic).
-      const red = p.zombieCommand === 'red';
-      if (
-        CLASSES[p.classId].summon &&
-        this.controls.aimFromPointer &&
-        p.zombieCommand !== 'auto' &&
-        s.zombies.some((z) => z.owner === this.localId && z.marked === red)
-      ) {
-        const pulse = 0.5 + Math.sin(time * 0.008) * 0.5;
-        this.aim.fillStyle(red ? 0xff4a4a : 0xb06cff, 0.05 + pulse * 0.04);
+      const mine = s.zombies.filter((z) => z.owner === this.localId);
+      const pulse = 0.5 + Math.sin(time * 0.008) * 0.5;
+      // Red: the circle the summoned zombies guard, travelling with the necromancer.
+      if (CLASSES[p.classId].summon && !p.zombieAuto && mine.some((z) => z.role === 'guard')) {
+        const radius = RULES.zombieGuardRadius * (0.92 + pulse * 0.08);
+        this.aim.fillStyle(0xff4a4a, 0.05 + pulse * 0.04);
+        this.aim.fillCircle(p.x, p.y, radius);
+        this.aim.lineStyle(1, 0xff4a4a, 0.3 + pulse * 0.25);
+        this.aim.strokeCircle(p.x, p.y, radius);
+      }
+      // Violet: the mouse area that the zombie mage, its minions and the thrall follow.
+      if (CLASSES[p.classId].summon && this.controls.aimFromPointer && !p.zombieAuto && mine.length > 0) {
+        this.aim.fillStyle(0xb06cff, 0.05 + pulse * 0.04);
         this.aim.fillCircle(this.controls.aimX, this.controls.aimY, RULES.zombieAimRadius * (0.85 + pulse * 0.15));
-        this.aim.lineStyle(1, red ? 0xff4a4a : 0xb06cff, 0.3 + pulse * 0.25);
+        this.aim.lineStyle(1, 0xb06cff, 0.3 + pulse * 0.25);
         this.aim.strokeCircle(
           this.controls.aimX,
           this.controls.aimY,

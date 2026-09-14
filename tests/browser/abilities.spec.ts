@@ -36,12 +36,12 @@ test('panel de habilidades abajo a la izquierda con teclas y recargas', async ({
   await expect(summon.locator('kbd')).toHaveText('ESPACIO');
   await expect(page.locator('#abilities .ability-tree li', { hasText: 'zombie mago' })).toBeVisible();
   const command = page.locator('#abilities [data-ability="command"] .ability-state');
-  await expect(command).toHaveText('Violeta');
+  await expect(command).toHaveText('Mando');
   await page.keyboard.press('e');
   await expect(command).toHaveText('Auto');
   await expect(page.locator('#abilities .ability-tree li[data-active="true"]', { hasText: 'atacan solos' })).toBeVisible();
   await page.keyboard.press('e');
-  await expect(command).toHaveText('Violeta');
+  await expect(command).toHaveText('Mando');
   await page.screenshot({ path: info.outputPath('habilidades-nigromante.png') });
   expect(errors).toEqual([]);
 });

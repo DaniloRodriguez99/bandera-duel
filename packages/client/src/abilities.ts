@@ -20,7 +20,6 @@ export interface AbilitySlot {
 
 const percent = (value: number) => `${Math.round(Math.min(1, value) * 100)} %`;
 const tapped = (charge: number) => charge > 0 && charge < RULES.overchargeTap;
-const COMMAND_NAMES = { violet: 'Violeta', red: 'Rojo', auto: 'Auto' } as const;
 
 /** Abilities in panel order: click first, then space, then the class extras. */
 export function abilitySlots(classId: ClassId): AbilitySlot[] {
@@ -110,7 +109,7 @@ export function abilitySlots(classId: ClassId): AbilitySlot[] {
             state: (p) => (p.hatAlive ? 'Vivo' : null),
           },
           {
-            label: 'Aura llena · resucitar',
+            label: 'Aura llena · resucitar tumba',
             active: (p) => p.specialCharge >= RULES.overchargeTime,
             state: (p) =>
               p.specialCharge >= RULES.overchargeTime
@@ -130,11 +129,11 @@ export function abilitySlots(classId: ClassId): AbilitySlot[] {
         icon: '⚑',
         cooldown: () => 0,
         max: 1,
-        detail: (p) => COMMAND_NAMES[p.zombieCommand],
+        detail: (p) => (p.zombieAuto ? 'Auto' : 'Mando'),
         tiers: [
-          { label: 'Violetas siguen el mouse', active: (p) => p.zombieCommand === 'violet' },
-          { label: 'Rojos siguen el mouse', active: (p) => p.zombieCommand === 'red' },
-          { label: 'Todos atacan solos', active: (p) => p.zombieCommand === 'auto' },
+          { label: 'Zombies normales · círculo rojo contigo', active: (p) => !p.zombieAuto },
+          { label: 'Mago, lacayos y esclavo · mouse', active: (p) => !p.zombieAuto },
+          { label: 'Automático · atacan solos', active: (p) => p.zombieAuto },
         ],
       },
       {
@@ -144,7 +143,7 @@ export function abilitySlots(classId: ClassId): AbilitySlot[] {
         icon: 'E',
         cooldown: () => 0,
         max: 1,
-        tiers: [{ label: 'Sobre un zombie · grupo rojo' }, { label: 'Otra vez · vuelve a violeta' }],
+        tiers: [{ label: 'Sobre un zombie · cambia de círculo' }, { label: 'Rojo contigo ↔ violeta al mouse' }],
       },
     );
   if (classId === 'archer')

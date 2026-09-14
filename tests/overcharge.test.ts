@@ -7,6 +7,8 @@ import {
   sanitizeInput,
   chargePower,
   countsTowardLimit,
+  blocked,
+  distance,
   projectileStats,
   type ClassId,
   type Input,
@@ -15,6 +17,8 @@ const input = (options: Partial<Input> = {}): Input => ({ ...idleInput(), ...opt
 function setup(classes: ClassId[]) {
   const d = new Duel();
   const players = classes.map((classId, i) => d.add(String(i), `P${i}`, classId));
+  // Automatic zombies: these tests cover the abilities, not the guard circle or the cursor.
+  for (const p of players) p.zombieAuto = true;
   d.state.phase = 'playing';
   return { d, players };
 }
@@ -238,6 +242,59 @@ describe('sobrecarga', () => {
     for (let i = 0; i < 90 && a.hp === 3; i++) run(d, 1);
     expect(a.hp).toBe(3 - CLASSES.vanguard.meleeDamage);
     expect(d.state.events.some((e) => e.kind === 'hit' && e.team === n.team)).toBe(true);
+  });
+  it('la tumba deja resucitar aunque el muerto ya reapareció y con otros zombies vivos', () => {
+    const { d, players: [n, v, a] } = setup(['necromancer', 'vanguard', 'archer']);
+    Object.assign(n, { x: 300, y: 270, angle: 0 });
+    Object.assign(v, { x: 450, y: 270 });
+    Object.assign(a, { x: 880, y: 500 });
+    run(d, 1, { 0: { summon: true } });
+    v.invuln = 0;
+    d.damage(v, a, 0, 99);
+    expect(d.state.graves).toMatchObject([{ classId: 'vanguard', name: v.name }]);
+    run(d, ticks(RULES.summonCooldown));
+    expect(v.hp).toBeGreaterThan(0);
+    run(d, ticks(RULES.raiseCharge) + 1, { 0: { special: true } });
+    run(d, 1, { 0: { summon: true } });
+    expect(d.state.zombies.find((z) => z.kind === 'thrall')).toMatchObject({ classId: 'vanguard', role: 'cursor' });
+    expect(d.state.zombies.some((z) => z.execution !== null)).toBe(true);
+    expect(d.state.graves).toHaveLength(0);
+  });
+  it('el mandala se abre bajo el mouse dentro del alcance y levanta ahí al caído', () => {
+    const { d, players: [n, v, a] } = setup(['necromancer', 'vanguard', 'archer']);
+    Object.assign(n, { x: 300, y: 270, angle: 0 });
+    Object.assign(v, { x: 450, y: 270 });
+    Object.assign(a, { x: 880, y: 500 });
+    v.invuln = 0;
+    d.damage(v, a, 0, 99);
+    const aim = { aimX: 380, aimY: 230 };
+    expect(blocked(380, 230, RULES.zombieRadius)).toBe(false);
+    run(d, ticks(RULES.raiseCharge) + 1, { 0: { special: true, ...aim } });
+    run(d, 1, { 0: { summon: true, ...aim } });
+    const thrall = d.state.zombies.find((z) => z.kind === 'thrall')!;
+    expect(thrall).toMatchObject({ classId: 'vanguard', role: 'cursor' });
+    expect(distance(thrall, { x: 380, y: 230 })).toBeLessThan(1);
+    expect(thrall.rise).toBeGreaterThan(0);
+    const x = thrall.x;
+    run(d, 5, { 0: aim });
+    expect(thrall.x).toBe(x);
+    for (const z of d.state.zombies) d.damageZombie(z, a.team, 99);
+    run(d, ticks(RULES.thrallCooldown) + 1);
+    const far = { aimX: 900, aimY: 270 };
+    run(d, ticks(RULES.raiseCharge) + 1, { 0: { special: true, ...far } });
+    run(d, 1, { 0: { summon: true, ...far } });
+    const recalled = d.state.zombies.find((z) => z.kind === 'thrall')!;
+    expect(distance(recalled, n)).toBeLessThanOrEqual(RULES.raiseRange + 1);
+    expect(recalled.x).toBeGreaterThan(n.x + 100);
+  });
+  it('la tumba se deshace a los 10 s', () => {
+    const { d, players: [, v, a] } = setup(['necromancer', 'vanguard', 'archer']);
+    v.invuln = 0;
+    d.damage(v, a, 0, 99);
+    run(d, ticks(RULES.graveLife) - 2);
+    expect(d.state.graves).toHaveLength(1);
+    run(d, 3);
+    expect(d.state.graves).toHaveLength(0);
   });
   it('las entradas mantenidas se validan', () => {
     expect(sanitizeInput({ ...idleInput(), special: 'sí', charge: 1 })).toMatchObject({ special: false, charge: false });

@@ -51,7 +51,7 @@ export class Controls {
       if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code))
         e.preventDefault();
       this.keys.add(e.code);
-      // Necromancer: E cycles which squad follows the cursor; ⌘E / Ctrl+E tags the zombie under it.
+      // Necromancer: E toggles automatic zombies; ⌘E / Ctrl+E moves the zombie under the cursor between circles.
       if (e.code === 'KeyE' && CLASSES[this.classId].summon) {
         e.preventDefault();
         if (!e.repeat) this.actions[e.metaKey || e.ctrlKey ? 'mark' : 'command'] = true;

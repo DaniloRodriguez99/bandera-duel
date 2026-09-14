@@ -96,7 +96,7 @@ function showClassControls(id:ClassId) {
   }
   if (id !== 'archer') $('control-guide').innerHTML += '<span><kbd>MANTENER CLIC</kbd> Cargar · más daño y alcance al soltar</span>';
   if (stats.dash) $('control-guide').innerHTML += '<span><kbd>MANTENER ESPACIO</kbd> Dash más largo</span>';
-  if (stats.summon) $('control-guide').innerHTML += '<span><kbd>MANTENER ESPACIO</kbd> Zombie con gorro · aura llena: resucitar a un muerto cercano</span><span><kbd>E</kbd> Zombies: siguen el mouse (violetas → rojos) o atacan solos</span><span><kbd>⌘/CTRL E</kbd> Marcar con E al zombie bajo el cursor (grupo rojo)</span>';
+  if (stats.summon) $('control-guide').innerHTML += '<span><kbd>MANTENER ESPACIO</kbd> Zombie mago · aura llena: mandala bajo el mouse que resucita a un rival caído</span><span><kbd>E</kbd> Zombies: círculo rojo y mouse, o automáticos</span><span><kbd>⌘/CTRL E</kbd> Pasar al zombie bajo el cursor entre el círculo rojo y el mouse</span>';
 }
 showClassControls(selectedClass);
 function entryMode() {
