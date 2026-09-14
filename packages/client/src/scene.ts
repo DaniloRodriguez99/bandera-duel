@@ -367,8 +367,40 @@ export class Arena extends Phaser.Scene {
     } else if (e.kind === 'raise') {
       this.fade(this.add.rectangle(e.x, e.y - 40, 22, 96, 0x7dffb0, 0.4).setDepth(16), { scaleX: 0 }, 760);
       this.fade(this.add.ellipse(e.x, e.y + 8, 30, 12).setStrokeStyle(2, 0x7dffb0, 0.9).setDepth(4), { scale: 3 }, 760);
+    } else if (e.kind === 'shot' && (e.power ?? 0) > 0.05) {
+      const power = e.power ?? 0;
+      this.fade(this.add.circle(e.x, e.y, 10, 0xff7a2f, 0.6).setDepth(16), { scale: 2.5 + power * 2 }, 300);
+      this.fade(this.add.circle(e.x, e.y, 6).setStrokeStyle(3, 0xffe08a, 0.9).setDepth(16), { scale: 5 + power * 3 }, 380);
     } else if (e.kind === 'summon' && e.power) {
       this.fade(this.add.ellipse(e.x, e.y + 8, 36, 14).setStrokeStyle(3, 0xb06cff, 0.9).setDepth(4), { scale: 3.4 }, 700);
+    }
+  }
+  /** Charged fire: roaring core, long flickering flame trail, corona and orbiting embers. */
+  private drawBlaze(p: { x: number; y: number }, angle: number, power: number, time: number, core: number) {
+    const g = this.arrows,
+      dx = Math.cos(angle),
+      dy = Math.sin(angle);
+    for (let i = 9; i >= 1; i--) {
+      const back = i * (8 + power * 7),
+        fade = 1 - i / 10,
+        wobble = Math.sin(time * 0.035 + i * 1.3) * (2 + power * 2);
+      g.fillStyle(i % 2 ? 0xff3d0d : 0xffa132, 0.1 + fade * 0.3);
+      g.fillCircle(p.x - dx * back - dy * wobble, p.y - dy * back + dx * wobble, (5 + power * 11) * fade + 2);
+    }
+    const flicker = 0.85 + Math.sin(time * 0.05) * 0.15;
+    g.fillStyle(0xff2a00, 0.14);
+    g.fillCircle(p.x, p.y, (22 + power * 20) * flicker);
+    g.lineStyle(2, 0xffd36b, 0.6);
+    g.strokeCircle(p.x, p.y, (14 + power * 11) * flicker);
+    g.fillStyle(core, 0.9);
+    g.fillCircle(p.x, p.y, 8 + power * 8);
+    g.fillStyle(0xfff3c4);
+    g.fillCircle(p.x, p.y, 3 + power * 4);
+    for (let i = 0; i < 5; i++) {
+      const a = time * 0.02 + i * 1.26,
+        orbit = 12 + power * 10;
+      g.fillStyle(0xffc14a, 0.85);
+      g.fillRect(p.x + Math.cos(a) * orbit - dx * 10, p.y + Math.sin(a) * orbit - dy * 10, 2, 2);
     }
   }
   /** Rune circle that grows and spins faster as a held ability charges. */
@@ -615,7 +647,14 @@ export class Arena extends Phaser.Scene {
       .setPosition(v.x, v.y + (moving ? Math.sin(time * 0.015) * 1.5 : 0))
       .setTexture(texture)
       .setFlipX(Math.cos(z.angle) < 0)
-      .setAngle(z.windup > 0 ? Math.sin(time * 0.05) * 8 : 0)
+      .setAngle(
+        z.windup > 0
+          ? Math.sin(time * 0.05) * 8
+          : z.kind === 'hat'
+            ? (moving ? Math.sin(time * 0.011) * 5 : Math.sin(time * 0.003) * 2) -
+              (z.cast > 0 ? Math.cos(z.angle) * 6 : 0)
+            : 0,
+      )
       .setScale(z.kind === 'hat' ? 1.15 : 1)
       .setAlpha(Math.min(1, z.life / 1.5));
     if (z.frozenLeft > 0) v.body.setTint(0x9fe8ff);
@@ -649,21 +688,79 @@ export class Arena extends Phaser.Scene {
     v.fx.beginPath();
     v.fx.arc(v.x, v.y + 9, 14, -Math.PI / 2, -Math.PI / 2 + until * Math.PI * 2);
     v.fx.strokePath();
-    if (z.cast > 0) {
-      // Both arms rise: fire gathers in one hand and an ice crystal in the other.
-      const grow = 1 - z.cast / RULES.hatCastTime;
-      const hands = [
-        { x: v.x - 12, color: 0xff8a3c },
-        { x: v.x + 12, color: 0x9fe8ff },
-      ];
-      for (const hand of hands) {
-        v.fx.lineStyle(3, 0x7f9a6e, 1);
-        v.fx.lineBetween(hand.x > v.x ? v.x + 6 : v.x - 6, v.y - 12, hand.x, v.y - 26);
-        v.fx.fillStyle(hand.color, 0.35);
-        v.fx.fillCircle(hand.x, v.y - 30, 4 + grow * 6);
-        v.fx.fillStyle(hand.color, 0.95);
-        v.fx.fillCircle(hand.x, v.y - 30, 2 + grow * 3);
+    this.drawRevivedCaster(v.fx, z, v.x, v.y, time, moving);
+  }
+  /**
+   * A revived corpse with a staff: the free arm hangs limp and sways, the staff is planted with
+   * each shamble; to cast, the staff rises overhead with fire while the other hand thrusts ice.
+   */
+  private drawRevivedCaster(
+    g: Phaser.GameObjects.Graphics,
+    z: Zombie,
+    x: number,
+    y: number,
+    time: number,
+    moving: boolean,
+  ) {
+    const face = Math.cos(z.angle) < 0 ? -1 : 1;
+    const seed = Number(z.id.slice(1)) || 0;
+    const gait = moving ? Math.sin(time * 0.011 + seed) : Math.sin(time * 0.0025 + seed) * 0.3;
+    const cast = z.cast > 0 ? 1 - z.cast / RULES.hatCastTime : 0;
+    const recoil = Math.max(0, (z.castCd - (RULES.hatCastCooldown - 0.25)) / 0.25);
+    const shoulderY = y - 11 + Math.abs(gait) * 1.5;
+    const front = { x: x + face * 7, y: shoulderY },
+      back = { x: x - face * 6, y: shoulderY + 1 };
+    let staffHand = { x: front.x + face * 5, y: front.y + 11 + gait * 2 };
+    let offHand = { x: back.x - face + gait * 3, y: back.y + 13 - Math.abs(gait) };
+    let tilt = face * (0.08 + gait * 0.05);
+    if (cast > 0) {
+      staffHand = { x: front.x + face * (5 + 3 * cast), y: front.y + 11 - 32 * cast };
+      offHand = { x: back.x + face * (6 + 16 * cast), y: back.y + 6 - 10 * cast };
+      tilt = face * 0.35 * cast;
+    } else if (recoil > 0) {
+      staffHand = { x: front.x + face * (8 + 12 * recoil), y: front.y - 10 * recoil };
+      offHand = { x: back.x + face * (10 + 14 * recoil), y: back.y - 2 * recoil };
+      tilt = face * 0.6 * recoil;
+    }
+    const top = { x: staffHand.x + Math.sin(tilt) * 26, y: staffHand.y - Math.cos(tilt) * 26 };
+    const foot = { x: staffHand.x - Math.sin(tilt) * 12, y: staffHand.y + Math.cos(tilt) * 12 };
+    g.lineStyle(3, 0x3a281b, 1);
+    g.lineBetween(foot.x, foot.y, top.x, top.y);
+    g.lineStyle(1, 0x6b4a30, 1);
+    g.lineBetween(foot.x, foot.y, top.x, top.y);
+    const pulse = 0.6 + Math.sin(time * 0.01) * 0.4;
+    g.fillStyle(cast > 0 || recoil > 0 ? 0xff8a3c : 0xb06cff, 0.25 + cast * 0.35);
+    g.fillCircle(top.x, top.y - 2, 5 + pulse * 2 + cast * 8);
+    g.fillStyle(0xd6cfb3);
+    g.fillCircle(top.x, top.y - 2, 3.5);
+    g.fillStyle(0x1a1414);
+    g.fillRect(top.x - 2, top.y - 3, 1, 1);
+    g.fillRect(top.x + 1, top.y - 3, 1, 1);
+    if (cast > 0) {
+      g.fillStyle(0xffd36b, 0.95);
+      g.fillCircle(top.x, top.y - 2, 2 + cast * 4);
+      g.fillStyle(0x9fe8ff, 0.35);
+      g.fillCircle(offHand.x, offHand.y, 3 + cast * 6);
+      g.fillStyle(0xe8fbff, 0.95);
+      g.fillCircle(offHand.x, offHand.y, 1.5 + cast * 3);
+    }
+    for (const [shoulder, hand] of [
+      [back, offHand],
+      [front, staffHand],
+    ]) {
+      const elbow = { x: (shoulder.x + hand.x) / 2 - face * 2, y: (shoulder.y + hand.y) / 2 + 3 };
+      for (const [width, color] of [
+        [4, 0x1d241c],
+        [2, 0x8c9a82],
+      ]) {
+        g.lineStyle(width, color, 1);
+        g.lineBetween(shoulder.x, shoulder.y, elbow.x, elbow.y);
+        g.lineBetween(elbow.x, elbow.y, hand.x, hand.y);
       }
+      g.fillStyle(0x8c9a82);
+      g.fillCircle(hand.x, hand.y, 2);
+      g.lineStyle(1, 0xd6cfb3, 0.9);
+      g.lineBetween(hand.x, hand.y, hand.x + face * 2, hand.y + 2);
     }
   }
   update(time: number, delta: number) {
@@ -752,6 +849,8 @@ export class Arena extends Phaser.Scene {
         this.arrows.fillStyle(0xdffaff);
         this.arrows.fillTriangle(p.x + dx * 7, p.y + dy * 7, p.x - dy * 4, p.y + dx * 4, p.x + dy * 4, p.y - dx * 4);
         this.arrows.fillTriangle(p.x - dx * 5, p.y - dy * 5, p.x - dy * 4, p.y + dx * 4, p.x + dy * 4, p.y - dx * 4);
+      } else if ((a.classId === 'mage' || a.classId === 'necromancer') && (a.power ?? 0) > 0.05) {
+        this.drawBlaze(p, a.angle, a.power!, time, a.classId === 'necromancer' ? 0xc26bff : 0xff6a1f);
       } else if(a.classId==='necromancer') {
         const size = grow * (a.element === 'fire' ? 0.6 : 1);
         this.arrows.lineStyle(6*size,0xff7a2f,.25);

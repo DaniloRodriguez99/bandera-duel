@@ -7,6 +7,7 @@ import {
   sanitizeInput,
   chargePower,
   countsTowardLimit,
+  projectileStats,
   type ClassId,
   type Input,
 } from '@bandera/shared';
@@ -47,6 +48,22 @@ describe('sobrecarga', () => {
     expect(v.hp).toBeCloseTo(5 - 2.5);
     expect(g.hp).toBeLessThan(3);
     expect(d.state.events.some((e) => e.kind === 'explosion')).toBe(true);
+  });
+  it('la bola de fuego cargada sale más rápido y cruza toda la arena', () => {
+    const { d, players: [m, v] } = setup(['mage', 'vanguard']);
+    Object.assign(m, { x: 60, y: 270, angle: 0 });
+    Object.assign(v, { x: 880, y: 480 });
+    run(d, ticks(RULES.overchargeTime) + 1, { 0: { charge: true } });
+    run(d, 1, { 0: { shot: true } });
+    const ball = d.state.arrows[0];
+    expect(ball.x - 60).toBeGreaterThan((projectileStats('mage').speed / 30) * 1.5);
+    let far = ball.x;
+    for (let i = 0; i < 60 && d.state.arrows.length; i++) {
+      run(d, 1);
+      far = Math.max(far, d.state.arrows[0]?.x ?? far);
+    }
+    expect(far).toBeGreaterThan(880);
+    expect(projectileStats('mage').life * projectileStats('mage').speed).toBeLessThan(880);
   });
   it('sin la habilidad lista no carga; el golpe cargado pega más fuerte y más lejos', () => {
     const waiting = setup(['mage', 'vanguard']);

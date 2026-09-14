@@ -467,9 +467,9 @@ export function lineClear(a: Vec, b: Vec): boolean {
   return true;
 }
 /** Full-charge multipliers for held abilities; the archer keeps its own 0.8 s charge. */
-const OVERCHARGE: Partial<Record<ClassId, { damage: number; radius: number }>> = {
-  mage: { damage: 2.5, radius: 2 },
-  necromancer: { damage: 2, radius: 1.8 },
+const OVERCHARGE: Partial<Record<ClassId, { damage: number; radius: number; speed: number }>> = {
+  mage: { damage: 2.5, radius: 2, speed: 1.7 },
+  necromancer: { damage: 2, radius: 1.8, speed: 1.9 },
 };
 const MELEE_OVERCHARGE: Partial<Record<ClassId, number>> = { guardian: 2, vanguard: 1.75 };
 /** 0 for a tap, rising to 1 once a hold reaches `overchargeTime`. */
@@ -506,8 +506,13 @@ export function projectileStats(classId: ClassId, charged = false, power = 0) {
         };
   const boost = OVERCHARGE[classId];
   if (!boost || power <= 0) return base;
+  const speed = base.speed * (1 + power * (boost.speed - 1));
+  // A charged cast keeps flying until it crosses the whole arena.
+  const crossing = (RULES.width * 1.1) / speed;
   return {
     ...base,
+    speed,
+    life: base.life + power * Math.max(0, crossing - base.life),
     damage: base.damage * (1 + power * (boost.damage - 1)),
     radius: base.radius * (1 + power * (boost.radius - 1)),
   };
