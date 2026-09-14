@@ -75,12 +75,13 @@ describe('servidor con clientes Colyseus reales', () => {
     await expect(sdk.create('duel', { name: '<script>' })).rejects.toThrow();
     const { a, b, host } = await pair();
     expect(a.roomId).toMatch(/^[a-f0-9]{32}$/);
-    expect(host.maxClients).toBe(2);
-    await expect(sdk.joinById(a.roomId, { name: 'Tercero' })).rejects.toThrow();
-    a.send('ready');
-    b.send('ready');
+    expect(host.maxClients).toBe(4);
+    const c = await track(sdk.joinById(a.roomId, { name: 'Tercero' })),
+      d = await track(sdk.joinById(a.roomId, { name: 'Cuarto' }));
+    await expect(sdk.joinById(a.roomId, { name: 'Quinto' })).rejects.toThrow();
+    for (const r of [a, b, c, d]) r.send('ready');
     await until(() => states.get(a.sessionId)?.phase === 'playing');
-    expect(states.get(b.sessionId)?.players).toHaveLength(2);
+    expect(states.get(d.sessionId)?.players.map((p) => p.team)).toEqual(['blue', 'red', 'green', 'violet']);
   });
   it('rechaza teletransporte y daño enviado; limita velocidad con ráfagas de inputs', async () => {
     const { a, b, host } = await pair();
@@ -148,6 +149,18 @@ describe('servidor con clientes Colyseus reales', () => {
     await until(() => states.get(a.sessionId)?.phase === 'finished');
     expect(states.get(a.sessionId)?.reason).toBe('abandono');
     expect(states.get(a.sessionId)?.winner).toBe('blue');
+  });
+  it('con tres jugadores un abandono elimina sin terminar; el último en pie gana', async () => {
+    const { a, b, host } = await pair();
+    const c = await track(sdk.joinById(a.roomId, { name: 'Verde' }));
+    await until(() => host.game.state.players.length === 3);
+    host.game.state.phase = 'playing';
+    await c.leave();
+    await until(() => host.game.state.players[2].eliminated);
+    expect(host.game.state.phase).toBe('playing');
+    await b.leave();
+    await until(() => states.get(a.sessionId)?.phase === 'finished');
+    expect(states.get(a.sessionId)).toMatchObject({ winner: 'blue', reason: 'abandono' });
   });
   it('reserva 15s y finaliza por abandono cuando no reconecta', async () => {
     const { a, b, host } = await pair();

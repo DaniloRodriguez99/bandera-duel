@@ -9,12 +9,11 @@ import {
   validClass,
   DEFAULT_CLASS,
   type ClassId,
-  other,
   type Input,
 } from '@bandera/shared';
 
 export class DuelRoom extends Room {
-  maxClients = 2;
+  maxClients = RULES.maxPlayers;
   maxMessagesPerSecond = 65;
   game = new Duel();
   private queues = new Map<string, Input[]>();
@@ -129,12 +128,10 @@ export class DuelRoom extends Room {
     this.seen.delete(client.sessionId);
     this.receivedAt.delete(client.sessionId);
     if (!p) return;
-    if (s.phase === 'lobby') {
-      s.players = s.players.filter((p) => p.id !== client.sessionId);
-      s.players.forEach((p) => (p.ready = false));
-    } else {
+    if (s.phase === 'lobby' || s.phase === 'finished') this.game.remove(client.sessionId);
+    else {
       p.connected = false;
-      if (s.phase !== 'finished') this.game.finish(other(p.team), 'abandono');
+      this.game.eliminate(p, 'abandono');
     }
     s.paused = this.drops.size > 0;
     this.broadcast('snapshot', s);
