@@ -10,7 +10,7 @@ document.querySelector('#app')!.innerHTML = `
 <header class="topbar"><a class="brand" href="/" aria-label="Bandera Duel, inicio"><span class="brand-mark">⚑</span><span>BANDERA<span class="brand-thin"> DUEL</span><small>LA GLORIA NO SE HEREDA. SE ROBA.</small></span></a><div class="header-right"><span class="edition">PRIMERA EDICIÓN <b>01</b></span><button id="mute" class="icon-btn" aria-label="Silenciar sonido"></button></div></header>
 <main>
 <section id="intro" class="intro"><div class="hero-copy"><div class="eyebrow"><i></i> DUELO ONLINE · 1 CONTRA 1</div><h1>Tu rival tiene<br>algo <em>tuyo.</em></h1><p>Entrá al castillo. Robá su bandera.<br>Volvé con la gloria antes de que te alcancen.</p><div class="facts"><span><b>02</b> rivales</span><span><b>03</b> minutos</span><span><b>01</b> vencedor</span></div></div>
-<div class="entry-card"><div class="card-top"><span class="tiny">EL DESAFÍO EMPIEZA ACÁ</span><span class="swords">⚔</span></div><h2 id="entry-title">Prepará tu estandarte.</h2><p id="entry-description">Creá una sala privada e invitá a tu rival.</p><form id="entry-form"><label for="name">TU APODO</label><input id="name" name="name" placeholder="Caballero sin nombre" maxlength="16" autocomplete="nickname" required><fieldset class="class-picker"><legend>ELEGÍ TU GUERRERO</legend><div id="entry-classes" class="class-grid"></div></fieldset><button id="enter" class="primary" type="submit">Crear un duelo <span>↗</span></button></form><div id="status" class="status" role="status" aria-live="polite">Sin cuentas. Sin descargas. Solo el duelo.</div><button id="new-instead" class="text-btn" hidden>Crear otra sala</button></div></section>
+<div class="entry-card"><div class="card-top"><span class="tiny">EL DESAFÍO EMPIEZA ACÁ</span><span class="swords">⚔</span></div><h2 id="entry-title">Prepará tu estandarte.</h2><p id="entry-description">Creá una sala privada e invitá a tu rival.</p><form id="entry-form"><label for="name">TU APODO</label><input id="name" name="name" placeholder="Caballero sin nombre" maxlength="16" autocomplete="nickname" required><label id="spectator-choice" hidden><input id="spectator" type="checkbox"> Entrar como espectador</label><fieldset id="entry-class-picker" class="class-picker"><legend>ELEGÍ TU GUERRERO</legend><div id="entry-classes" class="class-grid"></div></fieldset><button id="enter" class="primary" type="submit">Crear un duelo <span>↗</span></button></form><div id="status" class="status" role="status" aria-live="polite">Sin cuentas. Sin descargas. Solo el duelo.</div><button id="new-instead" class="text-btn" hidden>Crear otra sala</button></div></section>
 <section class="arena-section"><div class="arena-heading"><div><span class="live-dot"></span><span id="arena-label">EL PATIO DEL REY</span><span class="map-label">ARENA 01</span></div><span id="connection-label">ACERO · ARCO · MAGIA</span></div>
 <div id="hud" class="hud" hidden><div class="team blue"><span>◆ AZUR</span><b id="score-blue">0</b><small id="flag-blue">En base</small></div><div class="clock"><span id="timer">3:00</span><small>PRIMERO A 3</small></div><div class="team red"><small id="flag-red">En base</small><b id="score-red">0</b><span>CARMESÍ ✚</span></div></div>
 <div id="stage" class="stage"><div id="game"></div><div class="preview-tag" id="preview-tag">DOS ESTANDARTES. UN SOLO CAMINO A LA VICTORIA.</div>
@@ -68,6 +68,7 @@ function showClassControls(id:ClassId) {
 }
 showClassControls(selectedClass);
 function entryMode() {
+  $('spectator-choice').hidden = !target;
   if (target) {
     $('entry-title').textContent = 'Aceptá el desafío.';
     $('entry-description').textContent = 'Tu rival te espera en una sala privada.';
@@ -76,6 +77,11 @@ function entryMode() {
   }
 }
 entryMode();
+$<HTMLInputElement>('spectator').onchange = () => {
+  const watching = $<HTMLInputElement>('spectator').checked;
+  $('entry-class-picker').hidden = watching;
+  $('enter').textContent = watching ? 'Observar partida ↗' : 'Entrar al duelo ↗';
+};
 function muteLabel() {
   $('mute').textContent = muted ? '♪ OFF' : '♪ ON';
   $('mute').setAttribute('aria-pressed', String(muted));
@@ -164,7 +170,7 @@ function bind(joined: Room) {
     setStatus(message || 'Error de conexión.', true);
   });
   arena.send = (input) => {
-    if (online) joined.send('input', input);
+    if (online && current?.players.some(p => p.id === joined.sessionId)) joined.send('input', input);
   };
   room.send('sync');
   $('stage').scrollIntoView({ block: 'center', behavior: 'smooth' });
@@ -184,7 +190,7 @@ $('entry-form').onsubmit = async (e) => {
   try {
     await warmup();
     const joined = target
-      ? await client.joinById(target, { name, classId:selectedClass })
+      ? await client.joinById(target, { name, classId:selectedClass, spectator: $<HTMLInputElement>('spectator').checked })
       : await client.create('duel', { name, classId:selectedClass });
     bind(joined);
   } catch (error) {
@@ -204,6 +210,9 @@ $('entry-form').onsubmit = async (e) => {
 };
 $('new-instead').onclick = () => {
   target = null;
+  $('spectator-choice').hidden = true;
+  $<HTMLInputElement>('spectator').checked = false;
+  $('entry-class-picker').hidden = false;
   history.replaceState(null, '', location.pathname);
   $('entry-title').textContent = 'Prepará tu estandarte.';
   $('entry-description').textContent = 'Creá una sala privada e invitá a tu rival.';
@@ -249,12 +258,15 @@ function render(s: Snapshot) {
           : `En el suelo · ${Math.ceil(flag.returnLeft)} s`;
   $('arena-label').textContent = me
     ? `JUGÁS PARA ${me.team === 'blue' ? '◆ AZUR' : '✚ CARMESÍ'}`
-    : 'EL PATIO DEL REY';
+    : 'ESPECTADOR · VISTA DEL DUELO';
   $('stage').dataset.phase = s.phase;
   const overlay = s.phase === 'lobby' || s.phase === 'finished';
   $('overlay').hidden = !overlay;
-  $('touch-controls').classList.toggle('active', s.phase === 'playing' && !s.paused);
-  $('cooldowns').hidden = s.phase !== 'playing';
+  $('touch-controls').classList.toggle('active', !!me && s.phase === 'playing' && !s.paused);
+  $('cooldowns').hidden = !me || s.phase !== 'playing';
+  $('room-picker').hidden = !me || !overlay;
+  $('control-guide').hidden = !me;
+  $('stage').dataset.role = me ? 'player' : 'spectator';
   if (me) {
     selectedClass=me.classId;saveClass(me.classId);showClassControls(me.classId);
     updateClasses($('room-classes'),me.classId,!overlay||s.paused);
@@ -313,13 +325,24 @@ function render(s: Snapshot) {
       roster.append(row);
     }
     $('invitation').hidden = s.phase !== 'lobby';
-    $('ready').hidden = s.phase === 'finished' && s.players.some((p) => !p.connected);
+    $('ready').hidden = !me || s.phase === 'finished' && s.players.some((p) => !p.connected);
     $<HTMLButtonElement>('ready').disabled = s.paused || s.players.length < 2;
     $('ready').textContent = me?.ready
       ? 'Listo ✓ · Esperando rival'
       : s.phase === 'finished'
         ? 'Quiero revancha ↗'
         : 'Estoy listo ⚔';
+  }
+  if (!me) {
+    $('arena-hint').textContent = 'Estás observando. Los jugadores deciden cuándo empezar y pedir revancha.';
+    if (overlay) {
+      $('overlay-title').textContent = s.phase === 'finished'
+        ? s.winner === 'draw' ? 'Empate.' : `Ganó ${s.winner === 'blue' ? 'Azur' : 'Carmesí'}.`
+        : 'Esperando a los jugadores';
+      $('overlay-description').textContent = s.phase === 'finished'
+        ? `${s.score.blue} — ${s.score.red}. Esperando una nueva ronda.`
+        : 'Estás como espectador. La partida empieza cuando ambos estén listos.';
+    }
   }
   const announce = $('announcement');
   announce.hidden = overlay || !(s.paused || s.phase === 'countdown' || s.phase === 'capture');

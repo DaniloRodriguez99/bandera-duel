@@ -75,7 +75,7 @@ describe('servidor con clientes Colyseus reales', () => {
     await expect(sdk.create('duel', { name: '<script>' })).rejects.toThrow();
     const { a, b, host } = await pair();
     expect(a.roomId).toMatch(/^[a-f0-9]{32}$/);
-    expect(host.maxClients).toBe(2);
+    expect(host.maxClients).toBe(18);
     await expect(sdk.joinById(a.roomId, { name: 'Tercero' })).rejects.toThrow();
     a.send('ready');
     b.send('ready');
@@ -158,4 +158,31 @@ describe('servidor con clientes Colyseus reales', () => {
     await until(() => states.get(a.sessionId)?.phase === 'finished', 18000);
     expect(states.get(a.sessionId)?.winner).toBe('blue');
   });
+});
+
+it('espectadores entran durante el duelo, no juegan ni pausan y ven revancha', async () => {
+  const {a,b,host}=await pair();
+  host.game.state.phase='playing';
+  const viewer=await track(sdk.joinById(a.roomId,{name:'Publico',spectator:true}));
+  expect(states.get(viewer.sessionId)?.players).toHaveLength(2);
+  viewer.send('ready');viewer.send('selectClass','archer');
+  viewer.send('input',{...idleInput(1),shot:true,sword:true,dash:true,guard:true});
+  await sleep(100);
+  expect(host.game.state.players.every(p=>!p.ready)).toBe(true);
+  expect(host.game.state.arrows).toHaveLength(0);
+  const token=viewer.reconnectionToken;
+  viewer.reconnection.enabled=false;
+  viewer.connection.transport.ws.close();
+  await sleep(100);
+  expect(host.game.state.paused).toBe(false);
+  const back=await track(sdk.reconnect(token));
+  host.game.finish('blue','abandono');
+  await until(()=>states.get(back.sessionId)?.phase==='finished');
+  expect(states.get(back.sessionId)?.winner).toBe('blue');
+  a.send('ready');b.send('ready');
+  await until(()=>states.get(back.sessionId)?.phase==='playing');
+  await back.leave();
+  expect(host.game.state.paused).toBe(false);
+  expect(host.game.state.players).toHaveLength(2);
+  await a.leave();await b.leave();
 });

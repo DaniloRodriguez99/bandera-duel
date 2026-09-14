@@ -116,3 +116,7 @@ Después de publicar, comprobá `/health`, una invitación entre PC y móvil, un
 ## Estado de entrega
 
 Ver `VALIDATION.md` para los resultados comprobados y las limitaciones de validación. El repositorio se entrega inicializado, sin remoto ni publicación. Las dependencias quedan fijadas en `package-lock.json`.
+
+## Espectadores
+Al abrir una invitación, marcá **Entrar como espectador** e ingresá un apodo. Hay dos lugares de jugador y hasta 16 de espectador por sala. Se puede observar una partida iniciada y seguir la revancha. Los espectadores no controlan personajes ni marcan listo; su desconexión no pausa la partida y pueden reconectar durante 15 segundos.
+

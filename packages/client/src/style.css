@@ -879,3 +879,7 @@ footer b {
 .stage[data-guarding=true] #touch-guard{background:#b2945de6;color:#1c2928;box-shadow:0 0 12px #eac78766}
 @media(max-width:760px){.intro{grid-template-columns:1fr;gap:25px}.class-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.class-card small{font-size:8px}.class-card strong{font-size:18px}.class-card svg{height:48px}.entry-card{padding:18px}.class-stats{font-size:7px}#cooldowns{gap:9px;font-size:9px}}
 @media(max-height:600px) and (orientation:landscape){.in-room .overlay-card{display:grid;grid-template-columns:1fr 1.15fr;column-gap:16px;align-items:start;width:min(660px,96%);padding:10px 14px}.overlay-card #overlay-kicker,.overlay-card #overlay-title,.overlay-card #overlay-description{grid-column:1}.overlay-card #room-picker{grid-column:2;grid-row:1/5;align-self:center}.overlay-card #roster{grid-column:1}.overlay-card #invitation{grid-column:1}.overlay-card #ready,.overlay-card #leave{grid-column:2}.overlay-card #ready{grid-row:5}.overlay-card #leave{grid-row:6}.in-room .compact .class-card svg{height:36px}.in-room .overlay-card h2{font-size:24px}.in-room .overlay-card .roster-player{font-size:9px;padding:5px}.in-room .roster-player small{font-size:6px}.in-room .compact legend{font-size:7px}.in-room .compact .class-card strong{font-size:14px}.in-room .compact .class-stats{font-size:6px}}
+
+#spectator-choice { display: flex; align-items: center; gap: 10px; margin: 12px 0; }
+#spectator-choice[hidden] { display: none; }
+#spectator { width: 20px; height: 20px; margin: 0; accent-color: #f3ce86; }
