@@ -1,0 +1,31 @@
+{
+  "name": "bandera-duel",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "scripts": {
+    "dev": "concurrently -k -n shared,server,client \"npm run dev -w @bandera/shared\" \"npm run dev -w @bandera/server\" \"npm run dev -w @bandera/client\"",
+    "predev": "npm run build -w @bandera/shared",
+    "build": "npm run build -w @bandera/shared && npm run build -w @bandera/server && npm run build -w @bandera/client",
+    "build:server": "npm run build -w @bandera/shared && npm run build -w @bandera/server",
+    "build:client": "npm run build -w @bandera/shared && npm run build -w @bandera/client",
+    "start": "npm run start -w @bandera/server",
+    "typecheck": "npm run build -w @bandera/shared && npm run typecheck --workspaces --if-present",
+    "test": "npm run build -w @bandera/shared && vitest run",
+    "test:browser": "playwright test"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "tsx": "^4.20.6",
+    "concurrently": "^9.2.1",
+    "vitest": "^4.1.11",
+    "@playwright/test": "^1.55.0",
+    "@types/node": "^24.0.0"
+  }
+}
