@@ -5,23 +5,27 @@ import {
   CLASS_IDS,
   DEFAULT_CLASS,
   WALLS,
-  HOMES,
-  SPAWNS,
   TEAMS,
+  TEAM_NAMES,
+  TEAM_ICONS,
+  layout,
   movePlayer,
   newPlayer,
   lineClear,
   type Snapshot,
   type Player,
+  type Team,
+  type Base,
   type Input,
 } from '@bandera/shared';
 import { Controls } from './input.js';
 import { sound } from './audio.js';
 import { CLASS_ART, palette } from './art.js';
 
-const BLUE = 0x73bbef,
-  RED = 0xee8b79,
-  GOLD = 0xf3ce86;
+const GOLD = 0xf3ce86;
+const COLORS: Record<Team, number> = { blue: 0x73bbef, red: 0xee8b79, green: 0x86cf97, violet: 0xbf98ea };
+const LIGHT: Record<Team, string> = { blue: '#8cc5e7', red: '#efa08b', green: '#9fdcae', violet: '#c9aef0' };
+const CLOTH: Record<Team, string> = { blue: '#548cb7', red: '#b66558', green: '#4f9a68', violet: '#8062a8' };
 export class Arena extends Phaser.Scene {
   controls!: Controls;
   localId = '';
@@ -43,6 +47,9 @@ export class Arena extends Phaser.Scene {
   private flags!: Phaser.GameObjects.Graphics;
   private arrows!: Phaser.GameObjects.Graphics;
   private aim!: Phaser.GameObjects.Graphics;
+  private bases!: Phaser.GameObjects.Graphics;
+  private baseLabels: Phaser.GameObjects.Text[] = [];
+  private layoutKey = '';
   private pending: Input[] = [];
   private seq = 0;
   private accumulator = 0;
@@ -54,6 +61,7 @@ export class Arena extends Phaser.Scene {
   }
   create() {
     this.drawMap();
+    this.bases = this.add.graphics().setDepth(1);
     this.makeTextures();
     this.flags = this.add.graphics().setDepth(5);
     this.arrows = this.add.graphics().setDepth(9);
@@ -69,20 +77,49 @@ export class Arena extends Phaser.Scene {
       if (p.rightButtonDown()) this.controls.secondary(true);
       else this.controls.primary();
     });
+    const preview = layout(['blue', 'red']);
+    this.drawBases(preview);
     this.paintFlags(
-      TEAMS.map(
-        (team) =>
-          ({ ...HOMES[team], team, status: 'home', carrier: null }) as Snapshot['flags'][number],
+      preview.map(
+        (b) => ({ ...b.home, team: b.team, status: 'home', carrier: null }) as Snapshot['flags'][number],
       ),
     );
-    for (const team of TEAMS) this.drawPlayer(newPlayer(`preview-${team}`, '', team), false, 0);
+    for (const b of preview) this.drawPlayer(newPlayer(`preview-${b.team}`, '', b.team), false, 0);
   }
   private makeTextures() {
-    for (const [team,color,light] of [['blue','#548cb7','#8cc5e7'],['red','#b66558','#efa08b']] as const)
+    for (const team of TEAMS)
       for (const classId of CLASS_IDS) for(let frame=0;frame<2;frame++) {
         const data=CLASS_ART[classId].map((row,i)=>frame===1&&i>=13?row.slice(0,3)+row.slice(3,13).split('').reverse().join('')+row.slice(13):row);
-        this.textures.generate(`${team}-${classId}-${frame}`, { data,pixelWidth:2,palette:palette(color,light) as Phaser.Types.Create.Palette });
+        this.textures.generate(`${team}-${classId}-${frame}`, { data,pixelWidth:2,palette:palette(CLOTH[team],LIGHT[team]) as Phaser.Types.Create.Palette });
       }
+  }
+  private drawBases(bases: Base[]) {
+    const key = JSON.stringify(bases);
+    if (key === this.layoutKey) return;
+    this.layoutKey = key;
+    const g = this.bases;
+    g.clear();
+    this.baseLabels.forEach((label) => label.destroy());
+    this.baseLabels = bases.map(({ team, home: h, spawn: sp }) => {
+      const color = COLORS[team];
+      g.fillStyle(color, 0.1);
+      g.fillRoundedRect(h.x < RULES.width / 2 ? h.x - 117 : h.x - 51, h.y - 56, 168, 112, 10);
+      g.lineStyle(2, color, 0.45);
+      g.strokeCircle(h.x, h.y, 38);
+      g.lineStyle(1, color, 0.17);
+      g.strokeCircle(h.x, h.y, 45);
+      g.fillStyle(color, 0.18);
+      g.fillCircle(sp.x, sp.y, 19);
+      return this.add
+        .text(h.x, h.y + 56, `${TEAM_ICONS[team]}  ${TEAM_NAMES[team]}`, {
+          fontFamily: 'monospace',
+          fontSize: '11px',
+          color: LIGHT[team],
+          letterSpacing: 2,
+        })
+        .setOrigin(0.5)
+        .setDepth(1);
+    });
   }
   private drawMap() {
     const g = this.add.graphics();
@@ -118,27 +155,6 @@ export class Arena extends Phaser.Scene {
     g.fillStyle(0x8a9073, 0.3);
     g.fillTriangle(480, 245, 496, 270, 480, 295);
     g.fillTriangle(480, 245, 464, 270, 480, 295);
-    for (const team of TEAMS) {
-      const color = team === 'blue' ? BLUE : RED,
-        h = HOMES[team],
-        sp = SPAWNS[team];
-      g.fillStyle(color, 0.1);
-      g.fillRoundedRect(team === 'blue' ? 28 : 764, 214, 168, 112, 10);
-      g.lineStyle(2, color, 0.45);
-      g.strokeCircle(h.x, h.y, 38);
-      g.lineStyle(1, color, 0.17);
-      g.strokeCircle(h.x, h.y, 45);
-      this.add
-        .text(h.x, 326, team === 'blue' ? '◆  AZUR' : '✚  CARMESÍ', {
-          fontFamily: 'monospace',
-          fontSize: '11px',
-          color: team === 'blue' ? '#8cc5e7' : '#efa08b',
-          letterSpacing: 2,
-        })
-        .setOrigin(0.5);
-      g.fillStyle(color, 0.18);
-      g.fillCircle(sp.x, sp.y, 19);
-    }
     const wall = (x: number, y: number, w: number, h: number) => {
       g.fillStyle(0x0e1c20, 0.6);
       g.fillRect(x + 6, y + 9, w, h);
@@ -191,15 +207,15 @@ export class Arena extends Phaser.Scene {
     this.snapshot = snapshot;
     this.localId = id;
     this.receivedAt = performance.now();
-    if (first) {
-      for (const [key, v] of this.visuals) {
-        v.body.destroy();
-        v.name.destroy();
-        v.shadow.destroy();
-        v.hp.destroy();
-        v.weapon.destroy();
-        this.visuals.delete(key);
-      }
+    this.drawBases(snapshot.bases);
+    for (const [key, v] of this.visuals) {
+      if (snapshot.players.some((p) => p.id === key)) continue;
+      v.body.destroy();
+      v.name.destroy();
+      v.shadow.destroy();
+      v.hp.destroy();
+      v.weapon.destroy();
+      this.visuals.delete(key);
     }
     const own = snapshot.players.find((p) => p.id === id);
     if (own) {
@@ -239,7 +255,7 @@ export class Arena extends Phaser.Scene {
           onComplete: () => slash.destroy(),
         });
       } else {
-        const color = e.kind==='block'?GOLD:e.team === 'blue' ? BLUE : RED;
+        const color = e.kind==='block'?GOLD:COLORS[e.team];
         for (let i = 0; i < (e.kind === 'capture' ? 24 : 7); i++) {
           const a = i * 2.4,
             rect = this.add.rectangle(e.x, e.y, 3, 3, color).setDepth(20);
@@ -255,7 +271,7 @@ export class Arena extends Phaser.Scene {
       }
       if (e.kind === 'capture') {
         const pulse = this.add
-          .rectangle(480, 270, 960, 540, e.team === 'blue' ? BLUE : RED, 0.2)
+          .rectangle(480, 270, 960, 540, COLORS[e.team], 0.2)
           .setDepth(25);
         this.tweens.add({
           targets: pulse,
@@ -279,7 +295,7 @@ export class Arena extends Phaser.Scene {
     const g = this.flags;
     g.clear();
     for (const f of flags) {
-      const color = f.team === 'blue' ? BLUE : RED;
+      const color = COLORS[f.team];
       const x = f.x + (f.status === 'carried' ? 15 : 0),
         y = f.y - (f.status === 'carried' ? 22 : 0);
       g.fillStyle(0x000000, 0.2);
@@ -293,9 +309,13 @@ export class Arena extends Phaser.Scene {
       if (f.team === 'blue') {
         g.fillTriangle(x + 10, y - 23, x + 6, y - 19, x + 10, y - 15);
         g.fillTriangle(x + 10, y - 23, x + 14, y - 19, x + 10, y - 15);
-      } else {
+      } else if (f.team === 'red') {
         g.fillRect(x + 10, y - 24, 3, 10);
         g.fillRect(x + 6, y - 20, 11, 3);
+      } else if (f.team === 'green') {
+        g.fillTriangle(x + 11, y - 24, x + 6, y - 15, x + 16, y - 15);
+      } else {
+        g.fillCircle(x + 11, y - 19, 4);
       }
       if (f.status === 'dropped') {
         g.lineStyle(1, color, 0.7);
@@ -336,7 +356,7 @@ export class Arena extends Phaser.Scene {
       .setFlipX(Math.cos(p.angle) < 0);
     v.body
       .setAngle(p.hp <= 0 ? 90 : 0)
-      .setAlpha(p.hp<=0?.2:p.dashInvulnerable?.45:p.invuln>0?.55+Math.sin(time*.025)*.25:1);
+      .setAlpha(p.eliminated?.08:p.hp<=0?.2:p.dashInvulnerable?.45:p.invuln>0?.55+Math.sin(time*.025)*.25:1);
     if (p.hitFlash > 0) v.body.setTintFill(0xffe6ba);
     else v.body.clearTint();
     v.shadow.setPosition(v.x, v.y + 8);
@@ -370,7 +390,7 @@ export class Arena extends Phaser.Scene {
       for (let i=0;i<p.maxHp;i++) {
         v.hp.fillStyle(0x1a282c);v.hp.fillRect(left+i*8,v.y-25,6,3);
         const fill=Math.min(1,Math.max(0,p.hp-i));
-        v.hp.fillStyle(p.team==='blue'?BLUE:RED);v.hp.fillRect(left+i*8,v.y-25,6*fill,3);
+        v.hp.fillStyle(COLORS[p.team]);v.hp.fillRect(left+i*8,v.y-25,6*fill,3);
       }
       if(p.windup>0){v.hp.lineStyle(1,GOLD,.45);v.hp.beginPath();v.hp.arc(v.x,v.y,stats.meleeRange,p.swingAngle-stats.meleeArc/2,p.swingAngle+stats.meleeArc/2);v.hp.strokePath();}
       if(p.dashInvulnerable){v.hp.lineStyle(2,0xc0eafa,.65);v.hp.strokeEllipse(v.x,v.y,35,40);}
@@ -379,7 +399,7 @@ export class Arena extends Phaser.Scene {
         v.hp.strokeEllipse(v.x, v.y + 9, 32, 12);
       }
     } else {
-      v.name.setText(`${p.name} · ${Math.ceil(p.respawnLeft)}`);
+      v.name.setText(p.eliminated ? `☠ ${p.name}` : `${p.name} · ${Math.ceil(p.respawnLeft)}`);
     }
   }
   update(time: number, delta: number) {
