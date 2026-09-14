@@ -161,8 +161,12 @@ export const RULES = {
   zombieCooldown: 1,
   zombieLife: 20,
   zombieAggro: 280,
-  zombieMaxPerOwner: 6,
   zombieRetarget: 0.4,
+  zombieExecutions: 2,
+  zombieAimRadius: 110,
+  zombieMarkedAggro: 450,
+  zombieFlankRadius: 34,
+  zombieRise: 0.45,
 } as const;
 export const TEAMS: Team[] = ['blue', 'red', 'green', 'violet'];
 export const TEAM_NAMES: Record<Team, string> = {
@@ -228,6 +232,8 @@ export interface Input {
   summon: boolean;
   trap: boolean;
   volley: boolean;
+  aimX: number;
+  aimY: number;
 }
 export const idleInput = (seq = 0, angle = 0): Input => ({
   seq,
@@ -242,7 +248,12 @@ export const idleInput = (seq = 0, angle = 0): Input => ({
   summon: false,
   trap: false,
   volley: false,
+  aimX: -1,
+  aimY: -1,
 });
+/** A world point under the cursor; -1 means the client did not provide one. */
+const aimCoordinate = (value: unknown, max: number) =>
+  typeof value === 'number' && Number.isFinite(value) && value >= 0 ? Math.min(max, value) : -1;
 export function sanitizeInput(raw: unknown): Input | null {
   if (!raw || typeof raw !== 'object') return null;
   const r = raw as Record<string, unknown>;
@@ -272,6 +283,8 @@ export function sanitizeInput(raw: unknown): Input | null {
     summon: r.summon === true,
     trap: r.trap === true,
     volley: r.volley === true,
+    aimX: aimCoordinate(r.aimX, RULES.width),
+    aimY: aimCoordinate(r.aimY, RULES.height),
   };
 }
 export function validName(raw: unknown): string | null {
@@ -319,6 +332,9 @@ export interface Player extends Vec {
   volleyCd: number;
   stunLeft: number;
   activeTraps: number;
+  activeExecutions: number;
+  aimX: number;
+  aimY: number;
 }
 export interface Flag extends Vec {
   team: Team;
@@ -355,6 +371,9 @@ export interface Zombie extends Vec {
   life: number;
   target: string | null;
   retarget: number;
+  execution: number | null;
+  slot: number;
+  rise: number;
 }
 export interface GameEvent extends Vec {
   id: number;
@@ -463,7 +482,9 @@ const cellOf = (p: Vec) =>
   Math.min(COLS - 1, Math.max(0, Math.floor(p.x / CELL)));
 let walkable: boolean[] | undefined;
 /** Breadth-first search on a 20 px grid; ends at the goal or at the closest reachable cell. */
-export function findPath(from: Vec, to: Vec): Vec[] {
+export const pathCells = (points: Vec[]) => new Set(points.map(cellOf));
+/** Cells in `avoid` (a sibling's route) are explored last, so a pack spreads across corridors. */
+export function findPath(from: Vec, to: Vec, avoid?: ReadonlySet<number>): Vec[] {
   const open = (walkable ??= Array.from({ length: COLS * ROWS }, (_, i) => {
     const c = cellCenter(i);
     return !blocked(c.x, c.y, RULES.zombieRadius);
@@ -471,10 +492,12 @@ export function findPath(from: Vec, to: Vec): Vec[] {
   const start = cellOf(from),
     goal = cellOf(to),
     parent = new Int32Array(COLS * ROWS).fill(-1),
-    queue = [start];
+    queue = [start],
+    detour: number[] = [];
   parent[start] = start;
   let best = start;
-  for (let head = 0; head < queue.length; head++) {
+  for (let head = 0; head < queue.length || detour.length; head++) {
+    if (head >= queue.length) queue.push(detour.shift()!);
     const cell = queue[head];
     if (cell === goal) {
       best = goal;
@@ -491,7 +514,7 @@ export function findPath(from: Vec, to: Vec): Vec[] {
         continue;
       if (dx && dy && (!open[cy * COLS + nx] || !open[ny * COLS + cx])) continue;
       parent[next] = cell;
-      queue.push(next);
+      (avoid?.has(next) ? detour : queue).push(next);
     }
   }
   const path: Vec[] = [];
@@ -499,6 +522,7 @@ export function findPath(from: Vec, to: Vec): Vec[] {
   if (best === goal) path.push({ x: to.x, y: to.y });
   return path;
 }
+const FLANKS = [-Math.PI / 3, Math.PI / 3, Math.PI * 0.85, 0];
 export function lowerGuard(p: Player) {
   if (!p.guarding) return;
   p.guarding = false;
@@ -545,6 +569,8 @@ export function movePlayer(p: Player, input: Input, carrying: boolean, dt = RULE
     return result;
   }
   p.angle = input.angle;
+  p.aimX = input.aimX;
+  p.aimY = input.aimY;
   if (p.trapLeft > 0) {
     p.shotCharge = 0;
     if (p.hitFlash > 0) p.trapLeft = 0;
@@ -650,7 +676,12 @@ export function movePlayer(p: Player, input: Input, carrying: boolean, dt = RULE
       result.charged = p.classId === 'archer' && p.shotCharge >= RULES.chargeTime - 1e-8;
       p.shotCharge = 0;
       result.shoot = true;
-    } else if (input.summon && stats.summon && p.summonCd <= 0) {
+    } else if (
+      input.summon &&
+      stats.summon &&
+      p.summonCd <= 0 &&
+      p.activeExecutions < RULES.zombieExecutions
+    ) {
       p.invuln = 0;
       p.summonCd = RULES.summonCooldown;
       p.attackLock = RULES.attackLock;
@@ -709,6 +740,9 @@ export function newPlayer(
     volleyCd: 0,
     stunLeft: 0,
     activeTraps: 0,
+    activeExecutions: 0,
+    aimX: -1,
+    aimY: -1,
   };
 }
 const newFlag = ({ team, home }: Base): Flag => ({
@@ -743,6 +777,7 @@ export class Duel {
   private arrowId = 0;
   private trapId = 0;
   private zombieId = 0;
+  private executionId = 0;
   private paths = new Map<string, { goal: Vec; points: Vec[] }>();
   add(id: string, name: string, classId: ClassId = DEFAULT_CLASS) {
     const s = this.state;
@@ -924,12 +959,24 @@ export class Duel {
     this.event('hit', z, team);
     if (z.hp === 0) this.event('death', z, z.team);
   }
+  /** Distinct live summon executions; zombies without an execution never use a slot. */
+  activeExecutions(owner: string) {
+    return new Set(
+      this.state.zombies
+        .filter((z) => z.owner === owner && z.hp > 0 && z.execution !== null)
+        .map((z) => z.execution),
+    ).size;
+  }
   private summon(p: Player) {
     const s = this.state;
-    for (const side of [-1, 1]) {
-      const angle = p.angle + (side * Math.PI) / 2,
-        x = p.x + Math.cos(angle) * 22,
-        y = p.y + Math.sin(angle) * 22,
+    if (this.activeExecutions(p.id) >= RULES.zombieExecutions) return;
+    const execution = ++this.executionId;
+    const taken = new Set(s.zombies.filter((z) => z.owner === p.id).map((z) => z.slot));
+    const free = [0, 1, 2, 3].filter((slot) => !taken.has(slot));
+    [-1, 1].forEach((side, i) => {
+      const angle = p.angle + side * 0.75 * Math.PI,
+        x = p.x + Math.cos(angle) * RULES.zombieFlankRadius,
+        y = p.y + Math.sin(angle) * RULES.zombieFlankRadius,
         id = ++this.zombieId;
       s.zombies.push({
         id: `z${id}`,
@@ -944,12 +991,47 @@ export class Duel {
         target: null,
         // Staggered so a crowd of zombies does not re-plan on the same tick.
         retarget: (id % 4) * RULES.tick,
+        execution,
+        slot: free[i] ?? (execution * 2 + i) % 4,
+        // Each body claws out of the ground a moment after the previous one.
+        rise: RULES.zombieRise + i * 0.15,
       });
-    }
-    const own = s.zombies.filter((z) => z.owner === p.id);
-    const oldest = new Set(own.slice(0, Math.max(0, own.length - RULES.zombieMaxPerOwner)));
-    s.zombies = s.zombies.filter((z) => !oldest.has(z));
+    });
+    p.activeExecutions = this.activeExecutions(p.id);
     this.event('summon', p, p.team, p.angle, p.classId);
+  }
+  /** The rival nearest to the owner's cursor, if the cursor is close enough to one. */
+  private markedTarget(owner: string, candidates: { id: string; at: Vec }[]) {
+    const p = this.state.players.find((q) => q.id === owner);
+    if (!p || p.aimX < 0 || p.aimY < 0) return null;
+    const aim = { x: p.aimX, y: p.aimY };
+    let marked: string | null = null,
+      gap: number = RULES.zombieAimRadius;
+    for (const c of candidates) {
+      const d = distance(aim, c.at);
+      if (d <= gap) {
+        marked = c.id;
+        gap = d;
+      }
+    }
+    return marked;
+  }
+  /** Approach point on the zombie's assigned side, so a pack surrounds instead of queueing. */
+  private flank(z: Zombie, target: Vec): Vec {
+    if (distance(z, target) <= 45) return target;
+    const angle = Math.atan2(z.y - target.y, z.x - target.x) + FLANKS[z.slot % FLANKS.length];
+    const point = {
+      x: target.x + Math.cos(angle) * RULES.zombieFlankRadius,
+      y: target.y + Math.sin(angle) * RULES.zombieFlankRadius,
+    };
+    return blocked(point.x, point.y) ? target : point;
+  }
+  private siblingCells(z: Zombie) {
+    const cells = new Set<number>();
+    for (const q of this.state.zombies)
+      if (q !== z && q.owner === z.owner && q.target === z.target)
+        for (const cell of pathCells(this.paths.get(q.id)?.points ?? [])) cells.add(cell);
+    return cells;
   }
   private chooseTarget(z: Zombie) {
     const s = this.state;
@@ -964,16 +1046,22 @@ export class Duel {
       ...s.zombies
         .filter((q) => q.team !== z.team && q.hp > 0)
         .map((q) => ({ id: q.id, at: q as Vec, carrying: false })),
-    ].filter((c) => distance(z, c.at) <= RULES.zombieAggro);
-    // Siblings already chasing a target make it less attractive, so a pack splits up.
+    ];
+    const marked = this.markedTarget(z.owner, candidates);
+    const near = candidates.filter(
+      (c) => distance(z, c.at) <= (c.id === marked ? RULES.zombieMarkedAggro : RULES.zombieAggro),
+    );
+    // Siblings already chasing a target make it less attractive, so a pack splits up;
+    // the rival under the necromancer's cursor outweighs that.
     const score = (c: (typeof candidates)[number]) =>
+      (c.id === marked ? -160 : 0) +
       distance(z, c.at) +
       (lineClear(z, c.at) ? 0 : 120) -
       (c.carrying ? 100 : 0) +
       70 * s.zombies.filter((q) => q !== z && q.owner === z.owner && q.target === c.id).length;
-    let best = candidates.find((c) => c.id === z.target);
+    let best = near.find((c) => c.id === z.target);
     let bestScore = best ? score(best) - 40 : Infinity;
-    for (const c of candidates) {
+    for (const c of near) {
       const value = score(c);
       if (value < bestScore) {
         best = c;
@@ -989,7 +1077,7 @@ export class Duel {
     else {
       let route = this.paths.get(z.id);
       if (!route?.points.length || distance(route.goal, goal) > 40) {
-        route = { goal: { x: goal.x, y: goal.y }, points: findPath(z, goal) };
+        route = { goal: { x: goal.x, y: goal.y }, points: findPath(z, goal, this.siblingCells(z)) };
         this.paths.set(z.id, route);
       }
       const points = route.points;
@@ -1018,6 +1106,10 @@ export class Duel {
       const zombie = s.zombies.find((q) => q.id === z.target && q.hp > 0);
       const target: Vec | undefined = player ?? zombie;
       if (!target) z.target = null;
+      if (z.rise > 0) {
+        z.rise = Math.max(0, z.rise - dt);
+        continue;
+      }
       if (z.windup > 0) {
         z.windup = Math.max(0, z.windup - dt);
         if (z.windup > 0) continue;
@@ -1036,15 +1128,18 @@ export class Duel {
         continue;
       }
       const owner = s.players.find((p) => p.id === z.owner && p.hp > 0);
-      const goal =
-        target ??
-        (owner
-          ? distance(z, owner) > 70
-            ? owner
-            : undefined
-          : s.flags
-              .filter((f) => f.team !== z.team)
-              .sort((a, b) => distance(z, a) - distance(z, b))[0]);
+      const aim = owner && owner.aimX >= 0 ? { x: owner.aimX, y: owner.aimY } : undefined;
+      const goal = target
+        ? this.flank(z, target)
+        : owner && aim && distance(z, aim) <= RULES.zombieAggro && distance(aim, owner) > 70
+          ? this.flank(z, aim)
+          : owner
+            ? distance(z, owner) > 70
+              ? owner
+              : undefined
+            : s.flags
+                .filter((f) => f.team !== z.team)
+                .sort((a, b) => distance(z, a) - distance(z, b))[0];
       if (goal) this.walkZombie(z, goal, dt);
     }
     const list = s.zombies;
@@ -1061,6 +1156,7 @@ export class Duel {
     s.zombies = s.zombies.filter((z) => z.hp > 0 && z.life > 0);
     for (const id of this.paths.keys())
       if (!s.zombies.some((z) => z.id === id)) this.paths.delete(id);
+    for (const p of s.players) p.activeExecutions = this.activeExecutions(p.id);
   }
   step(inputs: Map<string, Input>, dt = RULES.tick as number) {
     const s = this.state;
