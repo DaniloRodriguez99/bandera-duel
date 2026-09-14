@@ -129,6 +129,40 @@ describe('nigromante', () => {
     run(d, 70, { 0: { aimX: 420, aimY: 270 } });
     for (const z of d.state.zombies) expect(distance(z, { x: 420, y: 270 })).toBeLessThan(90);
   });
+  it('dos ejecuciones rodean al rival marcado desde varios lados en vez de hacer fila', () => {
+    const { d, players: [n, g] } = setup();
+    Object.assign(n, { x: 480, y: 470, angle: -Math.PI / 2 });
+    Object.assign(g, { x: 480, y: 270, invuln: 999 });
+    const aim = { aimX: 480, aimY: 270 };
+    run(d, 1, { 0: { summon: true, ...aim } });
+    Object.assign(n, { summonCd: 0, attackLock: 0 });
+    run(d, 1, { 0: { summon: true, ...aim } });
+    expect(d.state.zombies).toHaveLength(4);
+    let closest = Infinity;
+    for (let i = 0; i < 120 && closest > 30; i++) {
+      run(d, 1, { 0: aim });
+      closest = Math.max(...d.state.zombies.map((z) => distance(z, g)));
+    }
+    expect(d.state.zombies.every((z) => z.target === g.id && distance(z, g) < 60)).toBe(true);
+    const bearings = d.state.zombies.map((z) => Math.atan2(z.y - g.y, z.x - g.x)).sort((a, b) => a - b);
+    const gaps = bearings.map((b, i) => (i ? b - bearings[i - 1] : b + 2 * Math.PI - bearings.at(-1)!));
+    expect(2 * Math.PI - Math.max(...gaps)).toBeGreaterThan((150 * Math.PI) / 180);
+  });
+  it('en una zona vacía cada zombie ocupa su propio lugar alrededor del cursor', () => {
+    const { d, players: [n, g] } = setup();
+    Object.assign(n, { x: 200, y: 270, angle: 0 });
+    Object.assign(g, { x: 880, y: 500 });
+    const aim = { aimX: 420, aimY: 270 };
+    run(d, 1, { 0: { summon: true, ...aim } });
+    Object.assign(n, { summonCd: 0, attackLock: 0 });
+    run(d, 1, { 0: { summon: true, ...aim } });
+    run(d, 90, { 0: aim });
+    const zombies = d.state.zombies;
+    expect(zombies).toHaveLength(4);
+    for (const z of zombies) expect(distance(z, { x: 420, y: 270 })).toBeLessThan(90);
+    for (let i = 0; i < zombies.length; i++)
+      for (let j = i + 1; j < zombies.length; j++) expect(distance(zombies[i], zombies[j])).toBeGreaterThan(30);
+  });
   it('salen del suelo escalonados y toman caminos distintos', () => {
     const { d, players: [n, g] } = setup();
     Object.assign(n, { x: 200, y: 270, angle: 0 });

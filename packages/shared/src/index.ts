@@ -166,6 +166,8 @@ export const RULES = {
   zombieAimRadius: 110,
   zombieMarkedAggro: 1100,
   zombieFlankRadius: 34,
+  zombieApproachRadius: 110,
+  zombieSpread: 56,
   zombieRise: 0.45,
 } as const;
 export const TEAMS: Team[] = ['blue', 'red', 'green', 'violet'];
@@ -522,7 +524,8 @@ export function findPath(from: Vec, to: Vec, avoid?: ReadonlySet<number>): Vec[]
   if (best === goal) path.push({ x: to.x, y: to.y });
   return path;
 }
-const FLANKS = [-Math.PI / 3, Math.PI / 3, Math.PI * 0.85, 0];
+const ZOMBIE_PACE = [1, 0.92, 0.96, 0.88];
+const wrapAngle = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
 export function lowerGuard(p: Player) {
   if (!p.guarding) return;
   p.guarding = false;
@@ -779,6 +782,7 @@ export class Duel {
   private zombieId = 0;
   private executionId = 0;
   private paths = new Map<string, { goal: Vec; points: Vec[] }>();
+  private packBearings = new Map<string, number>();
   add(id: string, name: string, classId: ClassId = DEFAULT_CLASS) {
     const s = this.state;
     const team = TEAMS.find((t) => !s.players.some((p) => p.team === t));
@@ -1016,15 +1020,40 @@ export class Duel {
     }
     return marked;
   }
-  /** Approach point on the zombie's assigned side, so a pack surrounds instead of queueing. */
-  private flank(z: Zombie, target: Vec): Vec {
-    if (distance(z, target) <= 45) return target;
-    const angle = Math.atan2(z.y - target.y, z.x - target.x) + FLANKS[z.slot % FLANKS.length];
-    const point = {
-      x: target.x + Math.cos(angle) * RULES.zombieFlankRadius,
-      y: target.y + Math.sin(angle) * RULES.zombieFlankRadius,
-    };
-    return blocked(point.x, point.y) ? target : point;
+  /**
+   * Where `z` should stand around `center`. Zombies of the same owner chasing the same goal
+   * spread over it (a pincer for two, a ring for more), each keeping the side it is already on,
+   * so the pack closes in from several directions instead of queueing behind each other.
+   */
+  private formation(z: Zombie, center: Vec, near: number, far = near): Vec {
+    const pack = this.state.zombies.filter((q) => q.hp > 0 && q.owner === z.owner && q.target === z.target);
+    const bearing = (q: Vec) => Math.atan2(q.y - center.y, q.x - center.x);
+    const key = `${z.owner}:${z.target ?? ''}`;
+    let sx = 0,
+      sy = 0;
+    for (const q of pack) {
+      sx += Math.cos(bearing(q));
+      sy += Math.sin(bearing(q));
+    }
+    // Once the pack already surrounds the goal the mean bearing is meaningless: keep the last one.
+    const stored = this.packBearings.get(key);
+    const base = stored === undefined || Math.hypot(sx, sy) > pack.length * 0.35 ? Math.atan2(sy, sx) : stored;
+    this.packBearings.set(key, base);
+    const order = pack
+      .map((q) => ({ q, side: wrapAngle(bearing(q) - base) }))
+      .sort((a, b) => a.side - b.side || a.q.slot - b.q.slot);
+    const i = order.findIndex((o) => o.q === z),
+      n = pack.length;
+    const offset = n <= 1 ? 0 : n === 2 ? (i === 0 ? -1.15 : 1.15) : -Math.PI + ((i + 0.5) * 2 * Math.PI) / n;
+    const angle = base + offset;
+    // Still on the wrong side: stay wide and walk around the goal instead of through it.
+    const detour = Math.abs(wrapAngle(bearing(z) - angle)) / (Math.PI / 2);
+    const reach = Math.min(far, Math.max(near, distance(z, center) * 0.6, near + 45 * detour));
+    for (let r = reach; r > 8; r -= 12) {
+      const point = { x: center.x + Math.cos(angle) * r, y: center.y + Math.sin(angle) * r };
+      if (!blocked(point.x, point.y, RULES.zombieRadius)) return point;
+    }
+    return center;
   }
   private siblingCells(z: Zombie) {
     const cells = new Set<number>();
@@ -1088,7 +1117,7 @@ export class Duel {
     const gap = distance(z, aim);
     if (gap < 1e-6) return;
     z.angle = Math.atan2(aim.y - z.y, aim.x - z.x);
-    const stride = Math.min(gap, RULES.zombieSpeed * dt);
+    const stride = Math.min(gap, RULES.zombieSpeed * ZOMBIE_PACE[z.slot % ZOMBIE_PACE.length] * dt);
     translate(z, Math.cos(z.angle) * stride, Math.sin(z.angle) * stride);
   }
   private stepZombies(dt: number) {
@@ -1129,13 +1158,18 @@ export class Duel {
       }
       const owner = s.players.find((p) => p.id === z.owner && p.hp > 0);
       const aim = owner && owner.aimX >= 0 ? { x: owner.aimX, y: owner.aimY } : undefined;
-      const goal = target
-        ? this.flank(z, target)
+      // Far away the pack fans out wide; the ring tightens as each zombie closes in, and
+      // only from its own spot does it lunge at the target.
+      const spot = target && this.formation(z, target, RULES.zombieFlankRadius, RULES.zombieApproachRadius);
+      const goal = target && spot
+        ? distance(z, spot) < 12 || distance(z, target) <= RULES.zombieFlankRadius
+          ? target
+          : spot
         : owner && aim && distance(z, aim) <= RULES.zombieAggro && distance(aim, owner) > 70
-          ? this.flank(z, aim)
+          ? this.formation(z, aim, RULES.zombieSpread)
           : owner
             ? distance(z, owner) > 70
-              ? owner
+              ? this.formation(z, owner, RULES.zombieSpread)
               : undefined
             : s.flags
                 .filter((f) => f.team !== z.team)
@@ -1156,6 +1190,8 @@ export class Duel {
     s.zombies = s.zombies.filter((z) => z.hp > 0 && z.life > 0);
     for (const id of this.paths.keys())
       if (!s.zombies.some((z) => z.id === id)) this.paths.delete(id);
+    for (const key of this.packBearings.keys())
+      if (!s.zombies.some((z) => `${z.owner}:${z.target ?? ''}` === key)) this.packBearings.delete(key);
     for (const p of s.players) p.activeExecutions = this.activeExecutions(p.id);
   }
   step(inputs: Map<string, Input>, dt = RULES.tick as number) {
