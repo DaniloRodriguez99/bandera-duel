@@ -31,14 +31,15 @@ test('el mago aparece y muestra sus controles',async({page})=>{
   await page.locator('canvas').click();
   await expect(page.locator('#cd-shot')).toHaveText(/✦ 0\.\ds/);
 });
-test('el nigromante lanza fuego e invoca zombies con clic derecho',async({page,browser})=>{
+test('el nigromante lanza fuego e invoca zombies con espacio y clic derecho',async({page,browser})=>{
   const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));await enter(page,'/','Morgana','necromancer');
   await expect(page.locator('#control-guide')).toContainText('Invocar zombies');
   const context=await browser.newContext();const rival=await context.newPage();rival.on('pageerror',e=>errors.push(e.message));await enter(rival,page.url(),'Rival','guardian');
   await page.locator('#ready').click();await rival.locator('#ready').click();await expect(page.locator('#stage')).toHaveAttribute('data-phase','playing',{timeout:7000});
-  await expect(page.locator('#cd-sword')).toBeHidden();await expect(page.locator('#cd-summon')).toHaveText('☠ Listo');
+  await expect(page.locator('#cd-sword')).toBeHidden();await expect(page.locator('#cd-summon')).toHaveText('☠ 0/2 · Listo');
   await page.locator('canvas').click({position:{x:400,y:300}});await expect(page.locator('#cd-shot')).toHaveText(/✺ [01]\.\ds/);await page.waitForTimeout(300);
-  await page.locator('canvas').click({button:'right',position:{x:400,y:300}});await expect(page.locator('#cd-summon')).toHaveText(/☠ [34]\.\ds/);
+  await page.keyboard.press('Space');await expect(page.locator('#cd-summon')).toHaveText(/☠ 1\/2 · [34]\.\ds/);await page.waitForTimeout(5300);
+  await page.locator('canvas').click({button:'right',position:{x:400,y:300}});await expect(page.locator('#cd-summon')).toHaveText('☠ 2/2 · Llenas');
   expect(errors).toEqual([]);await context.close();
 });
 test('escudo móvil con tres dedos, liberación y clase pesada',async({browser},info)=>{

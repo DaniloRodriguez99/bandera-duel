@@ -2,6 +2,9 @@ import { idleInput, CLASSES, DEFAULT_CLASS, type ClassId, type Input } from '@ba
 export class Controls {
   keys = new Set<string>();
   angle = 0;
+  aimX = -1;
+  aimY = -1;
+  aimFromPointer = false;
   move = { x: 0, y: 0 };
   actions = { sword: false, shot: false, dash: false, summon: false, trap: false, volley: false };
   enabled = false;
@@ -41,7 +44,10 @@ export class Controls {
         if (e.code === 'KeyQ') this.actions.trap = true;
         if (e.code === 'KeyE') this.actions.volley = true;
       }
-      if (e.code === 'Space' && !e.repeat && CLASSES[this.classId].dash) this.actions.dash = true;
+      if (e.code === 'Space' && !e.repeat) {
+        if (CLASSES[this.classId].dash) this.actions.dash = true;
+        else if (CLASSES[this.classId].summon) this.actions.summon = true;
+      }
     });
     window.addEventListener('keyup', (e) => this.keys.delete(e.code));
     window.addEventListener('pointerup', e => { if (e.button === 2) this.secondary(false); if(e.button === 0) this.releasePrimary(); });
@@ -109,7 +115,10 @@ export class Controls {
     s.el.style.setProperty('--dx', `${x * 30}px`);
     s.el.style.setProperty('--dy', `${y * 30}px`);
     if (s.kind === 'move') this.move = { x, y };
-    else if (mag > 5) this.angle = Math.atan2(dy, dx);
+    else if (mag > 5) {
+      this.angle = Math.atan2(dy, dx);
+      this.aimFromPointer = false;
+    }
   }
   read(seq: number): Input {
     if (!this.enabled) return idleInput(seq, this.angle);
@@ -122,7 +131,7 @@ export class Controls {
       (this.keys.has('KeyS') || this.keys.has('ArrowDown') ? 1 : 0) -
       (this.keys.has('KeyW') || this.keys.has('ArrowUp') ? 1 : 0);
     const n = Math.max(1, Math.hypot(x, y));
-    const result = { seq, x: x / n, y: y / n, angle: this.angle, ...this.actions, charge: this.chargeSources.size > 0, guard: this.guardSources.size > 0 };
+    const result = { seq, x: x / n, y: y / n, angle: this.angle, ...this.actions, charge: this.chargeSources.size > 0, guard: this.guardSources.size > 0, aimX: this.aimX, aimY: this.aimY };
     this.actions = { sword: false, shot: false, dash: false, summon: false, trap: false, volley: false };
     return result;
   }

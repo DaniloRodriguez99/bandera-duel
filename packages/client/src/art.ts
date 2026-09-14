@@ -33,18 +33,19 @@ export const CLASS_ART: Record<ClassId, string[]> = {
     '...11100111.....','...11100111.....','...11100111.....','...888..888.....',
   ],
 };
-// Rotting skin (7) and dark sockets (2) over rags dyed in the summoner's color.
+// Hunched ghoul: rotting skin (7), sockets and jaw (2), glowing red eyes (9), exposed
+// ribs and teeth (6), rags dyed in the summoner's color (3) and long clawed arms.
 export const ZOMBIE_ART: string[] = [
-  '................','.....7777.......','....777777......','....727727......',
-  '....777777......','.....7227.......','....333333......','..7733333377....',
-  '..77333333.77...','....333333......','....332233......','....33..33......',
-  '....77..77......','....77..77......','....88..88......','................',
+  '................','......7777......','.....777777.....','....77979777....',
+  '....77722777....','.....762267.....','...3333333333...','..773626263377..',
+  '.7773626263.777.','77..336263..77..','....333333......','....33.3.33.....',
+  '....77...77.....','...77.....77....','...88.....88....','................',
 ];
 export function palette(cloth: string, light: string): Record<string,string> {
   return {0:'#26353b',1:'#a9b7b8',2:'#17272d',3:cloth,4:light,5:'#796452',6:'#e3e5d5',7:'#d1a77f',8:'#423b38',9:'#000000',A:'#000000',B:'#000000',C:'#000000',D:'#000000',E:'#000000',F:'#000000'};
 }
 export function zombiePalette(cloth: string, light: string): Record<string,string> {
-  return {...palette(cloth, light), 2:'#2e3b2a', 7:'#8fae7a'};
+  return {...palette(cloth, light), 2:'#1d241c', 6:'#d6cfb3', 7:'#7f9a6e', 9:'#ff4a3d'};
 }
 export function classIllustration(classId:ClassId):string {
   const colors=palette('#64897e','#b6cbb0');

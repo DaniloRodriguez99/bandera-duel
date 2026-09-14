@@ -56,7 +56,13 @@ export class Arena extends Phaser.Scene {
   private layoutKey = '';
   private zombieVisuals = new Map<
     string,
-    { body: Phaser.GameObjects.Sprite; hp: Phaser.GameObjects.Graphics; x: number; y: number }
+    {
+      body: Phaser.GameObjects.Sprite;
+      hp: Phaser.GameObjects.Graphics;
+      aura: Phaser.GameObjects.Graphics;
+      x: number;
+      y: number;
+    }
   >();
   private pending: Input[] = [];
   private seq = 0;
@@ -80,6 +86,9 @@ export class Arena extends Phaser.Scene {
     this.input.on('pointermove', (p: Phaser.Input.Pointer) => {
       if (p.wasTouch || !this.predicted) return;
       this.controls.angle = Math.atan2(p.y - this.predicted.y, p.x - this.predicted.x);
+      this.controls.aimX = Math.max(0, Math.min(RULES.width, p.x));
+      this.controls.aimY = Math.max(0, Math.min(RULES.height, p.y));
+      this.controls.aimFromPointer = true;
     });
     this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
       if (p.wasTouch || !this.controls.enabled) return;
@@ -482,6 +491,7 @@ export class Arena extends Phaser.Scene {
       v = {
         body: this.add.sprite(z.x, z.y, `${z.team}-zombie-0`).setOrigin(0.5, 0.7).setDepth(10),
         hp: this.add.graphics().setDepth(13),
+        aura: this.add.graphics().setDepth(3),
         x: z.x,
         y: z.y,
       };
@@ -491,13 +501,56 @@ export class Arena extends Phaser.Scene {
     const smooth = 1 - Math.exp(-delta / 55);
     v.x += (z.x - v.x) * smooth;
     v.y += (z.y - v.y) * smooth;
+    const rising = Math.min(1, z.rise / RULES.zombieRise);
+    // Two uneven rhythms offset by slot keep a pack from lurching in step.
+    const lurch = moving
+      ? Math.sin(time * 0.009 + z.slot * 1.7) * 7 + Math.sin(time * 0.023 + z.slot) * 3
+      : Math.sin(time * 0.003 + z.slot) * 2;
     v.body
-      .setPosition(v.x, v.y + (moving ? Math.sin(time * 0.015) * 1.5 : 0))
-      .setTexture(`${z.team}-zombie-${moving ? Math.floor(time / 160) % 2 : 0}`)
+      .setPosition(
+        v.x,
+        v.y + (moving ? Math.abs(Math.sin(time * 0.012 + z.slot)) * 2 : 0) + rising * 12,
+      )
+      .setTexture(`${z.team}-zombie-${moving ? Math.floor((time + z.slot * 90) / 170) % 2 : 0}`)
       .setFlipX(Math.cos(z.angle) < 0)
-      .setAngle(z.windup > 0 ? Math.sin(time * 0.05) * 8 : 0)
-      .setAlpha(Math.min(1, z.life / 1.5));
+      .setAngle(z.windup > 0 ? Math.sin(time * 0.06) * 10 : lurch)
+      .setScale(1, 1 - rising * 0.75)
+      .setAlpha(Math.min(1, z.life / 1.5) * (1 - rising * 0.45));
+    if (z.windup > 0) v.body.setTint(0xff6b5e);
+    else v.body.clearTint();
+    const pulse = 0.5 + Math.sin(time * 0.006 + z.slot) * 0.5;
+    v.aura.clear();
+    v.aura.fillStyle(0x1a0b24, 0.45 + pulse * 0.15);
+    v.aura.fillEllipse(v.x, v.y + 8, 30 + pulse * 6, 11 + pulse * 2);
+    v.aura.fillStyle(0x6b2d8f, 0.12 + pulse * 0.1);
+    v.aura.fillEllipse(v.x, v.y + 6, 42, 16);
+    if (rising > 0) {
+      v.aura.lineStyle(2, 0x9b59d0, 0.2 + rising * 0.6);
+      v.aura.strokeEllipse(v.x, v.y + 8, 40 + (1 - rising) * 10, 16 + (1 - rising) * 4);
+      for (let i = 0; i < 6; i++) {
+        const a = time * 0.004 + (i * Math.PI) / 3;
+        v.aura.lineBetween(
+          v.x + Math.cos(a) * 12,
+          v.y + 8 + Math.sin(a) * 5,
+          v.x + Math.cos(a) * 20,
+          v.y + 8 + Math.sin(a) * 8,
+        );
+      }
+    }
+    if (moving && Math.random() < delta / 240) {
+      const mote = this.add
+        .rectangle(v.x + (Math.random() - 0.5) * 16, v.y + 6, 2, 2, 0x3a1450, 0.85)
+        .setDepth(3);
+      this.tweens.add({
+        targets: mote,
+        y: mote.y - 16,
+        alpha: 0,
+        duration: 560,
+        onComplete: () => mote.destroy(),
+      });
+    }
     v.hp.clear();
+    if (rising > 0) return;
     for (let i = 0; i < RULES.zombieHp; i++) {
       v.hp.fillStyle(0x1a282c);
       v.hp.fillRect(v.x - 7 + i * 8, v.y - 25, 6, 2);
@@ -507,7 +560,7 @@ export class Arena extends Phaser.Scene {
       }
     }
     if (z.windup > 0) {
-      v.hp.lineStyle(1, 0x9bd17a, 0.5);
+      v.hp.lineStyle(1, 0xff5a4a, 0.55);
       v.hp.strokeCircle(v.x, v.y, RULES.zombieRange);
     }
   }
@@ -515,6 +568,12 @@ export class Arena extends Phaser.Scene {
     if (!this.controls || !this.snapshot) return;
     let s = this.snapshot;
     this.accumulator += Math.min(delta, 100);
+    if (this.predicted && !this.controls.aimFromPointer) {
+      // Touch aiming has no cursor: project the aim direction into the arena instead.
+      const a = this.controls.angle;
+      this.controls.aimX = Math.max(0, Math.min(RULES.width, this.predicted.x + Math.cos(a) * 150));
+      this.controls.aimY = Math.max(0, Math.min(RULES.height, this.predicted.y + Math.sin(a) * 150));
+    }
     while (this.accumulator >= 1000 / 30) {
       this.accumulator -= 1000 / 30;
       if (this.localStep) {
@@ -560,6 +619,7 @@ export class Arena extends Phaser.Scene {
       if (s.zombies.some((z) => z.id === id)) continue;
       v.body.destroy();
       v.hp.destroy();
+      v.aura.destroy();
       this.zombieVisuals.delete(id);
     }
     const flags = s.flags.map((f) => {
@@ -619,6 +679,19 @@ export class Arena extends Phaser.Scene {
         p.y + Math.sin(a) * 45,
       );
       this.aim.strokeCircle(p.x + Math.cos(a) * 48, p.y + Math.sin(a) * 48, 3);
+      if (
+        CLASSES[p.classId].summon &&
+        this.controls.aimFromPointer &&
+        s.zombies.some((z) => z.owner === this.localId)
+      ) {
+        const pulse = 0.5 + Math.sin(time * 0.008) * 0.5;
+        this.aim.lineStyle(1, 0xb06cff, 0.22 + pulse * 0.2);
+        this.aim.strokeCircle(
+          this.controls.aimX,
+          this.controls.aimY,
+          RULES.zombieAimRadius * (0.85 + pulse * 0.15),
+        );
+      }
     }
   }
 }
