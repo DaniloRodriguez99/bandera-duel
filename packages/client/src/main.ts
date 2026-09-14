@@ -87,7 +87,7 @@ function showClassControls(id:ClassId) {
   $('control-guide').innerHTML=`<span><kbd>W A S D</kbd> Mover</span><span><kbd>CLIC</kbd> ${ranged?projectile:'Espada'}</span>${id!=='vanguard'?`<span><kbd>CLIC DER.</kbd> ${ranged?melee:'Mantener escudo'}</span>`:''}${stats.dash?'<span><kbd>ESPACIO</kbd> Esquivar</span>':''}<span class="mobile-help">${ranged?`Mové a la izquierda. Apuntá y soltá a la derecha para lanzar ${mage?'magia':'una flecha'}. Botones de ${melee.toLowerCase()} y dash.`:guardian?'Mové y apuntá con las palancas. Golpeá con espada o mantené pulsado el escudo.':'Mové y apuntá con las palancas. El botón de espada prepara un golpe pesado.'}</span>`;
   if(id==='archer') $('control-guide').innerHTML += '<span><kbd>MANTENER CLIC</kbd> Cargar flecha · 0,8 s · +30 % daño y velocidad</span><span class="mobile-help">Mantené la palanca de apuntado para cargar; soltala para disparar.</span>';
   if(id==='archer') $('control-guide').innerHTML += '<span><kbd>Q</kbd> Trampa · inmóvil 0,5 s</span><span><kbd>E</kbd> Triple flecha · 5 s</span>';
-  if(stats.summon)$('control-guide').innerHTML='<span><kbd>W A S D</kbd> Mover</span><span><kbd>CLIC</kbd> Fuego</span><span><kbd>CLIC DER.</kbd> Invocar zombies</span><span class="mobile-help">Mové a la izquierda. Apuntá y soltá a la derecha para lanzar fuego. El botón ☠ invoca dos zombies cada 5 s.</span>';
+  if(stats.summon)$('control-guide').innerHTML='<span><kbd>W A S D</kbd> Mover</span><span><kbd>CLIC</kbd> Fuego</span><span><kbd>ESPACIO</kbd> Invocar zombies</span><span class="mobile-help">Mové a la izquierda. Apuntá y soltá a la derecha para lanzar fuego. Espacio o el botón ☠ invocan dos zombies; hasta 2 invocaciones activas a la vez.</span>';
   $('touch-guard').setAttribute('aria-label', mage ? 'Lanzar escudo mágico' : 'Mantener escudo');
   if (mage) {
     $('touch-guard').hidden = false; $('cd-guard').hidden = false;
@@ -384,7 +384,7 @@ function render(s: Snapshot) {
     $('cd-volley').textContent = `E Triple · ${me.volleyCd>0?me.volleyCd.toFixed(1)+'s':'Listo'}`;
     $('touch-trap').textContent = me.trapLeft>0?me.trapLeft.toFixed(1):me.trapCd>0?Math.ceil(me.trapCd)+'s':'Q';
     $('touch-volley').textContent = me.volleyCd>0?Math.ceil(me.volleyCd)+'s':'E';
-    $('cd-summon').textContent = `☠ ${me.summonCd > 0 ? me.summonCd.toFixed(1) + 's' : 'Listo'}`;
+    $('cd-summon').textContent = `☠ ${me.activeExecutions}/${RULES.zombieExecutions} · ${me.activeExecutions >= RULES.zombieExecutions ? 'Llenas' : me.summonCd > 0 ? me.summonCd.toFixed(1) + 's' : 'Listo'}`;
     if(me.specialCharge > 0 && CLASSES[me.classId].summon) $('cd-summon').textContent = me.specialCharge >= RULES.overchargeTime ? `☠ Aura ${Math.round(Math.min(1, me.specialCharge / RULES.raiseCharge) * 100)} % · resucitar` : '☠ Cargando · zombie con gorro';
   }
   $('arena-hint').textContent = s.flags.some((f) => f.carrier === me?.id)

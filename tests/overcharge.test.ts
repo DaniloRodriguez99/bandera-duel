@@ -128,7 +128,9 @@ describe('sobrecarga', () => {
       run(d, ticks(RULES.summonCooldown) + 1);
       run(d, 1, { 0: { summon: true } });
     }
-    expect(d.state.zombies.filter(countsTowardLimit)).toHaveLength(RULES.zombieMaxPerOwner);
+    expect(d.activeExecutions(n.id)).toBe(RULES.zombieExecutions);
+    expect(d.state.zombies.filter((z) => z.execution !== null)).toHaveLength(2 * RULES.zombieExecutions);
+    expect(d.state.zombies.filter(countsTowardLimit).length).toBeGreaterThan(0);
     expect(d.state.zombies.some((z) => z.kind === 'hat')).toBe(true);
   });
   it('el gorro lanza fuego y hielo con los dos brazos y el hielo congela', () => {
