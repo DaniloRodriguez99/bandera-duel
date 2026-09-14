@@ -48,6 +48,7 @@ export class Arena extends Phaser.Scene {
     }
   >();
   private flags!: Phaser.GameObjects.Graphics;
+  private traps!: Phaser.GameObjects.Graphics;
   private arrows!: Phaser.GameObjects.Graphics;
   private aim!: Phaser.GameObjects.Graphics;
   private bases!: Phaser.GameObjects.Graphics;
@@ -71,6 +72,7 @@ export class Arena extends Phaser.Scene {
     this.bases = this.add.graphics().setDepth(1);
     this.makeTextures();
     this.flags = this.add.graphics().setDepth(5);
+    this.traps = this.add.graphics().setDepth(4);
     this.arrows = this.add.graphics().setDepth(9);
     this.aim = this.add.graphics().setDepth(4);
     this.controls = new Controls();
@@ -253,7 +255,7 @@ export class Arena extends Phaser.Scene {
           );
     }
     this.phase = snapshot.phase;
-    this.controls.enabled = snapshot.phase === 'playing' && !snapshot.paused && !!own?.hp;
+    this.controls.enabled = snapshot.phase === 'playing' && !snapshot.paused && !!own?.hp && own.stunLeft <= 0;
     if (!this.controls.enabled) this.controls.clear();
     if (first) this.lastEvent = snapshot.events.at(-1)?.id ?? 0;
     for (const e of snapshot.events) {
@@ -405,7 +407,11 @@ export class Arena extends Phaser.Scene {
     w.clear();w.setPosition(v.x,v.y);w.setRotation(p.angle);
     if(p.hp>0){
       if(p.classId==='archer') {
-        w.lineStyle(2,GOLD);w.beginPath();w.arc(9,0,15,-Math.PI/2,Math.PI/2);w.strokePath();
+        const charge = Math.min(1, Math.max(0, p.shotCharge / RULES.chargeTime));
+        const red = 0xf04432;
+        const channel = (shift: number) => Math.round(((GOLD >> shift) & 255) + (((red >> shift) & 255) - ((GOLD >> shift) & 255)) * charge);
+        const bowColor = (channel(16) << 16) | (channel(8) << 8) | channel(0);
+        w.lineStyle(2,bowColor);w.beginPath();w.arc(9,0,15,-Math.PI/2,Math.PI/2);w.strokePath();
         w.lineStyle(1,0xdad6bd);w.lineBetween(9,-15,9,15);
         if(p.windup>0){w.fillStyle(0xe3e5d5);w.fillRect(12,-2,14,3);}
       } else if(p.classId==='necromancer') {
@@ -543,6 +549,7 @@ export class Arena extends Phaser.Scene {
               x: this.predicted.x,
               y: this.predicted.y,
               angle: this.controls.angle,
+              shotCharge: this.predicted.shotCharge,
               guarding: this.predicted.guarding,
               guardLeft: this.predicted.guardLeft,
               dashInvulnerable: this.predicted.dashInvulnerable,
@@ -565,12 +572,22 @@ export class Arena extends Phaser.Scene {
       return carrier ? { ...f, x: carrier.x, y: carrier.y } : f;
     });
     this.paintFlags(flags);
+    this.traps.clear();
+    for (const trap of s.traps) {
+      const color = 0x89816a;
+      this.traps.lineStyle(1,color,trap.armLeft>0?.16:.3);
+      this.traps.strokeCircle(trap.x,trap.y,RULES.trapRadius);
+      for(let i=0;i<8;i++) { const a=i*Math.PI/4;
+        this.traps.lineBetween(trap.x+Math.cos(a)*16,trap.y+Math.sin(a)*16,trap.x+Math.cos(a)*10,trap.y+Math.sin(a)*10);
+      }
+      this.traps.fillStyle(color,.2); this.traps.fillCircle(trap.x,trap.y,3);
+    }
     this.arrows.clear();
     for (const a of s.arrows) {
       const age = s.paused ? 0 : Math.min((performance.now() - this.receivedAt) / 1000, 1 / 15);
       const next = {
-        x: a.x + Math.cos(a.angle) * projectileStats(a.classId).speed * age,
-        y: a.y + Math.sin(a.angle) * projectileStats(a.classId).speed * age,
+        x: a.x + Math.cos(a.angle) * projectileStats(a.classId, a.charged).speed * age,
+        y: a.y + Math.sin(a.angle) * projectileStats(a.classId, a.charged).speed * age,
       };
       const p = lineClear(a, next) ? next : a;
       if(a.ice) {
@@ -588,14 +605,14 @@ export class Arena extends Phaser.Scene {
         this.arrows.fillStyle(0xff982c,.7);this.arrows.fillCircle(p.x,p.y,7);
         this.arrows.fillStyle(0xffed9b);this.arrows.fillCircle(p.x,p.y,3);
       } else {
-        this.arrows.lineStyle(2, 0xe3cf96);
+        this.arrows.lineStyle(a.charged ? 4 : 2, a.charged ? 0xff842f : 0xe3cf96);
         this.arrows.lineBetween(
           p.x - Math.cos(a.angle) * 12,
           p.y - Math.sin(a.angle) * 12,
           p.x,
           p.y,
         );
-        this.arrows.fillStyle(0xf2e9cf);
+        this.arrows.fillStyle(a.charged ? 0xffb24a : 0xf2e9cf);
         this.arrows.fillCircle(p.x, p.y, 2);
       }
     }
