@@ -1,4 +1,4 @@
-export type Team = 'blue' | 'red';
+export type Team = 'blue' | 'red' | 'green' | 'violet';
 export type Phase = 'lobby' | 'countdown' | 'playing' | 'capture' | 'finished';
 export type ClassId = 'archer' | 'mage' | 'guardian' | 'vanguard';
 export const CLASS_IDS: ClassId[] = ['archer', 'mage', 'guardian', 'vanguard'];
@@ -49,11 +49,31 @@ export const RULES = {
   countdown: 3,
   capturePause: 2,
   reconnectSeconds: 15,
+  maxPlayers: 4,
+  maxDeaths: 5,
 } as const;
-export const TEAMS: Team[] = ['blue', 'red'];
-export const other = (t: Team): Team => (t === 'blue' ? 'red' : 'blue');
-export const SPAWNS: Record<Team, Vec> = { blue: { x: 70, y: 270 }, red: { x: 890, y: 270 } };
-export const HOMES: Record<Team, Vec> = { blue: { x: 145, y: 270 }, red: { x: 815, y: 270 } };
+export const TEAMS: Team[] = ['blue', 'red', 'green', 'violet'];
+export const TEAM_NAMES: Record<Team, string> = { blue: 'AZUR', red: 'CARMESÍ', green: 'JADE', violet: 'VIOLETA' };
+export const TEAM_ICONS: Record<Team, string> = { blue: '◆', red: '✚', green: '▲', violet: '●' };
+export const emptyScore = (): Record<Team, number> => ({ blue: 0, red: 0, green: 0, violet: 0 });
+export const SPAWNS = { blue: { x: 70, y: 270 }, red: { x: 890, y: 270 } } satisfies Record<string, Vec>;
+export const HOMES = { blue: { x: 145, y: 270 }, red: { x: 815, y: 270 } } satisfies Record<string, Vec>;
+export const CORNER_SPAWNS: Record<Team, Vec> = { blue: { x: 70, y: 120 }, red: { x: 890, y: 120 }, green: { x: 70, y: 420 }, violet: { x: 890, y: 420 } };
+export const CORNER_HOMES: Record<Team, Vec> = { blue: { x: 145, y: 120 }, red: { x: 815, y: 120 }, green: { x: 145, y: 420 }, violet: { x: 815, y: 420 } };
+export interface Base {
+  team: Team;
+  home: Vec;
+  spawn: Vec;
+}
+/** Two players keep the classic left/right duel; three or four take the corners. */
+export function layout(teams: Team[]): Base[] {
+  const sides = ['blue', 'red'] as const;
+  return teams.map((team, i) =>
+    teams.length <= 2
+      ? { team, home: { ...HOMES[sides[i]] }, spawn: { ...SPAWNS[sides[i]] } }
+      : { team, home: { ...CORNER_HOMES[team] }, spawn: { ...CORNER_SPAWNS[team] } },
+  );
+}
 export const WALLS: Rect[] = [
   { x: 245, y: 116, w: 52, h: 96 },
   { x: 245, y: 328, w: 52, h: 96 },
@@ -143,6 +163,8 @@ export interface Player extends Vec {
   invuln: number;
   respawnLeft: number;
   hitFlash: number;
+  deaths: number;
+  eliminated: boolean;
 }
 export interface Flag extends Vec {
   team: Team;
@@ -175,6 +197,7 @@ export interface Snapshot {
   paused: boolean;
   reconnectLeft: number;
   players: Player[];
+  bases: Base[];
   flags: Flag[];
   arrows: Arrow[];
   score: Record<Team, number>;
@@ -267,16 +290,22 @@ export function movePlayer(p: Player, input: Input, carrying: boolean, dt = RULE
   if (p.guarding) p.guardLeft = Math.max(0,p.guardLeft-dt);
   return result;
 }
-export function newPlayer(id: string, name: string, team: Team, classId: ClassId = DEFAULT_CLASS): Player {
+export function newPlayer(
+  id: string,
+  name: string,
+  team: Team,
+  classId: ClassId = DEFAULT_CLASS,
+  spawn: Vec = team === 'blue' || team === 'red' ? SPAWNS[team] : CORNER_SPAWNS[team],
+): Player {
   return {
     id,
     name,
     team,
-    ...SPAWNS[team],
+    ...spawn,
     classId,
     hp: CLASSES[classId].hp,
     maxHp: CLASSES[classId].hp,
-    angle: team === 'blue' ? 0 : Math.PI,
+    angle: spawn.x < RULES.width / 2 ? 0 : Math.PI,
     ready: false,
     connected: true,
     ack: 0,
@@ -298,11 +327,13 @@ export function newPlayer(id: string, name: string, team: Team, classId: ClassId
     invuln: 0,
     respawnLeft: 0,
     hitFlash: 0,
+    deaths: 0,
+    eliminated: false,
   };
 }
-const newFlag = (team: Team): Flag => ({
+const newFlag = ({ team, home }: Base): Flag => ({
   team,
-  ...HOMES[team],
+  ...home,
   status: 'home',
   carrier: null,
   returnLeft: 0,
@@ -318,9 +349,10 @@ export class Duel {
     paused: false,
     reconnectLeft: 0,
     players: [],
-    flags: TEAMS.map(newFlag),
+    bases: [],
+    flags: [],
     arrows: [],
-    score: { blue: 0, red: 0 },
+    score: emptyScore(),
     winner: null,
     reason: '',
     events: [],
@@ -328,11 +360,40 @@ export class Duel {
   private eventId = 0;
   private arrowId = 0;
   add(id: string, name: string, classId: ClassId = DEFAULT_CLASS) {
-    const team = TEAMS.find((t) => !this.state.players.some((p) => p.team === t));
-    if (!team) throw Error('Sala llena');
+    const s = this.state;
+    const team = TEAMS.find((t) => !s.players.some((p) => p.team === t));
+    if (!team || s.players.length >= RULES.maxPlayers) throw Error('Sala llena');
     const p = newPlayer(id, name, team, classId);
-    this.state.players.push(p);
+    s.players.push(p);
+    this.arrange();
     return p;
+  }
+  remove(id: string) {
+    const s = this.state;
+    s.players = s.players.filter((p) => p.id !== id);
+    s.players.forEach((p) => (p.ready = false));
+    if (s.phase === 'lobby') this.arrange();
+  }
+  base(team: Team): Base {
+    return this.state.bases.find((b) => b.team === team) ?? layout([team])[0];
+  }
+  private arrange() {
+    const s = this.state;
+    s.bases = layout(s.players.map((p) => p.team));
+    s.flags = s.bases.map(newFlag);
+    for (const p of s.players) {
+      const spawn = this.base(p.team).spawn;
+      Object.assign(p, spawn, { angle: spawn.x < RULES.width / 2 ? 0 : Math.PI });
+    }
+  }
+  private revive(p: Player, invuln = 0) {
+    Object.assign(p, newPlayer(p.id, p.name, p.team, p.classId, this.base(p.team).spawn), {
+      ack: p.ack,
+      connected: p.connected,
+      deaths: p.deaths,
+      eliminated: p.eliminated,
+      invuln,
+    });
   }
   event(kind: GameEvent['kind'], where: Vec, team: Team, angle?: number, classId?: ClassId) {
     this.state.events.push({ id: ++this.eventId, kind, x: where.x, y: where.y, team, angle, classId });
@@ -343,13 +404,15 @@ export class Duel {
       p = s.players.find((p) => p.id === id);
     if (!p || s.paused || !['lobby', 'finished'].includes(s.phase)) return;
     p.ready = !p.ready;
-    if (s.players.length === 2 && s.players.every((p) => p.ready && p.connected)) {
-      s.score = { blue: 0, red: 0 };
+    if (s.players.length >= 2 && s.players.every((p) => p.ready && p.connected)) {
+      s.score = emptyScore();
       s.timeLeft = RULES.matchTime;
       s.winner = null;
       s.reason = '';
       s.phase = 'countdown';
       s.phaseLeft = RULES.countdown;
+      s.players.forEach((p) => Object.assign(p, { deaths: 0, eliminated: false }));
+      this.arrange();
       this.resetArena();
     }
   }
@@ -357,19 +420,20 @@ export class Duel {
     const s = this.state, p = s.players.find(p => p.id === id);
     if (!p || !validClass(classId) || s.paused || !['lobby','finished'].includes(s.phase)) return false;
     if (p.classId === classId) return true;
-    Object.assign(p, newPlayer(p.id,p.name,p.team,classId), { ack: p.ack, connected: p.connected });
+    Object.assign(p, newPlayer(p.id,p.name,p.team,classId,this.base(p.team).spawn), { ack: p.ack, connected: p.connected });
     s.players.forEach(p => p.ready = false);
     return true;
   }
   resetArena() {
     const s = this.state;
     s.arrows = [];
-    s.flags = TEAMS.map(newFlag);
-    s.players = s.players.map((p) => ({
-      ...newPlayer(p.id, p.name, p.team, p.classId),
-      connected: p.connected,
-      ack: p.ack,
-    }));
+    s.flags = s.bases
+      .filter((b) => s.players.some((p) => p.team === b.team && !p.eliminated))
+      .map(newFlag);
+    for (const p of s.players) {
+      this.revive(p);
+      if (p.eliminated) p.hp = 0;
+    }
   }
   finish(winner: Team | 'draw', reason: string) {
     const s = this.state;
@@ -381,7 +445,7 @@ export class Duel {
     s.reconnectLeft = 0;
   }
   returnFlag(f: Flag) {
-    Object.assign(f, newFlag(f.team));
+    Object.assign(f, newFlag(this.base(f.team)));
     this.event('return', f, f.team);
   }
   drop(p: Player) {
@@ -397,6 +461,17 @@ export class Duel {
         lockLeft: RULES.pickupLock,
       });
     }
+  }
+  eliminate(p: Player, reason = 'eliminación') {
+    const s = this.state;
+    if (p.eliminated) return;
+    Object.assign(p, { eliminated: true, hp: 0, respawnLeft: 0, windup: 0, dashLeft: 0, dashInvulnerable: false });
+    lowerGuard(p);
+    this.drop(p);
+    s.flags = s.flags.filter((f) => f.team !== p.team);
+    const alive = s.players.filter((q) => !q.eliminated);
+    if (alive.length === 1 && s.phase !== 'lobby' && s.phase !== 'finished')
+      this.finish(alive[0].team, reason);
   }
   damage(target: Player, source: Player, angle: number, amount = 1) {
     if (target.hp <= 0 || target.invuln > 0 || target.dashInvulnerable) return;
@@ -419,7 +494,9 @@ export class Duel {
       target.dashLeft = 0;
       target.dashInvulnerable = false;
       lowerGuard(target);
+      target.deaths++;
       this.event('death', target, target.team);
+      if (target.deaths >= RULES.maxDeaths) this.eliminate(target);
     } else translate(target, Math.cos(angle) * 24, Math.sin(angle) * 24);
   }
   step(inputs: Map<string, Input>, dt = RULES.tick as number) {
@@ -433,10 +510,10 @@ export class Duel {
     }
     s.timeLeft = Math.max(0, s.timeLeft - dt);
     if (s.timeLeft <= 0) {
-      this.finish(
-        s.score.blue === s.score.red ? 'draw' : s.score.blue > s.score.red ? 'blue' : 'red',
-        'tiempo',
-      );
+      const teams = s.players.filter((p) => !p.eliminated).map((p) => p.team);
+      const best = Math.max(...teams.map((t) => s.score[t]));
+      const leaders = teams.filter((t) => s.score[t] === best);
+      this.finish(leaders.length === 1 ? leaders[0] : 'draw', 'tiempo');
       return;
     }
     const swings: Player[] = [];
@@ -446,11 +523,9 @@ export class Duel {
       const input = inputs.get(p.id) || idleInput(p.ack, p.angle);
       p.ack = Math.max(p.ack, input.seq);
       if (p.hp <= 0) {
+        if (p.eliminated) continue;
         p.respawnLeft -= dt;
-        if (p.respawnLeft <= 0)
-          Object.assign(p, newPlayer(p.id, p.name, p.team, p.classId), {
-            ack: p.ack, connected: p.connected, invuln: RULES.spawnProtection,
-          });
+        if (p.respawnLeft <= 0) this.revive(p, RULES.spawnProtection);
         continue;
       }
       const action = movePlayer(p, input, s.flags.some(f => f.carrier === p.id), dt);
@@ -474,6 +549,7 @@ export class Duel {
       }
     }
     for (const hit of hits) this.damage(hit.target,hit.source,hit.angle,hit.amount);
+    if (s.winner) return;
     s.arrows = s.arrows.filter((a) => {
       const travelTime = Math.min(dt, a.life);
       if (travelTime <= 1e-8) return false;
@@ -495,6 +571,7 @@ export class Duel {
       }
       return true;
     });
+    if (s.winner) return;
     // Own-flag returns precede enemy pickups and scoring, independent of player iteration order.
     for (const f of s.flags) {
       f.lockLeft = Math.max(0, f.lockLeft - dt);
@@ -534,7 +611,7 @@ export class Duel {
         p.hp > 0 &&
         s.flags.some((f) => f.carrier === p.id) &&
         s.flags.find((f) => f.team === p.team)?.status === 'home' &&
-        distance(p, HOMES[p.team]) < 38
+        distance(p, this.base(p.team).home) < 38
       ) {
         s.score[p.team]++;
         this.event('capture', p, p.team);
