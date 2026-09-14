@@ -5,14 +5,15 @@ import { Arena } from './scene.js';
 import { muted, toggleMute, unlockAudio } from './audio.js';
 import { savedClass, saveClass, mountClasses, updateClasses } from './classes.js';
 import './style.css';
+import { Practice, PRACTICE_PLAYER } from './practice.js';
 
 document.querySelector('#app')!.innerHTML = `
 <header class="topbar"><a class="brand" href="/" aria-label="Bandera Duel, inicio"><span class="brand-mark">⚑</span><span>BANDERA<span class="brand-thin"> DUEL</span><small>LA GLORIA NO SE HEREDA. SE ROBA.</small></span></a><div class="header-right"><span class="edition">PRIMERA EDICIÓN <b>01</b></span><button id="mute" class="icon-btn" aria-label="Silenciar sonido"></button></div></header>
 <main>
 <section id="intro" class="intro"><div class="hero-copy"><div class="eyebrow"><i></i> DUELO ONLINE · 1 CONTRA 1</div><h1>Tu rival tiene<br>algo <em>tuyo.</em></h1><p>Entrá al castillo. Robá su bandera.<br>Volvé con la gloria antes de que te alcancen.</p><div class="facts"><span><b>02</b> rivales</span><span><b>03</b> minutos</span><span><b>01</b> vencedor</span></div></div>
-<div class="entry-card"><div class="card-top"><span class="tiny">EL DESAFÍO EMPIEZA ACÁ</span><span class="swords">⚔</span></div><h2 id="entry-title">Prepará tu estandarte.</h2><p id="entry-description">Elegí tu guerrero, prepará una sala e invitá a tu rival.</p><form id="entry-form"><div class="player-setup"><div class="setup-heading"><span>01</span><h3>Tu guerrero</h3></div><label for="name">TU APODO</label><input id="name" name="name" placeholder="Caballero sin nombre" maxlength="16" autocomplete="nickname" required><fieldset id="entry-class-picker" class="class-picker"><legend>ELEGÍ TU GUERRERO</legend><div id="entry-classes" class="class-grid"></div></fieldset></div><div class="room-setup"><div class="setup-heading"><span>02</span><h3>Tu próximo duelo</h3></div><fieldset id="room-options"><legend>TU SALA</legend><label for="room-title">TÍTULO</label><input id="room-title" maxlength="48" value="Duelo medieval"><label for="visibility">VISIBILIDAD</label><select id="visibility"><option value="private">Privada · solo por enlace</option><option value="public">Pública · aparece en el listado</option></select><label class="check-option"><input id="allow-spectators" type="checkbox" checked> Permitir espectadores (máximo 5)</label></fieldset><label for="room-password">CONTRASEÑA (OPCIONAL)</label><input id="room-password" type="password" maxlength="64" autocomplete="off" placeholder="Sin contraseña"><label id="spectator-choice" hidden><input id="spectator" type="checkbox"> Entrar como espectador</label></div><div class="entry-actions"><button id="enter" class="primary" type="submit">Crear un duelo <span>↗</span></button><span class="entry-note">Compartí el enlace al entrar a la sala.</span></div></form><div id="status" class="status" role="status" aria-live="polite">Sin cuentas. Sin descargas. Solo el duelo.</div><button id="new-instead" class="text-btn" hidden>Crear otra sala</button></div></section>
-<section id="room-browser" class="room-browser"><div class="browser-heading"><div><span class="tiny">BUSCÁ TU PRÓXIMO RIVAL</span><h2>Salas públicas</h2></div><button id="refresh-rooms" class="secondary">↻ Actualizar salas</button></div><p id="rooms-status" role="status"></p><div id="rooms-list"></div></section><section class="arena-section"><div class="arena-heading"><div><span class="live-dot"></span><span id="arena-label">EL PATIO DEL REY</span><span class="map-label">ARENA 01</span></div><span id="connection-label">ACERO · ARCO · MAGIA</span></div>
-<div id="hud" class="hud" hidden><div class="team blue"><span>◆ AZUL</span><b id="score-blue">0</b><small id="flag-blue">En base</small></div><div class="clock"><span id="timer">3:00</span><small>PRIMERO A 3</small></div><div class="team red"><small id="flag-red">En base</small><b id="score-red">0</b><span>CARMESÍ ✚</span></div></div>
+<div class="entry-card"><div class="card-top"><span class="tiny">EL DESAFÍO EMPIEZA ACÁ</span><span class="swords">⚔</span></div><h2 id="entry-title">Prepará tu estandarte.</h2><p id="entry-description">Elegí tu guerrero, prepará una sala e invitá a tu rival.</p><form id="entry-form"><div class="player-setup"><div class="setup-heading"><span>01</span><h3>Tu guerrero</h3></div><label for="name">TU APODO</label><input id="name" name="name" placeholder="Caballero sin nombre" maxlength="16" autocomplete="nickname" required><fieldset id="entry-class-picker" class="class-picker"><legend>ELEGÍ TU GUERRERO</legend><div id="entry-classes" class="class-grid"></div></fieldset></div><div class="room-setup"><div class="setup-heading"><span>02</span><h3>Tu próximo duelo</h3></div><fieldset id="room-options"><legend>TU SALA</legend><label for="room-title">TÍTULO</label><input id="room-title" maxlength="48" value="Duelo medieval"><label for="visibility">VISIBILIDAD</label><select id="visibility"><option value="private">Privada · solo por enlace</option><option value="public">Pública · aparece en el listado</option></select><label class="check-option"><input id="allow-spectators" type="checkbox" checked> Permitir espectadores (máximo 5)</label></fieldset><label for="room-password">CONTRASEÑA (OPCIONAL)</label><input id="room-password" type="password" maxlength="64" autocomplete="off" placeholder="Sin contraseña"><label id="spectator-choice" hidden><input id="spectator" type="checkbox"> Entrar como espectador</label></div><div class="entry-actions"><button id="enter" class="primary" type="submit">Crear un duelo <span>↗</span></button><button id="practice-start" class="secondary" type="button">Probar contra un rival inmóvil</button><span class="entry-note">Práctica local, sin sala.</span></div></form><div id="status" class="status" role="status" aria-live="polite">Sin cuentas. Sin descargas. Solo el duelo.</div><button id="new-instead" class="text-btn" hidden>Crear otra sala</button></div></section>
+<section id="room-browser" class="room-browser"><div class="browser-heading"><div><span class="tiny">BUSCÁ TU PRÓXIMO RIVAL</span><h2>Salas públicas</h2></div><button id="refresh-rooms" class="secondary">↻ Actualizar salas</button></div><p id="rooms-status" role="status"></p><h3 class="room-group-title">● Combates en vivo</h3><p id="live-empty">No hay combates públicos en curso.</p><div id="live-rooms-list"></div><h3 class="room-group-title">Salas para jugar y próximas rondas</h3><div id="rooms-list"></div></section><section class="arena-section"><div class="arena-heading"><div><span class="live-dot"></span><span id="arena-label">EL PATIO DEL REY</span><span class="map-label">ARENA 01</span></div><span id="connection-label">ACERO · ARCO · MAGIA</span></div>
+<div id="practice-toolbar" hidden><span>PRÁCTICA · RIVAL INMÓVIL</span><button id="practice-reset" class="secondary">Reiniciar práctica</button><button id="practice-exit" class="secondary">Volver al inicio</button></div><div id="hud" class="hud" hidden><div class="team blue"><span>◆ AZUL</span><b id="score-blue">0</b><small id="flag-blue">En base</small></div><div class="clock"><span id="timer">3:00</span><small>PRIMERO A 3</small></div><div class="team red"><small id="flag-red">En base</small><b id="score-red">0</b><span>CARMESÍ ✚</span></div></div>
 <div id="stage" class="stage"><span id="spectator-count" hidden aria-live="polite"></span><div id="game"></div><div class="preview-tag" id="preview-tag">DOS ESTANDARTES. UN SOLO CAMINO A LA VICTORIA.</div>
 <div id="overlay" class="overlay" hidden><div class="overlay-card"><span id="overlay-kicker" class="tiny">SALA</span><h2 id="overlay-title">Esperando a tu rival</h2><p id="overlay-description"></p><p id="room-heading"></p><div id="roster" class="roster"></div><fieldset id="room-picker" class="class-picker compact"><legend>TU CLASE · PODÉS CAMBIAR ANTES DE JUGAR</legend><div id="room-classes" class="class-grid"></div></fieldset><p id="selection-status" role="status" hidden></p><div id="invitation"><label for="invite">LINK DE INVITACIÓN</label><div class="invite-row"><input id="invite" readonly aria-label="Link de invitación"><button id="copy" class="secondary">Copiar</button></div></div><button id="ready" class="primary">Estoy listo <span>⚔</span></button><button id="leave" class="text-btn">Salir de la sala</button></div></div>
 <div id="announcement" class="announcement" hidden aria-live="polite"></div>
@@ -37,6 +38,7 @@ new Phaser.Game({
   banner: false,
   input: { activePointers: 5 },
 });
+let practice: Practice | undefined;
 let room: Room | undefined,
   current: Snapshot | undefined,
   busy = false,
@@ -283,8 +285,8 @@ $('leave').onclick = () => {
   location.assign(location.pathname);
 };
 function render(s: Snapshot) {
-  if (!room) return;
-  const me = s.players.find((p) => p.id === room!.sessionId);
+  if (!room && !practice) return;
+  const me = s.players.find((p) => p.id === (practice ? PRACTICE_PLAYER : room!.sessionId));
   $('score-blue').textContent = String(s.score.blue);
   $('score-red').textContent = String(s.score.red);
   const seconds = Math.ceil(s.timeLeft);
@@ -394,6 +396,19 @@ function render(s: Snapshot) {
           : 'Estás como espectador. La partida empieza cuando ambos estén listos.';
     }
   }
+  if (practice) {
+    $('arena-label').textContent = 'PRÁCTICA LOCAL';
+    $('stage').dataset.role = 'practice';
+    $('practice-toolbar').dataset.dummyHp = String(s.players[1].hp);
+    $('room-picker').hidden = true;
+    $('invitation').hidden = true;
+    $('ready').hidden = true;
+    $('leave').hidden = true;
+    if (overlay) {
+      $('overlay-title').textContent = 'Práctica terminada';
+      $('overlay-description').textContent = 'Reiniciá la práctica o volvé al inicio para elegir otra clase.';
+    }
+  }
   const announce = $('announcement');
   announce.hidden = overlay || !(s.paused || s.phase === 'countdown' || s.phase === 'capture');
   if (s.paused) {
@@ -428,10 +443,11 @@ interface RoomInfo {
   roomId: string; title: string; visibility: 'public' | 'private'; passwordRequired: boolean;
   allowSpectators: boolean; spectators: number; maxSpectators: number;
   players: number; playerSlots: number; phase: string;
+  score: {blue:number;red:number}; timeLeft: number; paused: boolean; names: string[];
 }
 let refreshingRooms = false;
 async function refreshRooms() {
-  if (room || refreshingRooms) return;
+  if (room || practice || refreshingRooms) return;
   refreshingRooms = true;
   try {
     const url = new URL(endpoint.replace(/^ws/, 'http')); url.pathname = '/rooms';
@@ -439,13 +455,27 @@ async function refreshRooms() {
     if (!response.ok) throw Error();
     const rooms: RoomInfo[] = await response.json();
     $('rooms-list').replaceChildren();
+    $('live-rooms-list').replaceChildren();
+    $('live-empty').hidden = rooms.some(info => ['playing','capture','countdown'].includes(info.phase));
     $('rooms-status').textContent = rooms.length ? 'Elegí una sala para jugar u observar.' : 'No hay salas públicas. ¡Creá la primera!';
     for (const info of rooms) {
+      const live = ['playing','capture','countdown'].includes(info.phase);
       const card = document.createElement('article'); card.className = 'room-list-card';
+      card.dataset.roomId = info.roomId;
+      if (live) {
+        const badge = document.createElement('span'); badge.className = 'live-badge';
+        badge.textContent = info.paused ? '● EN PAUSA · RECONEXIÓN' : '● EN VIVO'; card.append(badge);
+      }
       const title = document.createElement('h3'); title.textContent = info.title;
       const details = document.createElement('p');
       details.textContent = `${info.players}/2 jugadores · ${info.spectators}/5 espectadores · ${info.phase === 'lobby' ? 'Esperando jugadores' : info.phase === 'finished' ? 'Resultado' : 'En combate'}${info.passwordRequired ? ' · Con contraseña' : ''}`;
       card.append(title, details);
+      if (live) {
+        const score = document.createElement('p'); score.className = 'live-score';
+        const seconds = Math.ceil(info.timeLeft);
+        score.textContent = `${info.names.join(' vs ')} · ${info.score.blue} — ${info.score.red} · ${Math.floor(seconds/60)}:${String(seconds%60).padStart(2,'0')}`;
+        card.append(score);
+      }
       const choose = (spectator: boolean) => {
         target = info.roomId; history.replaceState(null, '', `?sala=${target}`); entryMode();
         $('entry-title').textContent = info.title;
@@ -455,17 +485,62 @@ async function refreshRooms() {
         $('entry-description').textContent = info.passwordRequired ? 'Ingresá el apodo y la contraseña de la sala.' : 'Ingresá tu apodo para entrar.';
         $('intro').scrollIntoView({behavior:'smooth'});
       };
-      for (const spectator of [false, true]) {
+      for (const spectator of (live ? [true] : [false, true])) {
         const button = document.createElement('button'); button.className = 'secondary';
-        button.textContent = spectator ? 'Observar' : 'Jugar';
+        button.textContent = spectator ? !info.allowSpectators ? 'Espectadores desactivados' : info.spectators >= 5 ? 'Sin cupo de espectador' : live ? 'Ver combate' : 'Observar' : 'Jugar';
         button.disabled = spectator ? !info.allowSpectators || info.spectators >= 5 : info.phase !== 'lobby' || info.playerSlots >= 2;
         button.onclick = () => choose(spectator); card.append(button);
       }
-      $('rooms-list').append(card);
+      $(live ? 'live-rooms-list' : 'rooms-list').append(card);
     }
   } catch { $('rooms-status').textContent = 'No se pudo cargar el listado. El servidor puede estar despertando; probá actualizar.'; }
   finally { refreshingRooms = false; }
 }
 $('refresh-rooms').onclick = () => void refreshRooms();
 void refreshRooms();
-setInterval(() => { if (!document.hidden) void refreshRooms(); }, 10000);
+setInterval(() => { if (!document.hidden) void refreshRooms(); }, 2000);
+
+function startPractice() {
+  if (room || busy || !arena.controls) return;
+  unlockAudio();
+  practice = new Practice(selectedClass, validName(nameInput.value) || 'Vos');
+  arena.reset();
+  arena.send = () => {};
+  arena.localStep = input => {
+    if (!practice) return;
+    const snapshot = practice.step(input);
+    arena.receive(snapshot, PRACTICE_PLAYER);
+    render(snapshot);
+  };
+  $('intro').hidden = true;
+  $('room-browser').hidden = true;
+  $('guide').hidden = true;
+  $('preview-tag').hidden = true;
+  $('spectator-count').hidden = true;
+  $('hud').hidden = false;
+  $('practice-toolbar').hidden = false;
+  $('connection-label').textContent = 'SIN CONEXIÓN AL SERVIDOR';
+  document.body.classList.add('in-room', 'practicing');
+  const snapshot = structuredClone(practice.duel.state);
+  arena.receive(snapshot, PRACTICE_PLAYER);
+  render(snapshot);
+  $('stage').scrollIntoView({block:'center'});
+}
+$('practice-start').onclick = startPractice;
+$('practice-reset').onclick = startPractice;
+$('practice-exit').onclick = () => {
+  practice = undefined;
+  arena.reset();
+  arena.send = () => {};
+  document.body.classList.remove('in-room', 'practicing');
+  for (const id of ['practice-toolbar','hud','overlay','cooldowns','announcement']) $(id).hidden = true;
+  for (const id of ['intro','room-browser','guide','preview-tag','leave']) $(id).hidden = false;
+  $('touch-controls').classList.remove('active');
+  $('stage').dataset.role = 'preview';
+  $('arena-label').textContent = 'EL PATIO DEL REY';
+  $('connection-label').textContent = 'ACERO · ARCO · MAGIA';
+  const preview = new Practice(selectedClass);
+  preview.duel.state.phase = 'lobby';
+  arena.receive(structuredClone(preview.duel.state), '');
+  $('intro').scrollIntoView({block:'start'});
+};

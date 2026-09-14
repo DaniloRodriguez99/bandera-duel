@@ -27,6 +27,7 @@ export class Arena extends Phaser.Scene {
   localId = '';
   snapshot?: Snapshot;
   predicted?: Player;
+  localStep?: (input: Input) => void;
   send: (input: Input) => void = () => {};
   private visuals = new Map<
     string,
@@ -285,6 +286,8 @@ export class Arena extends Phaser.Scene {
     }
   }
   reset() {
+    this.localStep = undefined;
+    this.accumulator = 0;
     this.snapshot = undefined;
     this.predicted = undefined;
     this.pending = [];
@@ -468,10 +471,16 @@ export class Arena extends Phaser.Scene {
   }
   update(time: number, delta: number) {
     if (!this.controls || !this.snapshot) return;
-    const s = this.snapshot;
+    let s = this.snapshot;
     this.accumulator += Math.min(delta, 100);
     while (this.accumulator >= 1000 / 30) {
       this.accumulator -= 1000 / 30;
+      if (this.localStep) {
+        const input = this.controls.read(++this.seq);
+        this.localStep(input);
+        s = this.snapshot!;
+        continue;
+      }
       if (this.controls.enabled) {
         const input = this.controls.read(++this.seq);
         this.send(input);

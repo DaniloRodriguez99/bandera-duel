@@ -967,3 +967,16 @@ select:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
   .browser-heading .secondary { padding: 9px; }
   #rooms-list { grid-template-columns: minmax(0,1fr); }
 }
+
+.entry-actions { flex-wrap: wrap; }
+#practice-start { min-height: 46px; }
+#practice-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 12px; background: #263830; color: var(--gold); font-size: 10px; }
+#practice-toolbar button { font-size: 11px; padding: 8px; }
+@media (max-height:600px) and (orientation:landscape) { .practicing .stage { height: calc(100dvh - 92px); } .practicing .arena-section { max-width: calc((100dvh - 92px)*16/9); } #practice-toolbar { min-height: 46px; padding: 4px; } #practice-toolbar>span { font-size: 8px; } }
+
+#live-rooms-list { display: grid; grid-template-columns: repeat(auto-fit,minmax(240px,1fr)); gap: 12px; }
+.room-group-title { font-size: 13px; color: var(--gold); margin: 24px 0 12px; }
+#live-empty { font-size: 12px; color: var(--muted); }
+.live-badge { display: block; font-size: 9px; letter-spacing: 1px; color: #98d6a7; margin-bottom: 10px; }
+.room-list-card .live-score { color: var(--gold); font-size: 13px; }
+@media(max-width:560px) { #live-rooms-list { grid-template-columns: minmax(0,1fr); } }
