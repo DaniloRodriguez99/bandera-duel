@@ -1,10 +1,22 @@
-import { idleInput, type Input } from '@bandera/shared';
+import { idleInput, CLASSES, DEFAULT_CLASS, type ClassId, type Input } from '@bandera/shared';
 export class Controls {
   keys = new Set<string>();
   angle = 0;
   move = { x: 0, y: 0 };
   actions = { sword: false, shot: false, dash: false };
   enabled = false;
+  classId: ClassId = DEFAULT_CLASS;
+  private guardSources = new Set<string>();
+  configure(classId: ClassId) {
+    if (this.classId !== classId) { this.clear(); this.classId = classId; }
+  }
+  primary() { if (this.enabled) this.actions[CLASSES[this.classId].ranged ? 'shot' : 'sword'] = true; }
+  secondary(held: boolean) {
+    if (!held) { this.guardSources.delete('mouse'); return; }
+    if (!this.enabled) return;
+    if (this.classId === 'archer') this.actions.sword = true;
+    else if (this.classId === 'guardian') this.guardSources.add('mouse');
+  }
   private sticks = new Map<
     number,
     { kind: 'move' | 'aim'; x: number; y: number; el: HTMLElement }
@@ -15,9 +27,11 @@ export class Controls {
       if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code))
         e.preventDefault();
       this.keys.add(e.code);
-      if (e.code === 'Space' && !e.repeat) this.actions.dash = true;
+      if (e.code === 'Space' && !e.repeat && CLASSES[this.classId].dash) this.actions.dash = true;
     });
     window.addEventListener('keyup', (e) => this.keys.delete(e.code));
+    window.addEventListener('pointerup', e => { if (e.button === 2) this.secondary(false); });
+    window.addEventListener('pointercancel', () => this.clear());
     window.addEventListener('blur', () => this.clear());
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) this.clear();
@@ -41,7 +55,7 @@ export class Controls {
       const end = (e: PointerEvent) => {
         const s = this.sticks.get(e.pointerId);
         if (!s) return;
-        if (s.kind === 'aim' && e.type === 'pointerup') this.actions.shot = true;
+        if (s.kind === 'aim' && e.type === 'pointerup' && CLASSES[this.classId].ranged) this.actions.shot = true;
         if (s.kind === 'move') this.move = { x: 0, y: 0 };
         s.el.style.setProperty('--dx', '0px');
         s.el.style.setProperty('--dy', '0px');
@@ -54,8 +68,16 @@ export class Controls {
     for (const action of ['sword', 'dash'] as const)
       document.querySelector(`#touch-${action}`)!.addEventListener('pointerdown', (e) => {
         e.preventDefault();
-        if (this.enabled) this.actions[action] = true;
+        if (this.enabled && (action !== 'dash' || CLASSES[this.classId].dash)) this.actions[action] = true;
       });
+    const guard = document.querySelector<HTMLElement>('#touch-guard')!;
+    guard.addEventListener('pointerdown', e => {
+      if (!this.enabled || !CLASSES[this.classId].shield) return;
+      e.preventDefault(); guard.setPointerCapture(e.pointerId);
+      this.guardSources.add(`touch-${e.pointerId}`);
+    });
+    for (const event of ['pointerup','pointercancel','lostpointercapture'])
+      guard.addEventListener(event, e => this.guardSources.delete(`touch-${(e as PointerEvent).pointerId}`));
   }
   stickMove(e: PointerEvent) {
     const s = this.sticks.get(e.pointerId);
@@ -82,12 +104,13 @@ export class Controls {
       (this.keys.has('KeyS') || this.keys.has('ArrowDown') ? 1 : 0) -
       (this.keys.has('KeyW') || this.keys.has('ArrowUp') ? 1 : 0);
     const n = Math.max(1, Math.hypot(x, y));
-    const result = { seq, x: x / n, y: y / n, angle: this.angle, ...this.actions };
+    const result = { seq, x: x / n, y: y / n, angle: this.angle, ...this.actions, guard: this.guardSources.size > 0 };
     this.actions = { sword: false, shot: false, dash: false };
     return result;
   }
   clear() {
     this.keys.clear();
+    this.guardSources.clear();
     this.move = { x: 0, y: 0 };
     this.actions = { sword: false, shot: false, dash: false };
     this.sticks.clear();

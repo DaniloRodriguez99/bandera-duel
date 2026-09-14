@@ -10,10 +10,11 @@ import {
   blocked,
   movePlayer,
   type Player,
+  type ClassId,
 } from '@bandera/shared';
-function duel() {
+function duel(classId: ClassId = 'guardian') {
   const d = new Duel();
-  d.add('a', 'Azul');
+  d.add('a', 'Azul',classId);
   d.add('b', 'Rojo');
   d.state.phase = 'playing';
   return d;
@@ -120,7 +121,7 @@ describe('combate y geometría', () => {
     expect(d.state.events[0]).not.toHaveProperty('hp');
   });
   it('una flecha daña al rival y desaparece al impactar', () => {
-    const d = duel(),
+    const d = duel('archer'),
       p = d.state.players[0],
       q = d.state.players[1];
     place(p, 420, 270);
@@ -140,7 +141,7 @@ describe('combate y geometría', () => {
     expect(validName('  Caballero Ñ  ')).toBe('Caballero Ñ');
   });
   it('dash y movimiento no atraviesan paredes ni bordes', () => {
-    const d = duel(),
+    const d = duel('archer'),
       p = d.state.players[0];
     place(p, WALLS[0].x - 15, 150);
     const input = { ...idleInput(), x: 1, dash: true };
@@ -162,7 +163,8 @@ describe('combate y geometría', () => {
     movePlayer(q, input, false);
     expect((p.x - 400) / (q.x - 400)).toBeCloseTo(0.85);
     Object.assign(d.state.flags[1], { status: 'carried', carrier: p.id });
-    d.step(new Map([[p.id, { ...idleInput(2), shot: true }]]));
+    d.step(new Map([[p.id, { ...idleInput(2), sword: true }]]));
+    expect(p.windup).toBeGreaterThan(0);
     expect(d.state.flags[1].carrier).toBe(p.id);
   });
   it('la espada requiere preparación, apunta al frente y respeta recarga', () => {
@@ -181,7 +183,7 @@ describe('combate y geometría', () => {
     expect(d.state.events.filter((e) => e.kind === 'sword')).toHaveLength(before);
   });
   it('las paredes bloquean espada y flechas', () => {
-    const d = duel(),
+    const d = duel('archer'),
       p = d.state.players[0],
       q = d.state.players[1];
     place(p, 480, 150);
@@ -196,7 +198,7 @@ describe('combate y geometría', () => {
     expect(d.state.arrows).toHaveLength(0);
   });
   it('evita espada y disparo simultáneos y limita disparos repetidos', () => {
-    const d = duel(),
+    const d = duel('archer'),
       p = d.state.players[0];
     d.step(new Map([[p.id, { ...idleInput(1), sword: true, shot: true }]]));
     expect(d.state.arrows).toHaveLength(0);
@@ -221,7 +223,7 @@ describe('combate y geometría', () => {
     steps(d, 91);
     expect(p.hp).toBe(3);
     expect(p.invuln).toBeGreaterThan(0);
-    d.step(new Map([[p.id, { ...idleInput(1), shot: true }]]));
+    d.step(new Map([[p.id, { ...idleInput(1), sword: true }]]));
     expect(p.invuln).toBe(0);
   });
 });

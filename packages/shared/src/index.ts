@@ -1,5 +1,16 @@
 export type Team = 'blue' | 'red';
 export type Phase = 'lobby' | 'countdown' | 'playing' | 'capture' | 'finished';
+export type ClassId = 'archer' | 'guardian' | 'vanguard';
+export const CLASS_IDS: ClassId[] = ['archer', 'guardian', 'vanguard'];
+export const DEFAULT_CLASS: ClassId = 'guardian';
+export function validClass(value: unknown): value is ClassId {
+  return typeof value === 'string' && CLASS_IDS.includes(value as ClassId);
+}
+export const CLASSES = {
+  archer: { name: 'Arquero', label: 'ARCO Y DAGA', description: 'Distancia, precisión y una salida rápida.', hp: 3, speed: 190, meleeDamage: .5, meleeRange: 30, meleeArc: Math.PI * .6, windup: .1, meleeCooldown: .5, ranged: true, shield: false, dash: true },
+  guardian: { name: 'Caballero', label: 'ESPADA Y ESCUDO', description: 'Protegé tu bandera. Respondé de cerca.', hp: 3, speed: 180, meleeDamage: 1, meleeRange: 55, meleeArc: Math.PI * .72, windup: .12, meleeCooldown: .6, ranged: false, shield: true, dash: false },
+  vanguard: { name: 'Guerrero', label: 'ESPADA DE DOS MANOS', description: 'Más alcance. Más daño. Acero pesado.', hp: 5, speed: 155, meleeDamage: 2, meleeRange: 80, meleeArc: Math.PI * 130 / 180, windup: .3, meleeCooldown: 1, ranged: false, shield: false, dash: false },
+} as const;
 export interface Vec {
   x: number;
   y: number;
@@ -15,16 +26,16 @@ export const RULES = {
   matchTime: 180,
   target: 3,
   radius: 12,
-  speed: 175,
   carryMultiplier: 0.85,
-  hp: 3,
-  swordRange: 55,
-  swordArc: Math.PI * 0.72,
-  swordWindup: 0.12,
-  swordCooldown: 0.6,
   shotCooldown: 0.9,
-  arrowSpeed: 390,
-  arrowLife: 1.6,
+  arrowSpeed: 560,
+  arrowLife: 1.2,
+  arrowDamage: 1,
+  guardDuration: 1.2,
+  guardCooldown: 1.5,
+  guardRecovery: .15,
+  guardSpeed: .25,
+  guardArc: Math.PI * 2 / 3,
   attackLock: 0.2,
   dashDuration: 0.15,
   dashCooldown: 1.5,
@@ -58,6 +69,7 @@ export interface Input {
   sword: boolean;
   shot: boolean;
   dash: boolean;
+  guard: boolean;
 }
 export const idleInput = (seq = 0, angle = 0): Input => ({
   seq,
@@ -67,6 +79,7 @@ export const idleInput = (seq = 0, angle = 0): Input => ({
   sword: false,
   shot: false,
   dash: false,
+  guard: false,
 });
 export function sanitizeInput(raw: unknown): Input | null {
   if (!raw || typeof raw !== 'object') return null;
@@ -92,6 +105,7 @@ export function sanitizeInput(raw: unknown): Input | null {
     sword: r.sword === true,
     shot: r.shot === true,
     dash: r.dash === true,
+    guard: r.guard === true,
   };
 }
 export function validName(raw: unknown): string | null {
@@ -103,6 +117,8 @@ export interface Player extends Vec {
   id: string;
   name: string;
   team: Team;
+  classId: ClassId;
+  maxHp: number;
   hp: number;
   angle: number;
   ready: boolean;
@@ -115,6 +131,12 @@ export interface Player extends Vec {
   dashLeft: number;
   dashX: number;
   dashY: number;
+  dashInvulnerable: boolean;
+  guarding: boolean;
+  guardLeft: number;
+  guardCd: number;
+  guardRecovery: number;
+  guardHeld: boolean;
   windup: number;
   swingAngle: number;
   invuln: number;
@@ -138,9 +160,10 @@ export interface Arrow extends Vec {
 }
 export interface GameEvent extends Vec {
   id: number;
-  kind: 'sword' | 'shot' | 'hit' | 'death' | 'capture' | 'return' | 'pickup';
+  kind: 'sword' | 'shot' | 'hit' | 'death' | 'capture' | 'return' | 'pickup' | 'block';
   team: Team;
   angle?: number;
+  classId?: ClassId;
 }
 export interface Snapshot {
   tick: number;
@@ -185,12 +208,29 @@ export function lineClear(a: Vec, b: Vec): boolean {
     if (blocked(a.x + ((b.x - a.x) * i) / steps, a.y + ((b.y - a.y) * i) / steps, 1)) return false;
   return true;
 }
-/** Shared fixed-step movement; never accepts client coordinates or elapsed time. */
+export function lowerGuard(p: Player) {
+  if (!p.guarding) return;
+  p.guarding = false;
+  p.guardLeft = 0;
+  p.guardCd = RULES.guardCooldown;
+  p.guardRecovery = RULES.guardRecovery;
+}
+/** Shared fixed-step prediction of timers, defense, attacks and movement. */
 export function movePlayer(p: Player, input: Input, carrying: boolean, dt = RULES.tick as number) {
-  if (p.hp <= 0) return;
+  const result = { swing: false, shoot: false };
+  if (p.hp <= 0) return result;
+  const stats = CLASSES[p.classId];
+  const wasWinding = p.windup > 0;
+  for (const key of ['swordCd','shotCd','dashCd','attackLock','invuln','hitFlash','guardCd','guardRecovery'] as const)
+    p[key] = Math.max(0, p[key] - dt);
   p.angle = input.angle;
-  p.dashCd = Math.max(0, p.dashCd - dt);
-  if (input.dash && p.dashCd <= 0) {
+  if (p.guarding && (!input.guard || p.guardLeft <= 1e-8)) lowerGuard(p);
+  if (stats.shield && input.guard && !p.guardHeld && !p.guarding && p.guardCd <= 0 && p.guardRecovery <= 0 && !wasWinding && p.attackLock <= 0) {
+    p.guarding = true;
+    p.guardLeft = RULES.guardDuration;
+  }
+  p.guardHeld = input.guard;
+  if (stats.dash && input.dash && p.dashCd <= 0 && !wasWinding && p.attackLock <= 0) {
     const mag = Math.hypot(input.x, input.y);
     p.dashX = mag > 0.05 ? input.x / mag : Math.cos(input.angle);
     p.dashY = mag > 0.05 ? input.y / mag : Math.sin(input.angle);
@@ -198,19 +238,42 @@ export function movePlayer(p: Player, input: Input, carrying: boolean, dt = RULE
     p.dashCd = RULES.dashCooldown;
   }
   const dashDt = Math.min(dt, p.dashLeft);
+  p.dashInvulnerable = dashDt > 1e-8;
   if (dashDt > 0)
     translate(p, p.dashX * RULES.dashSpeed * dashDt, p.dashY * RULES.dashSpeed * dashDt);
   p.dashLeft = Math.max(0, p.dashLeft - dt);
-  const speed = RULES.speed * (carrying ? RULES.carryMultiplier : 1);
+  const speed = stats.speed * (carrying ? RULES.carryMultiplier : 1) * (p.guarding ? RULES.guardSpeed : 1);
   translate(p, input.x * speed * (dt - dashDt), input.y * speed * (dt - dashDt));
+  if (wasWinding) {
+    p.windup = Math.max(0, p.windup - dt);
+    result.swing = p.windup === 0;
+  }
+  if (!p.guarding && p.guardRecovery <= 0 && !p.dashInvulnerable && p.attackLock <= 0 && !wasWinding) {
+    if (input.sword && p.swordCd <= 0) {
+      p.invuln = 0;
+      p.windup = stats.windup;
+      p.swingAngle = p.angle;
+      p.swordCd = stats.meleeCooldown;
+      p.attackLock = RULES.attackLock;
+    } else if (input.shot && stats.ranged && p.shotCd <= 0) {
+      p.invuln = 0;
+      p.shotCd = RULES.shotCooldown;
+      p.attackLock = RULES.attackLock;
+      result.shoot = true;
+    }
+  }
+  if (p.guarding) p.guardLeft = Math.max(0,p.guardLeft-dt);
+  return result;
 }
-export function newPlayer(id: string, name: string, team: Team): Player {
+export function newPlayer(id: string, name: string, team: Team, classId: ClassId = DEFAULT_CLASS): Player {
   return {
     id,
     name,
     team,
     ...SPAWNS[team],
-    hp: 3,
+    classId,
+    hp: CLASSES[classId].hp,
+    maxHp: CLASSES[classId].hp,
     angle: team === 'blue' ? 0 : Math.PI,
     ready: false,
     connected: true,
@@ -222,6 +285,12 @@ export function newPlayer(id: string, name: string, team: Team): Player {
     dashLeft: 0,
     dashX: 0,
     dashY: 0,
+    dashInvulnerable: false,
+    guarding: false,
+    guardLeft: 0,
+    guardCd: 0,
+    guardRecovery: 0,
+    guardHeld: false,
     windup: 0,
     swingAngle: 0,
     invuln: 0,
@@ -256,15 +325,15 @@ export class Duel {
   };
   private eventId = 0;
   private arrowId = 0;
-  add(id: string, name: string) {
+  add(id: string, name: string, classId: ClassId = DEFAULT_CLASS) {
     const team = TEAMS.find((t) => !this.state.players.some((p) => p.team === t));
     if (!team) throw Error('Sala llena');
-    const p = newPlayer(id, name, team);
+    const p = newPlayer(id, name, team, classId);
     this.state.players.push(p);
     return p;
   }
-  event(kind: GameEvent['kind'], where: Vec, team: Team, angle?: number) {
-    this.state.events.push({ id: ++this.eventId, kind, x: where.x, y: where.y, team, angle });
+  event(kind: GameEvent['kind'], where: Vec, team: Team, angle?: number, classId?: ClassId) {
+    this.state.events.push({ id: ++this.eventId, kind, x: where.x, y: where.y, team, angle, classId });
     this.state.events = this.state.events.slice(-24);
   }
   ready(id: string) {
@@ -282,12 +351,20 @@ export class Duel {
       this.resetArena();
     }
   }
+  selectClass(id: string, classId: ClassId): boolean {
+    const s = this.state, p = s.players.find(p => p.id === id);
+    if (!p || !validClass(classId) || s.paused || !['lobby','finished'].includes(s.phase)) return false;
+    if (p.classId === classId) return true;
+    Object.assign(p, newPlayer(p.id,p.name,p.team,classId), { ack: p.ack, connected: p.connected });
+    s.players.forEach(p => p.ready = false);
+    return true;
+  }
   resetArena() {
     const s = this.state;
     s.arrows = [];
     s.flags = TEAMS.map(newFlag);
     s.players = s.players.map((p) => ({
-      ...newPlayer(p.id, p.name, p.team),
+      ...newPlayer(p.id, p.name, p.team, p.classId),
       connected: p.connected,
       ack: p.ack,
     }));
@@ -319,9 +396,17 @@ export class Duel {
       });
     }
   }
-  damage(target: Player, source: Player, angle: number) {
-    if (target.hp <= 0 || target.invuln > 0) return;
-    target.hp--;
+  damage(target: Player, source: Player, angle: number, amount = 1) {
+    if (target.hp <= 0 || target.invuln > 0 || target.dashInvulnerable) return;
+    // Incoming direction is the reverse of projectile/swing travel, not the
+    // attacker's current position (arrows can arrive after their owner moves).
+    const relative = angle + Math.PI - target.angle;
+    const difference = Math.atan2(Math.sin(relative), Math.cos(relative));
+    if (target.guarding && Math.abs(difference) <= RULES.guardArc / 2 + 1e-8) {
+      this.event('block',target,target.team,target.angle,target.classId);
+      return;
+    }
+    target.hp = Math.max(0,target.hp-amount);
     target.invuln = RULES.hurtProtection;
     target.hitFlash = 0.18;
     this.drop(target);
@@ -330,6 +415,8 @@ export class Duel {
       target.respawnLeft = RULES.respawn;
       target.windup = 0;
       target.dashLeft = 0;
+      target.dashInvulnerable = false;
+      lowerGuard(target);
       this.event('death', target, target.team);
     } else translate(target, Math.cos(angle) * 24, Math.sin(angle) * 24);
   }
@@ -350,83 +437,57 @@ export class Duel {
       );
       return;
     }
+    const swings: Player[] = [];
+    // First advance every player's defenses, movement and attack preparation.
+    // Only then resolve impacts, so the order of joining never defeats a guard.
     for (const p of s.players) {
       const input = inputs.get(p.id) || idleInput(p.ack, p.angle);
       p.ack = Math.max(p.ack, input.seq);
       if (p.hp <= 0) {
         p.respawnLeft -= dt;
         if (p.respawnLeft <= 0)
-          Object.assign(p, newPlayer(p.id, p.name, p.team), {
-            ack: p.ack,
-            invuln: RULES.spawnProtection,
+          Object.assign(p, newPlayer(p.id, p.name, p.team, p.classId), {
+            ack: p.ack, connected: p.connected, invuln: RULES.spawnProtection,
           });
         continue;
       }
-      p.swordCd = Math.max(0, p.swordCd - dt);
-      p.shotCd = Math.max(0, p.shotCd - dt);
-      p.attackLock = Math.max(0, p.attackLock - dt);
-      p.invuln = Math.max(0, p.invuln - dt);
-      p.hitFlash = Math.max(0, p.hitFlash - dt);
-      movePlayer(
-        p,
-        input,
-        s.flags.some((f) => f.carrier === p.id),
-        dt,
-      );
-      if (p.windup > 0) {
-        p.windup = Math.max(0, p.windup - dt);
-        if (p.windup === 0) {
-          this.event('sword', p, p.team, p.swingAngle);
-          for (const q of s.players) {
-            const angle = Math.atan2(q.y - p.y, q.x - p.x),
-              diff = Math.atan2(Math.sin(angle - p.swingAngle), Math.cos(angle - p.swingAngle));
-            if (
-              q.team !== p.team &&
-              distance(p, q) <= RULES.swordRange &&
-              Math.abs(diff) < RULES.swordArc / 2 &&
-              lineClear(p, q)
-            )
-              this.damage(q, p, angle);
-          }
-        }
-      }
-      if (input.sword && p.swordCd <= 0 && p.attackLock <= 0) {
-        p.invuln = 0;
-        p.windup = RULES.swordWindup;
-        p.swingAngle = p.angle;
-        p.swordCd = RULES.swordCooldown;
-        p.attackLock = RULES.attackLock;
-      } else if (input.shot && p.shotCd <= 0 && p.attackLock <= 0) {
-        p.invuln = 0;
-        p.shotCd = RULES.shotCooldown;
-        p.attackLock = RULES.attackLock;
-        s.arrows.push({
-          id: ++this.arrowId,
-          owner: p.id,
-          team: p.team,
-          x: p.x,
-          y: p.y,
-          angle: p.angle,
-          life: RULES.arrowLife,
-        });
-        this.event('shot', p, p.team, p.angle);
+      const action = movePlayer(p, input, s.flags.some(f => f.carrier === p.id), dt);
+      if (action.swing) swings.push(p);
+      if (action.shoot) {
+        s.arrows.push({ id: ++this.arrowId, owner: p.id, team: p.team,
+          x: p.x, y: p.y, angle: p.angle, life: RULES.arrowLife });
+        this.event('shot', p, p.team, p.angle, p.classId);
       }
     }
+    const hits: { target: Player; source: Player; angle: number; amount: number }[] = [];
+    for (const p of swings) {
+      const stats = CLASSES[p.classId];
+      this.event('sword',p,p.team,p.swingAngle,p.classId);
+      for (const q of s.players) {
+        const angle = Math.atan2(q.y-p.y,q.x-p.x);
+        const diff = Math.atan2(Math.sin(angle-p.swingAngle),Math.cos(angle-p.swingAngle));
+        if (q.team !== p.team && q.hp > 0 && distance(p,q) <= stats.meleeRange &&
+            Math.abs(diff) <= stats.meleeArc/2 && lineClear(p,q))
+          hits.push({ target:q, source:p, angle, amount:stats.meleeDamage });
+      }
+    }
+    for (const hit of hits) this.damage(hit.target,hit.source,hit.angle,hit.amount);
     s.arrows = s.arrows.filter((a) => {
-      a.life -= dt;
-      if (a.life <= 0) return false;
+      const travelTime = Math.min(dt, a.life);
+      if (travelTime <= 1e-8) return false;
+      a.life = Math.max(0, a.life - dt);
       const owner = s.players.find((p) => p.id === a.owner);
       if (!owner) return false;
-      const steps = Math.ceil((RULES.arrowSpeed * dt) / 5);
+      const steps = Math.max(1, Math.ceil((RULES.arrowSpeed * travelTime) / 5));
       for (let i = 0; i < steps; i++) {
-        a.x += (Math.cos(a.angle) * RULES.arrowSpeed * dt) / steps;
-        a.y += (Math.sin(a.angle) * RULES.arrowSpeed * dt) / steps;
+        a.x += (Math.cos(a.angle) * RULES.arrowSpeed * travelTime) / steps;
+        a.y += (Math.sin(a.angle) * RULES.arrowSpeed * travelTime) / steps;
         if (blocked(a.x, a.y, 3)) return false;
         const target = s.players.find(
           (p) => p.team !== a.team && p.hp > 0 && distance(p, a) < RULES.radius + 3,
         );
         if (target) {
-          this.damage(target, owner, a.angle);
+          this.damage(target, owner, a.angle, RULES.arrowDamage);
           return false;
         }
       }

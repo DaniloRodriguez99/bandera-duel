@@ -1,0 +1,34 @@
+import { test,expect, type Page } from '@playwright/test';
+async function enter(page:Page,url:string,name:string,classId:string){await page.goto(url);await page.locator('#name').fill(name);await page.locator(`#entry-classes [data-class="${classId}"]`).click();await page.locator('#enter').click();await expect(page.locator('#overlay')).toBeVisible();}
+test('selección compartida, ataques de arquero y escudo con mouse',async({page,browser},info)=>{
+  const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));await enter(page,'/','Robin','archer');
+  const context=await browser.newContext();const rival=await context.newPage();rival.on('pageerror',e=>errors.push(e.message));await enter(rival,page.url(),'Arthur','vanguard');
+  await page.locator('#ready').click();await expect(page.locator('#ready')).toContainText('Listo');
+  await rival.locator('#room-classes [data-class="guardian"]').click();await expect(page.locator('#ready')).toHaveText('Estoy listo ⚔');await expect(page.locator('#roster')).toContainText('Caballero');
+  await page.screenshot({path:info.outputPath('clases-sala.png'),fullPage:true});
+  await page.locator('#ready').click();await rival.locator('#ready').click();await expect(page.locator('#stage')).toHaveAttribute('data-phase','playing',{timeout:7000});
+  await expect(page.locator('#room-picker')).toBeHidden();
+  await page.locator('canvas').click({position:{x:200,y:150}});await expect(page.locator('#cd-shot')).toHaveText(/➶ 0\.\ds/);await page.waitForTimeout(250);
+  await page.locator('canvas').click({button:'right',position:{x:200,y:150}});await expect(page.locator('#cd-sword')).toHaveText(/⚔ 0\.\ds/);await page.waitForTimeout(250);
+  await page.keyboard.press('Space');await expect(page.locator('#cd-dash')).toHaveText(/➟ [01]\.\ds/);
+  const canvas=(await rival.locator('canvas').boundingBox())!;await rival.mouse.move(canvas.x+canvas.width*.8,canvas.y+canvas.height*.5);await rival.mouse.down({button:'right'});
+  await expect(rival.locator('#stage')).toHaveAttribute('data-guardiNg'.toLowerCase(),'true');
+  await rival.mouse.down({button:'left'});await rival.mouse.up({button:'left'});await expect(rival.locator('#cd-sword')).toHaveText('⚔ Lista');
+  await rival.screenshot({path:info.outputPath('escudo-pc.png'),fullPage:true});await rival.mouse.up({button:'right'});await expect(rival.locator('#stage')).toHaveAttribute('data-guarding','false');
+  await expect(rival.locator('#cd-guard')).toHaveText(/⛨ [01]\.\ds/);await expect(rival.locator('#cd-dash')).toBeHidden();await expect(rival.locator('#cd-shot')).toBeHidden();
+  expect(errors).toEqual([]);await context.close();
+});
+test('escudo móvil con tres dedos, liberación y clase pesada',async({browser},info)=>{
+  const pc=await browser.newContext(),opponent=await pc.newPage();await enter(opponent,'/','Heavy','vanguard');
+  const mobile=await browser.newContext({viewport:{width:844,height:390},isMobile:true,hasTouch:true,deviceScaleFactor:2});const page=await mobile.newPage();const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
+  await enter(page,opponent.url(),'Shield','guardian');await page.screenshot({path:info.outputPath('clases-mobile.png')});await opponent.locator('#ready').click();await page.locator('#ready').click();await expect(page.locator('#stage')).toHaveAttribute('data-phase','playing',{timeout:7000});
+  await expect(opponent.locator('#health')).toHaveText('♥ 5/5');await expect(opponent.locator('#cd-dash')).toBeHidden();
+  await opponent.locator('canvas').click();await expect(opponent.locator('#cd-sword')).toHaveText(/⚔ [01]\.\ds/);
+  const cdp=await mobile.newCDPSession(page);const boxes=await Promise.all(['#stick-move','#stick-aim','#touch-guard'].map(id=>page.locator(id).boundingBox()));
+  const touches=boxes.map((b,i)=>({id:i+1,x:b!.x+b!.width/2,y:b!.y+b!.height/2}));
+  await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:touches});touches[0].x-=25;touches[1].y-=25;await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:touches});
+  await expect(page.locator('#stage')).toHaveAttribute('data-guarding','true');await expect(page.locator('#stick-move')).toHaveAttribute('style',/--dx: -/);await expect(page.locator('#stick-aim')).toHaveAttribute('style',/--dy: -/);
+  await page.screenshot({path:info.outputPath('escudo-mobile.png')});await cdp.send('Input.dispatchTouchEvent',{type:'touchCancel',touchPoints:[]});await expect(page.locator('#stage')).toHaveAttribute('data-guarding','false');
+  await expect(page.locator('#stick-move')).toHaveAttribute('style',/--dx: 0px/);await expect(page.locator('#cd-shot')).toBeHidden();await expect(page.locator('#touch-dash')).toBeHidden();
+  expect(errors).toEqual([]);await mobile.close();await pc.close();
+});

@@ -1,6 +1,9 @@
 import Phaser from 'phaser';
 import {
   RULES,
+  CLASSES,
+  CLASS_IDS,
+  DEFAULT_CLASS,
   WALLS,
   HOMES,
   SPAWNS,
@@ -14,28 +17,11 @@ import {
 } from '@bandera/shared';
 import { Controls } from './input.js';
 import { sound } from './audio.js';
+import { CLASS_ART, palette } from './art.js';
 
 const BLUE = 0x73bbef,
   RED = 0xee8b79,
   GOLD = 0xf3ce86;
-const knight = [
-  '....hhhh....',
-  '...hHHHHh...',
-  '..hHHHHHHh..',
-  '..hHvvvvHh..',
-  '..hHvvvvHh..',
-  '...hHHHHh...',
-  '..ccsssscc..',
-  '.cccSSSSccc.',
-  'mccCSSSSCccm',
-  'mmcCSSSSCmm.',
-  '..ccSSSScc..',
-  '...cCCCCc...',
-  '...hHhHh....',
-  '...hHhHh....',
-  '...bbb.bb...',
-  '...bbb.bb...',
-];
 export class Arena extends Phaser.Scene {
   controls!: Controls;
   localId = '';
@@ -49,7 +35,7 @@ export class Arena extends Phaser.Scene {
       shadow: Phaser.GameObjects.Ellipse;
       name: Phaser.GameObjects.Text;
       hp: Phaser.GameObjects.Graphics;
-      weapon: Phaser.GameObjects.Rectangle;
+      weapon: Phaser.GameObjects.Graphics;
       x: number;
       y: number;
     }
@@ -80,8 +66,8 @@ export class Arena extends Phaser.Scene {
     });
     this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
       if (p.wasTouch || !this.controls.enabled) return;
-      if (p.rightButtonDown()) this.controls.actions.shot = true;
-      else this.controls.actions.sword = true;
+      if (p.rightButtonDown()) this.controls.secondary(true);
+      else this.controls.primary();
     });
     this.paintFlags(
       TEAMS.map(
@@ -92,52 +78,11 @@ export class Arena extends Phaser.Scene {
     for (const team of TEAMS) this.drawPlayer(newPlayer(`preview-${team}`, '', team), false, 0);
   }
   private makeTextures() {
-    for (const [team, color, light] of [
-      ['blue', '#548cb7', '#8cc5e7'],
-      ['red', '#b66558', '#efa08b'],
-    ] as const) {
-      for (let frame = 0; frame < 2; frame++) {
-        const symbols: Record<string, string> = {
-          h: '0',
-          H: '1',
-          v: '2',
-          c: '3',
-          C: '4',
-          s: '5',
-          S: '6',
-          m: '7',
-          b: '8',
-        };
-        const data = knight.map((r, i) =>
-          (frame === 1 && i >= 12 ? r.split('').reverse().join('') : r)
-            .split('')
-            .map((c) => symbols[c] ?? '.')
-            .join(''),
-        );
-        this.textures.generate(`${team}-${frame}`, {
-          data,
-          pixelWidth: 2,
-          palette: {
-            0: '#28353b',
-            1: '#a5b1b0',
-            2: '#20292c',
-            3: color,
-            4: light,
-            5: '#bec7bd',
-            6: '#e1e2cf',
-            7: '#a3aea9',
-            8: '#4a4140',
-            9: '#000000',
-            A: '#000000',
-            B: '#000000',
-            C: '#000000',
-            D: '#000000',
-            E: '#000000',
-            F: '#000000',
-          },
-        });
+    for (const [team,color,light] of [['blue','#548cb7','#8cc5e7'],['red','#b66558','#efa08b']] as const)
+      for (const classId of CLASS_IDS) for(let frame=0;frame<2;frame++) {
+        const data=CLASS_ART[classId].map((row,i)=>frame===1&&i>=13?row.slice(0,3)+row.slice(3,13).split('').reverse().join('')+row.slice(13):row);
+        this.textures.generate(`${team}-${classId}-${frame}`, { data,pixelWidth:2,palette:palette(color,light) as Phaser.Types.Create.Palette });
       }
-    }
   }
   private drawMap() {
     const g = this.add.graphics();
@@ -258,6 +203,8 @@ export class Arena extends Phaser.Scene {
     }
     const own = snapshot.players.find((p) => p.id === id);
     if (own) {
+      this.controls.configure(own.classId);
+      if(first)this.controls.angle=own.angle;
       this.seq = Math.max(this.seq, own.ack);
       this.pending = this.pending.filter((i) => i.seq > own.ack);
       if (snapshot.phase !== this.phase || snapshot.paused || own.hp <= 0) this.pending = [];
@@ -282,7 +229,8 @@ export class Arena extends Phaser.Scene {
         const slash = this.add.graphics().setDepth(15);
         slash.lineStyle(4, 0xffe7b1, 0.9);
         slash.beginPath();
-        slash.arc(e.x, e.y, 42, (e.angle ?? 0) - 0.9, (e.angle ?? 0) + 0.9);
+        const stats=CLASSES[e.classId??DEFAULT_CLASS];
+        slash.arc(e.x,e.y,stats.meleeRange,(e.angle??0)-stats.meleeArc/2,(e.angle??0)+stats.meleeArc/2);
         slash.strokePath();
         this.tweens.add({
           targets: slash,
@@ -291,7 +239,7 @@ export class Arena extends Phaser.Scene {
           onComplete: () => slash.destroy(),
         });
       } else {
-        const color = e.team === 'blue' ? BLUE : RED;
+        const color = e.kind==='block'?GOLD:e.team === 'blue' ? BLUE : RED;
         for (let i = 0; i < (e.kind === 'capture' ? 24 : 7); i++) {
           const a = i * 2.4,
             rect = this.add.rectangle(e.x, e.y, 3, 3, color).setDepth(20);
@@ -359,7 +307,7 @@ export class Arena extends Phaser.Scene {
     let v = this.visuals.get(p.id);
     if (!v) {
       v = {
-        body: this.add.sprite(p.x, p.y, `${p.team}-0`).setOrigin(0.5, 0.7).setDepth(10),
+        body: this.add.sprite(p.x, p.y, `${p.team}-${p.classId}-0`).setOrigin(0.5, 0.7).setDepth(10),
         shadow: this.add.ellipse(p.x, p.y + 8, 26, 10, 0x081618, 0.4).setDepth(3),
         name: this.add
           .text(p.x, p.y - 32, p.name, {
@@ -372,7 +320,7 @@ export class Arena extends Phaser.Scene {
           .setOrigin(0.5)
           .setDepth(13),
         hp: this.add.graphics().setDepth(13),
-        weapon: this.add.rectangle(p.x, p.y, 3, 17, 0xd9ddc9).setOrigin(0.5, 1).setDepth(11),
+        weapon: this.add.graphics().setDepth(11),
         x: p.x,
         y: p.y,
       };
@@ -384,25 +332,44 @@ export class Arena extends Phaser.Scene {
     v.y += (p.y - v.y) * smooth;
     v.body
       .setPosition(v.x, v.y + (moving ? Math.sin(time * 0.022) * 1.2 : 0))
-      .setTexture(`${p.team}-${moving ? Math.floor(time / 110) % 2 : 0}`)
+      .setTexture(`${p.team}-${p.classId}-${moving ? Math.floor(time / 110) % 2 : 0}`)
       .setFlipX(Math.cos(p.angle) < 0);
     v.body
       .setAngle(p.hp <= 0 ? 90 : 0)
-      .setAlpha(p.hp <= 0 ? 0.2 : p.invuln > 0 ? 0.55 + Math.sin(time * 0.025) * 0.25 : 1);
+      .setAlpha(p.hp<=0?.2:p.dashInvulnerable?.45:p.invuln>0?.55+Math.sin(time*.025)*.25:1);
     if (p.hitFlash > 0) v.body.setTintFill(0xffe6ba);
     else v.body.clearTint();
     v.shadow.setPosition(v.x, v.y + 8);
     v.name.setPosition(v.x, v.y - 34).setText(local ? `${p.name} · VOS` : p.name);
-    v.weapon
-      .setPosition(v.x + Math.cos(p.angle) * 12, v.y + Math.sin(p.angle) * 12)
-      .setRotation(p.angle + Math.PI / 2 + (p.windup > 0 ? -0.7 : 0))
-      .setVisible(p.hp > 0);
+    const stats=CLASSES[p.classId], w=v.weapon;
+    w.clear();w.setPosition(v.x,v.y);w.setRotation(p.angle);
+    if(p.hp>0){
+      if(p.classId==='archer') {
+        w.lineStyle(2,GOLD);w.beginPath();w.arc(9,0,15,-Math.PI/2,Math.PI/2);w.strokePath();
+        w.lineStyle(1,0xdad6bd);w.lineBetween(9,-15,9,15);
+        if(p.windup>0){w.fillStyle(0xe3e5d5);w.fillRect(12,-2,14,3);}
+      } else {
+        const wind=p.windup>0?Math.min(1,p.windup/stats.windup):0;
+        w.setRotation(p.angle-wind*.9);
+        w.fillStyle(0xe3e5d5);w.fillRect(11,-2,p.classId==='vanguard'?43:23,p.classId==='vanguard'?5:3);
+        w.fillStyle(GOLD);w.fillRect(12,-7,3,14);w.fillStyle(0x77634b);w.fillRect(6,-2,7,4);
+        if(p.classId==='guardian'){
+          w.setRotation(p.angle);w.fillStyle(p.guarding?GOLD:0x738b86);w.fillPoints([{x:14,y:-11},{x:24,y:-8},{x:24,y:8},{x:14,y:11},{x:9,y:0}],true);
+          w.lineStyle(2,0x435955);w.lineBetween(17,-7,17,7);w.lineBetween(12,0,22,0);
+          if(p.guarding){w.lineStyle(3,GOLD,.8);w.beginPath();w.arc(0,0,31,-RULES.guardArc/2,RULES.guardArc/2);w.strokePath();}
+        }
+      }
+    }
     v.hp.clear();
     if (p.hp > 0) {
-      for (let i = 0; i < 3; i++) {
-        v.hp.fillStyle(i < p.hp ? (p.team === 'blue' ? BLUE : RED) : 0x1a282c);
-        v.hp.fillRect(v.x - 13 + i * 9, v.y - 25, 7, 3);
+      const left=v.x-(p.maxHp*8-2)/2;
+      for (let i=0;i<p.maxHp;i++) {
+        v.hp.fillStyle(0x1a282c);v.hp.fillRect(left+i*8,v.y-25,6,3);
+        const fill=Math.min(1,Math.max(0,p.hp-i));
+        v.hp.fillStyle(p.team==='blue'?BLUE:RED);v.hp.fillRect(left+i*8,v.y-25,6*fill,3);
       }
+      if(p.windup>0){v.hp.lineStyle(1,GOLD,.45);v.hp.beginPath();v.hp.arc(v.x,v.y,stats.meleeRange,p.swingAngle-stats.meleeArc/2,p.swingAngle+stats.meleeArc/2);v.hp.strokePath();}
+      if(p.dashInvulnerable){v.hp.lineStyle(2,0xc0eafa,.65);v.hp.strokeEllipse(v.x,v.y,35,40);}
       if (local) {
         v.hp.lineStyle(1, GOLD, 0.6);
         v.hp.strokeEllipse(v.x, v.y + 9, 32, 12);
@@ -433,7 +400,7 @@ export class Arena extends Phaser.Scene {
     for (const p of s.players)
       this.drawPlayer(
         p.id === this.localId && this.predicted
-          ? { ...p, x: this.predicted.x, y: this.predicted.y, angle: this.controls.angle }
+          ? { ...p, x: this.predicted.x, y: this.predicted.y, angle: this.controls.angle, guarding:this.predicted.guarding, guardLeft:this.predicted.guardLeft, dashInvulnerable:this.predicted.dashInvulnerable, windup:this.predicted.windup }
           : p,
         p.id === this.localId,
         time,

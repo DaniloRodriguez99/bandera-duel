@@ -1,24 +1,25 @@
 import Phaser from 'phaser';
 import { Client, type Room } from '@colyseus/sdk';
-import { RULES, validName, type Snapshot } from '@bandera/shared';
+import { RULES, CLASSES, validName, type Snapshot, type ClassId } from '@bandera/shared';
 import { Arena } from './scene.js';
 import { muted, toggleMute, unlockAudio } from './audio.js';
+import { savedClass, saveClass, mountClasses, updateClasses } from './classes.js';
 import './style.css';
 
 document.querySelector('#app')!.innerHTML = `
 <header class="topbar"><a class="brand" href="/" aria-label="Bandera Duel, inicio"><span class="brand-mark">⚑</span><span>BANDERA<span class="brand-thin"> DUEL</span><small>LA GLORIA NO SE HEREDA. SE ROBA.</small></span></a><div class="header-right"><span class="edition">PRIMERA EDICIÓN <b>01</b></span><button id="mute" class="icon-btn" aria-label="Silenciar sonido"></button></div></header>
 <main>
 <section id="intro" class="intro"><div class="hero-copy"><div class="eyebrow"><i></i> DUELO ONLINE · 1 CONTRA 1</div><h1>Tu rival tiene<br>algo <em>tuyo.</em></h1><p>Entrá al castillo. Robá su bandera.<br>Volvé con la gloria antes de que te alcancen.</p><div class="facts"><span><b>02</b> rivales</span><span><b>03</b> minutos</span><span><b>01</b> vencedor</span></div></div>
-<div class="entry-card"><div class="card-top"><span class="tiny">EL DESAFÍO EMPIEZA ACÁ</span><span class="swords">⚔</span></div><h2 id="entry-title">Prepará tu estandarte.</h2><p id="entry-description">Creá una sala privada e invitá a tu rival.</p><form id="entry-form"><label for="name">TU APODO</label><input id="name" name="name" placeholder="Caballero sin nombre" maxlength="16" autocomplete="nickname" required><button id="enter" class="primary" type="submit">Crear un duelo <span>↗</span></button></form><div id="status" class="status" role="status" aria-live="polite">Sin cuentas. Sin descargas. Solo el duelo.</div><button id="new-instead" class="text-btn" hidden>Crear otra sala</button></div></section>
+<div class="entry-card"><div class="card-top"><span class="tiny">EL DESAFÍO EMPIEZA ACÁ</span><span class="swords">⚔</span></div><h2 id="entry-title">Prepará tu estandarte.</h2><p id="entry-description">Creá una sala privada e invitá a tu rival.</p><form id="entry-form"><label for="name">TU APODO</label><input id="name" name="name" placeholder="Caballero sin nombre" maxlength="16" autocomplete="nickname" required><fieldset class="class-picker"><legend>ELEGÍ TU GUERRERO</legend><div id="entry-classes" class="class-grid"></div></fieldset><button id="enter" class="primary" type="submit">Crear un duelo <span>↗</span></button></form><div id="status" class="status" role="status" aria-live="polite">Sin cuentas. Sin descargas. Solo el duelo.</div><button id="new-instead" class="text-btn" hidden>Crear otra sala</button></div></section>
 <section class="arena-section"><div class="arena-heading"><div><span class="live-dot"></span><span id="arena-label">EL PATIO DEL REY</span><span class="map-label">ARENA 01</span></div><span id="connection-label">ESPADA · ARCO · DASH</span></div>
 <div id="hud" class="hud" hidden><div class="team blue"><span>◆ AZUR</span><b id="score-blue">0</b><small id="flag-blue">En base</small></div><div class="clock"><span id="timer">3:00</span><small>PRIMERO A 3</small></div><div class="team red"><small id="flag-red">En base</small><b id="score-red">0</b><span>CARMESÍ ✚</span></div></div>
 <div id="stage" class="stage"><div id="game"></div><div class="preview-tag" id="preview-tag">DOS ESTANDARTES. UN SOLO CAMINO A LA VICTORIA.</div>
-<div id="overlay" class="overlay" hidden><div class="overlay-card"><span id="overlay-kicker" class="tiny">SALA PRIVADA</span><h2 id="overlay-title">Esperando a tu rival</h2><p id="overlay-description"></p><div id="roster" class="roster"></div><div id="invitation"><label for="invite">LINK DE INVITACIÓN</label><div class="invite-row"><input id="invite" readonly aria-label="Link de invitación"><button id="copy" class="secondary">Copiar</button></div></div><button id="ready" class="primary">Estoy listo <span>⚔</span></button><button id="leave" class="text-btn">Salir de la sala</button></div></div>
+<div id="overlay" class="overlay" hidden><div class="overlay-card"><span id="overlay-kicker" class="tiny">SALA PRIVADA</span><h2 id="overlay-title">Esperando a tu rival</h2><p id="overlay-description"></p><div id="roster" class="roster"></div><fieldset id="room-picker" class="class-picker compact"><legend>TU CLASE · PODÉS CAMBIAR ANTES DE JUGAR</legend><div id="room-classes" class="class-grid"></div></fieldset><p id="selection-status" role="status" hidden></p><div id="invitation"><label for="invite">LINK DE INVITACIÓN</label><div class="invite-row"><input id="invite" readonly aria-label="Link de invitación"><button id="copy" class="secondary">Copiar</button></div></div><button id="ready" class="primary">Estoy listo <span>⚔</span></button><button id="leave" class="text-btn">Salir de la sala</button></div></div>
 <div id="announcement" class="announcement" hidden aria-live="polite"></div>
-<div id="touch-controls"><div id="stick-move" class="stick" aria-label="Mover"><span></span><small>MOVER</small></div><div class="touch-right"><button id="touch-sword" class="touch-action" aria-label="Espada">⚔</button><button id="touch-dash" class="touch-action" aria-label="Dash">➟</button><div id="stick-aim" class="stick" aria-label="Apuntar y soltar para disparar"><span></span><small>APUNTAR</small></div></div></div></div>
-<div class="arena-bottom"><span id="arena-hint">Robá la bandera rival y traela a tu base. La tuya debe estar en casa.</span><div id="cooldowns" hidden><span id="cd-sword"></span><span id="cd-shot"></span><span id="cd-dash"></span></div><span class="corner-detail">◆ &nbsp; VS &nbsp; ✚</span></div></section>
+<div id="touch-controls"><div id="stick-move" class="stick" aria-label="Mover"><span></span><small>MOVER</small></div><div class="touch-right"><button id="touch-sword" class="touch-action" aria-label="Espada">⚔</button><button id="touch-guard" class="touch-action" aria-label="Mantener escudo" hidden>⛨</button><button id="touch-dash" class="touch-action" aria-label="Dash">➟</button><div id="stick-aim" class="stick" aria-label="Apuntar y soltar para disparar"><span></span><small>APUNTAR</small></div></div></div></div>
+<div class="arena-bottom"><span id="arena-hint">Robá la bandera rival y traela a tu base. La tuya debe estar en casa.</span><div id="cooldowns" hidden><span id="health" aria-label="Vida"></span><span id="cd-sword"></span><span id="cd-shot"></span><span id="cd-dash"></span><span id="cd-guard" hidden></span></div><span class="corner-detail">◆ &nbsp; VS &nbsp; ✚</span></div></section>
 <section id="guide" class="guide"><article><span class="step">01 / ROBÁ</span><h3>Entrá en terreno rival.</h3><p>Tocá su bandera para llevarla. Podés pelear mientras la transportás.</p></article><article><span class="step">02 / RESISTÍ</span><h3>Un golpe cambia todo.</h3><p>Si te hieren, soltás la bandera. Recuperá la tuya con solo tocarla.</p></article><article><span class="step">03 / VOLVÉ</span><h3>Tu base. Tu victoria.</h3><p>Capturá con tu bandera en casa. Tres capturas deciden el duelo.</p></article></section>
-<div class="control-guide"><span><kbd>W A S D</kbd> Mover</span><span><kbd>CLIC</kbd> Espada</span><span><kbd>CLIC DER.</kbd> Flecha</span><span><kbd>ESPACIO</kbd> Dash</span><span class="mobile-help">En celular: mové a la izquierda, apuntá a la derecha y soltá para disparar.</span></div>
+<div id="control-guide" class="control-guide"></div>
 </main><footer><span>BANDERA DUEL <b> / </b> HECHO PARA LA REVANCHA.</span><span>1V1 · V0.1</span></footer><div id="rotate"><span>↻</span><h2>Giralo para el duelo.</h2><p>La arena se juega con el celular horizontal.</p></div>`;
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -47,6 +48,24 @@ const endpoint =
 const client = new Client(endpoint);
 const nameInput = $<HTMLInputElement>('name');
 nameInput.value = localStorage.getItem('bandera-name') || '';
+let selectedClass = savedClass();
+mountClasses($('entry-classes'), selectedClass, id => {
+  selectedClass=id;saveClass(id);updateClasses($('entry-classes'),id);showClassControls(id);
+});
+mountClasses($('room-classes'),selectedClass,id=>room?.send('selectClass',id));
+let displayedClass: ClassId | undefined;
+function showClassControls(id:ClassId) {
+  if(displayedClass===id)return;
+  displayedClass=id;
+  const archer=id==='archer',guardian=id==='guardian';
+  $('touch-dash').hidden=!archer;$('touch-guard').hidden=!guardian;
+  $('touch-sword').textContent=archer?'†':'⚔';
+  $('touch-sword').setAttribute('aria-label',archer?'Daga':id==='vanguard'?'Espada pesada':'Espada');
+  $('stick-aim').setAttribute('aria-label',archer?'Apuntar y soltar para disparar':'Apuntar');
+  $('cd-shot').hidden=!archer;$('cd-dash').hidden=!archer;$('cd-guard').hidden=!guardian;
+  $('control-guide').innerHTML=`<span><kbd>W A S D</kbd> Mover</span><span><kbd>CLIC</kbd> ${archer?'Flecha':'Espada'}</span>${id!=='vanguard'?`<span><kbd>CLIC DER.</kbd> ${archer?'Daga':'Mantener escudo'}</span>`:''}${archer?'<span><kbd>ESPACIO</kbd> Esquivar</span>':''}<span class="mobile-help">${archer?'Mové a la izquierda. Apuntá y soltá a la derecha para disparar. Botones de daga y dash.':guardian?'Mové y apuntá con las palancas. Golpeá con espada o mantené pulsado el escudo.':'Mové y apuntá con las palancas. El botón de espada prepara un golpe pesado.'}</span>`;
+}
+showClassControls(selectedClass);
 function entryMode() {
   if (target) {
     $('entry-title').textContent = 'Aceptá el desafío.';
@@ -109,6 +128,7 @@ function bind(joined: Room) {
     arena.receive(s, joined.sessionId);
     render(s);
   });
+  room.onMessage('selectionError', (message:string) => { $('selection-status').hidden=false;$('selection-status').textContent=message; });
   room.onMessage('pong', (stamp: number) => {
     $('connection-label').textContent = `● CONECTADO · ${Math.round(performance.now() - stamp)} MS`;
   });
@@ -163,8 +183,8 @@ $('entry-form').onsubmit = async (e) => {
   try {
     await warmup();
     const joined = target
-      ? await client.joinById(target, { name })
-      : await client.create('duel', { name });
+      ? await client.joinById(target, { name, classId:selectedClass })
+      : await client.create('duel', { name, classId:selectedClass });
     bind(joined);
   } catch (error) {
     const message = (error as Error).message || '';
@@ -235,6 +255,15 @@ function render(s: Snapshot) {
   $('touch-controls').classList.toggle('active', s.phase === 'playing' && !s.paused);
   $('cooldowns').hidden = s.phase !== 'playing';
   if (me) {
+    selectedClass=me.classId;saveClass(me.classId);showClassControls(me.classId);
+    updateClasses($('room-classes'),me.classId,!overlay||s.paused);
+    $('room-picker').hidden=!overlay;
+    $('stage').dataset.class=me.classId;
+    $('stage').dataset.guarding=String(me.guarding);
+    $('stage').dataset.dashing=String(me.dashInvulnerable);
+    $('health').textContent=`♥ ${me.hp}/${me.maxHp}`;
+    $('health').setAttribute('aria-label',`Vida: ${me.hp} de ${me.maxHp}`);
+    $('cd-guard').textContent=me.guarding?`⛨ Cubriendo ${me.guardLeft.toFixed(1)}s`:`⛨ ${me.guardCd>0?me.guardCd.toFixed(1)+'s':'Listo'}`;
     $('cd-sword').textContent = `⚔ ${me.swordCd > 0 ? me.swordCd.toFixed(1) + 's' : 'Lista'}`;
     $('cd-shot').textContent = `➶ ${me.shotCd > 0 ? me.shotCd.toFixed(1) + 's' : 'Lista'}`;
     $('cd-dash').textContent = `➟ ${me.dashCd > 0 ? me.dashCd.toFixed(1) + 's' : 'Listo'}`;
@@ -270,7 +299,7 @@ function render(s: Snapshot) {
         row = document.createElement('div');
       row.className = `roster-player ${team}`;
       const title = document.createElement('span');
-      title.textContent = `${team === 'blue' ? '◆' : '✚'} ${p?.name || 'Esperando rival…'}`;
+      title.textContent = `${team === 'blue' ? '◆' : '✚'} ${p?.name || 'Esperando rival…'}${p?' · '+CLASSES[p.classId].name:''}`;
       const state = document.createElement('small');
       state.textContent = !p
         ? 'ASIENTO LIBRE'

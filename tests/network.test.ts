@@ -3,7 +3,7 @@ import { Client, type Room as ClientRoom } from '@colyseus/sdk';
 import { matchMaker } from '@colyseus/core';
 import { createServer } from '../packages/server/src/app.js';
 import type { DuelRoom } from '../packages/server/src/room.js';
-import { HOMES, type Snapshot } from '@bandera/shared';
+import { HOMES, idleInput, type Snapshot, type ClassId } from '@bandera/shared';
 const server = createServer();
 const sdk = new Client('ws://127.0.0.1:2568');
 const sessions: ClientRoom[] = [];
@@ -21,13 +21,14 @@ async function track(p: Promise<ClientRoom>) {
   sessions.push(r);
   r.onMessage('snapshot', (s: Snapshot) => states.set(r.sessionId, s));
   r.onMessage('pong', () => {});
+  r.onMessage('selectionError', () => {});
   r.send('sync');
   await until(() => states.has(r.sessionId));
   return r;
 }
-async function pair() {
-  const a = await track(sdk.create('duel', { name: 'Azul' })),
-    b = await track(sdk.joinById(a.roomId, { name: 'Rojo' }));
+async function pair(first:ClassId='guardian',second:ClassId='guardian') {
+  const a = await track(sdk.create('duel', { name: 'Azul',classId:first })),
+    b = await track(sdk.joinById(a.roomId, { name: 'Rojo',classId:second }));
   const host = matchMaker.getLocalRoomById(a.roomId) as DuelRoom;
   return { a, b, host };
 }
@@ -45,6 +46,26 @@ afterAll(async () => {
   await server.gracefullyShutdown(false);
 });
 describe('servidor con clientes Colyseus reales', () => {
+  it.each([['archer','guardian'],['archer','vanguard'],['guardian','vanguard']] as [ClassId,ClassId][])('sincroniza clases %s vs %s y rechaza armas no autorizadas',async(first,second)=>{
+    const {a,b,host}=await pair(first,second);await until(()=>states.get(a.sessionId)?.players.length===2);
+    expect(states.get(b.sessionId)?.players.map(p=>p.classId)).toEqual([first,second]);host.game.state.phase='playing';
+    a.send('input',{...idleInput(1),guard:true});b.send('input',{...idleInput(1),shot:true,dash:true});await sleep(120);
+    expect(host.game.state.arrows).toHaveLength(0);expect(host.game.state.players[1].dashCd).toBe(0);
+    if(first==='archer')expect(host.game.state.players[0].guarding).toBe(false);
+    await a.leave();await b.leave();
+  });
+  it('valida selección, anula listo y bloquea cambios en partida',async()=>{
+    await expect(sdk.create('duel',{name:'X',classId:'wizard'})).rejects.toThrow();
+    const {a,b,host}=await pair();a.send('ready');await until(()=>host.game.state.players[0].ready);
+    b.send('selectClass','vanguard');await until(()=>host.game.state.players[1].classId==='vanguard');expect(host.game.state.players[0].ready).toBe(false);
+    b.send('selectClass','wizard');await sleep(100);expect(host.game.state.players[1].classId).toBe('vanguard');
+    host.game.state.phase='playing';b.send('selectClass','archer');await sleep(100);expect(host.game.state.players[1].classId).toBe('vanguard');
+    await a.leave();await b.leave();
+  });
+  it('libera escudo sostenido si dejan de llegar entradas durante 250 ms',async()=>{
+    const {a,b,host}=await pair();host.game.state.phase='playing';a.send('input',{...idleInput(1),guard:true});await until(()=>host.game.state.players[0].guarding);
+    await until(()=>!host.game.state.players[0].guarding);expect(host.game.state.players[0].guardCd).toBeGreaterThan(0);await a.leave();await b.leave();
+  });
   it('salud, validación de nombre, sala privada y cupo', async () => {
     expect((await fetch('http://127.0.0.1:2568/health')).status).toBe(200);
     expect(
@@ -100,7 +121,7 @@ describe('servidor con clientes Colyseus reales', () => {
     expect(states.get(a.sessionId)?.score.blue).toBe(0);
   });
   it('pausa, reconecta la misma sesión y conserva el reloj con 150ms de latencia', async () => {
-    const { a, b, host } = await pair();
+    const { a, b, host } = await pair('vanguard','archer');
     host.game.state.phase = 'playing';
     server.simulateLatency(150);
     a.reconnection.minUptime = 0;
@@ -114,6 +135,7 @@ describe('servidor con clientes Colyseus reales', () => {
     expect(host.game.state.timeLeft).toBe(paused);
     await until(() => !host.game.state.paused, 12000);
     expect(host.game.state.players.find((p) => p.id === a.sessionId)?.connected).toBe(true);
+    expect(host.game.state.players.find((p) => p.id === a.sessionId)?.classId).toBe('vanguard');
     expect(before - host.game.state.timeLeft).toBeLessThan(2);
     server.simulateLatency(0);
     await a.leave();

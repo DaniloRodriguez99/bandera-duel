@@ -1,14 +1,16 @@
 import { test, expect, type Page } from '@playwright/test';
-async function create(page: Page, name: string) {
+async function create(page: Page, name: string, classId='guardian') {
   await page.goto('/');
   await page.locator('#name').fill(name);
+  await page.locator(`#entry-classes [data-class="${classId}"]`).click();
   await page.locator('#enter').click();
   await expect(page.locator('#overlay')).toBeVisible();
   return page.url();
 }
-async function join(page: Page, url: string, name: string) {
+async function join(page: Page, url: string, name: string, classId='guardian') {
   await page.goto(url);
   await page.locator('#name').fill(name);
+  await page.locator(`#entry-classes [data-class="${classId}"]`).click();
   await page.locator('#enter').click();
   await expect(page.locator('#overlay')).toBeVisible();
 }
@@ -44,6 +46,7 @@ test('dos navegadores: invitación, tres capturas y revancha', async ({ page, br
   await expect(page.locator('#overlay-title')).toHaveText('La gloria es tuya.');
   await expect(rival.locator('#score-blue')).toHaveText('3');
   await page.screenshot({ path: info.outputPath('victoria.png'), fullPage: true });
+  await page.locator('#room-classes [data-class="vanguard"]').click();
   await page.locator('#ready').click();
   await rival.locator('#ready').click();
   await expect(page.locator('#stage')).toHaveAttribute('data-phase', 'playing', { timeout: 7000 });
@@ -52,6 +55,8 @@ test('dos navegadores: invitación, tres capturas y revancha', async ({ page, br
   await page.reload();
   await expect(page.locator('#stage')).toHaveAttribute('data-phase', 'playing', { timeout: 12000 });
   await expect(page.locator('#arena-label')).toContainText('AZUR');
+  await expect(page.locator('#stage')).toHaveAttribute('data-class','vanguard');
+  await expect(page.locator('#health')).toHaveText('♥ 5/5');
   await expect(page.locator('#overlay')).toBeHidden();
   expect(errors).toEqual([]);
   await context.close();
@@ -69,7 +74,7 @@ test('celular horizontal, multitouch, cancelación y aviso vertical', async ({ b
   const page = await mobile.newPage();
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
-  await join(page, url, 'Mobile');
+  await join(page, url, 'Mobile','archer');
   await opponent.locator('#ready').click();
   await page.locator('#ready').click();
   await expect(page.locator('#stage')).toHaveAttribute('data-phase', 'playing', { timeout: 7000 });
@@ -93,8 +98,10 @@ test('celular horizontal, multitouch, cancelación y aviso vertical', async ({ b
   await session.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [touches[0]] });
   await session.send('Input.dispatchTouchEvent', { type: 'touchCancel', touchPoints: [] });
   await expect(page.locator('#stick-move')).toHaveAttribute('style', /--dx: 0px/);
+  await page.waitForTimeout(250);
   await page.locator('#touch-sword').tap();
   await expect(page.locator('#cd-sword')).toHaveText(/⚔ 0\.\ds/);
+  await page.waitForTimeout(250);
   await page.locator('#touch-dash').tap();
   await expect(page.locator('#cd-dash')).toHaveText(/➟ [01]\.\ds/);
   await page.setViewportSize({ width: 390, height: 844 });

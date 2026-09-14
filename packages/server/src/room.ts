@@ -6,6 +6,9 @@ import {
   idleInput,
   sanitizeInput,
   validName,
+  validClass,
+  DEFAULT_CLASS,
+  type ClassId,
   other,
   type Input,
 } from '@bandera/shared';
@@ -33,6 +36,13 @@ export class DuelRoom extends Room {
       this.receivedAt.set(client.sessionId, Date.now());
     });
     this.onMessage('ready', (client) => this.game.ready(client.sessionId));
+    this.onMessage('selectClass', (client, classId) => {
+      if (!validClass(classId) || !this.game.selectClass(client.sessionId, classId)) {
+        client.send('selectionError', 'No se puede elegir esa clase ahora.');
+        return;
+      }
+      this.broadcast('snapshot', this.game.state);
+    });
     this.onMessage('sync', (client) => client.send('snapshot', this.game.state));
     this.onMessage('ping', (client, stamp) => {
       if (typeof stamp === 'number' && Number.isFinite(stamp)) client.send('pong', stamp);
@@ -77,14 +87,16 @@ export class DuelRoom extends Room {
     // Colyseus starts a second clock ticker and fixed-step elapsed time is lost.
     this.patchRate = null;
   }
-  onAuth(_client: Client, options: { name?: unknown }) {
+  onAuth(_client: Client, options: { name?: unknown; classId?: unknown }) {
     if (!validName(options?.name))
       throw new ServerError(400, 'Usá un apodo de 1 a 16 letras o números.');
+    if (options.classId !== undefined && !validClass(options.classId))
+      throw new ServerError(400, 'Clase de guerrero desconocida.');
     if (this.game.state.phase !== 'lobby') throw new ServerError(409, 'Esta partida ya empezó.');
     return true;
   }
-  onJoin(client: Client, options: { name: string }) {
-    this.game.add(client.sessionId, validName(options.name)!);
+  onJoin(client: Client, options: { name: string; classId?: ClassId }) {
+    this.game.add(client.sessionId, validName(options.name)!, options.classId ?? DEFAULT_CLASS);
     this.broadcast('snapshot', this.game.state);
     console.info(
       JSON.stringify({ event: 'join', room: this.roomId, players: this.game.state.players.length }),
