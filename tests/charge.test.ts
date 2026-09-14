@@ -18,8 +18,8 @@ it('cancelación sin disparo libera carga y dash, trampa y triple la descartan',
   expect(d.state.players[0].shotCharge).toBe(0);expect(d.state.arrows.every(a=>!a.charged)).toBe(true);
  }
 });
-it('otras clases no cargan y el aturdimiento bloquea movimiento y todas las habilidades',()=>{
- const p=newPlayer('a','A','blue','mage');movePlayer(p,{...idleInput(),charge:true},false);expect(p.shotCharge).toBe(0);
+it('sin la habilidad lista no se carga y el aturdimiento bloquea movimiento y todas las habilidades',()=>{
+ const p=newPlayer('a','A','blue','mage');p.shotCd=1;movePlayer(p,{...idleInput(),charge:true},false);expect(p.shotCharge).toBe(0);
  p.classId='archer';p.stunLeft=1;const x=p.x;
  for(let i=0;i<30;i++)movePlayer(p,{...idleInput(),x:1,charge:true,shot:true,volley:true,trap:true,dash:true},false);
  expect(p.x).toBe(x);expect(p.stunLeft).toBeCloseTo(0);expect(p.shotCharge).toBe(0);expect(p.trapLeft).toBe(0);
