@@ -28,6 +28,8 @@ El cliente deduce el servidor desde el hostname de la página si `VITE_SERVER_UR
 
 ## Controles y reglas
 
+La banda sonora es original y sintetizada: melodía medieval en el menú, ritmo de aventura durante el duelo, más intensidad en los últimos 30 segundos y un cierre musical al terminar. Comienza tras la primera interacción y se pausa al ocultar la pestaña. El control «Música» ajusta su volumen sin cambiar los efectos; el botón de sonido silencia todo. Ambas preferencias se guardan en el navegador.
+
 | Acción  | PC             | Celular horizontal               |
 | ------- | -------------- | -------------------------------- |
 | Mover   | WASD o flechas | Palanca izquierda                |
