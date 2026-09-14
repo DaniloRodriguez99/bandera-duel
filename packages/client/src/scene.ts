@@ -78,11 +78,23 @@ export class Arena extends Phaser.Scene {
     for (const team of TEAMS) this.drawPlayer(newPlayer(`preview-${team}`, '', team), false, 0);
   }
   private makeTextures() {
-    for (const [team,color,light] of [['blue','#548cb7','#8cc5e7'],['red','#b66558','#efa08b']] as const)
-      for (const classId of CLASS_IDS) for(let frame=0;frame<2;frame++) {
-        const data=CLASS_ART[classId].map((row,i)=>frame===1&&i>=13?row.slice(0,3)+row.slice(3,13).split('').reverse().join('')+row.slice(13):row);
-        this.textures.generate(`${team}-${classId}-${frame}`, { data,pixelWidth:2,palette:palette(color,light) as Phaser.Types.Create.Palette });
-      }
+    for (const [team, color, light] of [
+      ['blue', '#548cb7', '#8cc5e7'],
+      ['red', '#b66558', '#efa08b'],
+    ] as const)
+      for (const classId of CLASS_IDS)
+        for (let frame = 0; frame < 2; frame++) {
+          const data = CLASS_ART[classId].map((row, i) =>
+            frame === 1 && i >= 13
+              ? row.slice(0, 3) + row.slice(3, 13).split('').reverse().join('') + row.slice(13)
+              : row,
+          );
+          this.textures.generate(`${team}-${classId}-${frame}`, {
+            data,
+            pixelWidth: 2,
+            palette: palette(color, light) as Phaser.Types.Create.Palette,
+          });
+        }
   }
   private drawMap() {
     const g = this.add.graphics();
@@ -129,7 +141,7 @@ export class Arena extends Phaser.Scene {
       g.lineStyle(1, color, 0.17);
       g.strokeCircle(h.x, h.y, 45);
       this.add
-        .text(h.x, 326, team === 'blue' ? '◆  AZUR' : '✚  CARMESÍ', {
+        .text(h.x, 326, team === 'blue' ? '◆  AZUL' : '✚  CARMESÍ', {
           fontFamily: 'monospace',
           fontSize: '11px',
           color: team === 'blue' ? '#8cc5e7' : '#efa08b',
@@ -204,7 +216,7 @@ export class Arena extends Phaser.Scene {
     const own = snapshot.players.find((p) => p.id === id);
     if (own) {
       this.controls.configure(own.classId);
-      if(first)this.controls.angle=own.angle;
+      if (first) this.controls.angle = own.angle;
       this.seq = Math.max(this.seq, own.ack);
       this.pending = this.pending.filter((i) => i.seq > own.ack);
       if (snapshot.phase !== this.phase || snapshot.paused || own.hp <= 0) this.pending = [];
@@ -229,8 +241,14 @@ export class Arena extends Phaser.Scene {
         const slash = this.add.graphics().setDepth(15);
         slash.lineStyle(4, 0xffe7b1, 0.9);
         slash.beginPath();
-        const stats=CLASSES[e.classId??DEFAULT_CLASS];
-        slash.arc(e.x,e.y,stats.meleeRange,(e.angle??0)-stats.meleeArc/2,(e.angle??0)+stats.meleeArc/2);
+        const stats = CLASSES[e.classId ?? DEFAULT_CLASS];
+        slash.arc(
+          e.x,
+          e.y,
+          stats.meleeRange,
+          (e.angle ?? 0) - stats.meleeArc / 2,
+          (e.angle ?? 0) + stats.meleeArc / 2,
+        );
         slash.strokePath();
         this.tweens.add({
           targets: slash,
@@ -239,7 +257,7 @@ export class Arena extends Phaser.Scene {
           onComplete: () => slash.destroy(),
         });
       } else {
-        const color = e.kind==='block'?GOLD:e.team === 'blue' ? BLUE : RED;
+        const color = e.kind === 'block' ? GOLD : e.team === 'blue' ? BLUE : RED;
         for (let i = 0; i < (e.kind === 'capture' ? 24 : 7); i++) {
           const a = i * 2.4,
             rect = this.add.rectangle(e.x, e.y, 3, 3, color).setDepth(20);
@@ -307,7 +325,10 @@ export class Arena extends Phaser.Scene {
     let v = this.visuals.get(p.id);
     if (!v) {
       v = {
-        body: this.add.sprite(p.x, p.y, `${p.team}-${p.classId}-0`).setOrigin(0.5, 0.7).setDepth(10),
+        body: this.add
+          .sprite(p.x, p.y, `${p.team}-${p.classId}-0`)
+          .setOrigin(0.5, 0.7)
+          .setDepth(10),
         shadow: this.add.ellipse(p.x, p.y + 8, 26, 10, 0x081618, 0.4).setDepth(3),
         name: this.add
           .text(p.x, p.y - 32, p.name, {
@@ -336,44 +357,107 @@ export class Arena extends Phaser.Scene {
       .setFlipX(Math.cos(p.angle) < 0);
     v.body
       .setAngle(p.hp <= 0 ? 90 : 0)
-      .setAlpha(p.hp<=0?.2:p.dashInvulnerable?.45:p.invuln>0?.55+Math.sin(time*.025)*.25:1);
+      .setAlpha(
+        p.hp <= 0
+          ? 0.2
+          : p.dashInvulnerable
+            ? 0.45
+            : p.invuln > 0
+              ? 0.55 + Math.sin(time * 0.025) * 0.25
+              : 1,
+      );
     if (p.hitFlash > 0) v.body.setTintFill(0xffe6ba);
     else v.body.clearTint();
     v.shadow.setPosition(v.x, v.y + 8);
     v.name.setPosition(v.x, v.y - 34).setText(local ? `${p.name} · VOS` : p.name);
-    const stats=CLASSES[p.classId], w=v.weapon;
-    w.clear();w.setPosition(v.x,v.y);w.setRotation(p.angle);
-    if(p.hp>0){
-      if(p.classId==='archer') {
-        w.lineStyle(2,GOLD);w.beginPath();w.arc(9,0,15,-Math.PI/2,Math.PI/2);w.strokePath();
-        w.lineStyle(1,0xdad6bd);w.lineBetween(9,-15,9,15);
-        if(p.windup>0){w.fillStyle(0xe3e5d5);w.fillRect(12,-2,14,3);}
-      } else if(p.classId==='mage') {
-        w.lineStyle(4,0x796452);w.lineBetween(8,0,30,0);
-        w.fillStyle(0x8edcff);w.fillCircle(32,0,6);w.lineStyle(2,0xe8f7ff,.85);w.strokeCircle(32,0,7);
-        if(p.windup>0){w.lineStyle(2,0xb9edff,.65);w.strokeCircle(32,0,11);}
+    const stats = CLASSES[p.classId],
+      w = v.weapon;
+    w.clear();
+    w.setPosition(v.x, v.y);
+    w.setRotation(p.angle);
+    if (p.hp > 0) {
+      if (p.classId === 'archer') {
+        w.lineStyle(2, GOLD);
+        w.beginPath();
+        w.arc(9, 0, 15, -Math.PI / 2, Math.PI / 2);
+        w.strokePath();
+        w.lineStyle(1, 0xdad6bd);
+        w.lineBetween(9, -15, 9, 15);
+        if (p.windup > 0) {
+          w.fillStyle(0xe3e5d5);
+          w.fillRect(12, -2, 14, 3);
+        }
+      } else if (p.classId === 'mage') {
+        w.lineStyle(4, 0x796452);
+        w.lineBetween(8, 0, 30, 0);
+        w.fillStyle(0x8edcff);
+        w.fillCircle(32, 0, 6);
+        w.lineStyle(2, 0xe8f7ff, 0.85);
+        w.strokeCircle(32, 0, 7);
+        if (p.windup > 0) {
+          w.lineStyle(2, 0xb9edff, 0.65);
+          w.strokeCircle(32, 0, 11);
+        }
       } else {
-        const wind=p.windup>0?Math.min(1,p.windup/stats.windup):0;
-        w.setRotation(p.angle-wind*.9);
-        w.fillStyle(0xe3e5d5);w.fillRect(11,-2,p.classId==='vanguard'?43:23,p.classId==='vanguard'?5:3);
-        w.fillStyle(GOLD);w.fillRect(12,-7,3,14);w.fillStyle(0x77634b);w.fillRect(6,-2,7,4);
-        if(p.classId==='guardian'){
-          w.setRotation(p.angle);w.fillStyle(p.guarding?GOLD:0x738b86);w.fillPoints([{x:14,y:-11},{x:24,y:-8},{x:24,y:8},{x:14,y:11},{x:9,y:0}],true);
-          w.lineStyle(2,0x435955);w.lineBetween(17,-7,17,7);w.lineBetween(12,0,22,0);
-          if(p.guarding){w.lineStyle(3,GOLD,.8);w.beginPath();w.arc(0,0,31,-RULES.guardArc/2,RULES.guardArc/2);w.strokePath();}
+        const wind = p.windup > 0 ? Math.min(1, p.windup / stats.windup) : 0;
+        w.setRotation(p.angle - wind * 0.9);
+        w.fillStyle(0xe3e5d5);
+        w.fillRect(11, -2, p.classId === 'vanguard' ? 43 : 23, p.classId === 'vanguard' ? 5 : 3);
+        w.fillStyle(GOLD);
+        w.fillRect(12, -7, 3, 14);
+        w.fillStyle(0x77634b);
+        w.fillRect(6, -2, 7, 4);
+        if (p.classId === 'guardian') {
+          w.setRotation(p.angle);
+          w.fillStyle(p.guarding ? GOLD : 0x738b86);
+          w.fillPoints(
+            [
+              { x: 14, y: -11 },
+              { x: 24, y: -8 },
+              { x: 24, y: 8 },
+              { x: 14, y: 11 },
+              { x: 9, y: 0 },
+            ],
+            true,
+          );
+          w.lineStyle(2, 0x435955);
+          w.lineBetween(17, -7, 17, 7);
+          w.lineBetween(12, 0, 22, 0);
+          if (p.guarding) {
+            w.lineStyle(3, GOLD, 0.8);
+            w.beginPath();
+            w.arc(0, 0, 31, -RULES.guardArc / 2, RULES.guardArc / 2);
+            w.strokePath();
+          }
         }
       }
     }
     v.hp.clear();
     if (p.hp > 0) {
-      const left=v.x-(p.maxHp*8-2)/2;
-      for (let i=0;i<p.maxHp;i++) {
-        v.hp.fillStyle(0x1a282c);v.hp.fillRect(left+i*8,v.y-25,6,3);
-        const fill=Math.min(1,Math.max(0,p.hp-i));
-        v.hp.fillStyle(p.team==='blue'?BLUE:RED);v.hp.fillRect(left+i*8,v.y-25,6*fill,3);
+      const left = v.x - (p.maxHp * 8 - 2) / 2;
+      for (let i = 0; i < p.maxHp; i++) {
+        v.hp.fillStyle(0x1a282c);
+        v.hp.fillRect(left + i * 8, v.y - 25, 6, 3);
+        const fill = Math.min(1, Math.max(0, p.hp - i));
+        v.hp.fillStyle(p.team === 'blue' ? BLUE : RED);
+        v.hp.fillRect(left + i * 8, v.y - 25, 6 * fill, 3);
       }
-      if(p.windup>0){v.hp.lineStyle(1,GOLD,.45);v.hp.beginPath();v.hp.arc(v.x,v.y,stats.meleeRange,p.swingAngle-stats.meleeArc/2,p.swingAngle+stats.meleeArc/2);v.hp.strokePath();}
-      if(p.dashInvulnerable){v.hp.lineStyle(2,0xc0eafa,.65);v.hp.strokeEllipse(v.x,v.y,35,40);}
+      if (p.windup > 0) {
+        v.hp.lineStyle(1, GOLD, 0.45);
+        v.hp.beginPath();
+        v.hp.arc(
+          v.x,
+          v.y,
+          stats.meleeRange,
+          p.swingAngle - stats.meleeArc / 2,
+          p.swingAngle + stats.meleeArc / 2,
+        );
+        v.hp.strokePath();
+      }
+      if (p.dashInvulnerable) {
+        v.hp.lineStyle(2, 0xc0eafa, 0.65);
+        v.hp.strokeEllipse(v.x, v.y, 35, 40);
+      }
       if (local) {
         v.hp.lineStyle(1, GOLD, 0.6);
         v.hp.strokeEllipse(v.x, v.y + 9, 32, 12);
@@ -404,7 +488,16 @@ export class Arena extends Phaser.Scene {
     for (const p of s.players)
       this.drawPlayer(
         p.id === this.localId && this.predicted
-          ? { ...p, x: this.predicted.x, y: this.predicted.y, angle: this.controls.angle, guarding:this.predicted.guarding, guardLeft:this.predicted.guardLeft, dashInvulnerable:this.predicted.dashInvulnerable, windup:this.predicted.windup }
+          ? {
+              ...p,
+              x: this.predicted.x,
+              y: this.predicted.y,
+              angle: this.controls.angle,
+              guarding: this.predicted.guarding,
+              guardLeft: this.predicted.guardLeft,
+              dashInvulnerable: this.predicted.dashInvulnerable,
+              windup: this.predicted.windup,
+            }
           : p,
         p.id === this.localId,
         time,
@@ -423,14 +516,26 @@ export class Arena extends Phaser.Scene {
         y: a.y + Math.sin(a.angle) * RULES.arrowSpeed * age,
       };
       const p = lineClear(a, next) ? next : a;
-      if(a.classId==='mage') {
-        this.arrows.lineStyle(5,0x78cfff,.22);
-        this.arrows.lineBetween(p.x-Math.cos(a.angle)*16,p.y-Math.sin(a.angle)*16,p.x,p.y);
-        this.arrows.fillStyle(0x8edcff,.45);this.arrows.fillCircle(p.x,p.y,7);
-        this.arrows.fillStyle(0xe8f7ff);this.arrows.fillCircle(p.x,p.y,3);
+      if (a.classId === 'mage') {
+        this.arrows.lineStyle(5, 0x78cfff, 0.22);
+        this.arrows.lineBetween(
+          p.x - Math.cos(a.angle) * 16,
+          p.y - Math.sin(a.angle) * 16,
+          p.x,
+          p.y,
+        );
+        this.arrows.fillStyle(0x8edcff, 0.45);
+        this.arrows.fillCircle(p.x, p.y, 7);
+        this.arrows.fillStyle(0xe8f7ff);
+        this.arrows.fillCircle(p.x, p.y, 3);
       } else {
         this.arrows.lineStyle(2, 0xe3cf96);
-        this.arrows.lineBetween(p.x - Math.cos(a.angle) * 12, p.y - Math.sin(a.angle) * 12, p.x, p.y);
+        this.arrows.lineBetween(
+          p.x - Math.cos(a.angle) * 12,
+          p.y - Math.sin(a.angle) * 12,
+          p.x,
+          p.y,
+        );
         this.arrows.fillStyle(0xf2e9cf);
         this.arrows.fillCircle(p.x, p.y, 2);
       }

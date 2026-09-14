@@ -20,7 +20,7 @@ async function track(p: Promise<ClientRoom>) {
   const r = await p;
   sessions.push(r);
   r.onMessage('snapshot', (s: Snapshot) => states.set(r.sessionId, s));
-  r.onMessage('pong', () => {});
+  r.onMessage('pong', () => {}); r.onMessage('roomInfo', () => {});
   r.onMessage('selectionError', () => {});
   r.send('sync');
   await until(() => states.has(r.sessionId));
@@ -75,7 +75,7 @@ describe('servidor con clientes Colyseus reales', () => {
     await expect(sdk.create('duel', { name: '<script>' })).rejects.toThrow();
     const { a, b, host } = await pair();
     expect(a.roomId).toMatch(/^[a-f0-9]{32}$/);
-    expect(host.maxClients).toBe(18);
+    expect(host.maxClients).toBe(7);
     await expect(sdk.joinById(a.roomId, { name: 'Tercero' })).rejects.toThrow();
     a.send('ready');
     b.send('ready');
@@ -184,5 +184,39 @@ it('espectadores entran durante el duelo, no juegan ni pausan y ven revancha', a
   await back.leave();
   expect(host.game.state.paused).toBe(false);
   expect(host.game.state.players).toHaveLength(2);
+  await a.leave();await b.leave();
+});
+
+it('listado público, contraseña para ambos roles y espectadores desactivados', async () => {
+  const a = await track(sdk.create('duel', {name:'Host',title:'Torneo',visibility:'public',password:'clave',allowSpectators:false}));
+  const hidden = await track(sdk.create('duel',{name:'Privado',title:'Secreta'}));
+  const listed = await (await fetch('http://127.0.0.1:2568/rooms')).json();
+  expect(listed.some((r:any)=>r.roomId===hidden.roomId)).toBe(false);
+  expect(listed.find((r:any)=>r.roomId===a.roomId)).toMatchObject({title:'Torneo',passwordRequired:true,allowSpectators:false});
+  expect(JSON.stringify(listed)).not.toContain('clave');
+  await expect(sdk.joinById(a.roomId,{name:'Intruso'})).rejects.toThrow('Contraseña');
+  await expect(sdk.joinById(a.roomId,{name:'Miron',spectator:true,password:'clave'})).rejects.toThrow('no admite');
+  const b = await track(sdk.joinById(a.roomId,{name:'Rival',password:'clave'}));
+  await b.leave();await a.leave();await hidden.leave();
+  await until(()=>!matchMaker.getLocalRoomById(a.roomId));
+  const after=await (await fetch('http://127.0.0.1:2568/rooms')).json();
+  expect(after.some((r:any)=>r.roomId===a.roomId)).toBe(false);
+});
+
+it('cinco espectadores como máximo y contador al salir y reconectar', async () => {
+  const {a,b,host}=await pair();
+  const viewers=[];
+  for(let i=0;i<5;i++)viewers.push(await track(sdk.joinById(a.roomId,{name:`Vista${i}`,spectator:true})));
+  expect(host.publicInfo().spectators).toBe(5);
+  await expect(sdk.joinById(a.roomId,{name:'Sexto',spectator:true})).rejects.toThrow();
+  const v=viewers.pop()!, token=v.reconnectionToken;
+  v.reconnection.enabled=false;v.connection.transport.ws.close();
+  await until(()=>host.publicInfo().spectators===4);
+  const back=await track(sdk.reconnect(token));
+  await until(()=>host.publicInfo().spectators===5);
+  await back.leave();await until(()=>host.publicInfo().spectators===4);
+  const replacement=await track(sdk.joinById(a.roomId,{name:'Nuevo',spectator:true}));
+  expect(host.publicInfo().spectators).toBe(5);
+  for(const viewer of [...viewers,replacement])await viewer.leave();
   await a.leave();await b.leave();
 });

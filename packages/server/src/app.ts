@@ -1,7 +1,7 @@
 import { Server } from '@colyseus/core';
 import { WebSocketTransport } from '@colyseus/ws-transport';
 import cors from 'cors';
-import { DuelRoom } from './room.js';
+import { DuelRoom, publicRooms } from './room.js';
 
 export function createServer() {
   const allowed = (process.env.ALLOWED_ORIGINS || 'http://localhost:5173,http://127.0.0.1:5173')
@@ -31,6 +31,7 @@ export function createServer() {
         next();
       });
       app.use(cors({ origin: (origin, cb) => cb(null, accept(origin)) }));
+      app.get('/rooms', (_req, res) => { res.setHeader('Cache-Control', 'no-store'); res.json(publicRooms()); });
       app.get('/health', (_req, res) =>
         res.json({ ok: true, game: 'bandera-duel', version: '0.1.0' }),
       );

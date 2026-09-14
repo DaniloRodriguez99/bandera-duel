@@ -1,4 +1,4 @@
-import { randomBytes } from 'node:crypto';
+import { randomBytes, createHmac, timingSafeEqual } from 'node:crypto';
 import { Room, ServerError, type Client } from '@colyseus/core';
 import {
   Duel,
@@ -13,8 +13,27 @@ import {
   type Input,
 } from '@bandera/shared';
 
+const listedRooms = new Map<string, DuelRoom>();
+export const publicRooms = () => [...listedRooms.values()].filter(r => r.publicInfo().visibility === 'public').map(r => r.publicInfo());
+
 export class DuelRoom extends Room {
-  maxClients = 18;
+  maxClients = 7;
+  private title = 'Duelo medieval';
+  private visibility: 'public' | 'private' = 'private';
+  private allowSpectators = true;
+  private passwordKey = randomBytes(32);
+  private passwordHash?: Buffer;
+  private watching = new Set<string>();
+  publicInfo() {
+    return { roomId: this.roomId, title: this.title, visibility: this.visibility,
+      passwordRequired: !!this.passwordHash, allowSpectators: this.allowSpectators,
+      spectators: this.watching.size, maxSpectators: 5,
+      players: this.game.state.players.filter(p => p.connected).length,
+      playerSlots: this.game.state.players.length, phase: this.game.state.phase };
+  }
+  private publishInfo() { this.broadcast('roomInfo', this.publicInfo()); }
+  onDispose() { listedRooms.delete(this.roomId); }
+
   private spectators = new Set<string>();
   maxMessagesPerSecond = 65;
   game = new Duel();
@@ -23,9 +42,22 @@ export class DuelRoom extends Room {
   private seen = new Map<string, number>();
   private receivedAt = new Map<string, number>();
   private drops = new Map<string, number>();
-  onCreate() {
+  onCreate(options: { title?: unknown; visibility?: unknown; password?: unknown; allowSpectators?: unknown } = {}) {
+    if (options.title !== undefined && (typeof options.title !== 'string' || !options.title.trim() || options.title.trim().length > 48 || /[\x00-\x1f<>]/.test(options.title)))
+      throw new ServerError(400, 'El título debe tener entre 1 y 48 caracteres, sin etiquetas.');
+    if (options.visibility !== undefined && !['public', 'private'].includes(options.visibility as string))
+      throw new ServerError(400, 'Visibilidad desconocida.');
+    if (options.allowSpectators !== undefined && typeof options.allowSpectators !== 'boolean')
+      throw new ServerError(400, 'Opción de espectadores inválida.');
+    if (options.password !== undefined && (typeof options.password !== 'string' || options.password.length > 64))
+      throw new ServerError(400, 'La contraseña admite hasta 64 caracteres.');
+    this.title = typeof options.title === 'string' ? options.title.trim() : 'Duelo medieval';
+    this.visibility = options.visibility === 'public' ? 'public' : 'private';
+    this.allowSpectators = options.allowSpectators !== false;
+    if (options.password) this.passwordHash = createHmac('sha256', this.passwordKey).update(options.password as string).digest();
     this.roomId = randomBytes(16).toString('hex');
-    void this.setPrivate(true);
+    void this.setPrivate(true); // Discovery uses our password-free public DTO only.
+    listedRooms.set(this.roomId, this);
     this.onMessage('input', (client, raw) => {
       if (!this.game.state.players.some(p => p.id === client.sessionId)) return;
       const input = sanitizeInput(raw);
@@ -45,7 +77,7 @@ export class DuelRoom extends Room {
       }
       this.broadcast('snapshot', this.game.state);
     });
-    this.onMessage('sync', (client) => client.send('snapshot', this.game.state));
+    this.onMessage('sync', (client) => { client.send('snapshot', this.game.state); client.send('roomInfo', this.publicInfo()); });
     this.onMessage('ping', (client, stamp) => {
       if (typeof stamp === 'number' && Number.isFinite(stamp)) client.send('pong', stamp);
     });
@@ -89,7 +121,9 @@ export class DuelRoom extends Room {
     // Colyseus starts a second clock ticker and fixed-step elapsed time is lost.
     this.patchRate = null;
   }
-  onAuth(_client: Client, options: { name?: unknown; classId?: unknown; spectator?: unknown }) {
+  onAuth(_client: Client, options: { name?: unknown; classId?: unknown; spectator?: unknown; password?: unknown }) {
+    if (this.passwordHash && (typeof options.password !== 'string' || options.password.length > 64 || !timingSafeEqual(this.passwordHash, createHmac('sha256', this.passwordKey).update(options.password).digest())))
+      throw new ServerError(403, 'Contraseña incorrecta.');
     if (options?.spectator !== undefined && typeof options.spectator !== 'boolean')
       throw new ServerError(400, 'Rol desconocido.');
     if (!validName(options?.name))
@@ -97,7 +131,8 @@ export class DuelRoom extends Room {
     if (options.classId !== undefined && !validClass(options.classId))
       throw new ServerError(400, 'Clase de guerrero desconocida.');
     if (options.spectator === true) {
-      if (this.spectators.size >= 16) throw new ServerError(409, 'No quedan lugares para espectadores.');
+      if (!this.allowSpectators) throw new ServerError(403, 'Esta sala no admite espectadores.');
+      if (this.spectators.size >= 5) throw new ServerError(409, 'No quedan lugares para espectadores.');
       return true;
     }
     if (this.game.state.players.length >= 2) throw new ServerError(409, 'Los dos lugares están ocupados. Podés entrar como espectador.');
@@ -106,15 +141,20 @@ export class DuelRoom extends Room {
   }
   onJoin(client: Client, options: { name: string; classId?: ClassId; spectator?: boolean }) {
     if (options.spectator === true) {
-      if (this.spectators.size >= 16) throw new ServerError(409, 'No quedan lugares para espectadores.');
+      if (!this.allowSpectators) throw new ServerError(403, 'Esta sala no admite espectadores.');
+      if (this.spectators.size >= 5) throw new ServerError(409, 'No quedan lugares para espectadores.');
       this.spectators.add(client.sessionId);
+      this.watching.add(client.sessionId);
     } else this.game.add(client.sessionId, validName(options.name)!, options.classId ?? DEFAULT_CLASS);
     this.broadcast('snapshot', this.game.state);
+    this.publishInfo();
     console.info(
       JSON.stringify({ event: 'join', room: this.roomId, players: this.game.state.players.length }),
     );
   }
   onDrop(client: Client) {
+    this.watching.delete(client.sessionId);
+    this.publishInfo();
     const p = this.game.state.players.find((p) => p.id === client.sessionId);
     if (!p) {
       if (this.spectators.has(client.sessionId)) this.allowReconnection(client, RULES.reconnectSeconds).catch(() => {});
@@ -127,6 +167,8 @@ export class DuelRoom extends Room {
     this.allowReconnection(client, RULES.reconnectSeconds).catch(() => {});
   }
   onReconnect(client: Client) {
+    if (this.spectators.has(client.sessionId)) this.watching.add(client.sessionId);
+    this.publishInfo();
     this.drops.delete(client.sessionId);
     const p = this.game.state.players.find((p) => p.id === client.sessionId);
     if (p) p.connected = true;
@@ -137,6 +179,8 @@ export class DuelRoom extends Room {
   }
   onLeave(client: Client) {
     this.spectators.delete(client.sessionId);
+    this.watching.delete(client.sessionId);
+    this.publishInfo();
     const s = this.game.state,
       p = s.players.find((p) => p.id === client.sessionId);
     this.drops.delete(client.sessionId);

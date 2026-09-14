@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-async function create(page: Page, name: string, classId='guardian') {
+async function create(page: Page, name: string, classId = 'guardian') {
   await page.goto('/');
   await page.locator('#name').fill(name);
   await page.locator(`#entry-classes [data-class="${classId}"]`).click();
@@ -7,7 +7,7 @@ async function create(page: Page, name: string, classId='guardian') {
   await expect(page.locator('#overlay')).toBeVisible();
   return page.url();
 }
-async function join(page: Page, url: string, name: string, classId='guardian') {
+async function join(page: Page, url: string, name: string, classId = 'guardian') {
   await page.goto(url);
   await page.locator('#name').fill(name);
   await page.locator(`#entry-classes [data-class="${classId}"]`).click();
@@ -54,8 +54,8 @@ test('dos navegadores: invitación, tres capturas y revancha', async ({ page, br
   // A reload recovers the same seat and does not create a new player.
   await page.reload();
   await expect(page.locator('#stage')).toHaveAttribute('data-phase', 'playing', { timeout: 12000 });
-  await expect(page.locator('#arena-label')).toContainText('AZUR');
-  await expect(page.locator('#stage')).toHaveAttribute('data-class','vanguard');
+  await expect(page.locator('#arena-label')).toContainText('AZUL');
+  await expect(page.locator('#stage')).toHaveAttribute('data-class', 'vanguard');
   await expect(page.locator('#health')).toHaveText('♥ 5/5');
   await expect(page.locator('#overlay')).toBeHidden();
   expect(errors).toEqual([]);
@@ -74,7 +74,7 @@ test('celular horizontal, multitouch, cancelación y aviso vertical', async ({ b
   const page = await mobile.newPage();
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
-  await join(page, url, 'Mobile','archer');
+  await join(page, url, 'Mobile', 'archer');
   await opponent.locator('#ready').click();
   await page.locator('#ready').click();
   await expect(page.locator('#stage')).toHaveAttribute('data-phase', 'playing', { timeout: 7000 });

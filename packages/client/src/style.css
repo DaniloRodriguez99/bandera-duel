@@ -883,3 +883,15 @@ footer b {
 #spectator-choice { display: flex; align-items: center; gap: 10px; margin: 12px 0; }
 #spectator-choice[hidden] { display: none; }
 #spectator { width: 20px; height: 20px; margin: 0; accent-color: #f3ce86; }
+
+.room-browser { margin: 24px 0; padding: 24px; border: 1px solid #536052; border-radius: 12px; }
+#rooms-list { display: grid; grid-template-columns: repeat(auto-fit,minmax(240px,1fr)); gap: 12px; margin-top: 14px; }
+.room-list-card { padding: 16px; background: #22352f; border-radius: 8px; overflow-wrap: anywhere; }
+.room-list-card button { margin: 6px; }
+#room-options { margin: 16px 0; padding: 12px; border: 1px solid #536052; }
+#visibility { width: 100%; padding: 10px; background: #22352f; color: #fff; }
+.check-option { display: flex; align-items: center; gap: 8px; }
+.check-option input { width: 18px; height: 18px; }
+#spectator-count { font-size: 11px; color: #f3ce86; white-space: nowrap; }
+
+#spectator-count { position: absolute; top: 6px; left: 50%; transform: translateX(-50%); z-index: 40; background: #14251ee8; padding: 4px 8px; border-radius: 6px; pointer-events: none; }

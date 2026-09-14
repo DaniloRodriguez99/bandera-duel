@@ -109,7 +109,7 @@ Después de publicar, comprobá `/health`, una invitación entre PC y móvil, un
 
 - Render Free se duerme tras 15 minutos sin tráfico, puede tardar alrededor de un minuto en despertar y puede reiniciarse. Las salas viven en memoria y se pierden al reiniciar. También aplica cuotas de uso y transferencia: gratis no significa ilimitado. Si querés evitar cobros por excedentes, revisá la configuración de pago y límites de la cuenta. [Render Free](https://render.com/docs/free).
 - Vercel Hobby está orientado a uso personal no comercial. [Condiciones del plan](https://vercel.com/docs/plans/hobby).
-- No hay cuentas, estadísticas persistentes, ranking, bots, espectadores, chat ni matchmaking público. La protección inicial valida el juego y limita mensajes por conexión; no sustituye controles de abuso a escala pública.
+- No hay cuentas, estadísticas persistentes, ranking, bots, chat ni matchmaking público. La protección inicial valida el juego y limita mensajes por conexión; no sustituye controles de abuso a escala pública.
 - El arte y sonido del juego son originales. Las tipografías Barlow Condensed y DM Sans se cargan desde Google Fonts, con fuentes locales de respaldo si ese servicio no está disponible.
 - Las pruebas de móvil son emuladas en Chromium. No se verificó un teléfono físico ni Safari/iOS; esa comprobación queda pendiente antes de considerar un lanzamiento público.
 
@@ -118,5 +118,10 @@ Después de publicar, comprobá `/health`, una invitación entre PC y móvil, un
 Ver `VALIDATION.md` para los resultados comprobados y las limitaciones de validación. El repositorio se entrega inicializado, sin remoto ni publicación. Las dependencias quedan fijadas en `package-lock.json`.
 
 ## Espectadores
-Al abrir una invitación, marcá **Entrar como espectador** e ingresá un apodo. Hay dos lugares de jugador y hasta 16 de espectador por sala. Se puede observar una partida iniciada y seguir la revancha. Los espectadores no controlan personajes ni marcan listo; su desconexión no pausa la partida y pueden reconectar durante 15 segundos.
+Al abrir una invitación, marcá **Entrar como espectador** e ingresá un apodo. Hay dos lugares de jugador y hasta 5 de espectador por sala. Se puede observar una partida iniciada y seguir la revancha. Los espectadores no controlan personajes ni marcan listo; su desconexión no pausa la partida y pueden reconectar durante 15 segundos.
+
+
+
+## Salas públicas y privadas
+Al crear una sala podés elegir un título (1–48 caracteres), visibilidad pública o privada, contraseña opcional (hasta 64 caracteres) y permitir o desactivar espectadores. La lista pública se actualiza cada 10 segundos y permite jugar u observar. Las salas privadas solo se comparten por enlace. La contraseña se exige a jugadores y espectadores y nunca se incluye en el enlace ni en el listado. El contador muestra espectadores conectados en tiempo real; se reserva su cupo 15 segundos al reconectar. GET /rooms devuelve únicamente datos públicos de salas públicas; las salas desaparecen al eliminarse del servidor.
 
