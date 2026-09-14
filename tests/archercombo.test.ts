@@ -40,38 +40,59 @@ describe('combos del arquero', () => {
     }
     expect(projectileStats('archer', false, 1 / 3).damage).toBeCloseTo(1 + (RULES.chargeMultiplier - 1) / 3);
   });
-  it('clic y espacio al máximo avanzando hacia el tiro: flecha de viento que atraviesa y rompe el escudo', () => {
+  it('salto cargado: el tiro cargado soltado en pleno salto sale de viento hacia el mouse y rompe escudos', () => {
     const { d, a, g, v } = setup();
-    Object.assign(g, { x: 320, y: 270 });
-    Object.assign(v, { x: 440, y: 270 });
     run(d, ticks(RULES.overchargeTime), { charge: true, special: true });
-    Object.assign(g, { guarding: true, guardLeft: 1, guardHeld: true, angle: Math.PI });
-    run(d, 1, { shot: true, special: true, x: 1 }, { guard: true, angle: Math.PI });
+    run(d, 1, { dash: true, charge: true, x: 1 });
+    expect(a.windDash).toBeGreaterThan(0);
+    expect(a.shotCharge).toBeCloseTo(RULES.chargeTime);
+    Object.assign(g, { x: a.x + 130, y: a.y, guarding: true, guardLeft: 1, guardHeld: true, angle: Math.PI });
+    Object.assign(v, { x: a.x + 250, y: a.y });
+    run(d, 1, { shot: true, x: 1 }, { guard: true, angle: Math.PI });
     const [arrow] = d.state.arrows;
     expect(arrow).toMatchObject({ wind: true, charged: true });
-    expect(a.dashCd).toBeGreaterThan(0);
-    expect(a.specialCharge).toBe(0);
-    run(d, 12, {}, { guard: true, angle: Math.PI });
+    expect(arrow.angle).toBeCloseTo(0);
+    expect(a.windDash).toBe(0);
+    run(d, 14, {}, { guard: true, angle: Math.PI });
     expect(g.guarding).toBe(false);
     expect(g.hp).toBeCloseTo(CLASSES.guardian.hp - WIND);
     expect(v.hp).toBeCloseTo(Math.max(0, CLASSES.vanguard.hp - WIND));
   });
-  it('sin avanzar hacia el tiro sale la flecha cargada normal', () => {
+  it('sin saltar, soltar con clic y espacio llenos da la flecha cargada normal', () => {
     const { d } = setup();
     run(d, ticks(RULES.overchargeTime), { charge: true, special: true });
-    run(d, 1, { shot: true, special: true, x: -1 });
+    run(d, 1, { shot: true, special: true, x: 1 });
     expect(d.state.arrows[0]).toMatchObject({ charged: true });
     expect(d.state.arrows[0].wind).toBeUndefined();
   });
-  it('combinado con E: 3 flechas de viento más débiles que juntas hacen el 120 %', () => {
-    const { d, g } = setup();
-    Object.assign(g, { x: 330, y: 270, hp: 10 });
+  it('E en pleno salto cargado: triple hacia el mouse aunque se salte en otra dirección', () => {
+    const { d } = setup();
+    run(d, ticks(RULES.overchargeTime), { special: true });
+    run(d, 1, { dash: true, y: 1 });
+    run(d, 1, { volley: true, y: 1 });
+    const angles = d.state.arrows.map((arrow) => arrow.angle);
+    [-RULES.volleyAngle, 0, RULES.volleyAngle].forEach((angle, i) => expect(angles[i]).toBeCloseTo(angle));
+    expect(d.state.arrows.every((arrow) => !arrow.wind && !arrow.power)).toBe(true);
+  });
+  it('en pleno salto cargado con el clic lleno + E: 3 flechas de viento que juntas hacen el 120 %', () => {
+    const { d, a, g } = setup();
     run(d, ticks(RULES.overchargeTime), { charge: true, special: true });
-    run(d, 1, { volley: true, special: true, x: 1 });
+    run(d, 1, { dash: true, charge: true, x: 1 });
+    Object.assign(g, { x: a.x + 120, y: a.y, hp: 10 });
+    run(d, 1, { volley: true, x: 1 });
     expect(d.state.arrows).toHaveLength(3);
     expect(d.state.arrows.every((arrow) => arrow.wind)).toBe(true);
+    expect(d.state.arrows[1].angle).toBeCloseTo(0);
     expect(RULES.windVolleyScale).toBeLessThan(RULES.windScale);
     run(d, 12);
     expect(10 - g.hp).toBeCloseTo(1.2 * WIND);
+  });
+  it('un salto no cargado no permite tirar en el aire', () => {
+    const { d, a } = setup();
+    run(d, ticks(RULES.chargeTime), { charge: true });
+    run(d, 1, { dash: true, charge: true, x: 1 });
+    expect(a.windDash).toBe(0);
+    run(d, 1, { shot: true, x: 1 });
+    expect(d.state.arrows).toHaveLength(0);
   });
 });

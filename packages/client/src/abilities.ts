@@ -20,8 +20,9 @@ export interface AbilitySlot {
 
 const percent = (value: number) => `${Math.round(Math.min(1, value) * 100)} %`;
 const tapped = (charge: number) => charge > 0 && charge < RULES.overchargeTap;
+/** Shot charge full with a charged dash ready or in the air: the release becomes wind. */
 const windFull = (p: Player) =>
-  p.shotCharge >= RULES.chargeTime - 1e-8 && p.specialCharge >= RULES.overchargeTime - 1e-8;
+  p.shotCharge >= RULES.chargeTime - 1e-8 && (p.windDash > 0 || p.specialCharge >= RULES.overchargeTime - 1e-8);
 
 /** Abilities in panel order: click first, then space, then the class extras. */
 export function abilitySlots(classId: ClassId): AbilitySlot[] {
@@ -46,7 +47,7 @@ export function abilitySlots(classId: ClassId): AbilitySlot[] {
                 active: (p) => p.shotCharge >= RULES.overchargeTap && !windFull(p),
                 state: (p) => (p.shotCharge > 0 ? percent(p.shotCharge / RULES.chargeTime) : null),
               },
-              { label: '+ Espacio al máximo, avanzando · viento', active: windFull },
+              { label: 'Soltar en el salto cargado · viento', active: windFull },
             ]
           : [
               { label: `Toque · ${name.toLowerCase()}`, active: (p) => tapped(p.shotCharge) },
@@ -171,7 +172,7 @@ export function abilitySlots(classId: ClassId): AbilitySlot[] {
         tiers: [
           { label: 'Toque · 3 flechas en fila' },
           { label: 'Cargando clic · 3 al 33 %', active: (p) => p.shotCharge >= RULES.overchargeTap && !windFull(p) },
-          { label: 'Clic + Espacio al máximo · 3 de viento', active: windFull },
+          { label: 'En salto cargado · clic lleno: 3 de viento', active: windFull },
         ],
       },
     );

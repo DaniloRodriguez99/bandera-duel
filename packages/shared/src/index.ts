@@ -125,7 +125,7 @@ export const RULES = {
   chargeMultiplier: 1.3,
   windScale: 2,
   windVolleyScale: 0.8,
-  windAlign: Math.cos(Math.PI / 4),
+  windGrace: 0.3,
   shotCooldown: 0.9,
   arrowSpeed: 560,
   arrowLife: 1.2,
@@ -372,6 +372,8 @@ export interface Player extends Vec {
   trapLeft: number;
   volleyCd: number;
   stunLeft: number;
+  /** Seconds left of a fully charged archer dash: shot or volley released now become the dash combo. */
+  windDash: number;
   activeTraps: number;
   specialCharge: number;
   swingPower: number;
@@ -682,6 +684,7 @@ export function movePlayer(p: Player, input: Input, carrying: boolean, dt = RULE
     special: 0,
     volleyPower: 0,
     wind: false,
+    angle: 0,
     raised: false,
   };
   if (p.hp <= 0) return result;
@@ -702,6 +705,7 @@ export function movePlayer(p: Player, input: Input, carrying: boolean, dt = RULE
     'magicShieldCd',
     'thrallCd',
     'frozenLeft',
+    'windDash',
   ] as const)
     p[key] = Math.max(0, p[key] - dt);
   if (p.stunLeft > 0) {
@@ -794,6 +798,11 @@ export function movePlayer(p: Player, input: Input, carrying: boolean, dt = RULE
     p.dashY = mag > 0.05 ? input.y / mag : Math.sin(input.angle);
     p.dashLeft = RULES.dashDuration * (1 + 0.8 * chargePower(p.specialCharge));
     p.dashCd = RULES.dashCooldown;
+    // A fully charged archer dash opens the combo window for the rest of the jump (plus a grace).
+    p.windDash =
+      p.classId === 'archer' && p.specialCharge >= RULES.overchargeTime - 1e-8
+        ? p.dashLeft + RULES.windGrace
+        : 0;
     p.specialCharge = 0;
   }
   const dashDt = Math.min(dt, p.dashLeft);
@@ -808,19 +817,15 @@ export function movePlayer(p: Player, input: Input, carrying: boolean, dt = RULE
     p.windup = Math.max(0, p.windup - dt);
     result.swing = p.windup === 0;
   }
-  // Archer combos read the charges held before this tick's release.
+  // Archer combos read the charge held before this tick's release.
   const heldCharge = p.shotCharge;
-  const moving = Math.hypot(input.x, input.y);
-  // Both charges full and running toward the shot: the release becomes a wind arrow.
-  const windReady =
-    p.classId === 'archer' &&
-    heldCharge >= RULES.chargeTime - 1e-8 &&
-    p.specialCharge >= RULES.overchargeTime - 1e-8 &&
-    moving > 0.3 &&
-    (input.x * Math.cos(input.angle) + input.y * Math.sin(input.angle)) / moving >= RULES.windAlign;
+  // During a fully charged dash the archer keeps its charge and can loose shot or volley mid-jump
+  // toward the cursor; a full shot charge turns them into wind.
+  const dashCombo = p.classId === 'archer' && p.windDash > 0;
+  const windReady = dashCombo && heldCharge >= RULES.chargeTime - 1e-8;
   const canCharge =
     !p.guarding &&
-    !p.dashInvulnerable &&
+    (!p.dashInvulnerable || dashCombo) &&
     !wasWinding &&
     p.attackLock <= 0 &&
     (stats.ranged ? p.shotCd <= 0 : stats.melee && p.swordCd <= 0);
@@ -833,7 +838,7 @@ export function movePlayer(p: Player, input: Input, carrying: boolean, dt = RULE
   if (
     !p.guarding &&
     p.guardRecovery <= 0 &&
-    !p.dashInvulnerable &&
+    (!p.dashInvulnerable || dashCombo) &&
     p.attackLock <= 0 &&
     !wasWinding
   ) {
@@ -845,10 +850,8 @@ export function movePlayer(p: Player, input: Input, carrying: boolean, dt = RULE
       result.wind = windReady;
       // Released mid-charge: three arrows carrying a third of the charged power.
       result.volleyPower = heldCharge >= RULES.overchargeTap ? RULES.volleyChargedPower : 0;
-      if (windReady) {
-        p.dashCd = RULES.dashCooldown;
-        p.specialCharge = 0;
-      }
+      result.angle = p.angle;
+      if (dashCombo) p.windDash = 0;
     } else if (input.sword && stats.melee && p.swordCd <= 0) {
       p.invuln = 0;
       p.windup = stats.windup;
@@ -862,10 +865,8 @@ export function movePlayer(p: Player, input: Input, carrying: boolean, dt = RULE
       p.attackLock = RULES.attackLock;
       result.charged = p.classId === 'archer' && heldCharge >= RULES.chargeTime - 1e-8;
       result.wind = windReady;
-      if (windReady) {
-        p.dashCd = RULES.dashCooldown;
-        p.specialCharge = 0;
-      }
+      result.angle = p.angle;
+      if (dashCombo) p.windDash = 0;
       result.power = p.classId === 'archer' ? 0 : chargePower(p.shotCharge);
       p.shotCharge = 0;
       result.shoot = true;
@@ -936,6 +937,7 @@ export function newPlayer(
     trapLeft: 0,
     volleyCd: 0,
     stunLeft: 0,
+    windDash: 0,
     activeTraps: 0,
     specialCharge: 0,
     swingPower: 0,
@@ -1743,6 +1745,7 @@ export class Duel {
         const charged = action.wind || (action.shoot && action.charged);
         const power = action.volley ? action.volleyPower : action.power;
         const stats = projectileStats(p.classId, charged, power);
+        const aim = action.angle;
         // Volley arrows leave side by side and drift apart slowly, so a line of rivals takes all three.
         for (const side of action.volley ? [-1, 0, 1] : [0]) {
           s.arrows.push({
@@ -1750,9 +1753,9 @@ export class Duel {
             owner: p.id,
             team: p.team,
             classId: p.classId,
-            x: p.x - Math.sin(p.angle) * side * RULES.volleyGap,
-            y: p.y + Math.cos(p.angle) * side * RULES.volleyGap,
-            angle: p.angle + side * RULES.volleyAngle,
+            x: p.x - Math.sin(aim) * side * RULES.volleyGap,
+            y: p.y + Math.cos(aim) * side * RULES.volleyGap,
+            angle: aim + side * RULES.volleyAngle,
             charged,
             power,
             // A wind arrow crosses the whole arena.
@@ -1763,7 +1766,7 @@ export class Duel {
               : {}),
           });
         }
-        this.event(action.wind ? 'wind' : 'shot', p, p.team, p.angle, p.classId, action.power);
+        this.event(action.wind ? 'wind' : 'shot', p, p.team, aim, p.classId, action.power);
       }
       if (action.raised) this.finishRaise(p);
       if (action.summon) this.summon(p, action.special);

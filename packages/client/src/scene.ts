@@ -1093,13 +1093,9 @@ export class Arena extends Phaser.Scene {
           }
         }
       }
-      if (
-        p.classId === 'archer' &&
-        p.shotCharge >= RULES.chargeTime - 1e-8 &&
-        p.specialCharge >= RULES.overchargeTime - 1e-8
-      ) {
-        // Both charges full: gusts circle the archer, ready to loose the wind arrow on the run.
-        this.aim.lineStyle(2, 0xd8fbff, 0.65);
+      if (p.classId === 'archer' && (p.windDash > 0 || p.specialCharge >= RULES.overchargeTime - 1e-8)) {
+        // Charged dash ready or in flight: gusts circle the archer, brighter once the shot is full too.
+        this.aim.lineStyle(2, 0xd8fbff, p.shotCharge >= RULES.chargeTime - 1e-8 ? 0.85 : 0.35);
         for (let i = 0; i < 3; i++) {
           const spin = time * 0.012 + (i * Math.PI * 2) / 3;
           this.aim.beginPath();
