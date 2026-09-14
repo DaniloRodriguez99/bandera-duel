@@ -29,6 +29,18 @@ export const RULES = {
   target: 3,
   radius: 12,
   carryMultiplier: 0.85,
+  trapSetup: .5,
+  trapArm: .5,
+  trapCooldown: 8,
+  trapLife: 20,
+  trapMax: 3,
+  trapRadius: 16,
+  trapDamage: .5,
+  trapStun: 1,
+  volleyCooldown: 5,
+  volleyAngle: Math.PI * 25 / 180,
+  chargeTime: .8,
+  chargeMultiplier: 1.3,
   shotCooldown: 0.9,
   arrowSpeed: 560,
   arrowLife: 1.2,
@@ -107,9 +119,12 @@ export interface Input {
   angle: number;
   sword: boolean;
   shot: boolean;
+  charge: boolean;
   dash: boolean;
   guard: boolean;
   summon: boolean;
+  trap: boolean;
+  volley: boolean;
 }
 export const idleInput = (seq = 0, angle = 0): Input => ({
   seq,
@@ -118,9 +133,12 @@ export const idleInput = (seq = 0, angle = 0): Input => ({
   angle,
   sword: false,
   shot: false,
+  charge: false,
   dash: false,
   guard: false,
   summon: false,
+  trap: false,
+  volley: false,
 });
 export function sanitizeInput(raw: unknown): Input | null {
   if (!raw || typeof raw !== 'object') return null;
@@ -145,9 +163,12 @@ export function sanitizeInput(raw: unknown): Input | null {
     angle: r.angle as number,
     sword: r.sword === true,
     shot: r.shot === true,
+    charge: r.charge === true,
     dash: r.dash === true,
     guard: r.guard === true,
     summon: r.summon === true,
+    trap: r.trap === true,
+    volley: r.volley === true,
   };
 }
 export function validName(raw: unknown): string | null {
@@ -168,6 +189,7 @@ export interface Player extends Vec {
   ack: number;
   swordCd: number;
   shotCd: number;
+  shotCharge: number;
   dashCd: number;
   attackLock: number;
   dashLeft: number;
@@ -187,6 +209,11 @@ export interface Player extends Vec {
   deaths: number;
   eliminated: boolean;
   summonCd: number;
+  trapCd: number;
+  trapLeft: number;
+  volleyCd: number;
+  stunLeft: number;
+  activeTraps: number;
 }
 export interface Flag extends Vec {
   team: Team;
@@ -197,6 +224,7 @@ export interface Flag extends Vec {
   lockLeft: number;
 }
 export interface Arrow extends Vec {
+  charged?: boolean;
   id: number;
   owner: string;
   team: Team;
@@ -204,6 +232,7 @@ export interface Arrow extends Vec {
   angle: number;
   life: number;
 }
+export interface Trap extends Vec { id: number; owner: string; team: Team; armLeft: number; life: number; }
 export interface Zombie extends Vec {
   id: string;
   owner: string;
@@ -235,6 +264,7 @@ export interface Snapshot {
   flags: Flag[];
   arrows: Arrow[];
   zombies: Zombie[];
+  traps: Trap[];
   score: Record<Team, number>;
   winner: Team | 'draw' | null;
   reason: string;
@@ -268,7 +298,8 @@ export function lineClear(a: Vec, b: Vec): boolean {
     if (blocked(a.x + ((b.x - a.x) * i) / steps, a.y + ((b.y - a.y) * i) / steps, 1)) return false;
   return true;
 }
-export function projectileStats(classId: ClassId) {
+export function projectileStats(classId: ClassId, charged = false) {
+  if (classId === 'archer' && charged) return { speed: RULES.arrowSpeed * RULES.chargeMultiplier, life: RULES.arrowLife / RULES.chargeMultiplier, damage: RULES.arrowDamage * RULES.chargeMultiplier, radius: 3, cooldown: RULES.shotCooldown };
   return classId === 'necromancer'
     ? { speed: RULES.fireSpeed, life: RULES.fireLife, damage: RULES.fireDamage, radius: RULES.fireRadius, cooldown: RULES.fireCooldown }
     : { speed: RULES.arrowSpeed, life: RULES.arrowLife, damage: RULES.arrowDamage, radius: 3, cooldown: RULES.shotCooldown };
@@ -333,13 +364,37 @@ export function lowerGuard(p: Player) {
 }
 /** Shared fixed-step prediction of timers, defense, attacks and movement. */
 export function movePlayer(p: Player, input: Input, carrying: boolean, dt = RULES.tick as number) {
-  const result = { swing: false, shoot: false, summon: false };
+  const result = { swing: false, shoot: false, summon: false, trap: false, volley: false, charged: false };
   if (p.hp <= 0) return result;
   const stats = CLASSES[p.classId];
   const wasWinding = p.windup > 0;
-  for (const key of ['swordCd','shotCd','dashCd','attackLock','invuln','hitFlash','guardCd','guardRecovery','summonCd'] as const)
+  for (const key of ['swordCd','shotCd','dashCd','attackLock','invuln','hitFlash','guardCd','guardRecovery','summonCd','trapCd','volleyCd'] as const)
     p[key] = Math.max(0, p[key] - dt);
+  if (p.stunLeft > 0) {
+    p.stunLeft = Math.max(0,p.stunLeft-dt);
+    p.shotCharge = 0; p.trapLeft = 0; p.windup = 0; p.dashLeft = 0; p.dashInvulnerable = false;
+    lowerGuard(p);
+    return result;
+  }
   p.angle = input.angle;
+  if (p.trapLeft > 0) {
+    p.shotCharge = 0;
+    if (p.hitFlash > 0) p.trapLeft = 0;
+    else {
+      p.trapLeft = Math.max(0, p.trapLeft - dt);
+      result.trap = p.trapLeft <= 1e-8;
+      if (result.trap) p.trapLeft = 0;
+      return result;
+    }
+  }
+  if (p.classId === 'archer' && input.trap && p.trapCd <= 0 && !wasWinding && p.attackLock <= 0 && p.dashLeft <= 0 && p.hitFlash <= 0) {
+    p.shotCharge = 0;
+    p.trapLeft = RULES.trapSetup;
+    p.dashInvulnerable = false;
+    p.trapCd = RULES.trapCooldown;
+    p.invuln = 0;
+    return result;
+  }
   if (p.guarding && (!input.guard || p.guardLeft <= 1e-8)) lowerGuard(p);
   if (stats.shield && input.guard && !p.guardHeld && !p.guarding && p.guardCd <= 0 && p.guardRecovery <= 0 && !wasWinding && p.attackLock <= 0) {
     p.guarding = true;
@@ -364,8 +419,16 @@ export function movePlayer(p: Player, input: Input, carrying: boolean, dt = RULE
     p.windup = Math.max(0, p.windup - dt);
     result.swing = p.windup === 0;
   }
+  const canCharge = p.classId === 'archer' && !p.guarding && !p.dashInvulnerable && !wasWinding && p.attackLock <= 0 && p.shotCd <= 0;
+  if (canCharge && input.charge && !input.shot && !input.sword && !input.volley) p.shotCharge = Math.min(RULES.chargeTime, p.shotCharge + dt);
+  else if (!canCharge || !input.shot) p.shotCharge = 0;
   if (!p.guarding && p.guardRecovery <= 0 && !p.dashInvulnerable && p.attackLock <= 0 && !wasWinding) {
-    if (input.sword && stats.melee && p.swordCd <= 0) {
+    if (input.volley && p.classId === 'archer' && p.volleyCd <= 0) {
+      p.invuln = 0;
+      p.volleyCd = RULES.volleyCooldown;
+      p.attackLock = RULES.attackLock;
+      result.volley = true;
+    } else if (input.sword && stats.melee && p.swordCd <= 0) {
       p.invuln = 0;
       p.windup = stats.windup;
       p.swingAngle = p.angle;
@@ -375,6 +438,8 @@ export function movePlayer(p: Player, input: Input, carrying: boolean, dt = RULE
       p.invuln = 0;
       p.shotCd = projectileStats(p.classId).cooldown;
       p.attackLock = RULES.attackLock;
+      result.charged = p.classId === 'archer' && p.shotCharge >= RULES.chargeTime - 1e-8;
+      p.shotCharge = 0;
       result.shoot = true;
     } else if (input.summon && stats.summon && p.summonCd <= 0) {
       p.invuln = 0;
@@ -383,6 +448,7 @@ export function movePlayer(p: Player, input: Input, carrying: boolean, dt = RULE
       result.summon = true;
     }
   }
+  if (input.shot || input.sword || input.volley) p.shotCharge = 0;
   if (p.guarding) p.guardLeft = Math.max(0,p.guardLeft-dt);
   return result;
 }
@@ -407,6 +473,7 @@ export function newPlayer(
     ack: 0,
     swordCd: 0,
     shotCd: 0,
+    shotCharge: 0,
     dashCd: 0,
     attackLock: 0,
     dashLeft: 0,
@@ -426,6 +493,11 @@ export function newPlayer(
     deaths: 0,
     eliminated: false,
     summonCd: 0,
+    trapCd: 0,
+    trapLeft: 0,
+    volleyCd: 0,
+    stunLeft: 0,
+    activeTraps: 0,
   };
 }
 const newFlag = ({ team, home }: Base): Flag => ({
@@ -450,6 +522,7 @@ export class Duel {
     flags: [],
     arrows: [],
     zombies: [],
+    traps: [],
     score: emptyScore(),
     winner: null,
     reason: '',
@@ -457,6 +530,7 @@ export class Duel {
   };
   private eventId = 0;
   private arrowId = 0;
+  private trapId = 0;
   private zombieId = 0;
   private paths = new Map<string, { goal: Vec; points: Vec[] }>();
   add(id: string, name: string, classId: ClassId = DEFAULT_CLASS) {
@@ -529,6 +603,7 @@ export class Duel {
     const s = this.state;
     s.arrows = [];
     s.zombies = [];
+    s.traps = [];
     this.paths.clear();
     s.flags = s.bases
       .filter((b) => s.players.some((p) => p.team === b.team && !p.eliminated))
@@ -573,6 +648,8 @@ export class Duel {
     this.drop(p);
     s.flags = s.flags.filter((f) => f.team !== p.team);
     s.zombies = s.zombies.filter((z) => z.owner !== p.id);
+    s.traps = s.traps.filter(t => t.owner !== p.id);
+    p.trapLeft = 0;
     const alive = s.players.filter((q) => !q.eliminated);
     if (alive.length === 1 && s.phase !== 'lobby' && s.phase !== 'finished')
       this.finish(alive[0].team, reason);
@@ -587,6 +664,8 @@ export class Duel {
       this.event('block',target,target.team,target.angle,target.classId);
       return;
     }
+    target.shotCharge = 0;
+    target.trapLeft = 0;
     target.hp = Math.max(0,target.hp-amount);
     target.invuln = RULES.hurtProtection;
     target.hitFlash = 0.18;
@@ -757,6 +836,7 @@ export class Duel {
       return;
     }
     const swings: Player[] = [];
+    const placements: Player[] = [];
     // First advance every player's defenses, movement and attack preparation.
     // Only then resolve impacts, so the order of joining never defeats a guard.
     for (const p of s.players) {
@@ -770,9 +850,12 @@ export class Duel {
       }
       const action = movePlayer(p, input, s.flags.some(f => f.carrier === p.id), dt);
       if (action.swing) swings.push(p);
-      if (action.shoot) {
+      if (action.trap) placements.push(p);
+      if (action.shoot || action.volley) {
+        for (const offset of (action.volley ? [-RULES.volleyAngle, 0, RULES.volleyAngle] : [0])) {
         s.arrows.push({ id: ++this.arrowId, owner: p.id, team: p.team, classId: p.classId,
-          x: p.x, y: p.y, angle: p.angle, life: projectileStats(p.classId).life });
+          x: p.x, y: p.y, angle: p.angle + offset, charged: action.shoot && action.charged, life: projectileStats(p.classId, action.shoot && action.charged).life });
+        }
         this.event('shot', p, p.team, p.angle, p.classId);
       }
       if (action.summon) this.summon(p);
@@ -804,7 +887,7 @@ export class Duel {
       a.life = Math.max(0, a.life - dt);
       const owner = s.players.find((p) => p.id === a.owner);
       if (!owner) return false;
-      const stats = projectileStats(a.classId);
+      const stats = projectileStats(a.classId, a.charged);
       const steps = Math.max(1, Math.ceil((stats.speed * travelTime) / 5));
       for (let i = 0; i < steps; i++) {
         a.x += (Math.cos(a.angle) * stats.speed * travelTime) / steps;
@@ -828,7 +911,30 @@ export class Duel {
       return true;
     });
     this.stepZombies(dt);
+    for (const p of placements) {
+      if (p.hp <= 0 || p.hitFlash > 0 || s.winner) continue;
+      const owned = s.traps.filter(t => t.owner === p.id);
+      if (owned.length >= RULES.trapMax) s.traps = s.traps.filter(t => t.id !== owned[0].id);
+      s.traps.push({id: ++this.trapId, owner:p.id, team:p.team, x:p.x, y:p.y, armLeft:RULES.trapArm, life:RULES.trapLife});
+    }
+    s.traps = s.traps.filter(t => {
+      t.life -= dt; t.armLeft = Math.max(0,t.armLeft-dt);
+      const owner = s.players.find(p => p.id === t.owner && !p.eliminated);
+      if (t.life <= 0 || !owner) return false;
+      if (t.armLeft > 1e-8) return true;
+      const target = s.players.find(p => p.team !== t.team && p.hp > 0 && distance(p,t) < RULES.trapRadius + RULES.radius && lineClear(p,t));
+      if (!target || target.invuln > 0 || target.dashInvulnerable) return true;
+      // A floor trap strikes beneath the shield, while normal damage protection still applies.
+      this.damage(target,owner,target.angle,RULES.trapDamage);
+      if (target.hp > 0) {
+        target.stunLeft = RULES.trapStun;
+        target.windup = 0; target.shotCharge = 0; target.trapLeft = 0; target.dashLeft = 0;
+        lowerGuard(target);
+      }
+      return false;
+    });
     if (s.winner) return;
+    for (const p of s.players) p.activeTraps = s.traps.filter(t => t.owner === p.id).length;
     // Own-flag returns precede enemy pickups and scoring, independent of player iteration order.
     for (const f of s.flags) {
       f.lockLeft = Math.max(0, f.lockLeft - dt);

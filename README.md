@@ -137,3 +137,13 @@ En la pantalla inicial, elegí una clase y pulsá **Probar contra un rival inmó
 ### Combates en vivo
 Las salas públicas en cuenta regresiva, combate o pausa de captura aparecen en **Combates en vivo**, con nombres, marcador y tiempo restante. **Ver combate** prepara el acceso como espectador. Las privadas siguen accesibles solo por invitación; las contraseñas y el cupo de espectadores siguen vigentes.
 
+
+## Habilidades del arquero
+- Q / botón Q: coloca una trampa tras 0,5 s inmóvil. Durante la preparación no puede moverse, atacar ni hacer dash; recibir daño la cancela. La recarga de 8 s empieza al iniciar la preparación, incluso si se interrumpe.
+- La trampa tiene un tono apagado, sutilmente visible, se arma en 0,5 s, dura 20 s y causa 0,5 de daño y aturde durante 1 s (sin movimiento ni habilidades). Máximo tres por arquero; colocar otra sustituye la más antigua. No afecta aliados, respeta la protección de daño y el dash; el escudo no bloquea una trampa del suelo.
+- E / botón E: dispara tres flechas con apertura de -25°, 0° y +25°. Recarga independiente de 5 s y bloqueo breve compartido con otros ataques.
+- Funcionan en práctica y online; capturar o reiniciar limpia las trampas.
+
+
+### Flecha cargada del arquero
+Mantener clic izquierdo durante 0,8 s carga el arco; soltar dispara. En móvil, mantener y soltar la palanca de apuntado. La carga completa vuelve naranja la flecha, aumenta daño a 1,3 y velocidad a 728 unidades/s (+30 %), conservando alcance máximo y recarga. Soltar antes dispara una flecha normal. La carga se valida en la simulación; perder foco cancela sin disparar. Dash, trampa, daga y triple descartan la carga.
