@@ -3,6 +3,9 @@ import {
   Duel,
   RULES,
   HOMES,
+  CORNER_HOMES,
+  CORNER_SPAWNS,
+  TEAMS,
   WALLS,
   idleInput,
   sanitizeInput,
@@ -225,5 +228,98 @@ describe('combate y geometría', () => {
     expect(p.invuln).toBeGreaterThan(0);
     d.step(new Map([[p.id, { ...idleInput(1), sword: true }]]));
     expect(p.invuln).toBe(0);
+  });
+});
+describe('todos contra todos', () => {
+  function group(n: number) {
+    const d = new Duel();
+    for (let i = 0; i < n; i++) d.add(String(i), `P${i}`);
+    return d;
+  }
+  it('asigna colores y esquinas, y rechaza al quinto jugador', () => {
+    const d = group(4);
+    expect(d.state.players.map((p) => p.team)).toEqual(TEAMS);
+    expect(d.state.bases.map((b) => b.home)).toEqual(TEAMS.map((t) => CORNER_HOMES[t]));
+    expect(d.state.players.map((p) => ({ x: p.x, y: p.y }))).toEqual(TEAMS.map((t) => CORNER_SPAWNS[t]));
+    expect(d.state.flags).toHaveLength(4);
+    expect(() => d.add('x', 'X')).toThrow('Sala llena');
+    expect(group(2).state.bases.map((b) => b.home)).toEqual([HOMES.blue, HOMES.red]);
+  });
+  it('empieza con tres jugadores listos', () => {
+    const d = group(3);
+    d.ready('0');
+    d.ready('1');
+    expect(d.state.phase).toBe('lobby');
+    d.ready('2');
+    expect(d.state.phase).toBe('countdown');
+    expect(d.state.flags.map((f) => f.team)).toEqual(['blue', 'red', 'green']);
+  });
+  it('se roba cualquier bandera rival y capturar exige la propia en casa', () => {
+    const d = group(4),
+      [blue, , green] = d.state.players;
+    d.state.phase = 'playing';
+    Object.assign(green, CORNER_HOMES.blue);
+    d.step(new Map());
+    expect(d.state.flags.find((f) => f.team === 'blue')?.carrier).toBe(green.id);
+    place(green, 480, 270);
+    Object.assign(blue, CORNER_HOMES.violet);
+    d.step(new Map());
+    expect(d.state.flags.find((f) => f.team === 'violet')?.carrier).toBe(blue.id);
+    Object.assign(blue, CORNER_HOMES.blue);
+    d.step(new Map());
+    expect(d.state.score.blue).toBe(0);
+    Object.assign(green, CORNER_HOMES.green);
+    d.step(new Map());
+    expect(d.state.score.green).toBe(1);
+    expect(d.state.phase).toBe('capture');
+  });
+  it('la quinta muerte elimina: no reaparece, suelta la bandera y retira la propia', () => {
+    const d = group(3),
+      [a, b, c] = d.state.players;
+    d.state.phase = 'playing';
+    for (let death = 1; death < RULES.maxDeaths; death++) {
+      a.invuln = 0;
+      d.damage(a, b, 0, 99);
+      expect(a.deaths).toBe(death);
+      steps(d, 91);
+      expect(a.hp).toBe(3);
+    }
+    Object.assign(d.state.flags[1], { status: 'carried', carrier: a.id });
+    Object.assign(d.state.flags[0], { status: 'carried', carrier: c.id });
+    a.invuln = 0;
+    d.damage(a, b, 0, 99);
+    expect(a.eliminated).toBe(true);
+    expect(d.state.flags.find((f) => f.team === 'red')?.status).toBe('dropped');
+    expect(d.state.flags.some((f) => f.team === 'blue')).toBe(false);
+    steps(d, 120);
+    expect(a.hp).toBe(0);
+    expect(d.state.phase).toBe('playing');
+  });
+  it('el último en pie gana por eliminación y la revancha reinicia las vidas', () => {
+    const d = group(3),
+      [a, b] = d.state.players;
+    d.state.phase = 'playing';
+    d.eliminate(a);
+    expect(d.state.phase).toBe('playing');
+    d.eliminate(b);
+    expect(d.state).toMatchObject({ phase: 'finished', winner: 'green', reason: 'eliminación' });
+    for (const p of d.state.players) d.ready(p.id);
+    expect(d.state.phase).toBe('countdown');
+    expect(d.state.players.every((p) => !p.eliminated && p.deaths === 0 && p.hp > 0)).toBe(true);
+    expect(d.state.flags).toHaveLength(3);
+  });
+  it('por tiempo gana el mayor marcador y hay empate entre líderes', () => {
+    const d = group(4);
+    d.state.phase = 'playing';
+    Object.assign(d.state.score, { red: 2, green: 2 });
+    d.state.timeLeft = 0.01;
+    d.step(new Map());
+    expect(d.state.winner).toBe('draw');
+    const e = group(4);
+    e.state.phase = 'playing';
+    e.state.score.violet = 1;
+    e.state.timeLeft = 0.01;
+    e.step(new Map());
+    expect(e.state.winner).toBe('violet');
   });
 });

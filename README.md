@@ -1,6 +1,6 @@
 # Bandera Duel
 
-Juego web de captura de bandera **1v1**, con espada, arco, magia y dash. Partidas de tres minutos, salas privadas por link, controles para PC y celular y servidor autoritativo. Primera versión: un mapa, dos equipos de un jugador, sin cuentas ni base de datos.
+Juego web de captura de bandera **todos contra todos, de 2 a 4 jugadores**, con espada, arco, magia y dash. Partidas de tres minutos, salas privadas por link, controles para PC y celular y servidor autoritativo. Un mapa, hasta cuatro jugadores con base y bandera propias, sin cuentas ni base de datos.
 
 ## Requisitos e inicio
 
@@ -37,7 +37,7 @@ El cliente deduce el servidor desde el hostname de la página si `VITE_SERVER_UR
 | Golpe secundario | Clic derecho | Botón de daga o báculo |
 | Dash    | Espacio        | Botón ➟                          |
 
-El arquero dispara flechas y usa una daga; el mago lanza hechizos y golpea con el báculo. Ambos pueden usar dash. La espada usa la última dirección apuntada. El dash usa el movimiento actual o el apuntado si estás quieto. El botón de sonido está en la cabecera; su elección se conserva en el dispositivo. El audio comienza después de una interacción del usuario.
+El arquero dispara flechas y usa una daga; el mago lanza hechizos y golpea con el báculo. Ambos pueden usar dash. El nigromante lanza fuego (clic izquierdo o palanca derecha) e invoca dos zombies con clic derecho o el botón ☠ cada 5 s. Los zombies son más lentos que cualquier clase, eligen solos al rival más cercano, se reparten si hay varios objetivos y rodean los muros; duran 20 s, hay como máximo seis por nigromante y cualquier ataque los destruye. Sus golpes cuentan como daño del nigromante: sueltan banderas y suman muertes. La espada usa la última dirección apuntada. El dash usa el movimiento actual o el apuntado si estás quieto. El botón de sonido está en la cabecera; su elección se conserva en el dispositivo. El audio comienza después de una interacción del usuario.
 
 - Robá la bandera enemiga al tocarla y volvé al círculo de tu base. **Tu bandera debe estar en casa para anotar.**
 - Llevarla reduce 15 % la velocidad normal; permite atacar y hacer dash.
@@ -45,8 +45,10 @@ El arquero dispara flechas y usa una daga; el mago lanza hechizos y golpea con e
 - Tocar tu bandera caída la devuelve inmediatamente; abandonada vuelve a los 10 s.
 - El arquero, el mago y el caballero tienen tres puntos de vida; el guerrero tiene cinco. Espada, flecha y hechizo hacen daño según su clase.
 - Reaparición a los 3 s, con 1 s de protección, cancelada al atacar o recoger bandera.
+- Con 2 jugadores las bases quedan a izquierda y derecha; con 3 o 4, cada color (◆ Azul, ✚ Carmesí, ▲ Jade, ● Violeta) ocupa una esquina. Podés robar la bandera de cualquier rival.
+- Cada jugador tiene **5 muertes**: a la quinta queda eliminado, suelta la bandera que llevaba y la suya sale del juego. Si queda uno solo en pie, gana por eliminación.
 - Cada captura reinicia la arena y pausa el reloj 2 s. Tres capturas ganan; a los 3 minutos gana el mayor marcador, o se declara empate.
-- Ambos deben aceptar la revancha. Una desconexión pausa y reserva el asiento 15 s; si no vuelve, pierde por abandono. Salir expresamente abandona inmediatamente.
+- Todos deben aceptar la revancha. Una desconexión pausa y reserva el asiento 15 s; si no vuelve, queda eliminado por abandono. Salir expresamente abandona inmediatamente; la partida sigue mientras queden al menos dos jugadores.
 
 ## Organización y red
 
@@ -60,7 +62,7 @@ Mensajes cliente → servidor: `input` (`seq`, `x`, `y`, `angle`, `sword`, `shot
 
 El navegador predice su movimiento y lo reconcilia con el último `ack`; interpola al rival y suaviza las flechas. Golpes, vida y capturas siempre se resuelven en el servidor. Esta v1 no incorpora rollback ni compensación histórica de impactos: una latencia alta todavía afecta al combate.
 
-El mapa y las banderas pertenecen a equipos, no a un jugador fijo. Ampliar a 2v2 requerirá aumentar cupos, asignaciones, apariciones, interfaz y pruebas; no basta con cambiar `maxClients`.
+Cada color es un equipo de un solo jugador. `layout()` del paquete compartido decide bases, banderas y apariciones según la cantidad de jugadores (duelo o esquinas).
 
 ## Verificación
 

@@ -1,26 +1,31 @@
 import Phaser from 'phaser';
 import { Client, type Room } from '@colyseus/sdk';
-import { RULES, CLASSES, validName, type Snapshot, type ClassId } from '@bandera/shared';
+import { RULES, CLASSES, TEAMS, TEAM_NAMES, TEAM_ICONS, validName, type Snapshot, type ClassId, type Team } from '@bandera/shared';
 import { Arena } from './scene.js';
 import { muted, toggleMute, unlockAudio } from './audio.js';
 import { savedClass, saveClass, mountClasses, updateClasses } from './classes.js';
 import './style.css';
 
+function hudTeam(team: Team, right = false) {
+  const label = right ? `${TEAM_NAMES[team]} ${TEAM_ICONS[team]}` : `${TEAM_ICONS[team]} ${TEAM_NAMES[team]}`;
+  const parts = [`<span>${label}</span>`, `<b id="score-${team}">0</b>`, `<small id="flag-${team}">En base</small>`];
+  return `<div id="team-${team}" class="team ${team}"${team === 'blue' || team === 'red' ? '' : ' hidden'}>${(right ? parts.reverse() : parts).join('')}</div>`;
+}
 document.querySelector('#app')!.innerHTML = `
 <header class="topbar"><a class="brand" href="/" aria-label="Bandera Duel, inicio"><span class="brand-mark">⚑</span><span>BANDERA<span class="brand-thin"> DUEL</span><small>LA GLORIA NO SE HEREDA. SE ROBA.</small></span></a><div class="header-right"><span class="edition">PRIMERA EDICIÓN <b>01</b></span><button id="mute" class="icon-btn" aria-label="Silenciar sonido"></button></div></header>
 <main>
-<section id="intro" class="intro"><div class="hero-copy"><div class="eyebrow"><i></i> DUELO ONLINE · 1 CONTRA 1</div><h1>Tu rival tiene<br>algo <em>tuyo.</em></h1><p>Entrá al castillo. Robá su bandera.<br>Volvé con la gloria antes de que te alcancen.</p><div class="facts"><span><b>02</b> rivales</span><span><b>03</b> minutos</span><span><b>01</b> vencedor</span></div></div>
+<section id="intro" class="intro"><div class="hero-copy"><div class="eyebrow"><i></i> DUELO ONLINE · HASTA 4 JUGADORES</div><h1>Tu rival tiene<br>algo <em>tuyo.</em></h1><p>Entrá al castillo. Robá su bandera.<br>Volvé con la gloria antes de que te alcancen.</p><div class="facts"><span><b>04</b> rivales</span><span><b>03</b> minutos</span><span><b>01</b> vencedor</span></div></div>
 <div class="entry-card"><div class="card-top"><span class="tiny">EL DESAFÍO EMPIEZA ACÁ</span><span class="swords">⚔</span></div><h2 id="entry-title">Prepará tu estandarte.</h2><p id="entry-description">Elegí tu guerrero, prepará una sala e invitá a tu rival.</p><form id="entry-form"><div class="player-setup"><div class="setup-heading"><span>01</span><h3>Tu guerrero</h3></div><label for="name">TU APODO</label><input id="name" name="name" placeholder="Caballero sin nombre" maxlength="16" autocomplete="nickname" required><fieldset id="entry-class-picker" class="class-picker"><legend>ELEGÍ TU GUERRERO</legend><div id="entry-classes" class="class-grid"></div></fieldset></div><div class="room-setup"><div class="setup-heading"><span>02</span><h3>Tu próximo duelo</h3></div><fieldset id="room-options"><legend>TU SALA</legend><label for="room-title">TÍTULO</label><input id="room-title" maxlength="48" value="Duelo medieval"><label for="visibility">VISIBILIDAD</label><select id="visibility"><option value="private">Privada · solo por enlace</option><option value="public">Pública · aparece en el listado</option></select><label class="check-option"><input id="allow-spectators" type="checkbox" checked> Permitir espectadores (máximo 5)</label></fieldset><label for="room-password">CONTRASEÑA (OPCIONAL)</label><input id="room-password" type="password" maxlength="64" autocomplete="off" placeholder="Sin contraseña"><label id="spectator-choice" hidden><input id="spectator" type="checkbox"> Entrar como espectador</label></div><div class="entry-actions"><button id="enter" class="primary" type="submit">Crear un duelo <span>↗</span></button><span class="entry-note">Compartí el enlace al entrar a la sala.</span></div></form><div id="status" class="status" role="status" aria-live="polite">Sin cuentas. Sin descargas. Solo el duelo.</div><button id="new-instead" class="text-btn" hidden>Crear otra sala</button></div></section>
 <section id="room-browser" class="room-browser"><div class="browser-heading"><div><span class="tiny">BUSCÁ TU PRÓXIMO RIVAL</span><h2>Salas públicas</h2></div><button id="refresh-rooms" class="secondary">↻ Actualizar salas</button></div><p id="rooms-status" role="status"></p><div id="rooms-list"></div></section><section class="arena-section"><div class="arena-heading"><div><span class="live-dot"></span><span id="arena-label">EL PATIO DEL REY</span><span class="map-label">ARENA 01</span></div><span id="connection-label">ACERO · ARCO · MAGIA</span></div>
-<div id="hud" class="hud" hidden><div class="team blue"><span>◆ AZUL</span><b id="score-blue">0</b><small id="flag-blue">En base</small></div><div class="clock"><span id="timer">3:00</span><small>PRIMERO A 3</small></div><div class="team red"><small id="flag-red">En base</small><b id="score-red">0</b><span>CARMESÍ ✚</span></div></div>
-<div id="stage" class="stage"><span id="spectator-count" hidden aria-live="polite"></span><div id="game"></div><div class="preview-tag" id="preview-tag">DOS ESTANDARTES. UN SOLO CAMINO A LA VICTORIA.</div>
+<div id="hud" class="hud" hidden>${hudTeam('blue')}${hudTeam('green')}<div class="clock"><span id="timer">3:00</span><small>PRIMERO A 3</small></div>${hudTeam('violet', true)}${hudTeam('red', true)}</div>
+<div id="stage" class="stage"><span id="spectator-count" hidden aria-live="polite"></span><div id="game"></div><div class="preview-tag" id="preview-tag">HASTA CUATRO ESTANDARTES. UNA SOLA GLORIA.</div>
 <div id="overlay" class="overlay" hidden><div class="overlay-card"><span id="overlay-kicker" class="tiny">SALA</span><h2 id="overlay-title">Esperando a tu rival</h2><p id="overlay-description"></p><p id="room-heading"></p><div id="roster" class="roster"></div><fieldset id="room-picker" class="class-picker compact"><legend>TU CLASE · PODÉS CAMBIAR ANTES DE JUGAR</legend><div id="room-classes" class="class-grid"></div></fieldset><p id="selection-status" role="status" hidden></p><div id="invitation"><label for="invite">LINK DE INVITACIÓN</label><div class="invite-row"><input id="invite" readonly aria-label="Link de invitación"><button id="copy" class="secondary">Copiar</button></div></div><button id="ready" class="primary">Estoy listo <span>⚔</span></button><button id="leave" class="text-btn">Salir de la sala</button></div></div>
 <div id="announcement" class="announcement" hidden aria-live="polite"></div>
-<div id="touch-controls"><div id="stick-move" class="stick" aria-label="Mover"><span></span><small>MOVER</small></div><div class="touch-right"><button id="touch-sword" class="touch-action" aria-label="Espada">⚔</button><button id="touch-guard" class="touch-action" aria-label="Mantener escudo" hidden>⛨</button><button id="touch-dash" class="touch-action" aria-label="Dash">➟</button><div id="stick-aim" class="stick" aria-label="Apuntar y soltar para disparar"><span></span><small>APUNTAR</small></div></div></div></div>
-<div class="arena-bottom"><span id="arena-hint">Robá la bandera rival y traela a tu base. La tuya debe estar en casa.</span><div id="cooldowns" hidden><span id="health" aria-label="Vida"></span><span id="cd-sword"></span><span id="cd-shot"></span><span id="cd-dash"></span><span id="cd-guard" hidden></span></div><span class="corner-detail">◆ &nbsp; VS &nbsp; ✚</span></div></section>
-<section id="guide" class="guide"><article><span class="step">01 / ROBÁ</span><h3>Entrá en terreno rival.</h3><p>Tocá su bandera para llevarla. Podés pelear mientras la transportás.</p></article><article><span class="step">02 / RESISTÍ</span><h3>Un golpe cambia todo.</h3><p>Si te hieren, soltás la bandera. Recuperá la tuya con solo tocarla.</p></article><article><span class="step">03 / VOLVÉ</span><h3>Tu base. Tu victoria.</h3><p>Capturá con tu bandera en casa. Tres capturas deciden el duelo.</p></article></section>
+<div id="touch-controls"><div id="stick-move" class="stick" aria-label="Mover"><span></span><small>MOVER</small></div><div class="touch-right"><button id="touch-sword" class="touch-action" aria-label="Espada">⚔</button><button id="touch-guard" class="touch-action" aria-label="Mantener escudo" hidden>⛨</button><button id="touch-summon" class="touch-action" aria-label="Invocar zombies" hidden>☠</button><button id="touch-dash" class="touch-action" aria-label="Dash">➟</button><div id="stick-aim" class="stick" aria-label="Apuntar y soltar para disparar"><span></span><small>APUNTAR</small></div></div></div></div>
+<div class="arena-bottom"><span id="arena-hint">Robá la bandera rival y traela a tu base. La tuya debe estar en casa.</span><div id="cooldowns" hidden><span id="health" aria-label="Vida"></span><span id="lives" aria-label="Muertes"></span><span id="cd-sword"></span><span id="cd-shot"></span><span id="cd-dash"></span><span id="cd-guard" hidden></span><span id="cd-summon" hidden></span></div><span class="corner-detail">◆ &nbsp; ✚ &nbsp; ▲ &nbsp; ●</span></div></section>
+<section id="guide" class="guide"><article><span class="step">01 / ROBÁ</span><h3>Entrá en terreno rival.</h3><p>Tocá su bandera para llevarla. Podés pelear mientras la transportás.</p></article><article><span class="step">02 / RESISTÍ</span><h3>Un golpe cambia todo.</h3><p>Si te hieren, soltás la bandera. Recuperá la tuya con solo tocarla.</p></article><article><span class="step">03 / VOLVÉ</span><h3>Tu base. Tu victoria.</h3><p>Capturá con tu bandera en casa. Tres capturas deciden el duelo. Con cinco muertes quedás afuera.</p></article></section>
 <div id="control-guide" class="control-guide"></div>
-</main><footer><span>BANDERA DUEL <b> / </b> HECHO PARA LA REVANCHA.</span><span>1V1 · V0.1</span></footer><div id="rotate"><span>↻</span><h2>Giralo para el duelo.</h2><p>La arena se juega con el celular horizontal.</p></div>`;
+</main><footer><span>BANDERA DUEL <b> / </b> HECHO PARA LA REVANCHA.</span><span>HASTA 4 · V0.1</span></footer><div id="rotate"><span>↻</span><h2>Giralo para el duelo.</h2><p>La arena se juega con el celular horizontal.</p></div>`;
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const arena = new Arena();
@@ -57,31 +62,19 @@ mountClasses($('entry-classes'), selectedClass, (id) => {
 });
 mountClasses($('room-classes'), selectedClass, (id) => room?.send('selectClass', id));
 let displayedClass: ClassId | undefined;
-function showClassControls(id: ClassId) {
-  if (displayedClass === id) return;
-  displayedClass = id;
-  const stats = CLASSES[id],
-    ranged = stats.ranged,
-    guardian = id === 'guardian',
-    mage = id === 'mage';
-  const projectile = mage ? 'Hechizo' : 'Flecha',
-    melee = mage ? 'Báculo' : 'Daga';
-  $('touch-dash').hidden = !stats.dash;
-  $('touch-guard').hidden = !stats.shield;
-  $('touch-sword').textContent = ranged ? (mage ? '✦' : '†') : '⚔';
-  $('touch-sword').setAttribute(
-    'aria-label',
-    ranged ? melee : id === 'vanguard' ? 'Espada pesada' : 'Espada',
-  );
-  $('stick-aim').setAttribute(
-    'aria-label',
-    ranged ? `Apuntar y soltar ${mage ? 'el hechizo' : 'para disparar'}` : 'Apuntar',
-  );
-  $('cd-shot').hidden = !ranged;
-  $('cd-dash').hidden = !stats.dash;
-  $('cd-guard').hidden = !stats.shield;
-  $('control-guide').innerHTML =
-    `<span><kbd>W A S D</kbd> Mover</span><span><kbd>CLIC</kbd> ${ranged ? projectile : 'Espada'}</span>${id !== 'vanguard' ? `<span><kbd>CLIC DER.</kbd> ${ranged ? melee : 'Mantener escudo'}</span>` : ''}${stats.dash ? '<span><kbd>ESPACIO</kbd> Esquivar</span>' : ''}<span class="mobile-help">${ranged ? `Mové a la izquierda. Apuntá y soltá a la derecha para lanzar ${mage ? 'magia' : 'una flecha'}. Botones de ${melee.toLowerCase()} y dash.` : guardian ? 'Mové y apuntá con las palancas. Golpeá con espada o mantené pulsado el escudo.' : 'Mové y apuntá con las palancas. El botón de espada prepara un golpe pesado.'}</span>`;
+function showClassControls(id:ClassId) {
+  if(displayedClass===id)return;
+  displayedClass=id;
+  const stats=CLASSES[id],ranged=stats.ranged,guardian=id==='guardian',mage=id==='mage';
+  const projectile=mage?'Hechizo':'Flecha',melee=mage?'Báculo':'Daga';
+  $('touch-dash').hidden=!stats.dash;$('touch-guard').hidden=!stats.shield;
+  $('touch-summon').hidden=!stats.summon;$('touch-sword').hidden=!stats.melee;$('cd-summon').hidden=!stats.summon;$('cd-sword').hidden=!stats.melee;
+  $('touch-sword').textContent=ranged?(mage?'✦':'†'):'⚔';
+  $('touch-sword').setAttribute('aria-label',ranged?melee:id==='vanguard'?'Espada pesada':'Espada');
+  $('stick-aim').setAttribute('aria-label',ranged?`Apuntar y soltar ${mage?'el hechizo':'para disparar'}`:'Apuntar');
+  $('cd-shot').hidden=!ranged;$('cd-dash').hidden=!stats.dash;$('cd-guard').hidden=!stats.shield;
+  $('control-guide').innerHTML=`<span><kbd>W A S D</kbd> Mover</span><span><kbd>CLIC</kbd> ${ranged?projectile:'Espada'}</span>${id!=='vanguard'?`<span><kbd>CLIC DER.</kbd> ${ranged?melee:'Mantener escudo'}</span>`:''}${stats.dash?'<span><kbd>ESPACIO</kbd> Esquivar</span>':''}<span class="mobile-help">${ranged?`Mové a la izquierda. Apuntá y soltá a la derecha para lanzar ${mage?'magia':'una flecha'}. Botones de ${melee.toLowerCase()} y dash.`:guardian?'Mové y apuntá con las palancas. Golpeá con espada o mantené pulsado el escudo.':'Mové y apuntá con las palancas. El botón de espada prepara un golpe pesado.'}</span>`;
+  if(stats.summon)$('control-guide').innerHTML='<span><kbd>W A S D</kbd> Mover</span><span><kbd>CLIC</kbd> Fuego</span><span><kbd>CLIC DER.</kbd> Invocar zombies</span><span class="mobile-help">Mové a la izquierda. Apuntá y soltá a la derecha para lanzar fuego. El botón ☠ invoca dos zombies cada 5 s.</span>';
 }
 showClassControls(selectedClass);
 function entryMode() {
@@ -285,8 +278,11 @@ $('leave').onclick = () => {
 function render(s: Snapshot) {
   if (!room) return;
   const me = s.players.find((p) => p.id === room!.sessionId);
-  $('score-blue').textContent = String(s.score.blue);
-  $('score-red').textContent = String(s.score.red);
+  for (const team of TEAMS) {
+    $(`team-${team}`).hidden = !s.bases.some((b) => b.team === team);
+    $(`score-${team}`).textContent = String(s.score[team]);
+    $(`flag-${team}`).textContent = s.players.find((p) => p.team === team)?.eliminated ? 'Eliminado' : '';
+  }
   const seconds = Math.ceil(s.timeLeft);
   $('timer').textContent = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
   for (const flag of s.flags)
@@ -297,7 +293,7 @@ function render(s: Snapshot) {
           ? '¡Robada!'
           : `En el suelo · ${Math.ceil(flag.returnLeft)} s`;
   $('arena-label').textContent = me
-    ? `JUGÁS PARA ${me.team === 'blue' ? '◆ AZUL' : '✚ CARMESÍ'}`
+    ? `JUGÁS PARA ${TEAM_ICONS[me.team]} ${TEAM_NAMES[me.team]}`
     : 'ESPECTADOR · VISTA DEL DUELO';
   $('stage').dataset.phase = s.phase;
   const overlay = s.phase === 'lobby' || s.phase === 'finished';
@@ -308,56 +304,60 @@ function render(s: Snapshot) {
   $('control-guide').hidden = !me;
   $('stage').dataset.role = me ? 'player' : 'spectator';
   if (me) {
-    selectedClass = me.classId;
-    saveClass(me.classId);
-    showClassControls(me.classId);
-    updateClasses($('room-classes'), me.classId, !overlay || s.paused);
-    $('room-picker').hidden = !overlay;
-    $('stage').dataset.class = me.classId;
-    $('stage').dataset.guarding = String(me.guarding);
-    $('stage').dataset.dashing = String(me.dashInvulnerable);
-    $('health').textContent = `♥ ${me.hp}/${me.maxHp}`;
-    $('health').setAttribute('aria-label', `Vida: ${me.hp} de ${me.maxHp}`);
-    $('cd-guard').textContent = me.guarding
-      ? `⛨ Cubriendo ${me.guardLeft.toFixed(1)}s`
-      : `⛨ ${me.guardCd > 0 ? me.guardCd.toFixed(1) + 's' : 'Listo'}`;
+    selectedClass=me.classId;saveClass(me.classId);showClassControls(me.classId);
+    updateClasses($('room-classes'),me.classId,!overlay||s.paused);
+    $('room-picker').hidden=!overlay;
+    $('stage').dataset.class=me.classId;
+    $('stage').dataset.guarding=String(me.guarding);
+    $('stage').dataset.dashing=String(me.dashInvulnerable);
+    $('health').textContent=`♥ ${me.hp}/${me.maxHp}`;
+    $('health').setAttribute('aria-label',`Vida: ${me.hp} de ${me.maxHp}`);
+    $('lives').textContent=`☠ ${me.deaths}/${RULES.maxDeaths}`;
+    $('lives').setAttribute('aria-label',`Muertes: ${me.deaths} de ${RULES.maxDeaths}`);
+    $('cd-guard').textContent=me.guarding?`⛨ Cubriendo ${me.guardLeft.toFixed(1)}s`:`⛨ ${me.guardCd>0?me.guardCd.toFixed(1)+'s':'Listo'}`;
     $('cd-sword').textContent = `⚔ ${me.swordCd > 0 ? me.swordCd.toFixed(1) + 's' : 'Lista'}`;
-    $('cd-shot').textContent =
-      `${me.classId === 'mage' ? '✦' : '➶'} ${me.shotCd > 0 ? me.shotCd.toFixed(1) + 's' : 'Lista'}`;
+    $('cd-shot').textContent = `${me.classId==='mage'?'✦':me.classId==='necromancer'?'✺':'➶'} ${me.shotCd > 0 ? me.shotCd.toFixed(1) + 's' : 'Lista'}`;
     $('cd-dash').textContent = `➟ ${me.dashCd > 0 ? me.dashCd.toFixed(1) + 's' : 'Listo'}`;
+    $('cd-summon').textContent = `☠ ${me.summonCd > 0 ? me.summonCd.toFixed(1) + 's' : 'Listo'}`;
   }
   $('arena-hint').textContent = s.flags.some((f) => f.carrier === me?.id)
     ? '¡Tenés la bandera! Volvé a tu base.'
-    : me?.hp === 0
+    : me?.eliminated
+      ? 'Quedaste eliminado. Mirá cómo termina la batalla.'
+      : me?.hp === 0
       ? `Reaparecés en ${Math.ceil(me.respawnLeft)} s`
       : 'Robá la bandera rival. Recuperá la tuya. Volvé a casa.';
   if (overlay) {
     $('overlay-kicker').textContent =
-      s.phase === 'finished' ? 'EL DUELO TERMINÓ' : 'SALA · 1V1';
+      s.phase === 'finished' ? 'EL DUELO TERMINÓ' : `SALA · ${s.players.length}/${RULES.maxPlayers}`;
     $('overlay-title').textContent =
       s.phase === 'finished'
         ? s.winner === 'draw'
           ? 'Un duelo a la altura.'
           : s.winner === me?.team
             ? 'La gloria es tuya.'
-            : 'Esta vez, ganó tu rival.'
+            : s.players.length > 2
+              ? `Esta vez, ganó ${s.players.find((p) => p.team === s.winner)?.name ?? 'otro rival'}.`
+              : 'Esta vez, ganó tu rival.'
         : s.players.length < 2
           ? 'Falta tu rival.'
           : 'El duelo está servido.';
     $('overlay-description').textContent =
       s.phase === 'finished'
         ? s.reason === 'abandono'
-          ? 'El rival abandonó la partida.'
-          : `${s.score.blue} — ${s.score.red}. ¿Otra ronda?`
-        : 'Compartí el link. Cuando estén listos, empieza la batalla.';
+          ? 'Tus rivales abandonaron la partida.'
+          : s.reason === 'eliminación'
+            ? 'Quedó un solo guerrero en pie. ¿Otra ronda?'
+            : `${s.bases.map((b) => s.score[b.team]).join(' — ')}. ¿Otra ronda?`
+        : `Compartí el link: hasta ${RULES.maxPlayers} jugadores. Cuando todos estén listos, empieza la batalla.`;
     const roster = $('roster');
     roster.replaceChildren();
-    for (const team of ['blue', 'red']) {
+    for (const team of TEAMS) {
       const p = s.players.find((p) => p.team === team),
         row = document.createElement('div');
       row.className = `roster-player ${team}`;
       const title = document.createElement('span');
-      title.textContent = `${team === 'blue' ? '◆' : '✚'} ${p?.name || 'Esperando rival…'}${p ? ' · ' + CLASSES[p.classId].name : ''}`;
+      title.textContent = `${TEAM_ICONS[team]} ${p?.name || 'Esperando rival…'}${p?' · '+CLASSES[p.classId].name:''}`;
       const state = document.createElement('small');
       state.textContent = !p
         ? 'ASIENTO LIBRE'
@@ -373,7 +373,7 @@ function render(s: Snapshot) {
     $('ready').hidden = !me || (s.phase === 'finished' && s.players.some((p) => !p.connected));
     $<HTMLButtonElement>('ready').disabled = s.paused || s.players.length < 2;
     $('ready').textContent = me?.ready
-      ? 'Listo ✓ · Esperando rival'
+      ? 'Listo ✓ · Esperando rivales'
       : s.phase === 'finished'
         ? 'Quiero revancha ↗'
         : 'Estoy listo ⚔';
@@ -386,11 +386,11 @@ function render(s: Snapshot) {
         s.phase === 'finished'
           ? s.winner === 'draw'
             ? 'Empate.'
-            : `Ganó ${s.winner === 'blue' ? 'Azul' : 'Carmesí'}.`
+            : `Ganó ${({ blue: 'Azul', red: 'Carmesí', green: 'Jade', violet: 'Violeta' } as const)[s.winner as Team]}.`
           : 'Esperando a los jugadores';
       $('overlay-description').textContent =
         s.phase === 'finished'
-          ? `${s.score.blue} — ${s.score.red}. Esperando una nueva ronda.`
+          ? `${s.bases.map((b) => s.score[b.team]).join(' — ')}. Esperando una nueva ronda.`
           : 'Estás como espectador. La partida empieza cuando ambos estén listos.';
     }
   }
@@ -444,7 +444,7 @@ async function refreshRooms() {
       const card = document.createElement('article'); card.className = 'room-list-card';
       const title = document.createElement('h3'); title.textContent = info.title;
       const details = document.createElement('p');
-      details.textContent = `${info.players}/2 jugadores · ${info.spectators}/5 espectadores · ${info.phase === 'lobby' ? 'Esperando jugadores' : info.phase === 'finished' ? 'Resultado' : 'En combate'}${info.passwordRequired ? ' · Con contraseña' : ''}`;
+      details.textContent = `${info.players}/${RULES.maxPlayers} jugadores · ${info.spectators}/5 espectadores · ${info.phase === 'lobby' ? 'Esperando jugadores' : info.phase === 'finished' ? 'Resultado' : 'En combate'}${info.passwordRequired ? ' · Con contraseña' : ''}`;
       card.append(title, details);
       const choose = (spectator: boolean) => {
         target = info.roomId; history.replaceState(null, '', `?sala=${target}`); entryMode();
@@ -458,7 +458,7 @@ async function refreshRooms() {
       for (const spectator of [false, true]) {
         const button = document.createElement('button'); button.className = 'secondary';
         button.textContent = spectator ? 'Observar' : 'Jugar';
-        button.disabled = spectator ? !info.allowSpectators || info.spectators >= 5 : info.phase !== 'lobby' || info.playerSlots >= 2;
+        button.disabled = spectator ? !info.allowSpectators || info.spectators >= 5 : info.phase !== 'lobby' || info.playerSlots >= RULES.maxPlayers;
         button.onclick = () => choose(spectator); card.append(button);
       }
       $('rooms-list').append(card);

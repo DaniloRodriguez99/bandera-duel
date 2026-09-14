@@ -24,6 +24,16 @@ test('el mago aparece y muestra sus controles',async({page})=>{
   await expect(page.locator('#control-guide')).toContainText('Hechizo');
   await expect(page.locator('#control-guide')).toContainText('Báculo');
 });
+test('el nigromante lanza fuego e invoca zombies con clic derecho',async({page,browser})=>{
+  const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));await enter(page,'/','Morgana','necromancer');
+  await expect(page.locator('#control-guide')).toContainText('Invocar zombies');
+  const context=await browser.newContext();const rival=await context.newPage();rival.on('pageerror',e=>errors.push(e.message));await enter(rival,page.url(),'Rival','guardian');
+  await page.locator('#ready').click();await rival.locator('#ready').click();await expect(page.locator('#stage')).toHaveAttribute('data-phase','playing',{timeout:7000});
+  await expect(page.locator('#cd-sword')).toBeHidden();await expect(page.locator('#cd-summon')).toHaveText('☠ Listo');
+  await page.locator('canvas').click({position:{x:400,y:300}});await expect(page.locator('#cd-shot')).toHaveText(/✺ [01]\.\ds/);await page.waitForTimeout(300);
+  await page.locator('canvas').click({button:'right',position:{x:400,y:300}});await expect(page.locator('#cd-summon')).toHaveText(/☠ [34]\.\ds/);
+  expect(errors).toEqual([]);await context.close();
+});
 test('escudo móvil con tres dedos, liberación y clase pesada',async({browser},info)=>{
   const pc=await browser.newContext(),opponent=await pc.newPage();await enter(opponent,'/','Heavy','vanguard');
   const mobile=await browser.newContext({viewport:{width:844,height:390},isMobile:true,hasTouch:true,deviceScaleFactor:2});const page=await mobile.newPage();const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));

@@ -28,7 +28,9 @@ export function sound(kind: string) {
               ? [440, 330]
               : kind === 'shot'
                 ? [650]
-                : [220];
+                : kind === 'summon'
+                  ? [196, 147, 110]
+                  : [220];
   notes.forEach((freq, i) => {
     const osc = context!.createOscillator(),
       gain = context!.createGain();

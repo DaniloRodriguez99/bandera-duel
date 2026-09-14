@@ -3,7 +3,7 @@ import { Client, type Room as ClientRoom } from '@colyseus/sdk';
 import { matchMaker } from '@colyseus/core';
 import { createServer } from '../packages/server/src/app.js';
 import type { DuelRoom } from '../packages/server/src/room.js';
-import { HOMES, idleInput, type Snapshot, type ClassId } from '@bandera/shared';
+import { HOMES, RULES, idleInput, type Snapshot, type ClassId } from '@bandera/shared';
 const server = createServer();
 const sdk = new Client('ws://127.0.0.1:2568');
 const sessions: ClientRoom[] = [];
@@ -46,12 +46,12 @@ afterAll(async () => {
   await server.gracefullyShutdown(false);
 });
 describe('servidor con clientes Colyseus reales', () => {
-  it.each([['archer','guardian'],['archer','vanguard'],['guardian','vanguard']] as [ClassId,ClassId][])('sincroniza clases %s vs %s y rechaza armas no autorizadas',async(first,second)=>{
+  it.each([['archer','guardian'],['archer','vanguard'],['guardian','vanguard'],['necromancer','vanguard']] as [ClassId,ClassId][])('sincroniza clases %s vs %s y rechaza armas no autorizadas',async(first,second)=>{
     const {a,b,host}=await pair(first,second);await until(()=>states.get(a.sessionId)?.players.length===2);
     expect(states.get(b.sessionId)?.players.map(p=>p.classId)).toEqual([first,second]);host.game.state.phase='playing';
-    a.send('input',{...idleInput(1),guard:true});b.send('input',{...idleInput(1),shot:true,dash:true});await sleep(120);
-    expect(host.game.state.arrows).toHaveLength(0);expect(host.game.state.players[1].dashCd).toBe(0);
-    if(first==='archer')expect(host.game.state.players[0].guarding).toBe(false);
+    a.send('input',{...idleInput(1),guard:true});b.send('input',{...idleInput(1),shot:true,dash:true,summon:true});await sleep(120);
+    expect(host.game.state.arrows).toHaveLength(0);expect(host.game.state.zombies).toHaveLength(0);expect(host.game.state.players[1].dashCd).toBe(0);
+    if(first==='archer'||first==='necromancer')expect(host.game.state.players[0].guarding).toBe(false);
     await a.leave();await b.leave();
   });
   it('valida selección, anula listo y bloquea cambios en partida',async()=>{
@@ -75,12 +75,13 @@ describe('servidor con clientes Colyseus reales', () => {
     await expect(sdk.create('duel', { name: '<script>' })).rejects.toThrow();
     const { a, b, host } = await pair();
     expect(a.roomId).toMatch(/^[a-f0-9]{32}$/);
-    expect(host.maxClients).toBe(7);
-    await expect(sdk.joinById(a.roomId, { name: 'Tercero' })).rejects.toThrow();
-    a.send('ready');
-    b.send('ready');
+    expect(host.maxClients).toBe(RULES.maxPlayers + 5);
+    const c = await track(sdk.joinById(a.roomId, { name: 'Tercero' })),
+      d = await track(sdk.joinById(a.roomId, { name: 'Cuarto' }));
+    await expect(sdk.joinById(a.roomId, { name: 'Quinto' })).rejects.toThrow();
+    for (const r of [a, b, c, d]) r.send('ready');
     await until(() => states.get(a.sessionId)?.phase === 'playing');
-    expect(states.get(b.sessionId)?.players).toHaveLength(2);
+    expect(states.get(d.sessionId)?.players.map((p) => p.team)).toEqual(['blue', 'red', 'green', 'violet']);
   });
   it('rechaza teletransporte y daño enviado; limita velocidad con ráfagas de inputs', async () => {
     const { a, b, host } = await pair();
@@ -148,6 +149,18 @@ describe('servidor con clientes Colyseus reales', () => {
     await until(() => states.get(a.sessionId)?.phase === 'finished');
     expect(states.get(a.sessionId)?.reason).toBe('abandono');
     expect(states.get(a.sessionId)?.winner).toBe('blue');
+  });
+  it('con tres jugadores un abandono elimina sin terminar; el último en pie gana', async () => {
+    const { a, b, host } = await pair();
+    const c = await track(sdk.joinById(a.roomId, { name: 'Verde' }));
+    await until(() => host.game.state.players.length === 3);
+    host.game.state.phase = 'playing';
+    await c.leave();
+    await until(() => host.game.state.players[2].eliminated);
+    expect(host.game.state.phase).toBe('playing');
+    await b.leave();
+    await until(() => states.get(a.sessionId)?.phase === 'finished');
+    expect(states.get(a.sessionId)).toMatchObject({ winner: 'blue', reason: 'abandono' });
   });
   it('reserva 15s y finaliza por abandono cuando no reconecta', async () => {
     const { a, b, host } = await pair();

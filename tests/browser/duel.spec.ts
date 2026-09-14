@@ -118,3 +118,25 @@ test('muestra errores de sala y permite empezar otra', async ({ page }) => {
   await page.locator('#new-instead').click();
   await expect(page.locator('#enter')).toContainText('Crear un duelo');
 });
+test('cuatro jugadores: asientos, esquinas y marcadores', async ({ page, browser }, info) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  const url = await create(page, 'Uno');
+  const contexts = await Promise.all([0, 1, 2].map(() => browser.newContext()));
+  const rivals = await Promise.all(contexts.map((c) => c.newPage()));
+  for (const [i, rival] of rivals.entries()) {
+    rival.on('pageerror', (e) => errors.push(e.message));
+    await join(rival, url, ['Dos', 'Tres', 'Cuatro'][i]);
+  }
+  await expect(page.locator('#roster')).toContainText('Cuatro');
+  await expect(page.locator('#overlay-kicker')).toContainText('4/4');
+  for (const p of [page, ...rivals]) await p.locator('#ready').click();
+  await expect(page.locator('#stage')).toHaveAttribute('data-phase', 'playing', { timeout: 7000 });
+  for (const team of ['blue', 'red', 'green', 'violet'])
+    await expect(page.locator(`#score-${team}`)).toBeVisible();
+  await expect(rivals[2].locator('#arena-label')).toContainText('VIOLETA');
+  await expect(page.locator('#lives')).toHaveText('☠ 0/5');
+  await page.screenshot({ path: info.outputPath('cuatro.png') });
+  expect(errors).toEqual([]);
+  await Promise.all(contexts.map((c) => c.close()));
+});

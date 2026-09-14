@@ -9,7 +9,6 @@ import {
   validClass,
   DEFAULT_CLASS,
   type ClassId,
-  other,
   type Input,
 } from '@bandera/shared';
 
@@ -17,7 +16,7 @@ const listedRooms = new Map<string, DuelRoom>();
 export const publicRooms = () => [...listedRooms.values()].filter(r => r.publicInfo().visibility === 'public').map(r => r.publicInfo());
 
 export class DuelRoom extends Room {
-  maxClients = 7;
+  maxClients = RULES.maxPlayers + 5;
   private title = 'Duelo medieval';
   private visibility: 'public' | 'private' = 'private';
   private allowSpectators = true;
@@ -135,7 +134,7 @@ export class DuelRoom extends Room {
       if (this.spectators.size >= 5) throw new ServerError(409, 'No quedan lugares para espectadores.');
       return true;
     }
-    if (this.game.state.players.length >= 2) throw new ServerError(409, 'Los dos lugares están ocupados. Podés entrar como espectador.');
+    if (this.game.state.players.length >= RULES.maxPlayers) throw new ServerError(409, `Los ${RULES.maxPlayers} lugares están ocupados. Podés entrar como espectador.`);
     if (this.game.state.phase !== 'lobby') throw new ServerError(409, 'Esta partida ya empezó.');
     return true;
   }
@@ -189,12 +188,10 @@ export class DuelRoom extends Room {
     this.seen.delete(client.sessionId);
     this.receivedAt.delete(client.sessionId);
     if (!p) return;
-    if (s.phase === 'lobby') {
-      s.players = s.players.filter((p) => p.id !== client.sessionId);
-      s.players.forEach((p) => (p.ready = false));
-    } else {
+    if (s.phase === 'lobby' || s.phase === 'finished') this.game.remove(client.sessionId);
+    else {
       p.connected = false;
-      if (s.phase !== 'finished') this.game.finish(other(p.team), 'abandono');
+      this.game.eliminate(p, 'abandono');
     }
     s.paused = this.drops.size > 0;
     this.broadcast('snapshot', s);

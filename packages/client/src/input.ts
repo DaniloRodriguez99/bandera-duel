@@ -3,7 +3,7 @@ export class Controls {
   keys = new Set<string>();
   angle = 0;
   move = { x: 0, y: 0 };
-  actions = { sword: false, shot: false, dash: false };
+  actions = { sword: false, shot: false, dash: false, summon: false };
   enabled = false;
   classId: ClassId = DEFAULT_CLASS;
   private guardSources = new Set<string>();
@@ -14,7 +14,8 @@ export class Controls {
   secondary(held: boolean) {
     if (!held) { this.guardSources.delete('mouse'); return; }
     if (!this.enabled) return;
-    if (CLASSES[this.classId].ranged) this.actions.sword = true;
+    if (CLASSES[this.classId].summon) this.actions.summon = true;
+    else if (CLASSES[this.classId].ranged) this.actions.sword = true;
     else if (this.classId === 'guardian') this.guardSources.add('mouse');
   }
   private sticks = new Map<
@@ -65,10 +66,11 @@ export class Controls {
       el.addEventListener('pointercancel', end);
       el.addEventListener('lostpointercapture', end);
     }
-    for (const action of ['sword', 'dash'] as const)
+    for (const action of ['sword', 'dash', 'summon'] as const)
       document.querySelector(`#touch-${action}`)!.addEventListener('pointerdown', (e) => {
         e.preventDefault();
-        if (this.enabled && (action !== 'dash' || CLASSES[this.classId].dash)) this.actions[action] = true;
+        const stats = CLASSES[this.classId];
+        if (this.enabled && (action === 'sword' ? stats.melee : stats[action])) this.actions[action] = true;
       });
     const guard = document.querySelector<HTMLElement>('#touch-guard')!;
     guard.addEventListener('pointerdown', e => {
@@ -105,14 +107,14 @@ export class Controls {
       (this.keys.has('KeyW') || this.keys.has('ArrowUp') ? 1 : 0);
     const n = Math.max(1, Math.hypot(x, y));
     const result = { seq, x: x / n, y: y / n, angle: this.angle, ...this.actions, guard: this.guardSources.size > 0 };
-    this.actions = { sword: false, shot: false, dash: false };
+    this.actions = { sword: false, shot: false, dash: false, summon: false };
     return result;
   }
   clear() {
     this.keys.clear();
     this.guardSources.clear();
     this.move = { x: 0, y: 0 };
-    this.actions = { sword: false, shot: false, dash: false };
+    this.actions = { sword: false, shot: false, dash: false, summon: false };
     this.sticks.clear();
     document.querySelectorAll<HTMLElement>('.stick').forEach((el) => {
       el.style.setProperty('--dx', '0px');
