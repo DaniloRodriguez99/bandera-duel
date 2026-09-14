@@ -125,7 +125,7 @@ export const RULES = {
   chargeMultiplier: 1.3,
   windScale: 2,
   windVolleyScale: 0.8,
-  windGrace: 0.3,
+  windGrace: 0.6,
   shotCooldown: 0.9,
   arrowSpeed: 560,
   arrowLife: 1.2,
@@ -1746,15 +1746,17 @@ export class Duel {
         const power = action.volley ? action.volleyPower : action.power;
         const stats = projectileStats(p.classId, charged, power);
         const aim = action.angle;
-        // Volley arrows leave side by side and drift apart slowly, so a line of rivals takes all three.
+        // Volley arrows leave side by side and open up slowly: point blank (the archer's risky jump into
+        // a rival's face) all three land, farther away they spread across a line of rivals.
         for (const side of action.volley ? [-1, 0, 1] : [0]) {
+          const gap = side * RULES.volleyGap;
           s.arrows.push({
             id: ++this.arrowId,
             owner: p.id,
             team: p.team,
             classId: p.classId,
-            x: p.x - Math.sin(aim) * side * RULES.volleyGap,
-            y: p.y + Math.cos(aim) * side * RULES.volleyGap,
+            x: p.x - Math.sin(aim) * gap,
+            y: p.y + Math.cos(aim) * gap,
             angle: aim + side * RULES.volleyAngle,
             charged,
             power,

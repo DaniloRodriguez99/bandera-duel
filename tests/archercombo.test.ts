@@ -48,6 +48,12 @@ describe('combos del arquero', () => {
     expect(a.shotCharge).toBeCloseTo(RULES.chargeTime);
     Object.assign(g, { x: a.x + 130, y: a.y, guarding: true, guardLeft: 1, guardHeld: true, angle: Math.PI });
     Object.assign(v, { x: a.x + 250, y: a.y });
+    const zombie = { ...d.state.players[0], x: a.x + 190, y: a.y };
+    d.state.zombies.push({
+      id: 'z-test', owner: 'nadie', team: v.team, x: zombie.x, y: zombie.y, hp: 9, maxHp: 9, angle: 0, windup: 0,
+      attackCd: 0, life: 99, target: null, retarget: 99, kind: 'brute', bonus: true, cast: 0, castCd: 0, healCd: 99,
+      spawnLeft: 99, frozenLeft: 0, execution: null, slot: 0, rise: 99, role: 'guard',
+    });
     run(d, 1, { shot: true, x: 1 }, { guard: true, angle: Math.PI });
     const [arrow] = d.state.arrows;
     expect(arrow).toMatchObject({ wind: true, charged: true });
@@ -57,6 +63,8 @@ describe('combos del arquero', () => {
     expect(g.guarding).toBe(false);
     expect(g.hp).toBeCloseTo(CLASSES.guardian.hp - WIND);
     expect(v.hp).toBeCloseTo(Math.max(0, CLASSES.vanguard.hp - WIND));
+    // It pierces everything in its path, zombies included.
+    expect(d.state.zombies.find((z) => z.id === 'z-test')?.hp).toBeCloseTo(9 - WIND);
   });
   it('sin saltar, soltar con clic y espacio llenos da la flecha cargada normal', () => {
     const { d } = setup();
@@ -74,17 +82,21 @@ describe('combos del arquero', () => {
     [-RULES.volleyAngle, 0, RULES.volleyAngle].forEach((angle, i) => expect(angles[i]).toBeCloseTo(angle));
     expect(d.state.arrows.every((arrow) => !arrow.wind && !arrow.power)).toBe(true);
   });
-  it('en pleno salto cargado con el clic lleno + E: 3 flechas de viento que juntas hacen el 120 %', () => {
+  it('salto cargado a la cara del rival con el clic lleno y E: 3 flechas de viento que a quemarropa suman el 120 %', () => {
     const { d, a, g } = setup();
     run(d, ticks(RULES.overchargeTime), { charge: true, special: true });
     run(d, 1, { dash: true, charge: true, x: 1 });
-    Object.assign(g, { x: a.x + 120, y: a.y, hp: 10 });
-    run(d, 1, { volley: true, x: 1 });
-    expect(d.state.arrows).toHaveLength(3);
-    expect(d.state.arrows.every((arrow) => arrow.wind)).toBe(true);
-    expect(d.state.arrows[1].angle).toBeCloseTo(0);
+    // E pressed a moment after landing, still inside the combo window, right in the rival's face.
+    run(d, ticks(0.5), { charge: true });
+    expect(a.windDash).toBeGreaterThan(0);
+    Object.assign(g, { x: a.x + 60, y: a.y, hp: 10 });
+    run(d, 1, { volley: true });
+    const arrows = d.state.arrows;
+    expect(arrows).toHaveLength(3);
+    expect(arrows.every((arrow) => arrow.wind)).toBe(true);
+    [-RULES.volleyAngle, 0, RULES.volleyAngle].forEach((angle, i) => expect(arrows[i].angle).toBeCloseTo(angle));
     expect(RULES.windVolleyScale).toBeLessThan(RULES.windScale);
-    run(d, 12);
+    run(d, 20);
     expect(10 - g.hp).toBeCloseTo(1.2 * WIND);
   });
   it('un salto no cargado no permite tirar en el aire', () => {

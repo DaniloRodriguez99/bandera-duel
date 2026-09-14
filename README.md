@@ -169,8 +169,8 @@ Sobre cada tarjeta crece su árbol: qué hace un toque, qué hace mantener y (en
 ### Combos del arquero
 - **Triple (E):** las 3 flechas salen casi en fila y se abren de a poco. Si una ya alcanzó a un rival, las otras siguen de largo hacia el próximo en línea.
 - **Cargando el clic + E:** 3 flechas potenciadas al 33 % de la carga completa.
-- **Salto cargado:** con Espacio al máximo, al soltarlo el arquero salta y, mientras está en el aire (y 0,3 s después), lo que suelte (siempre hacia el mouse) se combina con el salto. Mantener el clic no se pierde durante ese salto. Un combo por salto:
+- **Salto cargado:** con Espacio al máximo, al soltarlo el arquero salta y, mientras está en el aire (y hasta 0,6 s después), lo que suelte (siempre hacia el mouse) se combina con el salto. Mantener el clic no se pierde durante ese salto. Un combo por salto:
   - **Tiro cargado al máximo:** **flecha de viento** penetrante que cruza la arena, atraviesa a cada rival una vez, rompe escudos (bloqueo del caballero y escudo mágico) y hace el doble que la flecha cargada.
   - **E:** triple (al 33 % si venía cargando el clic).
-  - **Clic lleno + E:** 3 flechas de viento; cada una hace el 40 % de la flecha de viento, y si las 3 alcanzan al mismo rival suman el 120 %.
+  - **Clic lleno + E:** 3 flechas de viento potenciadas y penetrantes que se abren de a poco. Pensado para saltar a la cara del rival: a quemarropa entran las 3 y suman el 120 % de la flecha de viento (40 % cada una); más lejos se reparten entre varios.
 
