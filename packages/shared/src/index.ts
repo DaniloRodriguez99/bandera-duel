@@ -7,11 +7,91 @@ export function validClass(value: unknown): value is ClassId {
   return typeof value === 'string' && CLASS_IDS.includes(value as ClassId);
 }
 export const CLASSES = {
-  archer: { name: 'Arquero', label: 'ARCO Y DAGA', description: 'Distancia, precisión y una salida rápida.', hp: 3, speed: 190, meleeDamage: .5, meleeRange: 30, meleeArc: Math.PI * .6, windup: .1, meleeCooldown: .5, ranged: true, shield: false, dash: true, melee: true, summon: false },
-  mage: { name: 'Mago', label: 'MAGIA Y BÁCULO', description: 'Hechizos a distancia y movilidad arcana.', hp: 3, speed: 180, meleeDamage: .5, meleeRange: 34, meleeArc: Math.PI * .6, windup: .12, meleeCooldown: .55, ranged: true, shield: false, dash: true, melee: true, summon: false },
-  necromancer: { name: 'Nigromante', label: 'FUEGO Y NO-MUERTOS', description: 'Quemá de lejos. Invocá zombies que cazan solos.', hp: 3, speed: 170, meleeDamage: 0, meleeRange: 0, meleeArc: 0, windup: 0, meleeCooldown: 0, ranged: true, shield: false, dash: false, melee: false, summon: true },
-  guardian: { name: 'Caballero', label: 'ESPADA Y ESCUDO', description: 'Protegé tu bandera. Respondé de cerca.', hp: 3, speed: 180, meleeDamage: 1, meleeRange: 55, meleeArc: Math.PI * .72, windup: .12, meleeCooldown: .6, ranged: false, shield: true, dash: false, melee: true, summon: false },
-  vanguard: { name: 'Guerrero', label: 'ESPADA DE DOS MANOS', description: 'Más alcance. Más daño. Acero pesado.', hp: 5, speed: 155, meleeDamage: 2, meleeRange: 80, meleeArc: Math.PI * 130 / 180, windup: .3, meleeCooldown: 1, ranged: false, shield: false, dash: false, melee: true, summon: false },
+  archer: {
+    name: 'Arquero',
+    label: 'ARCO Y DAGA',
+    description: 'Distancia, precisión y una salida rápida.',
+    hp: 3,
+    speed: 190,
+    meleeDamage: 0.5,
+    meleeRange: 30,
+    meleeArc: Math.PI * 0.6,
+    windup: 0.1,
+    meleeCooldown: 0.5,
+    ranged: true,
+    shield: false,
+    dash: true,
+    melee: true,
+    summon: false,
+  },
+  mage: {
+    name: 'Mago',
+    label: 'FUEGO Y ESCUDO',
+    description: 'Bolas de fuego. Escudo que absorbe dos golpes.',
+    hp: 3,
+    speed: 180,
+    meleeDamage: 0,
+    meleeRange: 0,
+    meleeArc: 0,
+    windup: 0,
+    meleeCooldown: 0,
+    ranged: true,
+    shield: false,
+    dash: true,
+    melee: false,
+    summon: false,
+  },
+  necromancer: {
+    name: 'Nigromante',
+    label: 'FUEGO Y NO-MUERTOS',
+    description: 'Quemá de lejos. Invocá zombies que cazan solos.',
+    hp: 3,
+    speed: 170,
+    meleeDamage: 0,
+    meleeRange: 0,
+    meleeArc: 0,
+    windup: 0,
+    meleeCooldown: 0,
+    ranged: true,
+    shield: false,
+    dash: false,
+    melee: false,
+    summon: true,
+  },
+  guardian: {
+    name: 'Caballero',
+    label: 'ESPADA Y ESCUDO',
+    description: 'Protegé tu bandera. Respondé de cerca.',
+    hp: 3,
+    speed: 180,
+    meleeDamage: 1,
+    meleeRange: 55,
+    meleeArc: Math.PI * 0.72,
+    windup: 0.12,
+    meleeCooldown: 0.6,
+    ranged: false,
+    shield: true,
+    dash: false,
+    melee: true,
+    summon: false,
+  },
+  vanguard: {
+    name: 'Guerrero',
+    label: 'ESPADA DE DOS MANOS',
+    description: 'Más alcance. Más daño. Acero pesado.',
+    hp: 5,
+    speed: 155,
+    meleeDamage: 2,
+    meleeRange: 80,
+    meleeArc: (Math.PI * 130) / 180,
+    windup: 0.3,
+    meleeCooldown: 1,
+    ranged: false,
+    shield: false,
+    dash: false,
+    melee: true,
+    summon: false,
+  },
 } as const;
 export interface Vec {
   x: number;
@@ -29,27 +109,29 @@ export const RULES = {
   target: 3,
   radius: 12,
   carryMultiplier: 0.85,
-  trapSetup: .5,
-  trapArm: .5,
+  trapSetup: 0.5,
+  trapArm: 0.5,
   trapCooldown: 8,
   trapLife: 20,
   trapMax: 3,
   trapRadius: 16,
-  trapDamage: .5,
+  trapDamage: 0.5,
   trapStun: 1,
   volleyCooldown: 5,
-  volleyAngle: Math.PI * 25 / 180,
-  chargeTime: .8,
+  volleyAngle: (Math.PI * 25) / 180,
+  chargeTime: 0.8,
   chargeMultiplier: 1.3,
   shotCooldown: 0.9,
   arrowSpeed: 560,
   arrowLife: 1.2,
   arrowDamage: 1,
   guardDuration: 1.2,
+  magicShieldHits: 2,
+  magicShieldCooldown: 15,
   guardCooldown: 1.5,
-  guardRecovery: .15,
-  guardSpeed: .25,
-  guardArc: Math.PI * 2 / 3,
+  guardRecovery: 0.15,
+  guardSpeed: 0.25,
+  guardArc: (Math.PI * 2) / 3,
   attackLock: 0.2,
   dashDuration: 0.15,
   dashCooldown: 1.5,
@@ -83,13 +165,34 @@ export const RULES = {
   zombieRetarget: 0.4,
 } as const;
 export const TEAMS: Team[] = ['blue', 'red', 'green', 'violet'];
-export const TEAM_NAMES: Record<Team, string> = { blue: 'AZUL', red: 'CARMESÍ', green: 'JADE', violet: 'VIOLETA' };
+export const TEAM_NAMES: Record<Team, string> = {
+  blue: 'AZUL',
+  red: 'CARMESÍ',
+  green: 'JADE',
+  violet: 'VIOLETA',
+};
 export const TEAM_ICONS: Record<Team, string> = { blue: '◆', red: '✚', green: '▲', violet: '●' };
 export const emptyScore = (): Record<Team, number> => ({ blue: 0, red: 0, green: 0, violet: 0 });
-export const SPAWNS = { blue: { x: 70, y: 270 }, red: { x: 890, y: 270 } } satisfies Record<string, Vec>;
-export const HOMES = { blue: { x: 145, y: 270 }, red: { x: 815, y: 270 } } satisfies Record<string, Vec>;
-export const CORNER_SPAWNS: Record<Team, Vec> = { blue: { x: 70, y: 120 }, red: { x: 890, y: 120 }, green: { x: 70, y: 420 }, violet: { x: 890, y: 420 } };
-export const CORNER_HOMES: Record<Team, Vec> = { blue: { x: 145, y: 120 }, red: { x: 815, y: 120 }, green: { x: 145, y: 420 }, violet: { x: 815, y: 420 } };
+export const SPAWNS = { blue: { x: 70, y: 270 }, red: { x: 890, y: 270 } } satisfies Record<
+  string,
+  Vec
+>;
+export const HOMES = { blue: { x: 145, y: 270 }, red: { x: 815, y: 270 } } satisfies Record<
+  string,
+  Vec
+>;
+export const CORNER_SPAWNS: Record<Team, Vec> = {
+  blue: { x: 70, y: 120 },
+  red: { x: 890, y: 120 },
+  green: { x: 70, y: 420 },
+  violet: { x: 890, y: 420 },
+};
+export const CORNER_HOMES: Record<Team, Vec> = {
+  blue: { x: 145, y: 120 },
+  red: { x: 815, y: 120 },
+  green: { x: 145, y: 420 },
+  violet: { x: 815, y: 420 },
+};
 export interface Base {
   team: Team;
   home: Vec;
@@ -201,6 +304,8 @@ export interface Player extends Vec {
   guardCd: number;
   guardRecovery: number;
   guardHeld: boolean;
+  magicShieldHits: number;
+  magicShieldCd: number;
   windup: number;
   swingAngle: number;
   invuln: number;
@@ -232,7 +337,13 @@ export interface Arrow extends Vec {
   angle: number;
   life: number;
 }
-export interface Trap extends Vec { id: number; owner: string; team: Team; armLeft: number; life: number; }
+export interface Trap extends Vec {
+  id: number;
+  owner: string;
+  team: Team;
+  armLeft: number;
+  life: number;
+}
 export interface Zombie extends Vec {
   id: string;
   owner: string;
@@ -299,22 +410,54 @@ export function lineClear(a: Vec, b: Vec): boolean {
   return true;
 }
 export function projectileStats(classId: ClassId, charged = false) {
-  if (classId === 'archer' && charged) return { speed: RULES.arrowSpeed * RULES.chargeMultiplier, life: RULES.arrowLife / RULES.chargeMultiplier, damage: RULES.arrowDamage * RULES.chargeMultiplier, radius: 3, cooldown: RULES.shotCooldown };
+  if (classId === 'archer' && charged)
+    return {
+      speed: RULES.arrowSpeed * RULES.chargeMultiplier,
+      life: RULES.arrowLife / RULES.chargeMultiplier,
+      damage: RULES.arrowDamage * RULES.chargeMultiplier,
+      radius: 3,
+      cooldown: RULES.shotCooldown,
+    };
   return classId === 'necromancer'
-    ? { speed: RULES.fireSpeed, life: RULES.fireLife, damage: RULES.fireDamage, radius: RULES.fireRadius, cooldown: RULES.fireCooldown }
-    : { speed: RULES.arrowSpeed, life: RULES.arrowLife, damage: RULES.arrowDamage, radius: 3, cooldown: RULES.shotCooldown };
+    ? {
+        speed: RULES.fireSpeed,
+        life: RULES.fireLife,
+        damage: RULES.fireDamage,
+        radius: RULES.fireRadius,
+        cooldown: RULES.fireCooldown,
+      }
+    : {
+        speed: RULES.arrowSpeed,
+        life: RULES.arrowLife,
+        damage: RULES.arrowDamage,
+        radius: 3,
+        cooldown: RULES.shotCooldown,
+      };
 }
 export function bodyClear(a: Vec, b: Vec, radius = RULES.zombieRadius - 1): boolean {
   const steps = Math.max(1, Math.ceil(distance(a, b) / 5));
   for (let i = 1; i <= steps; i++)
-    if (blocked(a.x + ((b.x - a.x) * i) / steps, a.y + ((b.y - a.y) * i) / steps, radius)) return false;
+    if (blocked(a.x + ((b.x - a.x) * i) / steps, a.y + ((b.y - a.y) * i) / steps, radius))
+      return false;
   return true;
 }
 const CELL = 20,
   COLS = RULES.width / CELL,
   ROWS = RULES.height / CELL;
-const NEIGHBORS = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]] as const;
-const cellCenter = (i: number): Vec => ({ x: (i % COLS) * CELL + CELL / 2, y: Math.floor(i / COLS) * CELL + CELL / 2 });
+const NEIGHBORS = [
+  [1, 0],
+  [-1, 0],
+  [0, 1],
+  [0, -1],
+  [1, 1],
+  [1, -1],
+  [-1, 1],
+  [-1, -1],
+] as const;
+const cellCenter = (i: number): Vec => ({
+  x: (i % COLS) * CELL + CELL / 2,
+  y: Math.floor(i / COLS) * CELL + CELL / 2,
+});
 const cellOf = (p: Vec) =>
   Math.min(ROWS - 1, Math.max(0, Math.floor(p.y / CELL))) * COLS +
   Math.min(COLS - 1, Math.max(0, Math.floor(p.x / CELL)));
@@ -344,7 +487,8 @@ export function findPath(from: Vec, to: Vec): Vec[] {
       const nx = cx + dx,
         ny = cy + dy,
         next = ny * COLS + nx;
-      if (nx < 0 || ny < 0 || nx >= COLS || ny >= ROWS || parent[next] !== -1 || !open[next]) continue;
+      if (nx < 0 || ny < 0 || nx >= COLS || ny >= ROWS || parent[next] !== -1 || !open[next])
+        continue;
       if (dx && dy && (!open[cy * COLS + nx] || !open[ny * COLS + cx])) continue;
       parent[next] = cell;
       queue.push(next);
@@ -364,15 +508,39 @@ export function lowerGuard(p: Player) {
 }
 /** Shared fixed-step prediction of timers, defense, attacks and movement. */
 export function movePlayer(p: Player, input: Input, carrying: boolean, dt = RULES.tick as number) {
-  const result = { swing: false, shoot: false, summon: false, trap: false, volley: false, charged: false };
+  const result = {
+    swing: false,
+    shoot: false,
+    summon: false,
+    trap: false,
+    volley: false,
+    charged: false,
+  };
   if (p.hp <= 0) return result;
   const stats = CLASSES[p.classId];
   const wasWinding = p.windup > 0;
-  for (const key of ['swordCd','shotCd','dashCd','attackLock','invuln','hitFlash','guardCd','guardRecovery','summonCd','trapCd','volleyCd'] as const)
+  for (const key of [
+    'swordCd',
+    'shotCd',
+    'dashCd',
+    'attackLock',
+    'invuln',
+    'hitFlash',
+    'guardCd',
+    'guardRecovery',
+    'summonCd',
+    'trapCd',
+    'volleyCd',
+    'magicShieldCd',
+  ] as const)
     p[key] = Math.max(0, p[key] - dt);
   if (p.stunLeft > 0) {
-    p.stunLeft = Math.max(0,p.stunLeft-dt);
-    p.shotCharge = 0; p.trapLeft = 0; p.windup = 0; p.dashLeft = 0; p.dashInvulnerable = false;
+    p.stunLeft = Math.max(0, p.stunLeft - dt);
+    p.shotCharge = 0;
+    p.trapLeft = 0;
+    p.windup = 0;
+    p.dashLeft = 0;
+    p.dashInvulnerable = false;
     lowerGuard(p);
     return result;
   }
@@ -387,7 +555,15 @@ export function movePlayer(p: Player, input: Input, carrying: boolean, dt = RULE
       return result;
     }
   }
-  if (p.classId === 'archer' && input.trap && p.trapCd <= 0 && !wasWinding && p.attackLock <= 0 && p.dashLeft <= 0 && p.hitFlash <= 0) {
+  if (
+    p.classId === 'archer' &&
+    input.trap &&
+    p.trapCd <= 0 &&
+    !wasWinding &&
+    p.attackLock <= 0 &&
+    p.dashLeft <= 0 &&
+    p.hitFlash <= 0
+  ) {
     p.shotCharge = 0;
     p.trapLeft = RULES.trapSetup;
     p.dashInvulnerable = false;
@@ -396,9 +572,28 @@ export function movePlayer(p: Player, input: Input, carrying: boolean, dt = RULE
     return result;
   }
   if (p.guarding && (!input.guard || p.guardLeft <= 1e-8)) lowerGuard(p);
-  if (stats.shield && input.guard && !p.guardHeld && !p.guarding && p.guardCd <= 0 && p.guardRecovery <= 0 && !wasWinding && p.attackLock <= 0) {
+  if (
+    stats.shield &&
+    input.guard &&
+    !p.guardHeld &&
+    !p.guarding &&
+    p.guardCd <= 0 &&
+    p.guardRecovery <= 0 &&
+    !wasWinding &&
+    p.attackLock <= 0
+  ) {
     p.guarding = true;
     p.guardLeft = RULES.guardDuration;
+  }
+  if (
+    p.classId === 'mage' &&
+    input.guard &&
+    !p.guardHeld &&
+    p.magicShieldHits === 0 &&
+    p.magicShieldCd <= 1e-8
+  ) {
+    p.magicShieldHits = RULES.magicShieldHits;
+    p.magicShieldCd = 0;
   }
   p.guardHeld = input.guard;
   if (stats.dash && input.dash && p.dashCd <= 0 && !wasWinding && p.attackLock <= 0) {
@@ -413,16 +608,30 @@ export function movePlayer(p: Player, input: Input, carrying: boolean, dt = RULE
   if (dashDt > 0)
     translate(p, p.dashX * RULES.dashSpeed * dashDt, p.dashY * RULES.dashSpeed * dashDt);
   p.dashLeft = Math.max(0, p.dashLeft - dt);
-  const speed = stats.speed * (carrying ? RULES.carryMultiplier : 1) * (p.guarding ? RULES.guardSpeed : 1);
+  const speed =
+    stats.speed * (carrying ? RULES.carryMultiplier : 1) * (p.guarding ? RULES.guardSpeed : 1);
   translate(p, input.x * speed * (dt - dashDt), input.y * speed * (dt - dashDt));
   if (wasWinding) {
     p.windup = Math.max(0, p.windup - dt);
     result.swing = p.windup === 0;
   }
-  const canCharge = p.classId === 'archer' && !p.guarding && !p.dashInvulnerable && !wasWinding && p.attackLock <= 0 && p.shotCd <= 0;
-  if (canCharge && input.charge && !input.shot && !input.sword && !input.volley) p.shotCharge = Math.min(RULES.chargeTime, p.shotCharge + dt);
+  const canCharge =
+    p.classId === 'archer' &&
+    !p.guarding &&
+    !p.dashInvulnerable &&
+    !wasWinding &&
+    p.attackLock <= 0 &&
+    p.shotCd <= 0;
+  if (canCharge && input.charge && !input.shot && !input.sword && !input.volley)
+    p.shotCharge = Math.min(RULES.chargeTime, p.shotCharge + dt);
   else if (!canCharge || !input.shot) p.shotCharge = 0;
-  if (!p.guarding && p.guardRecovery <= 0 && !p.dashInvulnerable && p.attackLock <= 0 && !wasWinding) {
+  if (
+    !p.guarding &&
+    p.guardRecovery <= 0 &&
+    !p.dashInvulnerable &&
+    p.attackLock <= 0 &&
+    !wasWinding
+  ) {
     if (input.volley && p.classId === 'archer' && p.volleyCd <= 0) {
       p.invuln = 0;
       p.volleyCd = RULES.volleyCooldown;
@@ -449,7 +658,7 @@ export function movePlayer(p: Player, input: Input, carrying: boolean, dt = RULE
     }
   }
   if (input.shot || input.sword || input.volley) p.shotCharge = 0;
-  if (p.guarding) p.guardLeft = Math.max(0,p.guardLeft-dt);
+  if (p.guarding) p.guardLeft = Math.max(0, p.guardLeft - dt);
   return result;
 }
 export function newPlayer(
@@ -485,6 +694,8 @@ export function newPlayer(
     guardCd: 0,
     guardRecovery: 0,
     guardHeld: false,
+    magicShieldHits: classId === 'mage' ? RULES.magicShieldHits : 0,
+    magicShieldCd: 0,
     windup: 0,
     swingAngle: 0,
     invuln: 0,
@@ -571,7 +782,15 @@ export class Duel {
     });
   }
   event(kind: GameEvent['kind'], where: Vec, team: Team, angle?: number, classId?: ClassId) {
-    this.state.events.push({ id: ++this.eventId, kind, x: where.x, y: where.y, team, angle, classId });
+    this.state.events.push({
+      id: ++this.eventId,
+      kind,
+      x: where.x,
+      y: where.y,
+      team,
+      angle,
+      classId,
+    });
     this.state.events = this.state.events.slice(-24);
   }
   ready(id: string) {
@@ -592,11 +811,16 @@ export class Duel {
     }
   }
   selectClass(id: string, classId: ClassId): boolean {
-    const s = this.state, p = s.players.find(p => p.id === id);
-    if (!p || !validClass(classId) || s.paused || !['lobby','finished'].includes(s.phase)) return false;
+    const s = this.state,
+      p = s.players.find((p) => p.id === id);
+    if (!p || !validClass(classId) || s.paused || !['lobby', 'finished'].includes(s.phase))
+      return false;
     if (p.classId === classId) return true;
-    Object.assign(p, newPlayer(p.id,p.name,p.team,classId,this.base(p.team).spawn), { ack: p.ack, connected: p.connected });
-    s.players.forEach(p => p.ready = false);
+    Object.assign(p, newPlayer(p.id, p.name, p.team, classId, this.base(p.team).spawn), {
+      ack: p.ack,
+      connected: p.connected,
+    });
+    s.players.forEach((p) => (p.ready = false));
     return true;
   }
   resetArena() {
@@ -643,12 +867,19 @@ export class Duel {
   eliminate(p: Player, reason = 'eliminación') {
     const s = this.state;
     if (p.eliminated) return;
-    Object.assign(p, { eliminated: true, hp: 0, respawnLeft: 0, windup: 0, dashLeft: 0, dashInvulnerable: false });
+    Object.assign(p, {
+      eliminated: true,
+      hp: 0,
+      respawnLeft: 0,
+      windup: 0,
+      dashLeft: 0,
+      dashInvulnerable: false,
+    });
     lowerGuard(p);
     this.drop(p);
     s.flags = s.flags.filter((f) => f.team !== p.team);
     s.zombies = s.zombies.filter((z) => z.owner !== p.id);
-    s.traps = s.traps.filter(t => t.owner !== p.id);
+    s.traps = s.traps.filter((t) => t.owner !== p.id);
     p.trapLeft = 0;
     const alive = s.players.filter((q) => !q.eliminated);
     if (alive.length === 1 && s.phase !== 'lobby' && s.phase !== 'finished')
@@ -656,17 +887,23 @@ export class Duel {
   }
   damage(target: Player, source: Player, angle: number, amount = 1) {
     if (target.hp <= 0 || target.invuln > 0 || target.dashInvulnerable) return;
+    if (target.classId === 'mage' && target.magicShieldHits > 0 && amount > 0) {
+      target.magicShieldHits--;
+      if (target.magicShieldHits === 0) target.magicShieldCd = RULES.magicShieldCooldown;
+      this.event('block', target, target.team, angle, target.classId);
+      return;
+    }
     // Incoming direction is the reverse of projectile/swing travel, not the
     // attacker's current position (arrows can arrive after their owner moves).
     const relative = angle + Math.PI - target.angle;
     const difference = Math.atan2(Math.sin(relative), Math.cos(relative));
     if (target.guarding && Math.abs(difference) <= RULES.guardArc / 2 + 1e-8) {
-      this.event('block',target,target.team,target.angle,target.classId);
+      this.event('block', target, target.team, target.angle, target.classId);
       return;
     }
     target.shotCharge = 0;
     target.trapLeft = 0;
-    target.hp = Math.max(0,target.hp-amount);
+    target.hp = Math.max(0, target.hp - amount);
     target.invuln = RULES.hurtProtection;
     target.hitFlash = 0.18;
     this.drop(target);
@@ -719,7 +956,11 @@ export class Duel {
     const candidates = [
       ...s.players
         .filter((p) => p.team !== z.team && p.hp > 0)
-        .map((p) => ({ id: p.id, at: p as Vec, carrying: s.flags.some((f) => f.carrier === p.id) })),
+        .map((p) => ({
+          id: p.id,
+          at: p as Vec,
+          carrying: s.flags.some((f) => f.carrier === p.id),
+        })),
       ...s.zombies
         .filter((q) => q.team !== z.team && q.hp > 0)
         .map((q) => ({ id: q.id, at: q as Vec, carrying: false })),
@@ -801,7 +1042,9 @@ export class Duel {
           ? distance(z, owner) > 70
             ? owner
             : undefined
-          : s.flags.filter((f) => f.team !== z.team).sort((a, b) => distance(z, a) - distance(z, b))[0]);
+          : s.flags
+              .filter((f) => f.team !== z.team)
+              .sort((a, b) => distance(z, a) - distance(z, b))[0]);
       if (goal) this.walkZombie(z, goal, dt);
     }
     const list = s.zombies;
@@ -816,7 +1059,8 @@ export class Duel {
         translate(b, (Math.cos(angle) * (20 - gap)) / 2, (Math.sin(angle) * (20 - gap)) / 2);
       }
     s.zombies = s.zombies.filter((z) => z.hp > 0 && z.life > 0);
-    for (const id of this.paths.keys()) if (!s.zombies.some((z) => z.id === id)) this.paths.delete(id);
+    for (const id of this.paths.keys())
+      if (!s.zombies.some((z) => z.id === id)) this.paths.delete(id);
   }
   step(inputs: Map<string, Input>, dt = RULES.tick as number) {
     const s = this.state;
@@ -848,13 +1092,27 @@ export class Duel {
         if (p.respawnLeft <= 0) this.revive(p, RULES.spawnProtection);
         continue;
       }
-      const action = movePlayer(p, input, s.flags.some(f => f.carrier === p.id), dt);
+      const action = movePlayer(
+        p,
+        input,
+        s.flags.some((f) => f.carrier === p.id),
+        dt,
+      );
       if (action.swing) swings.push(p);
       if (action.trap) placements.push(p);
       if (action.shoot || action.volley) {
-        for (const offset of (action.volley ? [-RULES.volleyAngle, 0, RULES.volleyAngle] : [0])) {
-        s.arrows.push({ id: ++this.arrowId, owner: p.id, team: p.team, classId: p.classId,
-          x: p.x, y: p.y, angle: p.angle + offset, charged: action.shoot && action.charged, life: projectileStats(p.classId, action.shoot && action.charged).life });
+        for (const offset of action.volley ? [-RULES.volleyAngle, 0, RULES.volleyAngle] : [0]) {
+          s.arrows.push({
+            id: ++this.arrowId,
+            owner: p.id,
+            team: p.team,
+            classId: p.classId,
+            x: p.x,
+            y: p.y,
+            angle: p.angle + offset,
+            charged: action.shoot && action.charged,
+            life: projectileStats(p.classId, action.shoot && action.charged).life,
+          });
         }
         this.event('shot', p, p.team, p.angle, p.classId);
       }
@@ -863,23 +1121,33 @@ export class Duel {
     const hits: { target: Player; source: Player; angle: number; amount: number }[] = [];
     for (const p of swings) {
       const stats = CLASSES[p.classId];
-      this.event('sword',p,p.team,p.swingAngle,p.classId);
+      this.event('sword', p, p.team, p.swingAngle, p.classId);
       for (const q of s.players) {
-        const angle = Math.atan2(q.y-p.y,q.x-p.x);
-        const diff = Math.atan2(Math.sin(angle-p.swingAngle),Math.cos(angle-p.swingAngle));
-        if (q.team !== p.team && q.hp > 0 && distance(p,q) <= stats.meleeRange &&
-            Math.abs(diff) <= stats.meleeArc/2 && lineClear(p,q))
-          hits.push({ target:q, source:p, angle, amount:stats.meleeDamage });
+        const angle = Math.atan2(q.y - p.y, q.x - p.x);
+        const diff = Math.atan2(Math.sin(angle - p.swingAngle), Math.cos(angle - p.swingAngle));
+        if (
+          q.team !== p.team &&
+          q.hp > 0 &&
+          distance(p, q) <= stats.meleeRange &&
+          Math.abs(diff) <= stats.meleeArc / 2 &&
+          lineClear(p, q)
+        )
+          hits.push({ target: q, source: p, angle, amount: stats.meleeDamage });
       }
       for (const z of s.zombies) {
-        const angle = Math.atan2(z.y-p.y,z.x-p.x);
-        const diff = Math.atan2(Math.sin(angle-p.swingAngle),Math.cos(angle-p.swingAngle));
-        if (z.team !== p.team && z.hp > 0 && distance(p,z) <= stats.meleeRange &&
-            Math.abs(diff) <= stats.meleeArc/2 && lineClear(p,z))
+        const angle = Math.atan2(z.y - p.y, z.x - p.x);
+        const diff = Math.atan2(Math.sin(angle - p.swingAngle), Math.cos(angle - p.swingAngle));
+        if (
+          z.team !== p.team &&
+          z.hp > 0 &&
+          distance(p, z) <= stats.meleeRange &&
+          Math.abs(diff) <= stats.meleeArc / 2 &&
+          lineClear(p, z)
+        )
           this.damageZombie(z, p.team, stats.meleeDamage);
       }
     }
-    for (const hit of hits) this.damage(hit.target,hit.source,hit.angle,hit.amount);
+    for (const hit of hits) this.damage(hit.target, hit.source, hit.angle, hit.amount);
     if (s.winner) return;
     s.arrows = s.arrows.filter((a) => {
       const travelTime = Math.min(dt, a.life);
@@ -901,7 +1169,8 @@ export class Duel {
           return false;
         }
         const zombie = s.zombies.find(
-          (z) => z.team !== a.team && z.hp > 0 && distance(z, a) < RULES.zombieRadius + stats.radius,
+          (z) =>
+            z.team !== a.team && z.hp > 0 && distance(z, a) < RULES.zombieRadius + stats.radius,
         );
         if (zombie) {
           this.damageZombie(zombie, a.team, stats.damage);
@@ -913,28 +1182,46 @@ export class Duel {
     this.stepZombies(dt);
     for (const p of placements) {
       if (p.hp <= 0 || p.hitFlash > 0 || s.winner) continue;
-      const owned = s.traps.filter(t => t.owner === p.id);
-      if (owned.length >= RULES.trapMax) s.traps = s.traps.filter(t => t.id !== owned[0].id);
-      s.traps.push({id: ++this.trapId, owner:p.id, team:p.team, x:p.x, y:p.y, armLeft:RULES.trapArm, life:RULES.trapLife});
+      const owned = s.traps.filter((t) => t.owner === p.id);
+      if (owned.length >= RULES.trapMax) s.traps = s.traps.filter((t) => t.id !== owned[0].id);
+      s.traps.push({
+        id: ++this.trapId,
+        owner: p.id,
+        team: p.team,
+        x: p.x,
+        y: p.y,
+        armLeft: RULES.trapArm,
+        life: RULES.trapLife,
+      });
     }
-    s.traps = s.traps.filter(t => {
-      t.life -= dt; t.armLeft = Math.max(0,t.armLeft-dt);
-      const owner = s.players.find(p => p.id === t.owner && !p.eliminated);
+    s.traps = s.traps.filter((t) => {
+      t.life -= dt;
+      t.armLeft = Math.max(0, t.armLeft - dt);
+      const owner = s.players.find((p) => p.id === t.owner && !p.eliminated);
       if (t.life <= 0 || !owner) return false;
       if (t.armLeft > 1e-8) return true;
-      const target = s.players.find(p => p.team !== t.team && p.hp > 0 && distance(p,t) < RULES.trapRadius + RULES.radius && lineClear(p,t));
+      const target = s.players.find(
+        (p) =>
+          p.team !== t.team &&
+          p.hp > 0 &&
+          distance(p, t) < RULES.trapRadius + RULES.radius &&
+          lineClear(p, t),
+      );
       if (!target || target.invuln > 0 || target.dashInvulnerable) return true;
       // A floor trap strikes beneath the shield, while normal damage protection still applies.
-      this.damage(target,owner,target.angle,RULES.trapDamage);
+      this.damage(target, owner, target.angle, RULES.trapDamage);
       if (target.hp > 0) {
         target.stunLeft = RULES.trapStun;
-        target.windup = 0; target.shotCharge = 0; target.trapLeft = 0; target.dashLeft = 0;
+        target.windup = 0;
+        target.shotCharge = 0;
+        target.trapLeft = 0;
+        target.dashLeft = 0;
         lowerGuard(target);
       }
       return false;
     });
     if (s.winner) return;
-    for (const p of s.players) p.activeTraps = s.traps.filter(t => t.owner === p.id).length;
+    for (const p of s.players) p.activeTraps = s.traps.filter((t) => t.owner === p.id).length;
     // Own-flag returns precede enemy pickups and scoring, independent of player iteration order.
     for (const f of s.flags) {
       f.lockLeft = Math.max(0, f.lockLeft - dt);

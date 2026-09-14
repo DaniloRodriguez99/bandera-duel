@@ -20,7 +20,7 @@ describe('clases y persistencia',()=>{
   it.each(CLASS_IDS)('%s persiste en captura, muerte y revancha',id=>{
     const {d,p,q}=setup(id);Object.assign(p,HOMES.blue);Object.assign(d.state.flags[1],{status:'carried',carrier:p.id});d.step(new Map());
     let own=d.state.players[0];expect(own.classId).toBe(id);expect(own.hp).toBe(CLASSES[id].hp);
-    d.state.phase='playing';d.damage(own,q,0,99);expect(own.hp).toBe(0);step(d,q,{},91);expect(own.classId).toBe(id);expect(own.hp).toBe(CLASSES[id].hp);
+    d.state.phase='playing';own.magicShieldHits=0;d.damage(own,q,0,99);expect(own.hp).toBe(0);step(d,q,{},91);expect(own.classId).toBe(id);expect(own.hp).toBe(CLASSES[id].hp);
     d.finish('draw','tiempo');d.ready('a');d.ready('b');expect(d.state.players[0].classId).toBe(id);
   });
 });
@@ -34,9 +34,9 @@ describe('armas y permisos',()=>{
     const {d,p}=setup(id);const x=p.x;step(d,p,{shot:true,dash:true});expect(d.state.arrows).toHaveLength(0);expect(p.x).toBe(x);expect(p.dashCd).toBe(0);
   });
   it.each(['archer','mage','necromancer','vanguard'] as ClassId[])('%s no puede cubrirse',id=>{const {d,p}=setup(id);step(d,p,{guard:true});expect(p.guarding).toBe(false);});
-  it('el mago lanza magia, golpea con báculo y puede esquivar',()=>{
+  it('el mago lanza fuego, rechaza báculo y puede esquivar',()=>{
     const {d,p,q}=setup('mage','vanguard');q.y=450;step(d,p,{shot:true});expect(d.state.arrows[0].classId).toBe('mage');
-    step(d,p,{},28);Object.assign(q,{x:p.x+33,y:p.y});step(d,p,{sword:true});step(d,p,{},5);expect(q.hp).toBeLessThan(5);
+    step(d,p,{},28);Object.assign(q,{x:p.x+33,y:p.y});step(d,p,{sword:true});step(d,p,{},5);expect(q.hp).toBe(5);
     step(d,p,{},15);step(d,p,{dash:true});expect(p.dashCd).toBeGreaterThan(0);
   });
   it('flechas rápidas alcanzan como máximo 672 unidades',()=>{
@@ -46,6 +46,24 @@ describe('armas y permisos',()=>{
   it('la espada pesada tampoco atraviesa paredes',()=>{const {d,p,q}=setup('vanguard');Object.assign(p,{x:480,y:150});Object.assign(q,{x:480,y:219});step(d,p,{sword:true,angle:Math.PI/2});step(d,p,{},12);expect(q.hp).toBe(3);});
 });
 describe('escudo',()=>{
+  it('el escudo mágico absorbe dos golpes de cualquier daño y dirección; el tercero hiere',()=>{
+    const {d,p,q}=setup('mage','vanguard');
+    expect(p.magicShieldHits).toBe(2);
+    d.damage(p,q,0,2);expect(p.magicShieldHits).toBe(1);expect(p.hp).toBe(3);
+    d.damage(p,q,Math.PI,.5);expect(p.magicShieldHits).toBe(0);expect(p.hp).toBe(3);expect(p.magicShieldCd).toBe(15);
+    d.damage(p,q,0,1);expect(p.hp).toBe(2);
+  });
+  it('requiere 15 segundos desde la rotura y un nuevo clic; no repone un escudo activo',()=>{
+    const {d,p,q}=setup('mage');d.damage(p,q,0);step(d,p,{guard:true});expect(p.magicShieldHits).toBe(1);
+    d.damage(p,q,0);step(d,p,{guard:true},449);expect(p.magicShieldHits).toBe(0);expect(p.magicShieldCd).toBeGreaterThan(0);
+    step(d,p,{guard:true},2);expect(p.magicShieldHits).toBe(0);
+    step(d,p);step(d,p,{guard:true});expect(p.magicShieldHits).toBe(2);
+  });
+  it('conserva bandera y posición al absorber un impacto y renueva escudo al reiniciar',()=>{
+    const {d,p,q}=setup('mage');Object.assign(d.state.flags[1],{status:'carried',carrier:p.id});
+    const x=p.x;d.damage(p,q,0);expect(p.x).toBe(x);expect(d.state.flags[1].carrier).toBe(p.id);
+    d.resetArena();expect(d.state.players[0].magicShieldHits).toBe(2);
+  });
   it.each(CLASS_IDS.filter(id=>CLASSES[id].melee))('bloquea el golpe frontal de %s y conserva bandera y posición',attacker=>{
     const {d,p,q}=setup('guardian',attacker);Object.assign(q,{x:445,y:270});Object.assign(d.state.flags[1],{status:'carried',carrier:p.id});
     d.step(new Map([[p.id,input({guard:true})],[q.id,input({sword:true,angle:Math.PI})]]));

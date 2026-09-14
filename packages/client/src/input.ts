@@ -23,6 +23,7 @@ export class Controls {
     if (!held) { this.guardSources.delete('mouse'); return; }
     if (!this.enabled) return;
     if (CLASSES[this.classId].summon) this.actions.summon = true;
+    else if (this.classId === 'mage') this.guardSources.add('mouse');
     else if (CLASSES[this.classId].ranged) this.actions.sword = true;
     else if (this.classId === 'guardian') this.guardSources.add('mouse');
   }
@@ -89,7 +90,7 @@ export class Controls {
     for (const action of ['trap','volley'] as const) document.querySelector(`#touch-${action}`)!.addEventListener('pointerdown', e => { e.preventDefault(); if(this.enabled && this.classId === 'archer') this.actions[action] = true; });
     const guard = document.querySelector<HTMLElement>('#touch-guard')!;
     guard.addEventListener('pointerdown', e => {
-      if (!this.enabled || !CLASSES[this.classId].shield) return;
+      if (!this.enabled || (!CLASSES[this.classId].shield && this.classId !== 'mage')) return;
       e.preventDefault(); guard.setPointerCapture(e.pointerId);
       this.guardSources.add(`touch-${e.pointerId}`);
     });
