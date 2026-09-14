@@ -147,3 +147,10 @@ Las salas públicas en cuenta regresiva, combate o pausa de captura aparecen en 
 
 ### Flecha cargada del arquero
 Mantener clic izquierdo durante 0,8 s carga el arco; soltar dispara. En móvil, mantener y soltar la palanca de apuntado. La carga completa vuelve naranja la flecha, aumenta daño a 1,3 y velocidad a 728 unidades/s (+30 %), conservando alcance máximo y recarga. Soltar antes dispara una flecha normal. La carga se valida en la simulación; perder foco cancela sin disparar. Dash, trampa, daga y triple descartan la carga.
+
+
+### Sobrecarga
+Mantener clic o Espacio carga la habilidad y soltar la ejecuta; un toque rápido conserva la habilidad normal. Un círculo rúnico bajo el personaje crece y gira más rápido mientras carga, y destella al llegar al máximo (1,5 s).
+- Mago: gran bola de fuego (daño de 1 a 2,5, doble tamaño) que explota al impactar y quema a los cercanos con la mitad del daño.
+- Nigromante (clic): fuego cargado de 1 a 2 de daño y casi el doble de tamaño. Caballero y guerrero: golpe cargado con más daño (×2 y ×1,75) y más alcance. Arquero y mago (Espacio): dash hasta 1,8 veces más largo. La flecha cargada del arquero mantiene su regla propia.
+- Nigromante (Espacio): una carga corta invoca un solo **zombie con gorro** (máximo uno): tiene 5 de vida, se cura, cada 5 s invoca un zombie que no respeta el tope normal y lanza con los dos brazos un hechizo doble de fuego y hielo (0,5 de daño cada uno); el hielo congela 1,2 s al que golpea. Si se mantiene hasta llenar el aura (2,5 s, cambia a verde) sin zombies propios y con un rival muerto a menos de 200 px, lo **resucita como esclavo** con su clase y su nombre; el jugador reaparece normalmente y el nigromante puede volver a invocar a ese esclavo con el aura completa 20 s después de que muera.

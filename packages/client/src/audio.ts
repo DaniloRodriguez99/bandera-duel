@@ -82,11 +82,19 @@ export function toggleMute() {
   if (!muted) unlockAudio();
   return muted;
 }
+const SPELL_NOTES: Record<string, number[]> = {
+  heal: [523, 659],
+  freeze: [988, 1319],
+  raise: [98, 147, 196, 294],
+  explosion: [82, 62],
+  cast: [330, 494],
+};
 export function sound(kind: string) {
   if (muted || !context) return;
   const now = context.currentTime;
   const notes =
-    kind === 'capture'
+    SPELL_NOTES[kind] ??
+    (kind === 'capture'
       ? [330, 440, 660]
       : kind === 'hit'
         ? [110]
@@ -100,7 +108,7 @@ export function sound(kind: string) {
                 ? [650]
                 : kind === 'summon'
                   ? [196, 147, 110]
-                  : [220];
+                  : [220]);
   notes.forEach((freq, i) => {
     const osc = context!.createOscillator(),
       gain = context!.createGain();

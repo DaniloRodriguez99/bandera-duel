@@ -7,17 +7,28 @@ export class Controls {
   enabled = false;
   classId: ClassId = DEFAULT_CLASS;
   private chargeSources = new Set<string>();
+  private specialSources = new Set<string>();
   private guardSources = new Set<string>();
   configure(classId: ClassId) {
     if (this.classId !== classId) { this.clear(); this.classId = classId; }
   }
+  // Click and Space charge while held and fire on release, so a quick tap stays the normal ability.
   primary() {
     if (!this.enabled) return;
-    if (this.classId === 'archer') this.chargeSources.add('mouse');
-    else this.actions[CLASSES[this.classId].ranged ? 'shot' : 'sword'] = true;
+    this.chargeSources.add('mouse');
   }
   releasePrimary() {
-    if (this.chargeSources.delete('mouse') && this.enabled) this.actions.shot = true;
+    if (this.chargeSources.delete('mouse') && this.enabled)
+      this.actions[CLASSES[this.classId].ranged ? 'shot' : 'sword'] = true;
+  }
+  pressSpecial(source: string) {
+    const stats = CLASSES[this.classId];
+    if (this.enabled && (stats.dash || stats.summon)) this.specialSources.add(source);
+  }
+  releaseSpecial(source: string) {
+    if (!this.specialSources.delete(source) || !this.enabled) return;
+    if (CLASSES[this.classId].dash) this.actions.dash = true;
+    else if (CLASSES[this.classId].summon) this.actions.summon = true;
   }
   secondary(held: boolean) {
     if (!held) { this.guardSources.delete('mouse'); return; }
@@ -41,9 +52,12 @@ export class Controls {
         if (e.code === 'KeyQ') this.actions.trap = true;
         if (e.code === 'KeyE') this.actions.volley = true;
       }
-      if (e.code === 'Space' && !e.repeat && CLASSES[this.classId].dash) this.actions.dash = true;
+      if (e.code === 'Space' && !e.repeat) this.pressSpecial('key');
     });
-    window.addEventListener('keyup', (e) => this.keys.delete(e.code));
+    window.addEventListener('keyup', (e) => {
+      this.keys.delete(e.code);
+      if (e.code === 'Space') this.releaseSpecial('key');
+    });
     window.addEventListener('pointerup', e => { if (e.button === 2) this.secondary(false); if(e.button === 0) this.releasePrimary(); });
     window.addEventListener('pointercancel', () => this.clear());
     window.addEventListener('blur', () => this.clear());
@@ -63,7 +77,7 @@ export class Controls {
           y: r.top + r.height / 2,
           el,
         });
-        if(kind === 'aim' && this.classId === 'archer') this.chargeSources.add(`touch-${e.pointerId}`);
+        if(kind === 'aim' && CLASSES[this.classId].ranged) this.chargeSources.add(`touch-${e.pointerId}`);
         this.stickMove(e);
       });
       el.addEventListener('pointermove', (e) => this.stickMove(e));
@@ -81,12 +95,32 @@ export class Controls {
       el.addEventListener('pointercancel', end);
       el.addEventListener('lostpointercapture', end);
     }
-    for (const action of ['sword', 'dash', 'summon'] as const)
-      document.querySelector(`#touch-${action}`)!.addEventListener('pointerdown', (e) => {
+    for (const action of ['sword', 'dash', 'summon'] as const) {
+      const button = document.querySelector<HTMLElement>(`#touch-${action}`)!;
+      button.addEventListener('pointerdown', (e) => {
         e.preventDefault();
         const stats = CLASSES[this.classId];
-        if (this.enabled && (action === 'sword' ? stats.melee : stats[action])) this.actions[action] = true;
+        if (!this.enabled) return;
+        const id = `touch-${e.pointerId}`;
+        if (action !== 'sword') {
+          if (!stats[action]) return;
+          button.setPointerCapture(e.pointerId);
+          this.pressSpecial(id);
+        } else if (stats.melee && !stats.ranged) {
+          button.setPointerCapture(e.pointerId);
+          this.chargeSources.add(id);
+        } else if (stats.melee) this.actions.sword = true;
       });
+      button.addEventListener('pointerup', (e) => {
+        const id = `touch-${e.pointerId}`;
+        if (action !== 'sword') this.releaseSpecial(id);
+        else if (this.chargeSources.delete(id) && this.enabled) this.actions.sword = true;
+      });
+      button.addEventListener('pointercancel', (e) => {
+        this.specialSources.delete(`touch-${e.pointerId}`);
+        this.chargeSources.delete(`touch-${e.pointerId}`);
+      });
+    }
     for (const action of ['trap','volley'] as const) document.querySelector(`#touch-${action}`)!.addEventListener('pointerdown', e => { e.preventDefault(); if(this.enabled && this.classId === 'archer') this.actions[action] = true; });
     const guard = document.querySelector<HTMLElement>('#touch-guard')!;
     guard.addEventListener('pointerdown', e => {
@@ -122,7 +156,7 @@ export class Controls {
       (this.keys.has('KeyS') || this.keys.has('ArrowDown') ? 1 : 0) -
       (this.keys.has('KeyW') || this.keys.has('ArrowUp') ? 1 : 0);
     const n = Math.max(1, Math.hypot(x, y));
-    const result = { seq, x: x / n, y: y / n, angle: this.angle, ...this.actions, charge: this.chargeSources.size > 0, guard: this.guardSources.size > 0 };
+    const result = { seq, x: x / n, y: y / n, angle: this.angle, ...this.actions, charge: this.chargeSources.size > 0, special: this.specialSources.size > 0, guard: this.guardSources.size > 0 };
     this.actions = { sword: false, shot: false, dash: false, summon: false, trap: false, volley: false };
     return result;
   }
@@ -130,6 +164,7 @@ export class Controls {
     this.keys.clear();
     this.guardSources.clear();
     this.chargeSources.clear();
+    this.specialSources.clear();
     this.move = { x: 0, y: 0 };
     this.actions = { sword: false, shot: false, dash: false, summon: false, trap: false, volley: false };
     this.sticks.clear();

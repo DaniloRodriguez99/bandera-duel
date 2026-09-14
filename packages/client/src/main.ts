@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { Client, type Room } from '@colyseus/sdk';
-import { RULES, CLASSES, TEAMS, TEAM_NAMES, TEAM_ICONS, validName, type Snapshot, type ClassId, type Team } from '@bandera/shared';
+import { RULES, chargePower, CLASSES, TEAMS, TEAM_NAMES, TEAM_ICONS, validName, type Snapshot, type ClassId, type Team } from '@bandera/shared';
 import { Arena } from './scene.js';
 import {
   muted,
@@ -93,6 +93,9 @@ function showClassControls(id:ClassId) {
     $('stick-aim').setAttribute('aria-label','Apuntar y soltar para lanzar bola de fuego');
     $('control-guide').innerHTML='<span><kbd>W A S D</kbd> Mover</span><span><kbd>CLIC</kbd> Bola de fuego</span><span><kbd>CLIC DER.</kbd> Escudo mágico</span><span><kbd>ESPACIO</kbd> Esquivar</span><span class="mobile-help">El escudo absorbe 2 golpes. Al romperse, esperá 15 s y volvé a lanzarlo con clic derecho o el botón ⛨. Apuntá y soltá para lanzar fuego.</span>';
   }
+  if (id !== 'archer') $('control-guide').innerHTML += '<span><kbd>MANTENER CLIC</kbd> Cargar · más daño y alcance al soltar</span>';
+  if (stats.dash) $('control-guide').innerHTML += '<span><kbd>MANTENER ESPACIO</kbd> Dash más largo</span>';
+  if (stats.summon) $('control-guide').innerHTML += '<span><kbd>ESPACIO</kbd> Invocar zombies</span><span><kbd>MANTENER ESPACIO</kbd> Zombie con gorro · aura llena: resucitar a un muerto cercano</span>';
 }
 showClassControls(selectedClass);
 function entryMode() {
@@ -366,9 +369,12 @@ function render(s: Snapshot) {
     if(me.classId==='mage') $('cd-guard').textContent=me.magicShieldHits>0?`⛨ ${me.magicShieldHits}/2 golpes`:`⛨ ${me.magicShieldCd>0?me.magicShieldCd.toFixed(1)+'s':'Listo · clic derecho'}`;
     $('cd-sword').textContent = `⚔ ${me.swordCd > 0 ? me.swordCd.toFixed(1) + 's' : 'Lista'}`;
     $('stage').dataset.charge = String(me.shotCharge);
+    $('stage').dataset.specialCharge = String(me.specialCharge);
     $('cd-shot').textContent = `${me.classId==='mage'?'✦':me.classId==='necromancer'?'✺':'➶'} ${me.shotCd > 0 ? me.shotCd.toFixed(1) + 's' : 'Lista'}`;
     if(me.classId==='archer' && me.shotCharge > 0) $('cd-shot').textContent = me.shotCharge>=RULES.chargeTime-1e-8 ? '➶ Cargada · +30 %' : `➶ Cargando ${Math.round(me.shotCharge/RULES.chargeTime*100)}%`;
+    if(me.classId!=='archer' && me.shotCharge > 0) $(CLASSES[me.classId].ranged ? 'cd-shot' : 'cd-sword').textContent = `⚡ Cargando ${Math.round(chargePower(me.shotCharge)*100)} %`;
     $('cd-dash').textContent = `➟ ${me.dashCd > 0 ? me.dashCd.toFixed(1) + 's' : 'Listo'}`;
+    if(me.specialCharge > 0 && CLASSES[me.classId].dash) $('cd-dash').textContent = `➟ Cargando ${Math.round(chargePower(me.specialCharge)*100)} %`;
     $('stage').dataset.trapLeft = String(me.trapLeft);
     $('stage').dataset.traps = String(s.traps.filter(t=>t.owner===me.id).length);
     $('cd-trap').textContent = me.trapLeft > 0 ? `Q Preparando ${me.trapLeft.toFixed(1)}s` : `Q Trampa · ${me.trapCd>0?me.trapCd.toFixed(1)+'s':'Lista'}`;
@@ -376,6 +382,7 @@ function render(s: Snapshot) {
     $('touch-trap').textContent = me.trapLeft>0?me.trapLeft.toFixed(1):me.trapCd>0?Math.ceil(me.trapCd)+'s':'Q';
     $('touch-volley').textContent = me.volleyCd>0?Math.ceil(me.volleyCd)+'s':'E';
     $('cd-summon').textContent = `☠ ${me.summonCd > 0 ? me.summonCd.toFixed(1) + 's' : 'Listo'}`;
+    if(me.specialCharge > 0 && CLASSES[me.classId].summon) $('cd-summon').textContent = me.specialCharge >= RULES.overchargeTime ? `☠ Aura ${Math.round(Math.min(1, me.specialCharge / RULES.raiseCharge) * 100)} % · resucitar` : '☠ Cargando · zombie con gorro';
   }
   $('arena-hint').textContent = s.flags.some((f) => f.carrier === me?.id)
     ? '¡Tenés la bandera! Volvé a tu base.'
