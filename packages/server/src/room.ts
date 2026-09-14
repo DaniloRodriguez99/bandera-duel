@@ -28,7 +28,9 @@ export class DuelRoom extends Room {
       passwordRequired: !!this.passwordHash, allowSpectators: this.allowSpectators,
       spectators: this.watching.size, maxSpectators: 5,
       players: this.game.state.players.filter(p => p.connected).length,
-      playerSlots: this.game.state.players.length, phase: this.game.state.phase };
+      playerSlots: this.game.state.players.length, phase: this.game.state.phase,
+      score: {...this.game.state.score}, timeLeft: this.game.state.timeLeft, paused: this.game.state.paused,
+      names: this.game.state.players.map(p => p.name) };
   }
   private publishInfo() { this.broadcast('roomInfo', this.publicInfo()); }
   onDispose() { listedRooms.delete(this.roomId); }

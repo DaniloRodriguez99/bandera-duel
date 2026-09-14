@@ -127,5 +127,13 @@ Al abrir una invitación, marcá **Entrar como espectador** e ingresá un apodo.
 
 
 ## Salas públicas y privadas
-Al crear una sala podés elegir un título (1–48 caracteres), visibilidad pública o privada, contraseña opcional (hasta 64 caracteres) y permitir o desactivar espectadores. La lista pública se actualiza cada 10 segundos y permite jugar u observar. Las salas privadas solo se comparten por enlace. La contraseña se exige a jugadores y espectadores y nunca se incluye en el enlace ni en el listado. El contador muestra espectadores conectados en tiempo real; se reserva su cupo 15 segundos al reconectar. GET /rooms devuelve únicamente datos públicos de salas públicas; las salas desaparecen al eliminarse del servidor.
+Al crear una sala podés elegir un título (1–48 caracteres), visibilidad pública o privada, contraseña opcional (hasta 64 caracteres) y permitir o desactivar espectadores. La lista pública se actualiza cada 2 segundos y permite jugar u observar. Las salas privadas solo se comparten por enlace. La contraseña se exige a jugadores y espectadores y nunca se incluye en el enlace ni en el listado. El contador muestra espectadores conectados en tiempo real; se reserva su cupo 15 segundos al reconectar. GET /rooms devuelve únicamente datos públicos de salas públicas; las salas desaparecen al eliminarse del servidor.
+
+
+## Práctica local
+En la pantalla inicial, elegí una clase y pulsá **Probar contra un rival inmóvil**. No requiere apodo, sala ni servidor. El rival recibe daño y reaparece, pero no se mueve ni ataca. Podés probar armas, movilidad y banderas con las reglas habituales. Usá **Reiniciar práctica** para restablecer la partida o **Volver al inicio** para elegir otra clase o jugar online.
+
+
+### Combates en vivo
+Las salas públicas en cuenta regresiva, combate o pausa de captura aparecen en **Combates en vivo**, con nombres, marcador y tiempo restante. **Ver combate** prepara el acceso como espectador. Las privadas siguen accesibles solo por invitación; las contraseñas y el cupo de espectadores siguen vigentes.
 
