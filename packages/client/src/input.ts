@@ -41,7 +41,10 @@ export class Controls {
         if (e.code === 'KeyQ') this.actions.trap = true;
         if (e.code === 'KeyE') this.actions.volley = true;
       }
-      if (e.code === 'Space' && !e.repeat && CLASSES[this.classId].dash) this.actions.dash = true;
+      if (e.code === 'Space' && !e.repeat) {
+        if (CLASSES[this.classId].dash) this.actions.dash = true;
+        else if (CLASSES[this.classId].summon) this.actions.summon = true;
+      }
     });
     window.addEventListener('keyup', (e) => this.keys.delete(e.code));
     window.addEventListener('pointerup', e => { if (e.button === 2) this.secondary(false); if(e.button === 0) this.releasePrimary(); });
