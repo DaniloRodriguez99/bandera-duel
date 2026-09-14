@@ -2,7 +2,14 @@ import Phaser from 'phaser';
 import { Client, type Room } from '@colyseus/sdk';
 import { RULES, CLASSES, validName, type Snapshot, type ClassId } from '@bandera/shared';
 import { Arena } from './scene.js';
-import { muted, toggleMute, unlockAudio } from './audio.js';
+import {
+  muted,
+  toggleMute,
+  unlockAudio,
+  musicVolume,
+  setMusicVolume,
+  setMusicMode,
+} from './audio.js';
 import { savedClass, saveClass, mountClasses, updateClasses } from './classes.js';
 import './style.css';
 import { Practice, PRACTICE_PLAYER } from './practice.js';
@@ -109,6 +116,14 @@ function muteLabel() {
   $('mute').setAttribute('aria-label', muted ? 'Activar sonido' : 'Silenciar sonido');
 }
 muteLabel();
+const musicControl = document.createElement('label');
+musicControl.className = 'music-control';
+musicControl.innerHTML = `Música <input id="music-volume" aria-label="Volumen de música" type="range" min="0" max="100" value="${Math.round(musicVolume * 100)}">`;
+$('mute').before(musicControl);
+$<HTMLInputElement>('music-volume').oninput = (e) =>
+  setMusicVolume(Number((e.target as HTMLInputElement).value) / 100);
+document.addEventListener('pointerdown', unlockAudio, { once: true });
+document.addEventListener('keydown', unlockAudio, { once: true });
 $('mute').onclick = () => {
   toggleMute();
   muteLabel();
@@ -157,7 +172,8 @@ function bind(joined: Room) {
     $('spectator-count').textContent = `Espectadores: ${info.spectators}/5`;
     $('entry-title').textContent = info.title;
     $('invite').setAttribute('aria-label', `Invitación a ${info.title}`);
-    $('room-heading').textContent = `${info.title} · ${info.visibility === 'public' ? 'Pública' : 'Privada'}`;
+    $('room-heading').textContent =
+      `${info.title} · ${info.visibility === 'public' ? 'Pública' : 'Privada'}`;
   });
   room.onMessage('snapshot', (s: Snapshot) => {
     current = s;
@@ -229,7 +245,14 @@ $('entry-form').onsubmit = async (e) => {
           spectator: $<HTMLInputElement>('spectator').checked,
           password: $<HTMLInputElement>('room-password').value,
         })
-      : await client.create('duel', { name, classId: selectedClass, title: $<HTMLInputElement>('room-title').value, visibility: $<HTMLSelectElement>('visibility').value, password: $<HTMLInputElement>('room-password').value, allowSpectators: $<HTMLInputElement>('allow-spectators').checked });
+      : await client.create('duel', {
+          name,
+          classId: selectedClass,
+          title: $<HTMLInputElement>('room-title').value,
+          visibility: $<HTMLSelectElement>('visibility').value,
+          password: $<HTMLInputElement>('room-password').value,
+          allowSpectators: $<HTMLInputElement>('allow-spectators').checked,
+        });
     $<HTMLInputElement>('room-password').value = '';
     bind(joined);
   } catch (error) {
@@ -287,6 +310,19 @@ $('leave').onclick = () => {
 function render(s: Snapshot) {
   if (!room && !practice) return;
   const me = s.players.find((p) => p.id === (practice ? PRACTICE_PLAYER : room!.sessionId));
+  setMusicMode(
+    s.paused
+      ? 'menu'
+      : s.phase === 'finished'
+        ? s.winner === me?.team
+          ? 'victory'
+          : 'defeat'
+        : ['playing', 'countdown', 'capture'].includes(s.phase)
+          ? s.timeLeft <= 30
+            ? 'urgent'
+            : 'duel'
+          : 'menu',
+  );
   $('score-blue').textContent = String(s.score.blue);
   $('score-red').textContent = String(s.score.red);
   const seconds = Math.ceil(s.timeLeft);
@@ -334,8 +370,7 @@ function render(s: Snapshot) {
       ? `Reaparecés en ${Math.ceil(me.respawnLeft)} s`
       : 'Robá la bandera rival. Recuperá la tuya. Volvé a casa.';
   if (overlay) {
-    $('overlay-kicker').textContent =
-      s.phase === 'finished' ? 'EL DUELO TERMINÓ' : 'SALA · 1V1';
+    $('overlay-kicker').textContent = s.phase === 'finished' ? 'EL DUELO TERMINÓ' : 'SALA · 1V1';
     $('overlay-title').textContent =
       s.phase === 'finished'
         ? s.winner === 'draw'
@@ -406,7 +441,8 @@ function render(s: Snapshot) {
     $('leave').hidden = true;
     if (overlay) {
       $('overlay-title').textContent = 'Práctica terminada';
-      $('overlay-description').textContent = 'Reiniciá la práctica o volvé al inicio para elegir otra clase.';
+      $('overlay-description').textContent =
+        'Reiniciá la práctica o volvé al inicio para elegir otra clase.';
     }
   }
   const announce = $('announcement');
@@ -440,65 +476,107 @@ if (token && target && token.startsWith(target + ':')) {
 }
 
 interface RoomInfo {
-  roomId: string; title: string; visibility: 'public' | 'private'; passwordRequired: boolean;
-  allowSpectators: boolean; spectators: number; maxSpectators: number;
-  players: number; playerSlots: number; phase: string;
-  score: {blue:number;red:number}; timeLeft: number; paused: boolean; names: string[];
+  roomId: string;
+  title: string;
+  visibility: 'public' | 'private';
+  passwordRequired: boolean;
+  allowSpectators: boolean;
+  spectators: number;
+  maxSpectators: number;
+  players: number;
+  playerSlots: number;
+  phase: string;
+  score: { blue: number; red: number };
+  timeLeft: number;
+  paused: boolean;
+  names: string[];
 }
 let refreshingRooms = false;
 async function refreshRooms() {
   if (room || practice || refreshingRooms) return;
   refreshingRooms = true;
   try {
-    const url = new URL(endpoint.replace(/^ws/, 'http')); url.pathname = '/rooms';
-    const response = await fetch(url, {signal: AbortSignal.timeout(8000)});
+    const url = new URL(endpoint.replace(/^ws/, 'http'));
+    url.pathname = '/rooms';
+    const response = await fetch(url, { signal: AbortSignal.timeout(8000) });
     if (!response.ok) throw Error();
     const rooms: RoomInfo[] = await response.json();
     $('rooms-list').replaceChildren();
     $('live-rooms-list').replaceChildren();
-    $('live-empty').hidden = rooms.some(info => ['playing','capture','countdown'].includes(info.phase));
-    $('rooms-status').textContent = rooms.length ? 'Elegí una sala para jugar u observar.' : 'No hay salas públicas. ¡Creá la primera!';
+    $('live-empty').hidden = rooms.some((info) =>
+      ['playing', 'capture', 'countdown'].includes(info.phase),
+    );
+    $('rooms-status').textContent = rooms.length
+      ? 'Elegí una sala para jugar u observar.'
+      : 'No hay salas públicas. ¡Creá la primera!';
     for (const info of rooms) {
-      const live = ['playing','capture','countdown'].includes(info.phase);
-      const card = document.createElement('article'); card.className = 'room-list-card';
+      const live = ['playing', 'capture', 'countdown'].includes(info.phase);
+      const card = document.createElement('article');
+      card.className = 'room-list-card';
       card.dataset.roomId = info.roomId;
       if (live) {
-        const badge = document.createElement('span'); badge.className = 'live-badge';
-        badge.textContent = info.paused ? '● EN PAUSA · RECONEXIÓN' : '● EN VIVO'; card.append(badge);
+        const badge = document.createElement('span');
+        badge.className = 'live-badge';
+        badge.textContent = info.paused ? '● EN PAUSA · RECONEXIÓN' : '● EN VIVO';
+        card.append(badge);
       }
-      const title = document.createElement('h3'); title.textContent = info.title;
+      const title = document.createElement('h3');
+      title.textContent = info.title;
       const details = document.createElement('p');
       details.textContent = `${info.players}/2 jugadores · ${info.spectators}/5 espectadores · ${info.phase === 'lobby' ? 'Esperando jugadores' : info.phase === 'finished' ? 'Resultado' : 'En combate'}${info.passwordRequired ? ' · Con contraseña' : ''}`;
       card.append(title, details);
       if (live) {
-        const score = document.createElement('p'); score.className = 'live-score';
+        const score = document.createElement('p');
+        score.className = 'live-score';
         const seconds = Math.ceil(info.timeLeft);
-        score.textContent = `${info.names.join(' vs ')} · ${info.score.blue} — ${info.score.red} · ${Math.floor(seconds/60)}:${String(seconds%60).padStart(2,'0')}`;
+        score.textContent = `${info.names.join(' vs ')} · ${info.score.blue} — ${info.score.red} · ${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
         card.append(score);
       }
       const choose = (spectator: boolean) => {
-        target = info.roomId; history.replaceState(null, '', `?sala=${target}`); entryMode();
+        target = info.roomId;
+        history.replaceState(null, '', `?sala=${target}`);
+        entryMode();
         $('entry-title').textContent = info.title;
         $<HTMLInputElement>('spectator').checked = spectator;
         $('spectator').dispatchEvent(new Event('change'));
         $<HTMLInputElement>('room-password').value = '';
-        $('entry-description').textContent = info.passwordRequired ? 'Ingresá el apodo y la contraseña de la sala.' : 'Ingresá tu apodo para entrar.';
-        $('intro').scrollIntoView({behavior:'smooth'});
+        $('entry-description').textContent = info.passwordRequired
+          ? 'Ingresá el apodo y la contraseña de la sala.'
+          : 'Ingresá tu apodo para entrar.';
+        $('intro').scrollIntoView({ behavior: 'smooth' });
       };
-      for (const spectator of (live ? [true] : [false, true])) {
-        const button = document.createElement('button'); button.className = 'secondary';
-        button.textContent = spectator ? !info.allowSpectators ? 'Espectadores desactivados' : info.spectators >= 5 ? 'Sin cupo de espectador' : live ? 'Ver combate' : 'Observar' : 'Jugar';
-        button.disabled = spectator ? !info.allowSpectators || info.spectators >= 5 : info.phase !== 'lobby' || info.playerSlots >= 2;
-        button.onclick = () => choose(spectator); card.append(button);
+      for (const spectator of live ? [true] : [false, true]) {
+        const button = document.createElement('button');
+        button.className = 'secondary';
+        button.textContent = spectator
+          ? !info.allowSpectators
+            ? 'Espectadores desactivados'
+            : info.spectators >= 5
+              ? 'Sin cupo de espectador'
+              : live
+                ? 'Ver combate'
+                : 'Observar'
+          : 'Jugar';
+        button.disabled = spectator
+          ? !info.allowSpectators || info.spectators >= 5
+          : info.phase !== 'lobby' || info.playerSlots >= 2;
+        button.onclick = () => choose(spectator);
+        card.append(button);
       }
       $(live ? 'live-rooms-list' : 'rooms-list').append(card);
     }
-  } catch { $('rooms-status').textContent = 'No se pudo cargar el listado. El servidor puede estar despertando; probá actualizar.'; }
-  finally { refreshingRooms = false; }
+  } catch {
+    $('rooms-status').textContent =
+      'No se pudo cargar el listado. El servidor puede estar despertando; probá actualizar.';
+  } finally {
+    refreshingRooms = false;
+  }
 }
 $('refresh-rooms').onclick = () => void refreshRooms();
 void refreshRooms();
-setInterval(() => { if (!document.hidden) void refreshRooms(); }, 2000);
+setInterval(() => {
+  if (!document.hidden) void refreshRooms();
+}, 2000);
 
 function startPractice() {
   if (room || busy || !arena.controls) return;
@@ -506,7 +584,7 @@ function startPractice() {
   practice = new Practice(selectedClass, validName(nameInput.value) || 'Vos');
   arena.reset();
   arena.send = () => {};
-  arena.localStep = input => {
+  arena.localStep = (input) => {
     if (!practice) return;
     const snapshot = practice.step(input);
     arena.receive(snapshot, PRACTICE_PLAYER);
@@ -524,7 +602,7 @@ function startPractice() {
   const snapshot = structuredClone(practice.duel.state);
   arena.receive(snapshot, PRACTICE_PLAYER);
   render(snapshot);
-  $('stage').scrollIntoView({block:'center'});
+  $('stage').scrollIntoView({ block: 'center' });
 }
 $('practice-start').onclick = startPractice;
 $('practice-reset').onclick = startPractice;
@@ -533,8 +611,9 @@ $('practice-exit').onclick = () => {
   arena.reset();
   arena.send = () => {};
   document.body.classList.remove('in-room', 'practicing');
-  for (const id of ['practice-toolbar','hud','overlay','cooldowns','announcement']) $(id).hidden = true;
-  for (const id of ['intro','room-browser','guide','preview-tag','leave']) $(id).hidden = false;
+  for (const id of ['practice-toolbar', 'hud', 'overlay', 'cooldowns', 'announcement'])
+    $(id).hidden = true;
+  for (const id of ['intro', 'room-browser', 'guide', 'preview-tag', 'leave']) $(id).hidden = false;
   $('touch-controls').classList.remove('active');
   $('stage').dataset.role = 'preview';
   $('arena-label').textContent = 'EL PATIO DEL REY';
@@ -542,5 +621,5 @@ $('practice-exit').onclick = () => {
   const preview = new Practice(selectedClass);
   preview.duel.state.phase = 'lobby';
   arena.receive(structuredClone(preview.duel.state), '');
-  $('intro').scrollIntoView({block:'start'});
+  $('intro').scrollIntoView({ block: 'start' });
 };
