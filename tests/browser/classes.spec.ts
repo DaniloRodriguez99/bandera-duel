@@ -31,7 +31,7 @@ test('el mago aparece y muestra sus controles',async({page})=>{
   await expect(iceCard).toContainText('CLIC 3');
   await expect(iceCard).toContainText('Flecha de hielo');
   await page.locator('canvas').click({button:'middle'});
-  await expect(page.locator('#cd-ice')).toHaveText(/❄ [23]\.\ds/);
+  await expect(page.locator('#cd-ice')).toHaveText(/❄ 0\.\ds/);
   await expect(iceCard).toHaveAttribute('data-ready','false');
   await expect(page.locator('#cd-shot')).toHaveText('✦ Lista');
   await page.waitForTimeout(250);

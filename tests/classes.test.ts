@@ -50,12 +50,12 @@ describe('escudo',()=>{
     const {d,p,q}=setup('mage','vanguard');
     expect(p.magicShieldHits).toBe(2);
     d.damage(p,q,0,2);expect(p.magicShieldHits).toBe(1);expect(p.hp).toBe(3);
-    d.damage(p,q,Math.PI,.5);expect(p.magicShieldHits).toBe(0);expect(p.hp).toBe(3);expect(p.magicShieldCd).toBe(15);
+    d.damage(p,q,Math.PI,.5);expect(p.magicShieldHits).toBe(0);expect(p.hp).toBe(3);expect(p.magicShieldCd).toBe(5);
     d.damage(p,q,0,1);expect(p.hp).toBe(2);
   });
-  it('requiere 15 segundos desde la rotura y un nuevo clic; no repone un escudo activo',()=>{
+  it('requiere 5 segundos desde la rotura y un nuevo clic; no repone un escudo activo',()=>{
     const {d,p,q}=setup('mage');d.damage(p,q,0);step(d,p,{guard:true});expect(p.magicShieldHits).toBe(1);
-    d.damage(p,q,0);step(d,p,{guard:true},449);expect(p.magicShieldHits).toBe(0);expect(p.magicShieldCd).toBeGreaterThan(0);
+    d.damage(p,q,0);step(d,p,{guard:true},149);expect(p.magicShieldHits).toBe(0);expect(p.magicShieldCd).toBeGreaterThan(0);
     step(d,p,{guard:true},2);expect(p.magicShieldHits).toBe(0);
     step(d,p);step(d,p,{guard:true});expect(p.magicShieldHits).toBe(2);
   });
