@@ -187,7 +187,63 @@ describe('nigromante', () => {
     run(d, 60, { 0: { aimX: 880, aimY: 270 } });
     expect(d.state.zombies.every((z) => z.target === g.id && z.x > 300)).toBe(true);
   });
+  it('⌘E marca al zombie bajo el cursor y E alterna qué grupo sigue al mouse', () => {
+    const { d, players: [n, g] } = setup();
+    Object.assign(n, { x: 200, y: 270, angle: 0 });
+    Object.assign(g, { x: 880, y: 500 });
+    run(d, 1, { 0: { summon: true } });
+    const [first, second] = d.state.zombies;
+    const command = () => {
+      run(d, 1, { 0: { command: true, aimX: 400, aimY: 270 } });
+      return n.zombieCommand;
+    };
+    expect(n.zombieCommand).toBe('violet');
+    expect([command(), command()]).toEqual(['auto', 'violet']);
+    run(d, 1, { 0: { mark: true, aimX: first.x + 20, aimY: first.y } });
+    expect([first.marked, second.marked]).toEqual([true, false]);
+    expect([command(), command(), command()]).toEqual(['red', 'auto', 'violet']);
+    command();
+    run(d, 1, { 0: { mark: true, aimX: first.x, aimY: first.y } });
+    expect(first.marked).toBe(false);
+    expect(n.zombieCommand).toBe('violet');
+    run(d, 1, { 0: { mark: true, aimX: second.x, aimY: second.y } });
+    command();
+    expect(n.zombieCommand).toBe('red');
+    second.hp = 0;
+    run(d, 1);
+    expect(n.zombieCommand).toBe('violet');
+  });
+  it('siguiendo al mouse ignoran rivales lejos del cursor; en automático atacan solos', () => {
+    const { d, players: [n, g] } = setup();
+    Object.assign(n, { x: 480, y: 470, angle: 0 });
+    Object.assign(g, { x: 480, y: 400, invuln: 999 });
+    const aim = { aimX: 800, aimY: 470 };
+    run(d, 1, { 0: { summon: true, ...aim } });
+    run(d, 60, { 0: aim });
+    expect(d.state.zombies.every((z) => z.target === null && z.x > 560)).toBe(true);
+    run(d, 1, { 0: { command: true, ...aim } });
+    expect(n.zombieCommand).toBe('auto');
+    run(d, 2, { 0: aim });
+    expect(d.state.zombies.every((z) => z.target === g.id)).toBe(true);
+  });
+  it('con el grupo rojo al mando, el marcado sigue el mouse y el violeta ataca solo', () => {
+    const { d, players: [n, g] } = setup();
+    Object.assign(n, { x: 480, y: 470, angle: 0 });
+    Object.assign(g, { x: 480, y: 400, invuln: 999 });
+    const aim = { aimX: 800, aimY: 470 };
+    run(d, 1, { 0: { summon: true, ...aim } });
+    const [first, second] = d.state.zombies;
+    run(d, 1, { 0: { mark: true, aimX: first.x, aimY: first.y } });
+    run(d, 1, { 0: { command: true, ...aim } });
+    expect(n.zombieCommand).toBe('red');
+    run(d, 60, { 0: aim });
+    expect(first.target).toBeNull();
+    expect(first.x).toBeGreaterThan(560);
+    expect(second.target).toBe(g.id);
+    expect(distance(second, g)).toBeLessThan(60);
+  });
   it('valida el punto apuntado', () => {
+    expect(sanitizeInput({ ...idleInput(), command: true, mark: 'x' })).toMatchObject({ command: true, mark: false });
     expect(sanitizeInput({ ...idleInput(), aimX: 9999, aimY: 20 })).toMatchObject({ aimX: RULES.width, aimY: 20 });
     expect(sanitizeInput({ ...idleInput(), aimX: 'x', aimY: -5 })).toMatchObject({ aimX: -1, aimY: -1 });
   });

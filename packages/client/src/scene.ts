@@ -63,6 +63,7 @@ export class Arena extends Phaser.Scene {
       hp: Phaser.GameObjects.Graphics;
       fx: Phaser.GameObjects.Graphics;
       label?: Phaser.GameObjects.Text;
+      mark?: Phaser.GameObjects.Text;
       aura: Phaser.GameObjects.Graphics;
       x: number;
       y: number;
@@ -674,14 +675,39 @@ export class Arena extends Phaser.Scene {
     else if (z.windup > 0) v.body.setTint(0xff6b5e);
     else v.body.clearTint();
     v.label?.setPosition(v.x, v.y - 34);
+    // ⌘E tags a zombie with a floating E and turns its area red (the red squad).
+    if (z.marked && !v.mark)
+      v.mark = this.add
+        .text(v.x, v.y, 'E', {
+          fontFamily: 'monospace',
+          fontSize: '12px',
+          fontStyle: 'bold',
+          color: '#ff5a4a',
+          stroke: '#2a0606',
+          strokeThickness: 3,
+        })
+        .setOrigin(0.5)
+        .setDepth(15);
+    else if (!z.marked && v.mark) {
+      v.mark.destroy();
+      v.mark = undefined;
+    }
+    v.mark?.setPosition(v.x, v.y - (z.kind === 'thrall' ? 46 : 36) + Math.sin(time * 0.006) * 1.5);
+    const squad = z.marked ? { dark: 0x240b0b, glow: 0x8f2d2d, line: 0xff5a4a } : { dark: 0x1a0b24, glow: 0x6b2d8f, line: 0xb06cff };
+    const commanded =
+      z.owner === this.localId && this.predicted?.zombieCommand === (z.marked ? 'red' : 'violet');
     const pulse = 0.5 + Math.sin(time * 0.006 + z.slot) * 0.5;
     v.aura.clear();
-    v.aura.fillStyle(0x1a0b24, 0.45 + pulse * 0.15);
+    v.aura.fillStyle(squad.dark, 0.45 + pulse * 0.15);
     v.aura.fillEllipse(v.x, v.y + 8, 30 + pulse * 6, 11 + pulse * 2);
-    v.aura.fillStyle(0x6b2d8f, 0.12 + pulse * 0.1);
+    v.aura.fillStyle(squad.glow, (commanded ? 0.22 : 0.12) + pulse * 0.1);
     v.aura.fillEllipse(v.x, v.y + 6, 42, 16);
+    if (commanded) {
+      v.aura.lineStyle(1, squad.line, 0.35 + pulse * 0.3);
+      v.aura.strokeEllipse(v.x, v.y + 8, 36, 13);
+    }
     if (rising > 0) {
-      v.aura.lineStyle(2, 0x9b59d0, 0.2 + rising * 0.6);
+      v.aura.lineStyle(2, squad.line, 0.2 + rising * 0.6);
       v.aura.strokeEllipse(v.x, v.y + 8, 40 + (1 - rising) * 10, 16 + (1 - rising) * 4);
       for (let i = 0; i < 6; i++) {
         const a = time * 0.004 + (i * Math.PI) / 3;
@@ -870,6 +896,7 @@ export class Arena extends Phaser.Scene {
       v.hp.destroy();
       v.fx.destroy();
       v.label?.destroy();
+      v.mark?.destroy();
       v.aura.destroy();
       this.zombieVisuals.delete(id);
     }
@@ -959,13 +986,18 @@ export class Arena extends Phaser.Scene {
           this.aim.strokeCircle(p.x, p.y - 4, 36);
         }
       }
+      // The cursor area takes the color of the squad that follows it (none in automatic).
+      const red = p.zombieCommand === 'red';
       if (
         CLASSES[p.classId].summon &&
         this.controls.aimFromPointer &&
-        s.zombies.some((z) => z.owner === this.localId)
+        p.zombieCommand !== 'auto' &&
+        s.zombies.some((z) => z.owner === this.localId && z.marked === red)
       ) {
         const pulse = 0.5 + Math.sin(time * 0.008) * 0.5;
-        this.aim.lineStyle(1, 0xb06cff, 0.22 + pulse * 0.2);
+        this.aim.fillStyle(red ? 0xff4a4a : 0xb06cff, 0.05 + pulse * 0.04);
+        this.aim.fillCircle(this.controls.aimX, this.controls.aimY, RULES.zombieAimRadius * (0.85 + pulse * 0.15));
+        this.aim.lineStyle(1, red ? 0xff4a4a : 0xb06cff, 0.3 + pulse * 0.25);
         this.aim.strokeCircle(
           this.controls.aimX,
           this.controls.aimY,

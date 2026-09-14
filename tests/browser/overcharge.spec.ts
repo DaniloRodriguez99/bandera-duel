@@ -37,7 +37,7 @@ test('nigromante: mantener espacio invoca al zombie con gorro', async ({ page },
   await page.waitForTimeout(700);
   await page.screenshot({ path: info.outputPath('carga-nigromante.png') });
   await page.keyboard.up('Space');
-  await expect(page.locator('#cd-summon')).toHaveText(/☠ [34]\.\ds/);
+  await expect(page.locator('#cd-summon')).toHaveText(/☠ \d\/2 · [34]\.\ds/);
   await page.waitForTimeout(1600);
   await page.screenshot({ path: info.outputPath('zombie-con-gorro.png') });
   expect(errors).toEqual([]);

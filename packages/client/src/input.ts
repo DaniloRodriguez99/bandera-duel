@@ -6,7 +6,7 @@ export class Controls {
   aimY = -1;
   aimFromPointer = false;
   move = { x: 0, y: 0 };
-  actions = { sword: false, shot: false, dash: false, summon: false, trap: false, volley: false };
+  actions = { sword: false, shot: false, dash: false, summon: false, trap: false, volley: false, command: false, mark: false };
   enabled = false;
   classId: ClassId = DEFAULT_CLASS;
   private chargeSources = new Set<string>();
@@ -51,6 +51,11 @@ export class Controls {
       if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code))
         e.preventDefault();
       this.keys.add(e.code);
+      // Necromancer: E cycles which squad follows the cursor; ⌘E / Ctrl+E tags the zombie under it.
+      if (e.code === 'KeyE' && CLASSES[this.classId].summon) {
+        e.preventDefault();
+        if (!e.repeat) this.actions[e.metaKey || e.ctrlKey ? 'mark' : 'command'] = true;
+      }
       if (!e.repeat && this.classId === 'archer') {
         if (e.code === 'KeyQ') this.actions.trap = true;
         if (e.code === 'KeyE') this.actions.volley = true;
@@ -163,7 +168,7 @@ export class Controls {
       (this.keys.has('KeyW') || this.keys.has('ArrowUp') ? 1 : 0);
     const n = Math.max(1, Math.hypot(x, y));
     const result = { seq, x: x / n, y: y / n, angle: this.angle, ...this.actions, charge: this.chargeSources.size > 0, special: this.specialSources.size > 0, guard: this.guardSources.size > 0, aimX: this.aimX, aimY: this.aimY };
-    this.actions = { sword: false, shot: false, dash: false, summon: false, trap: false, volley: false };
+    this.actions = { sword: false, shot: false, dash: false, summon: false, trap: false, volley: false, command: false, mark: false };
     return result;
   }
   clear() {
@@ -172,7 +177,7 @@ export class Controls {
     this.chargeSources.clear();
     this.specialSources.clear();
     this.move = { x: 0, y: 0 };
-    this.actions = { sword: false, shot: false, dash: false, summon: false, trap: false, volley: false };
+    this.actions = { sword: false, shot: false, dash: false, summon: false, trap: false, volley: false, command: false, mark: false };
     this.sticks.clear();
     document.querySelectorAll<HTMLElement>('.stick').forEach((el) => {
       el.style.setProperty('--dx', '0px');

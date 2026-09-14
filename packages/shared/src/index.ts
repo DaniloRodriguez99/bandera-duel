@@ -181,11 +181,11 @@ export const RULES = {
   explosionRadius: 45,
   zombieExecutions: 2,
   zombieAimRadius: 110,
-  zombieMarkedAggro: 1100,
   zombieFlankRadius: 34,
   zombieApproachRadius: 110,
   zombieSpread: 56,
   zombieRise: 0.45,
+  zombieMarkPick: 70,
 } as const;
 export const TEAMS: Team[] = ['blue', 'red', 'green', 'violet'];
 export const TEAM_NAMES: Record<Team, string> = {
@@ -252,9 +252,15 @@ export interface Input {
   trap: boolean;
   volley: boolean;
   special: boolean;
+  /** E: cycles which squad follows the cursor. */
+  command: boolean;
+  /** ⌘E / Ctrl+E: tags or untags the zombie under the cursor. */
+  mark: boolean;
   aimX: number;
   aimY: number;
 }
+/** Which zombies follow the cursor: the untagged (violet), the tagged (red) or none. */
+export type ZombieCommand = 'violet' | 'red' | 'auto';
 export const idleInput = (seq = 0, angle = 0): Input => ({
   seq,
   x: 0,
@@ -269,6 +275,8 @@ export const idleInput = (seq = 0, angle = 0): Input => ({
   trap: false,
   volley: false,
   special: false,
+  command: false,
+  mark: false,
   aimX: -1,
   aimY: -1,
 });
@@ -305,6 +313,8 @@ export function sanitizeInput(raw: unknown): Input | null {
     trap: r.trap === true,
     volley: r.volley === true,
     special: r.special === true,
+    command: r.command === true,
+    mark: r.mark === true,
     aimX: aimCoordinate(r.aimX, RULES.width),
     aimY: aimCoordinate(r.aimY, RULES.height),
   };
@@ -362,6 +372,7 @@ export interface Player extends Vec {
   hatAlive: boolean;
   thrallAlive: boolean;
   activeExecutions: number;
+  zombieCommand: ZombieCommand;
   aimX: number;
   aimY: number;
 }
@@ -413,6 +424,8 @@ export interface Zombie extends Vec {
   frozenLeft: number;
   classId?: ClassId;
   name?: string;
+  /** Tagged with ⌘E: the red squad, commanded apart from the violet one. */
+  marked: boolean;
   execution: number | null;
   slot: number;
   rise: number;
@@ -855,6 +868,7 @@ export function newPlayer(
     hatAlive: false,
     thrallAlive: false,
     activeExecutions: 0,
+    zombieCommand: 'violet',
     aimX: -1,
     aimY: -1,
   };
@@ -894,6 +908,7 @@ export class Duel {
   private executionId = 0;
   private paths = new Map<string, { goal: Vec; points: Vec[] }>();
   private packBearings = new Map<string, number>();
+  private packSeen = new Set<string>();
   add(id: string, name: string, classId: ClassId = DEFAULT_CLASS) {
     const s = this.state;
     const team = TEAMS.find((t) => !s.players.some((p) => p.team === t));
@@ -1138,6 +1153,7 @@ export class Duel {
       execution: null,
       slot: id % 4,
       rise: 0,
+      marked: false,
       ...extra,
     };
   }
@@ -1247,6 +1263,29 @@ export class Duel {
         .map((z) => z.execution),
     ).size;
   }
+  /** Whether `z` belongs to the squad that follows its owner's cursor instead of hunting alone. */
+  private obeys(z: Zombie, owner = this.state.players.find((p) => p.id === z.owner)) {
+    return !!owner && owner.hp > 0 && owner.aimX >= 0 && owner.zombieCommand === (z.marked ? 'red' : 'violet');
+  }
+  /** ⌘E tags or untags the owner's zombie nearest the cursor; E cycles which squad follows it. */
+  private commandZombies(p: Player, input: Input) {
+    const own = this.state.zombies.filter((z) => z.owner === p.id && z.hp > 0);
+    if (input.mark && input.aimX >= 0) {
+      const aim = { x: input.aimX, y: input.aimY };
+      const pick = own
+        .filter((z) => distance(z, aim) <= RULES.zombieMarkPick)
+        .sort((a, b) => distance(a, aim) - distance(b, aim))[0];
+      if (pick) pick.marked = !pick.marked;
+    }
+    const red = own.some((z) => z.marked);
+    if (input.command) {
+      const order: ZombieCommand[] = red ? ['violet', 'red', 'auto'] : ['violet', 'auto'];
+      p.zombieCommand = order[(order.indexOf(p.zombieCommand) + 1) % order.length];
+    }
+    if (p.zombieCommand === 'red' && !red) p.zombieCommand = 'violet';
+    // Orders apply at once instead of on the next staggered re-plan.
+    for (const z of own) z.retarget = 0;
+  }
   /** The rival nearest to the owner's cursor, if the cursor is close enough to one. */
   private markedTarget(owner: string, candidates: { id: string; at: Vec }[]) {
     const p = this.state.players.find((q) => q.id === owner);
@@ -1269,9 +1308,15 @@ export class Duel {
    * so the pack closes in from several directions instead of queueing behind each other.
    */
   private formation(z: Zombie, center: Vec, near: number, far = near): Vec {
-    const pack = this.state.zombies.filter((q) => q.hp > 0 && q.owner === z.owner && q.target === z.target);
+    // Idle zombies group by what they do: the squad on the cursor apart from the ones at rest.
+    const obeys = this.obeys(z);
+    const pack = this.state.zombies.filter(
+      (q) =>
+        q.hp > 0 && q.owner === z.owner && q.target === z.target && (z.target !== null || this.obeys(q) === obeys),
+    );
     const bearing = (q: Vec) => Math.atan2(q.y - center.y, q.x - center.x);
-    const key = `${z.owner}:${z.target ?? ''}`;
+    const key = `${z.owner}:${z.target ?? obeys}`;
+    this.packSeen.add(key);
     let sx = 0,
       sy = 0;
     for (const q of pack) {
@@ -1319,14 +1364,13 @@ export class Duel {
         .filter((q) => q.team !== z.team && q.hp > 0)
         .map((q) => ({ id: q.id, at: q as Vec, carrying: false })),
     ];
-    const marked = this.markedTarget(z.owner, candidates);
-    const near = candidates.filter(
-      (c) => distance(z, c.at) <= (c.id === marked ? RULES.zombieMarkedAggro : RULES.zombieAggro),
+    // The squad on the cursor only attacks the rival the cursor is on; the rest hunt nearby.
+    const marked = this.obeys(z) ? this.markedTarget(z.owner, candidates) : undefined;
+    const near = candidates.filter((c) =>
+      marked === undefined ? distance(z, c.at) <= RULES.zombieAggro : c.id === marked,
     );
-    // Siblings already chasing a target make it less attractive, so a pack splits up;
-    // the rival under the necromancer's cursor outweighs that.
+    // Siblings already chasing a target make it less attractive, so a pack splits up.
     const score = (c: (typeof candidates)[number]) =>
-      (c.id === marked ? -160 : 0) +
       distance(z, c.at) +
       (lineClear(z, c.at) ? 0 : 120) -
       (c.carrying ? 100 : 0) +
@@ -1431,7 +1475,9 @@ export class Duel {
           ? gap > range * 0.7
             ? target
             : undefined
-          : leader && distance(z, leader) > 70
+          : leader && this.obeys(z, owner)
+            ? this.formation(z, { x: leader.aimX, y: leader.aimY }, RULES.zombieSpread)
+            : leader && distance(z, leader) > 70
             ? leader
             : undefined;
         if (goal) this.walkZombie(z, goal, dt, pace);
@@ -1458,7 +1504,7 @@ export class Duel {
         continue;
       }
       const leader = owner && owner.hp > 0 ? owner : undefined;
-      const aim = leader && leader.aimX >= 0 ? { x: leader.aimX, y: leader.aimY } : undefined;
+      const aim = leader && this.obeys(z, owner) ? { x: leader.aimX, y: leader.aimY } : undefined;
       // Far away the pack fans out wide; the ring tightens as each zombie closes in, and
       // only from its own spot does it lunge at the target.
       const spot = target && this.formation(z, target, RULES.zombieFlankRadius, RULES.zombieApproachRadius);
@@ -1466,7 +1512,7 @@ export class Duel {
         ? distance(z, spot) < 12 || distance(z, target) <= RULES.zombieFlankRadius
           ? target
           : spot
-        : leader && aim && distance(z, aim) <= RULES.zombieAggro && distance(aim, leader) > 70
+        : aim
           ? this.formation(z, aim, RULES.zombieSpread)
           : leader
             ? distance(z, leader) > 70
@@ -1501,9 +1547,12 @@ export class Duel {
       p.hatAlive = s.zombies.some((z) => z.owner === p.id && z.kind === 'hat');
       p.thrallAlive = s.zombies.some((z) => z.owner === p.id && z.kind === 'thrall');
     }
-    for (const key of this.packBearings.keys())
-      if (!s.zombies.some((z) => `${z.owner}:${z.target ?? ''}` === key)) this.packBearings.delete(key);
-    for (const p of s.players) p.activeExecutions = this.activeExecutions(p.id);
+    for (const key of this.packBearings.keys()) if (!this.packSeen.has(key)) this.packBearings.delete(key);
+    this.packSeen.clear();
+    for (const p of s.players) {
+      p.activeExecutions = this.activeExecutions(p.id);
+      if (p.zombieCommand === 'red' && !s.zombies.some((z) => z.owner === p.id && z.marked)) p.zombieCommand = 'violet';
+    }
   }
   step(inputs: Map<string, Input>, dt = RULES.tick as number) {
     const s = this.state;
@@ -1535,6 +1584,7 @@ export class Duel {
         if (p.respawnLeft <= 0) this.revive(p, RULES.spawnProtection);
         continue;
       }
+      if (CLASSES[p.classId].summon && (input.command || input.mark)) this.commandZombies(p, input);
       const action = movePlayer(
         p,
         input,

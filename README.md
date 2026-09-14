@@ -156,3 +156,11 @@ Mantener clic o Espacio carga la habilidad y soltar la ejecuta; un toque rápido
 - Nigromante (Espacio): una carga corta invoca un solo **zombie con gorro** (máximo uno): tiene 5 de vida, se cura, cada 5 s invoca un zombie que no respeta el tope normal y lanza con los dos brazos un hechizo doble de fuego y hielo (0,5 de daño cada uno); el hielo congela 1,2 s al que golpea. Si se mantiene hasta llenar el aura (2,5 s, cambia a verde) sin zombies propios y con un rival muerto a menos de 200 px, lo **resucita como esclavo** con su clase y su nombre; el jugador reaparece normalmente y el nigromante puede volver a invocar a ese esclavo con el aura completa 20 s después de que muera.
 ### Panel de habilidades
 Durante la partida, abajo a la izquierda del escenario aparece una tarjeta por habilidad con su ícono, su tecla (CLIC, ESPACIO y, según la clase, CLIC DER., Q o E) y un velo circular con los segundos de recarga restantes; la tarjeta se ilumina cuando está lista. En pantallas táctiles el panel se ubica arriba a la izquierda para no tapar la palanca de movimiento. En el nigromante, Espacio invoca zombies.
+Sobre cada tarjeta crece su árbol: qué hace un toque, qué hace mantener y (en el nigromante) el aura llena, con el estado de cada rama (ejecuciones activas, zombie mago vivo, recarga del esclavo, porcentaje de carga). La rama que se dispararía al soltar se ilumina mientras se carga. En táctil el árbol se oculta para no tapar el escenario.
+
+### Control de zombies (nigromante)
+- **⌘E / Ctrl+E** pone o saca una **E** al zombie más cercano al cursor. Los marcados forman el grupo **rojo** (aura roja); el resto, el **violeta**.
+- **E** elige quién sigue al mouse, en ciclo: violetas → rojos (si hay marcados) → todos automáticos. El área bajo el cursor toma el color del grupo al mando.
+- El grupo al mando va a la zona del mouse repartiéndose alrededor; si el mouse queda cerca de un rival (110 px), lo rodea y lo ataca. Ignora a los demás rivales.
+- Los zombies que no están al mando atacan solos al rival cercano y, si no hay ninguno, acompañan al nigromante. Si mueren todos los rojos, el mando vuelve a los violetas.
+
