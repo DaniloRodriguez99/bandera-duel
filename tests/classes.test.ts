@@ -25,7 +25,7 @@ describe('clases y persistencia',()=>{
   });
 });
 describe('armas y permisos',()=>{
-  it.each(CLASS_IDS)('%s: daño, alcance y preparación cuerpo a cuerpo',id=>{
+  it.each(CLASS_IDS.filter(id=>CLASSES[id].melee))('%s: daño, alcance y preparación cuerpo a cuerpo',id=>{
     const {d,p,q}=setup(id,'vanguard');q.x=p.x+CLASSES[id].meleeRange-1;step(d,p,{sword:true});expect(q.hp).toBe(5);
     step(d,p,{},Math.ceil(CLASSES[id].windup/RULES.tick)+1);expect(q.hp).toBe(5-CLASSES[id].meleeDamage);
     const fresh=setup(id,'vanguard');fresh.q.x=fresh.p.x+CLASSES[id].meleeRange+1;step(fresh.d,fresh.p,{sword:true});step(fresh.d,fresh.p,{},12);expect(fresh.q.hp).toBe(5);
@@ -33,7 +33,7 @@ describe('armas y permisos',()=>{
   it.each(['guardian','vanguard'] as ClassId[])('%s rechaza flechas y dash',id=>{
     const {d,p}=setup(id);const x=p.x;step(d,p,{shot:true,dash:true});expect(d.state.arrows).toHaveLength(0);expect(p.x).toBe(x);expect(p.dashCd).toBe(0);
   });
-  it.each(['archer','mage','vanguard'] as ClassId[])('%s no puede cubrirse',id=>{const {d,p}=setup(id);step(d,p,{guard:true});expect(p.guarding).toBe(false);});
+  it.each(['archer','mage','necromancer','vanguard'] as ClassId[])('%s no puede cubrirse',id=>{const {d,p}=setup(id);step(d,p,{guard:true});expect(p.guarding).toBe(false);});
   it('el mago lanza magia, golpea con báculo y puede esquivar',()=>{
     const {d,p,q}=setup('mage','vanguard');q.y=450;step(d,p,{shot:true});expect(d.state.arrows[0].classId).toBe('mage');
     step(d,p,{},28);Object.assign(q,{x:p.x+33,y:p.y});step(d,p,{sword:true});step(d,p,{},5);expect(q.hp).toBeLessThan(5);
@@ -46,7 +46,7 @@ describe('armas y permisos',()=>{
   it('la espada pesada tampoco atraviesa paredes',()=>{const {d,p,q}=setup('vanguard');Object.assign(p,{x:480,y:150});Object.assign(q,{x:480,y:219});step(d,p,{sword:true,angle:Math.PI/2});step(d,p,{},12);expect(q.hp).toBe(3);});
 });
 describe('escudo',()=>{
-  it.each(CLASS_IDS)('bloquea el golpe frontal de %s y conserva bandera y posición',attacker=>{
+  it.each(CLASS_IDS.filter(id=>CLASSES[id].melee))('bloquea el golpe frontal de %s y conserva bandera y posición',attacker=>{
     const {d,p,q}=setup('guardian',attacker);Object.assign(q,{x:445,y:270});Object.assign(d.state.flags[1],{status:'carried',carrier:p.id});
     d.step(new Map([[p.id,input({guard:true})],[q.id,input({sword:true,angle:Math.PI})]]));
     step(d,p,{guard:true},12);expect(p.hp).toBe(3);expect(p.x).toBe(420);expect(d.state.flags[1].carrier).toBe(p.id);expect(d.state.events.some(e=>e.kind==='block')).toBe(true);

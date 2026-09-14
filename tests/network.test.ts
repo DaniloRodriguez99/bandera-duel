@@ -46,12 +46,12 @@ afterAll(async () => {
   await server.gracefullyShutdown(false);
 });
 describe('servidor con clientes Colyseus reales', () => {
-  it.each([['archer','guardian'],['archer','vanguard'],['guardian','vanguard']] as [ClassId,ClassId][])('sincroniza clases %s vs %s y rechaza armas no autorizadas',async(first,second)=>{
+  it.each([['archer','guardian'],['archer','vanguard'],['guardian','vanguard'],['necromancer','vanguard']] as [ClassId,ClassId][])('sincroniza clases %s vs %s y rechaza armas no autorizadas',async(first,second)=>{
     const {a,b,host}=await pair(first,second);await until(()=>states.get(a.sessionId)?.players.length===2);
     expect(states.get(b.sessionId)?.players.map(p=>p.classId)).toEqual([first,second]);host.game.state.phase='playing';
-    a.send('input',{...idleInput(1),guard:true});b.send('input',{...idleInput(1),shot:true,dash:true});await sleep(120);
-    expect(host.game.state.arrows).toHaveLength(0);expect(host.game.state.players[1].dashCd).toBe(0);
-    if(first==='archer')expect(host.game.state.players[0].guarding).toBe(false);
+    a.send('input',{...idleInput(1),guard:true});b.send('input',{...idleInput(1),shot:true,dash:true,summon:true});await sleep(120);
+    expect(host.game.state.arrows).toHaveLength(0);expect(host.game.state.zombies).toHaveLength(0);expect(host.game.state.players[1].dashCd).toBe(0);
+    if(first==='archer'||first==='necromancer')expect(host.game.state.players[0].guarding).toBe(false);
     await a.leave();await b.leave();
   });
   it('valida selección, anula listo y bloquea cambios en partida',async()=>{
