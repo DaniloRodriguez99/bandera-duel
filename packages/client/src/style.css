@@ -860,6 +860,9 @@ footer b {
   }
 }
 
+.music-control{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--gold)}
+.music-control input{width:72px;min-height:28px;margin:0;padding:0;accent-color:var(--gold)}
+@media(max-width:480px){.header-right{flex-wrap:wrap;justify-content:flex-end}.music-control input{width:52px}}
 /* Class selection uses the same pixel matrices as the actual combatants. */
 .class-picker{border:0;padding:0;margin:20px 0 8px;min-width:0;text-align:left}
 .class-picker legend{font-size:9px;letter-spacing:1.5px;color:var(--gold);margin-bottom:10px}

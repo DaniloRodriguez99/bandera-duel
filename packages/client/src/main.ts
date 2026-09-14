@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { Client, type Room } from '@colyseus/sdk';
 import { RULES, CLASSES, validName, type Snapshot, type ClassId } from '@bandera/shared';
 import { Arena } from './scene.js';
-import { muted, toggleMute, unlockAudio } from './audio.js';
+import { muted, toggleMute, unlockAudio, musicVolume, setMusicVolume, setMusicMode } from './audio.js';
 import { savedClass, saveClass, mountClasses, updateClasses } from './classes.js';
 import './style.css';
 
@@ -107,6 +107,13 @@ function muteLabel() {
   $('mute').setAttribute('aria-label', muted ? 'Activar sonido' : 'Silenciar sonido');
 }
 muteLabel();
+const musicControl = document.createElement('label');
+musicControl.className = 'music-control';
+musicControl.innerHTML = `Música <input id="music-volume" aria-label="Volumen de música" type="range" min="0" max="100" value="${Math.round(musicVolume * 100)}">`;
+$('mute').before(musicControl);
+$<HTMLInputElement>('music-volume').oninput = e => setMusicVolume(Number((e.target as HTMLInputElement).value) / 100);
+document.addEventListener('pointerdown', unlockAudio, { once: true });
+document.addEventListener('keydown', unlockAudio, { once: true });
 $('mute').onclick = () => {
   toggleMute();
   muteLabel();
@@ -285,6 +292,7 @@ $('leave').onclick = () => {
 function render(s: Snapshot) {
   if (!room) return;
   const me = s.players.find((p) => p.id === room!.sessionId);
+  setMusicMode(s.paused ? 'menu' : s.phase === 'finished' ? (s.winner === me?.team ? 'victory' : 'defeat') : ['playing','countdown','capture'].includes(s.phase) ? (s.timeLeft <= 30 ? 'urgent' : 'duel') : 'menu');
   $('score-blue').textContent = String(s.score.blue);
   $('score-red').textContent = String(s.score.red);
   const seconds = Math.ceil(s.timeLeft);
