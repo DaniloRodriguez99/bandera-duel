@@ -164,7 +164,7 @@ export const RULES = {
   zombieRetarget: 0.4,
   zombieExecutions: 2,
   zombieAimRadius: 110,
-  zombieMarkedAggro: 450,
+  zombieMarkedAggro: 1100,
   zombieFlankRadius: 34,
   zombieRise: 0.45,
 } as const;

@@ -145,6 +145,14 @@ describe('nigromante', () => {
     expect(around.length).toBeGreaterThan(2);
     expect(shared.length).toBeLessThan(around.length / 2);
   });
+  it('el cursor sobre un rival lejano lo marca en todo el mapa', () => {
+    const { d, players: [n, g] } = setup();
+    Object.assign(n, { x: 200, y: 270, angle: 0 });
+    Object.assign(g, { x: 880, y: 270 });
+    run(d, 1, { 0: { summon: true, aimX: 880, aimY: 270 } });
+    run(d, 60, { 0: { aimX: 880, aimY: 270 } });
+    expect(d.state.zombies.every((z) => z.target === g.id && z.x > 300)).toBe(true);
+  });
   it('valida el punto apuntado', () => {
     expect(sanitizeInput({ ...idleInput(), aimX: 9999, aimY: 20 })).toMatchObject({ aimX: RULES.width, aimY: 20 });
     expect(sanitizeInput({ ...idleInput(), aimX: 'x', aimY: -5 })).toMatchObject({ aimX: -1, aimY: -1 });
