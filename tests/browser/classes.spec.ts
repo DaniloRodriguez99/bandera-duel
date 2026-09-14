@@ -21,8 +21,15 @@ test('selección compartida, ataques de arquero y escudo con mouse',async({page,
 test('el mago aparece y muestra sus controles',async({page})=>{
   await page.goto('/');await expect(page.locator('#entry-classes [data-class="mage"]')).toContainText('Mago');
   await page.locator('#entry-classes [data-class="mage"]').click();
-  await expect(page.locator('#control-guide')).toContainText('Hechizo');
-  await expect(page.locator('#control-guide')).toContainText('Báculo');
+  await expect(page.locator('#control-guide')).toContainText('Bola de fuego');
+  await expect(page.locator('#control-guide')).toContainText('Escudo mágico');
+  await page.locator('#practice-start').click();
+  await expect(page.locator('#cd-guard')).toHaveText('⛨ 2/2 golpes');
+  await expect(page.locator('#cd-sword')).toBeHidden();
+  await page.locator('canvas').click({button:'right'});
+  await expect(page.locator('#stage')).toHaveAttribute('data-magic-shield','2');
+  await page.locator('canvas').click();
+  await expect(page.locator('#cd-shot')).toHaveText(/✦ 0\.\ds/);
 });
 test('el nigromante lanza fuego e invoca zombies con clic derecho',async({page,browser})=>{
   const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));await enter(page,'/','Morgana','necromancer');

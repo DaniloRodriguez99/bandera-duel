@@ -8,7 +8,7 @@ export function validClass(value: unknown): value is ClassId {
 }
 export const CLASSES = {
   archer: { name: 'Arquero', label: 'ARCO Y DAGA', description: 'Distancia, precisión y una salida rápida.', hp: 3, speed: 190, meleeDamage: .5, meleeRange: 30, meleeArc: Math.PI * .6, windup: .1, meleeCooldown: .5, ranged: true, shield: false, dash: true, melee: true, summon: false },
-  mage: { name: 'Mago', label: 'MAGIA Y BÁCULO', description: 'Hechizos a distancia y movilidad arcana.', hp: 3, speed: 180, meleeDamage: .5, meleeRange: 34, meleeArc: Math.PI * .6, windup: .12, meleeCooldown: .55, ranged: true, shield: false, dash: true, melee: true, summon: false },
+  mage: { name: 'Mago', label: 'FUEGO Y ESCUDO', description: 'Bolas de fuego. Escudo que absorbe dos golpes.', hp: 3, speed: 180, meleeDamage: 0, meleeRange: 0, meleeArc: 0, windup: 0, meleeCooldown: 0, ranged: true, shield: false, dash: true, melee: false, summon: false },
   necromancer: { name: 'Nigromante', label: 'FUEGO Y NO-MUERTOS', description: 'Quemá de lejos. Invocá zombies que cazan solos.', hp: 3, speed: 170, meleeDamage: 0, meleeRange: 0, meleeArc: 0, windup: 0, meleeCooldown: 0, ranged: true, shield: false, dash: false, melee: false, summon: true },
   guardian: { name: 'Caballero', label: 'ESPADA Y ESCUDO', description: 'Protegé tu bandera. Respondé de cerca.', hp: 3, speed: 180, meleeDamage: 1, meleeRange: 55, meleeArc: Math.PI * .72, windup: .12, meleeCooldown: .6, ranged: false, shield: true, dash: false, melee: true, summon: false },
   vanguard: { name: 'Guerrero', label: 'ESPADA DE DOS MANOS', description: 'Más alcance. Más daño. Acero pesado.', hp: 5, speed: 155, meleeDamage: 2, meleeRange: 80, meleeArc: Math.PI * 130 / 180, windup: .3, meleeCooldown: 1, ranged: false, shield: false, dash: false, melee: true, summon: false },
@@ -34,6 +34,8 @@ export const RULES = {
   arrowLife: 1.2,
   arrowDamage: 1,
   guardDuration: 1.2,
+  magicShieldHits: 2,
+  magicShieldCooldown: 15,
   guardCooldown: 1.5,
   guardRecovery: .15,
   guardSpeed: .25,
@@ -179,6 +181,8 @@ export interface Player extends Vec {
   guardCd: number;
   guardRecovery: number;
   guardHeld: boolean;
+  magicShieldHits: number;
+  magicShieldCd: number;
   windup: number;
   swingAngle: number;
   invuln: number;
@@ -337,13 +341,17 @@ export function movePlayer(p: Player, input: Input, carrying: boolean, dt = RULE
   if (p.hp <= 0) return result;
   const stats = CLASSES[p.classId];
   const wasWinding = p.windup > 0;
-  for (const key of ['swordCd','shotCd','dashCd','attackLock','invuln','hitFlash','guardCd','guardRecovery','summonCd'] as const)
+  for (const key of ['swordCd','shotCd','dashCd','attackLock','invuln','hitFlash','guardCd','guardRecovery','summonCd','magicShieldCd'] as const)
     p[key] = Math.max(0, p[key] - dt);
   p.angle = input.angle;
   if (p.guarding && (!input.guard || p.guardLeft <= 1e-8)) lowerGuard(p);
   if (stats.shield && input.guard && !p.guardHeld && !p.guarding && p.guardCd <= 0 && p.guardRecovery <= 0 && !wasWinding && p.attackLock <= 0) {
     p.guarding = true;
     p.guardLeft = RULES.guardDuration;
+  }
+  if (p.classId === 'mage' && input.guard && !p.guardHeld && p.magicShieldHits === 0 && p.magicShieldCd <= 1e-8) {
+    p.magicShieldHits = RULES.magicShieldHits;
+    p.magicShieldCd = 0;
   }
   p.guardHeld = input.guard;
   if (stats.dash && input.dash && p.dashCd <= 0 && !wasWinding && p.attackLock <= 0) {
@@ -418,6 +426,8 @@ export function newPlayer(
     guardCd: 0,
     guardRecovery: 0,
     guardHeld: false,
+    magicShieldHits: classId === 'mage' ? RULES.magicShieldHits : 0,
+    magicShieldCd: 0,
     windup: 0,
     swingAngle: 0,
     invuln: 0,
@@ -579,6 +589,12 @@ export class Duel {
   }
   damage(target: Player, source: Player, angle: number, amount = 1) {
     if (target.hp <= 0 || target.invuln > 0 || target.dashInvulnerable) return;
+    if (target.classId === 'mage' && target.magicShieldHits > 0 && amount > 0) {
+      target.magicShieldHits--;
+      if (target.magicShieldHits === 0) target.magicShieldCd = RULES.magicShieldCooldown;
+      this.event('block', target, target.team, angle, target.classId);
+      return;
+    }
     // Incoming direction is the reverse of projectile/swing travel, not the
     // attacker's current position (arrows can arrive after their owner moves).
     const relative = angle + Math.PI - target.angle;

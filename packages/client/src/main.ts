@@ -84,6 +84,12 @@ function showClassControls(id:ClassId) {
   $('cd-shot').hidden=!ranged;$('cd-dash').hidden=!stats.dash;$('cd-guard').hidden=!stats.shield;
   $('control-guide').innerHTML=`<span><kbd>W A S D</kbd> Mover</span><span><kbd>CLIC</kbd> ${ranged?projectile:'Espada'}</span>${id!=='vanguard'?`<span><kbd>CLIC DER.</kbd> ${ranged?melee:'Mantener escudo'}</span>`:''}${stats.dash?'<span><kbd>ESPACIO</kbd> Esquivar</span>':''}<span class="mobile-help">${ranged?`Mové a la izquierda. Apuntá y soltá a la derecha para lanzar ${mage?'magia':'una flecha'}. Botones de ${melee.toLowerCase()} y dash.`:guardian?'Mové y apuntá con las palancas. Golpeá con espada o mantené pulsado el escudo.':'Mové y apuntá con las palancas. El botón de espada prepara un golpe pesado.'}</span>`;
   if(stats.summon)$('control-guide').innerHTML='<span><kbd>W A S D</kbd> Mover</span><span><kbd>CLIC</kbd> Fuego</span><span><kbd>CLIC DER.</kbd> Invocar zombies</span><span class="mobile-help">Mové a la izquierda. Apuntá y soltá a la derecha para lanzar fuego. El botón ☠ invoca dos zombies cada 5 s.</span>';
+  $('touch-guard').setAttribute('aria-label', mage ? 'Lanzar escudo mágico' : 'Mantener escudo');
+  if (mage) {
+    $('touch-guard').hidden = false; $('cd-guard').hidden = false;
+    $('stick-aim').setAttribute('aria-label','Apuntar y soltar para lanzar bola de fuego');
+    $('control-guide').innerHTML='<span><kbd>W A S D</kbd> Mover</span><span><kbd>CLIC</kbd> Bola de fuego</span><span><kbd>CLIC DER.</kbd> Escudo mágico</span><span><kbd>ESPACIO</kbd> Esquivar</span><span class="mobile-help">El escudo absorbe 2 golpes. Al romperse, esperá 15 s y volvé a lanzarlo con clic derecho o el botón ⛨. Apuntá y soltá para lanzar fuego.</span>';
+  }
 }
 showClassControls(selectedClass);
 function entryMode() {
@@ -347,12 +353,14 @@ function render(s: Snapshot) {
     $('room-picker').hidden=!overlay;
     $('stage').dataset.class=me.classId;
     $('stage').dataset.guarding=String(me.guarding);
+    $('stage').dataset.magicShield=String(me.magicShieldHits);
     $('stage').dataset.dashing=String(me.dashInvulnerable);
     $('health').textContent=`♥ ${me.hp}/${me.maxHp}`;
     $('health').setAttribute('aria-label',`Vida: ${me.hp} de ${me.maxHp}`);
     $('lives').textContent=`☠ ${me.deaths}/${RULES.maxDeaths}`;
     $('lives').setAttribute('aria-label',`Muertes: ${me.deaths} de ${RULES.maxDeaths}`);
     $('cd-guard').textContent=me.guarding?`⛨ Cubriendo ${me.guardLeft.toFixed(1)}s`:`⛨ ${me.guardCd>0?me.guardCd.toFixed(1)+'s':'Listo'}`;
+    if(me.classId==='mage') $('cd-guard').textContent=me.magicShieldHits>0?`⛨ ${me.magicShieldHits}/2 golpes`:`⛨ ${me.magicShieldCd>0?me.magicShieldCd.toFixed(1)+'s':'Listo · clic derecho'}`;
     $('cd-sword').textContent = `⚔ ${me.swordCd > 0 ? me.swordCd.toFixed(1) + 's' : 'Lista'}`;
     $('cd-shot').textContent = `${me.classId==='mage'?'✦':me.classId==='necromancer'?'✺':'➶'} ${me.shotCd > 0 ? me.shotCd.toFixed(1) + 's' : 'Lista'}`;
     $('cd-dash').textContent = `➟ ${me.dashCd > 0 ? me.dashCd.toFixed(1) + 's' : 'Listo'}`;

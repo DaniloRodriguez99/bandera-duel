@@ -450,6 +450,11 @@ export class Arena extends Phaser.Scene {
       }
     }
     v.hp.clear();
+    if (p.hp > 0 && p.classId === 'mage' && p.magicShieldHits > 0) {
+      v.hp.fillStyle(0x78cfff,.10);v.hp.fillCircle(v.x,v.y-3,25);
+      v.hp.lineStyle(2,0x9deaff,.8);v.hp.strokeCircle(v.x,v.y-3,25);
+      if(p.magicShieldHits===2){v.hp.lineStyle(1,0xe6faff,.55);v.hp.strokeCircle(v.x,v.y-3,29);}
+    }
     if (p.hp > 0) {
       const left=v.x-(p.maxHp*8-2)/2;
       for (let i=0;i<p.maxHp;i++) {
@@ -569,10 +574,10 @@ export class Arena extends Phaser.Scene {
         this.arrows.fillStyle(0xff9a3c,.5);this.arrows.fillCircle(p.x,p.y,8);
         this.arrows.fillStyle(0xffe08a);this.arrows.fillCircle(p.x,p.y,4);
       } else if(a.classId==='mage') {
-        this.arrows.lineStyle(5,0x78cfff,.22);
+        this.arrows.lineStyle(5,0xff6326,.35);
         this.arrows.lineBetween(p.x-Math.cos(a.angle)*16,p.y-Math.sin(a.angle)*16,p.x,p.y);
-        this.arrows.fillStyle(0x8edcff,.45);this.arrows.fillCircle(p.x,p.y,7);
-        this.arrows.fillStyle(0xe8f7ff);this.arrows.fillCircle(p.x,p.y,3);
+        this.arrows.fillStyle(0xff982c,.7);this.arrows.fillCircle(p.x,p.y,7);
+        this.arrows.fillStyle(0xffed9b);this.arrows.fillCircle(p.x,p.y,3);
       } else {
         this.arrows.lineStyle(2, 0xe3cf96);
         this.arrows.lineBetween(
