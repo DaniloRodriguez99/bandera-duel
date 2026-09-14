@@ -164,4 +164,11 @@ Sobre cada tarjeta crece su árbol: qué hace un toque, qué hace mantener y (en
 - Cuando muere un rival queda su **tumba** durante 10 s. Con el aura llena aparece una circunferencia blanca que titila con el alcance (200 px); al soltar, se abre un **mandala bajo el mouse** dentro de ese alcance y ahí se levanta el caído de la tumba más cercana como lacayo hasta que lo maten, aunque el jugador ya haya reaparecido y aunque tenga otros zombies vivos (máximo 1 esclavo).
 - **⌘E / Ctrl+E** pasa al zombie más cercano al cursor del círculo rojo al mouse, o al revés.
 - **E** activa o desactiva el modo **automático**: sin círculos, todos atacan solos al rival cercano y, si no hay ninguno, te acompañan.
+- Invocar no espera ni bloquea al fuego: se puede lanzar fuego e invocar a la vez. Resucitar castea **0,5 s** con el nigromante quieto; recién entonces se abre el mandala y se levanta el esclavo.
+
+### Combos del arquero
+- **Triple (E):** las 3 flechas salen casi en fila y se abren de a poco. Si una ya alcanzó a un rival, las otras siguen de largo hacia el próximo en línea.
+- **Cargando el clic + E:** 3 flechas potenciadas al 33 % de la carga completa.
+- **Clic y Espacio al máximo, avanzando hacia el tiro:** al soltar el clic sale una **flecha de viento** penetrante que cruza la arena, atraviesa a cada rival una vez, rompe escudos (bloqueo del caballero y escudo mágico) y hace el doble que la flecha cargada. Consume la carga del dash.
+- **Lo mismo + E:** 3 flechas de viento; cada una hace el 40 % de la flecha de viento, y si las 3 alcanzan al mismo rival suman el 120 %.
 

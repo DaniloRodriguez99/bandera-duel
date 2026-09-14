@@ -244,6 +244,14 @@ describe('nigromante', () => {
     expect(minions.every((z) => z.role === 'cursor')).toBe(true);
     expect(Math.min(...d.state.zombies.map((z) => z.x))).toBeGreaterThan(450);
   });
+  it('tira fuego e invoca en el mismo instante', () => {
+    const { d, players: [n, g] } = setup();
+    Object.assign(n, { x: 200, y: 270, angle: 0 });
+    Object.assign(g, { x: 880, y: 500 });
+    run(d, 1, { 0: { shot: true, summon: true } });
+    expect(d.state.arrows).toHaveLength(1);
+    expect(d.state.zombies).toHaveLength(2);
+  });
   it('valida el punto apuntado', () => {
     expect(sanitizeInput({ ...idleInput(), command: true, mark: 'x' })).toMatchObject({ command: true, mark: false });
     expect(sanitizeInput({ ...idleInput(), aimX: 9999, aimY: 20 })).toMatchObject({ aimX: RULES.width, aimY: 20 });

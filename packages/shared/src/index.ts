@@ -118,9 +118,14 @@ export const RULES = {
   trapDamage: 0.5,
   trapStun: 1,
   volleyCooldown: 5,
-  volleyAngle: (Math.PI * 25) / 180,
+  volleyAngle: (Math.PI * 3) / 180,
+  volleyGap: 7,
+  volleyChargedPower: 1 / 3,
   chargeTime: 0.8,
   chargeMultiplier: 1.3,
+  windScale: 2,
+  windVolleyScale: 0.8,
+  windAlign: Math.cos(Math.PI / 4),
   shotCooldown: 0.9,
   arrowSpeed: 560,
   arrowLife: 1.2,
@@ -167,7 +172,8 @@ export const RULES = {
   raiseCharge: 2.5,
   raiseRange: 200,
   graveLife: 10,
-  thrallRise: 0.9,
+  thrallRise: 0.45,
+  raiseCast: 0.5,
   thrallCooldown: 20,
   hatHp: 5,
   hatLife: 30,
@@ -374,6 +380,10 @@ export interface Player extends Vec {
   thrallCd: number;
   hatAlive: boolean;
   thrallAlive: boolean;
+  /** Seconds left of the raise cast; the necromancer stays still while it lasts. */
+  raiseCast: number;
+  raiseX: number;
+  raiseY: number;
   activeExecutions: number;
   /** E: every zombie hunts on its own instead of guarding or following the cursor. */
   zombieAuto: boolean;
@@ -393,6 +403,12 @@ export interface Arrow extends Vec {
   power?: number;
   damageScale?: number;
   element?: 'fire' | 'ice';
+  /** Wind arrow: pierces every target once and breaks shields. */
+  wind?: boolean;
+  /** Rivals and zombies this arrow already went through. */
+  hits?: string[];
+  /** Arrows of one volley share this id. */
+  volley?: number;
   id: number;
   owner: string;
   team: Team;
@@ -449,7 +465,9 @@ export interface GameEvent extends Vec {
     | 'freeze'
     | 'raise'
     | 'cast'
-    | 'explosion';
+    | 'explosion'
+    | 'wind'
+    | 'mandala';
   team: Team;
   angle?: number;
   classId?: ClassId;
@@ -533,6 +551,17 @@ export function projectileStats(classId: ClassId, charged = false, power = 0) {
       radius: 3,
       cooldown: RULES.shotCooldown,
     };
+  if (classId === 'archer' && power > 0) {
+    // Part of the archer's charge (the volley released mid-charge carries a third of it).
+    const boost = 1 + (RULES.chargeMultiplier - 1) * power;
+    return {
+      speed: RULES.arrowSpeed * boost,
+      life: RULES.arrowLife / boost,
+      damage: RULES.arrowDamage * boost,
+      radius: 3,
+      cooldown: RULES.shotCooldown,
+    };
+  }
   const base =
     classId === 'necromancer'
       ? {
@@ -651,6 +680,9 @@ export function movePlayer(p: Player, input: Input, carrying: boolean, dt = RULE
     charged: false,
     power: 0,
     special: 0,
+    volleyPower: 0,
+    wind: false,
+    raised: false,
   };
   if (p.hp <= 0) return result;
   const stats = CLASSES[p.classId];
@@ -686,6 +718,17 @@ export function movePlayer(p: Player, input: Input, carrying: boolean, dt = RULE
   p.angle = input.angle;
   p.aimX = input.aimX;
   p.aimY = input.aimY;
+  if (p.raiseCast > 0) {
+    // Casting a raise roots the necromancer until the mandala opens.
+    p.raiseCast = Math.max(0, p.raiseCast - dt);
+    p.shotCharge = 0;
+    p.specialCharge = 0;
+    if (p.raiseCast <= 1e-8) {
+      p.raiseCast = 0;
+      result.raised = true;
+    }
+    return result;
+  }
   if (p.trapLeft > 0) {
     p.shotCharge = 0;
     if (p.hitFlash > 0) p.trapLeft = 0;
@@ -765,6 +808,16 @@ export function movePlayer(p: Player, input: Input, carrying: boolean, dt = RULE
     p.windup = Math.max(0, p.windup - dt);
     result.swing = p.windup === 0;
   }
+  // Archer combos read the charges held before this tick's release.
+  const heldCharge = p.shotCharge;
+  const moving = Math.hypot(input.x, input.y);
+  // Both charges full and running toward the shot: the release becomes a wind arrow.
+  const windReady =
+    p.classId === 'archer' &&
+    heldCharge >= RULES.chargeTime - 1e-8 &&
+    p.specialCharge >= RULES.overchargeTime - 1e-8 &&
+    moving > 0.3 &&
+    (input.x * Math.cos(input.angle) + input.y * Math.sin(input.angle)) / moving >= RULES.windAlign;
   const canCharge =
     !p.guarding &&
     !p.dashInvulnerable &&
@@ -789,6 +842,13 @@ export function movePlayer(p: Player, input: Input, carrying: boolean, dt = RULE
       p.volleyCd = RULES.volleyCooldown;
       p.attackLock = RULES.attackLock;
       result.volley = true;
+      result.wind = windReady;
+      // Released mid-charge: three arrows carrying a third of the charged power.
+      result.volleyPower = heldCharge >= RULES.overchargeTap ? RULES.volleyChargedPower : 0;
+      if (windReady) {
+        p.dashCd = RULES.dashCooldown;
+        p.specialCharge = 0;
+      }
     } else if (input.sword && stats.melee && p.swordCd <= 0) {
       p.invuln = 0;
       p.windup = stats.windup;
@@ -800,24 +860,30 @@ export function movePlayer(p: Player, input: Input, carrying: boolean, dt = RULE
       p.invuln = 0;
       p.shotCd = projectileStats(p.classId).cooldown;
       p.attackLock = RULES.attackLock;
-      result.charged = p.classId === 'archer' && p.shotCharge >= RULES.chargeTime - 1e-8;
+      result.charged = p.classId === 'archer' && heldCharge >= RULES.chargeTime - 1e-8;
+      result.wind = windReady;
+      if (windReady) {
+        p.dashCd = RULES.dashCooldown;
+        p.specialCharge = 0;
+      }
       result.power = p.classId === 'archer' ? 0 : chargePower(p.shotCharge);
       p.shotCharge = 0;
       result.shoot = true;
-    } else if (
-      input.summon &&
-      stats.summon &&
-      p.summonCd <= 0 &&
-      // A charged summon (hat zombie or thrall) never takes an execution slot.
-      (p.activeExecutions < RULES.zombieExecutions || p.specialCharge >= RULES.overchargeTap)
-    ) {
-      p.invuln = 0;
-      p.summonCd = RULES.summonCooldown;
-      p.attackLock = RULES.attackLock;
-      result.summon = true;
-      result.special = p.specialCharge;
-      p.specialCharge = 0;
     }
+  }
+  // Summoning neither waits for nor blocks attacks: fire and summon can go out on the same tick.
+  if (
+    input.summon &&
+    stats.summon &&
+    p.summonCd <= 0 &&
+    // A charged summon (hat zombie or thrall) never takes an execution slot.
+    (p.activeExecutions < RULES.zombieExecutions || p.specialCharge >= RULES.overchargeTap)
+  ) {
+    p.invuln = 0;
+    p.summonCd = RULES.summonCooldown;
+    result.summon = true;
+    result.special = p.specialCharge;
+    p.specialCharge = 0;
   }
   if (input.shot || input.sword || input.volley) p.shotCharge = 0;
   if (p.guarding) p.guardLeft = Math.max(0, p.guardLeft - dt);
@@ -878,6 +944,9 @@ export function newPlayer(
     thrallCd: 0,
     hatAlive: false,
     thrallAlive: false,
+    raiseCast: 0,
+    raiseX: 0,
+    raiseY: 0,
     activeExecutions: 0,
     zombieAuto: false,
     aimX: -1,
@@ -921,6 +990,11 @@ export class Duel {
   private paths = new Map<string, { goal: Vec; points: Vec[] }>();
   private packBearings = new Map<string, number>();
   private packSeen = new Set<string>();
+  private volleyId = 0;
+  /** `${volley}:${target}` → tick a volley arrow first reached that target. */
+  private volleyHits = new Map<string, number>();
+  /** Necromancers mid-cast and the thrall they are raising. */
+  private raising = new Map<string, { classId: ClassId; name: string }>();
   add(id: string, name: string, classId: ClassId = DEFAULT_CLASS) {
     const s = this.state;
     const team = TEAMS.find((t) => !s.players.some((p) => p.team === t));
@@ -1015,6 +1089,8 @@ export class Duel {
     s.arrows = [];
     s.zombies = [];
     s.graves = [];
+    this.raising.clear();
+    for (const p of s.players) p.raiseCast = 0;
     s.traps = [];
     this.paths.clear();
     s.flags = s.bases
@@ -1074,13 +1150,21 @@ export class Duel {
       this.finish(alive[0].team, reason);
   }
   /** Returns whether the hit landed (not blocked, shielded or ignored by protection). */
-  damage(target: Player, source: Player, angle: number, amount = 1): boolean {
-    if (target.hp <= 0 || target.invuln > 0 || target.dashInvulnerable) return false;
+  /** `pierce`: breaks shields and wounds without knockback; `ignoreInvuln`: a sibling volley arrow. */
+  damage(
+    target: Player,
+    source: Player,
+    angle: number,
+    amount = 1,
+    options: { pierce?: boolean; ignoreInvuln?: boolean } = {},
+  ): boolean {
+    if (target.hp <= 0 || (target.invuln > 0 && !options.ignoreInvuln) || target.dashInvulnerable)
+      return false;
     if (target.classId === 'mage' && target.magicShieldHits > 0 && amount > 0) {
-      target.magicShieldHits--;
+      target.magicShieldHits = options.pierce ? 0 : target.magicShieldHits - 1;
       if (target.magicShieldHits === 0) target.magicShieldCd = RULES.magicShieldCooldown;
       this.event('block', target, target.team, angle, target.classId);
-      return false;
+      if (!options.pierce) return false;
     }
     // Incoming direction is the reverse of projectile/swing travel, not the
     // attacker's current position (arrows can arrive after their owner moves).
@@ -1088,7 +1172,9 @@ export class Duel {
     const difference = Math.atan2(Math.sin(relative), Math.cos(relative));
     if (target.guarding && Math.abs(difference) <= RULES.guardArc / 2 + 1e-8) {
       this.event('block', target, target.team, target.angle, target.classId);
-      return false;
+      if (!options.pierce) return false;
+      lowerGuard(target);
+      target.guardCd = RULES.guardCooldown;
     }
     target.shotCharge = 0;
     target.specialCharge = 0;
@@ -1108,6 +1194,8 @@ export class Duel {
         left: RULES.graveLife,
       });
       target.respawnLeft = RULES.respawn;
+      target.raiseCast = 0;
+      this.raising.delete(target.id);
       target.windup = 0;
       target.dashLeft = 0;
       target.dashInvulnerable = false;
@@ -1115,7 +1203,7 @@ export class Duel {
       target.deaths++;
       this.event('death', target, target.team);
       if (target.deaths >= RULES.maxDeaths) this.eliminate(target);
-    } else translate(target, Math.cos(angle) * 24, Math.sin(angle) * 24);
+    } else if (!options.pierce) translate(target, Math.cos(angle) * 24, Math.sin(angle) * 24);
     return true;
   }
   private freeze(p: Player) {
@@ -1224,7 +1312,7 @@ export class Duel {
   private raise(p: Player, ahead: Vec) {
     const s = this.state;
     // One thrall at a time; the necromancer's other zombies may stay alive.
-    if (s.zombies.some((z) => z.owner === p.id && z.kind === 'thrall')) return false;
+    if (this.raising.has(p.id) || s.zombies.some((z) => z.owner === p.id && z.kind === 'thrall')) return false;
     // The raising mandala opens under the cursor, kept inside the white raise circle.
     const aim = p.aimX >= 0 ? { x: p.aimX, y: p.aimY } : ahead;
     const angle = Math.atan2(aim.y - p.y, aim.x - p.x);
@@ -1240,7 +1328,20 @@ export class Duel {
       p.thrall = { classId: corpse.classId, name: corpse.name };
       s.graves = s.graves.filter((g) => g !== corpse);
     } else if (!p.thrall || p.thrallCd > 0) return false;
-    const bound = p.thrall!;
+    // Half a second of casting, rooted, before the mandala opens and the thrall rises there.
+    this.raising.set(p.id, p.thrall!);
+    p.raiseCast = RULES.raiseCast;
+    p.raiseX = at.x;
+    p.raiseY = at.y;
+    this.event('mandala', at, p.team, p.angle, p.thrall!.classId);
+    return true;
+  }
+  private finishRaise(p: Player) {
+    const s = this.state;
+    const bound = this.raising.get(p.id);
+    this.raising.delete(p.id);
+    if (!bound || p.hp <= 0) return;
+    const at = { x: p.raiseX, y: p.raiseY };
     const hp = CLASSES[bound.classId].hp;
     s.zombies.push(
       this.newZombie(p, at, p, {
@@ -1258,7 +1359,16 @@ export class Duel {
     );
     p.thrallAlive = true;
     this.event('raise', at, p.team, p.angle, bound.classId);
+  }
+  /** A plain volley arrow flies past a target its sibling already struck, on to the next rival in line. */
+  private volleyPasses(a: Arrow, id: string) {
+    if (a.volley === undefined || a.wind || !this.volleyHits.has(`${a.volley}:${id}`)) return false;
+    a.hits!.push(id);
     return true;
+  }
+  private markVolley(a: Arrow, id: string) {
+    const key = `${a.volley}:${id}`;
+    if (a.volley !== undefined && !this.volleyHits.has(key)) this.volleyHits.set(key, this.state.tick);
   }
   private castSpell(z: Zombie, owner: Player) {
     const s = this.state;
@@ -1629,22 +1739,33 @@ export class Duel {
       if (action.swing) swings.push(p);
       if (action.trap) placements.push(p);
       if (action.shoot || action.volley) {
-        for (const offset of action.volley ? [-RULES.volleyAngle, 0, RULES.volleyAngle] : [0]) {
+        const volley = action.volley ? ++this.volleyId : undefined;
+        const charged = action.wind || (action.shoot && action.charged);
+        const power = action.volley ? action.volleyPower : action.power;
+        const stats = projectileStats(p.classId, charged, power);
+        // Volley arrows leave side by side and drift apart slowly, so a line of rivals takes all three.
+        for (const side of action.volley ? [-1, 0, 1] : [0]) {
           s.arrows.push({
             id: ++this.arrowId,
             owner: p.id,
             team: p.team,
             classId: p.classId,
-            x: p.x,
-            y: p.y,
-            angle: p.angle + offset,
-            charged: action.shoot && action.charged,
-            power: action.power,
-            life: projectileStats(p.classId, action.shoot && action.charged, action.power).life,
+            x: p.x - Math.sin(p.angle) * side * RULES.volleyGap,
+            y: p.y + Math.cos(p.angle) * side * RULES.volleyGap,
+            angle: p.angle + side * RULES.volleyAngle,
+            charged,
+            power,
+            // A wind arrow crosses the whole arena.
+            life: action.wind ? (RULES.width * 1.1) / stats.speed : stats.life,
+            ...(volley !== undefined || action.wind ? { hits: [], volley } : {}),
+            ...(action.wind
+              ? { wind: true, damageScale: action.volley ? RULES.windVolleyScale : RULES.windScale }
+              : {}),
           });
         }
-        this.event('shot', p, p.team, p.angle, p.classId, action.power);
+        this.event(action.wind ? 'wind' : 'shot', p, p.team, p.angle, p.classId, action.power);
       }
+      if (action.raised) this.finishRaise(p);
       if (action.summon) this.summon(p, action.special);
     }
     const hits: { target: Player; source: Player; angle: number; amount: number }[] = [];
@@ -1700,19 +1821,42 @@ export class Duel {
           return false;
         }
         const target = s.players.find(
-          (p) => p.team !== a.team && p.hp > 0 && distance(p, a) < RULES.radius + stats.radius,
+          (p) =>
+            p.team !== a.team &&
+            p.hp > 0 &&
+            distance(p, a) < RULES.radius + stats.radius &&
+            !a.hits?.includes(p.id),
         );
+        if (target && this.volleyPasses(a, target.id)) continue;
+        if (target && a.wind) {
+          // Wind pierces and breaks shields; the arrows of a wind volley all land on the same rival.
+          const sibling = this.volleyHits.has(`${a.volley}:${target.id}`);
+          a.hits!.push(target.id);
+          this.markVolley(a, target.id);
+          this.damage(target, owner, a.angle, amount, { pierce: true, ignoreInvuln: sibling });
+          continue;
+        }
         if (target) {
+          this.markVolley(a, target.id);
           if (this.damage(target, owner, a.angle, amount) && a.element === 'ice') this.freeze(target);
           this.explode(a, owner, amount, target.id);
           return false;
         }
         const zombie = s.zombies.find(
           (z) =>
-            z.team !== a.team && z.hp > 0 && distance(z, a) < RULES.zombieRadius + stats.radius,
+            z.team !== a.team &&
+            z.hp > 0 &&
+            distance(z, a) < RULES.zombieRadius + stats.radius &&
+            !a.hits?.includes(z.id),
         );
+        if (zombie && this.volleyPasses(a, zombie.id)) continue;
         if (zombie) {
+          this.markVolley(a, zombie.id);
           this.damageZombie(zombie, a.team, amount);
+          if (a.wind) {
+            a.hits!.push(zombie.id);
+            continue;
+          }
           if (a.element === 'ice') {
             zombie.frozenLeft = RULES.freeze;
             this.event('freeze', zombie, zombie.team);
@@ -1723,6 +1867,7 @@ export class Duel {
       }
       return true;
     });
+    for (const [key, tick] of this.volleyHits) if (s.tick - tick > 60) this.volleyHits.delete(key);
     this.stepZombies(dt);
     for (const p of placements) {
       if (p.hp <= 0 || p.hitFlash > 0 || s.winner) continue;

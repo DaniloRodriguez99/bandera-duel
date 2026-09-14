@@ -192,6 +192,7 @@ describe('sobrecarga', () => {
     d.damage(v, a, 0, 99);
     run(d, ticks(RULES.raiseCharge) + 1, { 0: { special: true } });
     run(d, 1, { 0: { summon: true } });
+    run(d, ticks(RULES.raiseCast) + 1);
     const thrall = d.state.zombies.find((z) => z.kind === 'thrall');
     expect(thrall).toMatchObject({ classId: 'vanguard', name: v.name, bonus: true, hp: CLASSES.vanguard.hp });
     expect(n.thrall).toMatchObject({ classId: 'vanguard', name: v.name });
@@ -207,6 +208,7 @@ describe('sobrecarga', () => {
     far.d.damage(far.players[1], far.players[2], 0, 99);
     run(far.d, ticks(RULES.raiseCharge) + 1, { 0: { special: true } });
     run(far.d, 1, { 0: { summon: true } });
+    run(far.d, ticks(RULES.raiseCast) + 1);
     expect(far.d.state.zombies.map((z) => z.kind)).toEqual(['hat']);
     const { d, players: [n, v, a] } = setup(['necromancer', 'guardian', 'archer']);
     Object.assign(n, { x: 300, y: 270, angle: 0 });
@@ -216,9 +218,11 @@ describe('sobrecarga', () => {
     d.damage(v, a, 0, 99);
     run(d, ticks(RULES.raiseCharge) + 1, { 0: { special: true } });
     run(d, 1, { 0: { summon: true } });
+    run(d, ticks(RULES.raiseCast) + 1);
     run(d, ticks(RULES.summonCooldown) + 1);
     run(d, ticks(RULES.raiseCharge) + 1, { 0: { special: true } });
     run(d, 1, { 0: { summon: true } });
+    run(d, ticks(RULES.raiseCast) + 1);
     expect(d.state.zombies.filter((z) => z.kind === 'thrall')).toHaveLength(1);
     for (const z of d.state.zombies) d.damageZombie(z, a.team, 99);
     run(d, 1);
@@ -226,6 +230,7 @@ describe('sobrecarga', () => {
     run(d, ticks(RULES.thrallCooldown) + 1);
     run(d, ticks(RULES.raiseCharge) + 1, { 0: { special: true } });
     run(d, 1, { 0: { summon: true } });
+    run(d, ticks(RULES.raiseCast) + 1);
     expect(d.state.zombies.find((z) => z.kind === 'thrall')).toMatchObject({ classId: 'guardian' });
   });
   it('el esclavo ataca con su clase y el daño se acredita al nigromante', () => {
@@ -237,6 +242,7 @@ describe('sobrecarga', () => {
     d.damage(v, a, 0, 99);
     run(d, ticks(RULES.raiseCharge) + 1, { 0: { special: true } });
     run(d, 1, { 0: { summon: true } });
+    run(d, ticks(RULES.raiseCast) + 1);
     const thrall = d.state.zombies.find((z) => z.kind === 'thrall')!;
     Object.assign(a, { x: thrall.x + 60, y: thrall.y, hp: 3, invuln: 0 });
     for (let i = 0; i < 90 && a.hp === 3; i++) run(d, 1);
@@ -256,6 +262,7 @@ describe('sobrecarga', () => {
     expect(v.hp).toBeGreaterThan(0);
     run(d, ticks(RULES.raiseCharge) + 1, { 0: { special: true } });
     run(d, 1, { 0: { summon: true } });
+    run(d, ticks(RULES.raiseCast) + 1);
     expect(d.state.zombies.find((z) => z.kind === 'thrall')).toMatchObject({ classId: 'vanguard', role: 'cursor' });
     expect(d.state.zombies.some((z) => z.execution !== null)).toBe(true);
     expect(d.state.graves).toHaveLength(0);
@@ -271,6 +278,7 @@ describe('sobrecarga', () => {
     expect(blocked(380, 230, RULES.zombieRadius)).toBe(false);
     run(d, ticks(RULES.raiseCharge) + 1, { 0: { special: true, ...aim } });
     run(d, 1, { 0: { summon: true, ...aim } });
+    run(d, ticks(RULES.raiseCast) + 1);
     const thrall = d.state.zombies.find((z) => z.kind === 'thrall')!;
     expect(thrall).toMatchObject({ classId: 'vanguard', role: 'cursor' });
     expect(distance(thrall, { x: 380, y: 230 })).toBeLessThan(1);
@@ -283,9 +291,29 @@ describe('sobrecarga', () => {
     const far = { aimX: 900, aimY: 270 };
     run(d, ticks(RULES.raiseCharge) + 1, { 0: { special: true, ...far } });
     run(d, 1, { 0: { summon: true, ...far } });
+    run(d, ticks(RULES.raiseCast) + 1);
     const recalled = d.state.zombies.find((z) => z.kind === 'thrall')!;
     expect(distance(recalled, n)).toBeLessThanOrEqual(RULES.raiseRange + 1);
     expect(recalled.x).toBeGreaterThan(n.x + 100);
+  });
+  it('resucitar castea medio segundo con el nigromante quieto y recién ahí se levanta el esclavo', () => {
+    const { d, players: [n, v, a] } = setup(['necromancer', 'vanguard', 'archer']);
+    Object.assign(n, { x: 300, y: 270, angle: 0 });
+    Object.assign(v, { x: 450, y: 270 });
+    Object.assign(a, { x: 880, y: 500 });
+    v.invuln = 0;
+    d.damage(v, a, 0, 99);
+    run(d, ticks(RULES.raiseCharge) + 1, { 0: { special: true } });
+    run(d, 1, { 0: { summon: true } });
+    expect(n.raiseCast).toBeGreaterThan(0);
+    expect(d.state.zombies.some((z) => z.kind === 'thrall')).toBe(false);
+    const x = n.x;
+    run(d, ticks(RULES.raiseCast) - 2, { 0: { x: 1, shot: true } });
+    expect(n.x).toBe(x);
+    expect(d.state.arrows.filter((arrow) => arrow.owner === n.id)).toHaveLength(0);
+    run(d, 3);
+    expect(n.raiseCast).toBe(0);
+    expect(d.state.zombies.find((z) => z.kind === 'thrall')).toMatchObject({ x: n.raiseX, y: n.raiseY });
   });
   it('la tumba se deshace a los 10 s', () => {
     const { d, players: [, v, a] } = setup(['necromancer', 'vanguard', 'archer']);

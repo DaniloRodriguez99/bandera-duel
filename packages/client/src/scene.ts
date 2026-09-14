@@ -371,6 +371,18 @@ export class Arena extends Phaser.Scene {
     } else if (e.kind === 'raise') {
       this.fade(this.add.rectangle(e.x, e.y - 40, 22, 96, 0x7dffb0, 0.4).setDepth(16), { scaleX: 0 }, 760);
       this.fade(this.add.ellipse(e.x, e.y + 8, 30, 12).setStrokeStyle(2, 0x7dffb0, 0.9).setDepth(4), { scale: 3 }, 760);
+    } else if (e.kind === 'wind') {
+      this.fade(this.add.ellipse(e.x, e.y + 6, 30, 12).setStrokeStyle(2, 0xd8fbff, 0.9).setDepth(16), { scale: 3.2 }, 420);
+      for (const side of [-1, 1]) {
+        const a = (e.angle ?? 0) + Math.PI + side * 0.5;
+        this.fade(
+          this.add.rectangle(e.x, e.y, 18, 2, 0xe8fbff, 0.85).setRotation(a).setDepth(16),
+          { x: e.x + Math.cos(a) * 44, y: e.y + Math.sin(a) * 44 },
+          380,
+        );
+      }
+    } else if (e.kind === 'mandala') {
+      this.fade(this.add.ellipse(e.x, e.y + 8, 20, 9).setStrokeStyle(2, 0x7dffb0, 0.9).setDepth(4), { scale: 3.5 }, 520);
     } else if (e.kind === 'shot' && (e.power ?? 0) > 0.05) {
       const power = e.power ?? 0;
       this.fade(this.add.circle(e.x, e.y, 10, 0xff7a2f, 0.6).setDepth(16), { scale: 2.5 + power * 2 }, 300);
@@ -378,6 +390,41 @@ export class Arena extends Phaser.Scene {
     } else if (e.kind === 'summon' && e.power) {
       this.fade(this.add.ellipse(e.x, e.y + 8, 36, 14).setStrokeStyle(3, 0xb06cff, 0.9).setDepth(4), { scale: 3.4 }, 700);
     }
+  }
+  /** Wind arrow: a pale shaft wrapped in spiralling gusts and a streaming trail. */
+  private drawWind(p: { x: number; y: number }, angle: number, time: number, small: boolean) {
+    const g = this.arrows,
+      dx = Math.cos(angle),
+      dy = Math.sin(angle),
+      size = small ? 0.75 : 1;
+    for (let i = 0; i < 14; i++) {
+      const back = i * 5 * size,
+        swirl = (5 + i * 0.6) * size,
+        phase = time * 0.03 - i * 0.55;
+      for (const side of [1, -1]) {
+        const offset = Math.sin(phase) * swirl * side;
+        g.fillStyle(i % 3 ? 0xd8fbff : 0x8fe3ff, (1 - i / 14) * 0.7);
+        g.fillCircle(p.x - dx * back - dy * offset, p.y - dy * back + dx * offset, (2.2 - i * 0.1) * size);
+      }
+    }
+    g.lineStyle(1, 0xe8fbff, 0.5);
+    for (const ring of [10, 22]) {
+      const spin = time * 0.02 + ring;
+      g.beginPath();
+      g.arc(p.x - dx * ring * size, p.y - dy * ring * size, (8 + ring * 0.25) * size, spin, spin + Math.PI * 1.2);
+      g.strokePath();
+    }
+    g.lineStyle(3 * size, 0xf4feff, 0.95);
+    g.lineBetween(p.x - dx * 16 * size, p.y - dy * 16 * size, p.x, p.y);
+    g.fillStyle(0xffffff);
+    g.fillTriangle(
+      p.x + dx * 7 * size,
+      p.y + dy * 7 * size,
+      p.x - dy * 4 * size,
+      p.y + dx * 4 * size,
+      p.x + dy * 4 * size,
+      p.y - dx * 4 * size,
+    );
   }
   /** Original raising mandala on the ground: counter-rotating rune squares, orbiting petals, glowing core. */
   private drawMandala(g: Phaser.GameObjects.Graphics, x: number, y: number, radius: number, time: number, alpha: number) {
@@ -938,6 +985,14 @@ export class Arena extends Phaser.Scene {
       this.traps.lineBetween(g.x, g.y - 9, g.x, g.y - 1);
       this.traps.lineBetween(g.x - 3, g.y - 6, g.x + 3, g.y - 6);
     }
+    // A necromancer casting a raise: the mandala grows where the dead will rise.
+    for (const q of s.players) {
+      if (q.raiseCast <= 0) continue;
+      const progress = 1 - q.raiseCast / RULES.raiseCast;
+      this.drawMandala(this.traps, q.raiseX, q.raiseY + 8, 16 + progress * 18, time, 0.35 + progress * 0.6);
+      this.traps.lineStyle(1, 0x7dffb0, 0.25 + progress * 0.4);
+      this.traps.lineBetween(q.x, q.y - 6, q.raiseX, q.raiseY);
+    }
     this.arrows.clear();
     for (const a of s.arrows) {
       const age = s.paused ? 0 : Math.min((performance.now() - this.receivedAt) / 1000, 1 / 15);
@@ -947,6 +1002,10 @@ export class Arena extends Phaser.Scene {
       };
       const p = lineClear(a, next) ? next : a;
       const grow = 1 + (a.power ?? 0);
+      if (a.wind) {
+        this.drawWind(p, a.angle, time, a.volley !== undefined);
+        continue;
+      }
       if (a.element === 'ice') {
         const dx = Math.cos(a.angle),
           dy = Math.sin(a.angle);
@@ -973,14 +1032,15 @@ export class Arena extends Phaser.Scene {
         this.arrows.fillStyle(0xff982c,.7);this.arrows.fillCircle(p.x,p.y,7*grow);
         this.arrows.fillStyle(0xffed9b);this.arrows.fillCircle(p.x,p.y,3*grow);
       } else {
-        this.arrows.lineStyle(a.charged ? 4 : 2, a.charged ? 0xff842f : 0xe3cf96);
+        const hot = a.charged ? 1 : (a.power ?? 0);
+        this.arrows.lineStyle(2 + hot * 2, hot > 0 ? 0xff842f : 0xe3cf96);
         this.arrows.lineBetween(
           p.x - Math.cos(a.angle) * 12,
           p.y - Math.sin(a.angle) * 12,
           p.x,
           p.y,
         );
-        this.arrows.fillStyle(a.charged ? 0xffb24a : 0xf2e9cf);
+        this.arrows.fillStyle(hot > 0 ? 0xffb24a : 0xf2e9cf);
         this.arrows.fillCircle(p.x, p.y, 2);
       }
     }
@@ -1031,6 +1091,20 @@ export class Arena extends Phaser.Scene {
             this.aim.lineStyle(1, 0x7dffb0, 0.2 + twinkle * 0.35);
             this.aim.lineBetween(grave.x, grave.y, spot.x, spot.y);
           }
+        }
+      }
+      if (
+        p.classId === 'archer' &&
+        p.shotCharge >= RULES.chargeTime - 1e-8 &&
+        p.specialCharge >= RULES.overchargeTime - 1e-8
+      ) {
+        // Both charges full: gusts circle the archer, ready to loose the wind arrow on the run.
+        this.aim.lineStyle(2, 0xd8fbff, 0.65);
+        for (let i = 0; i < 3; i++) {
+          const spin = time * 0.012 + (i * Math.PI * 2) / 3;
+          this.aim.beginPath();
+          this.aim.arc(p.x, p.y - 4, 24, spin, spin + 1.2);
+          this.aim.strokePath();
         }
       }
       const mine = s.zombies.filter((z) => z.owner === this.localId);

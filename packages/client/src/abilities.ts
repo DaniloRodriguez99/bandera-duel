@@ -20,6 +20,8 @@ export interface AbilitySlot {
 
 const percent = (value: number) => `${Math.round(Math.min(1, value) * 100)} %`;
 const tapped = (charge: number) => charge > 0 && charge < RULES.overchargeTap;
+const windFull = (p: Player) =>
+  p.shotCharge >= RULES.chargeTime - 1e-8 && p.specialCharge >= RULES.overchargeTime - 1e-8;
 
 /** Abilities in panel order: click first, then space, then the class extras. */
 export function abilitySlots(classId: ClassId): AbilitySlot[] {
@@ -41,9 +43,10 @@ export function abilitySlots(classId: ClassId): AbilitySlot[] {
               { label: 'Toque · flecha', active: (p) => tapped(p.shotCharge) },
               {
                 label: 'Mantener 0,8 s · flecha cargada',
-                active: (p) => p.shotCharge >= RULES.overchargeTap,
+                active: (p) => p.shotCharge >= RULES.overchargeTap && !windFull(p),
                 state: (p) => (p.shotCharge > 0 ? percent(p.shotCharge / RULES.chargeTime) : null),
               },
+              { label: '+ Espacio al máximo, avanzando · viento', active: windFull },
             ]
           : [
               { label: `Toque · ${name.toLowerCase()}`, active: (p) => tapped(p.shotCharge) },
@@ -109,7 +112,7 @@ export function abilitySlots(classId: ClassId): AbilitySlot[] {
             state: (p) => (p.hatAlive ? 'Vivo' : null),
           },
           {
-            label: 'Aura llena · resucitar tumba',
+            label: 'Aura llena · resucitar (0,5 s quieto)',
             active: (p) => p.specialCharge >= RULES.overchargeTime,
             state: (p) =>
               p.specialCharge >= RULES.overchargeTime
@@ -158,7 +161,19 @@ export function abilitySlots(classId: ClassId): AbilitySlot[] {
         max: RULES.trapCooldown,
         detail: (p) => (p.trapLeft > 0 ? 'Preparando' : null),
       },
-      { id: 'volley', key: 'E', name: 'Triple', icon: '⋔', cooldown: (p) => p.volleyCd, max: RULES.volleyCooldown },
+      {
+        id: 'volley',
+        key: 'E',
+        name: 'Triple',
+        icon: '⋔',
+        cooldown: (p) => p.volleyCd,
+        max: RULES.volleyCooldown,
+        tiers: [
+          { label: 'Toque · 3 flechas en fila' },
+          { label: 'Cargando clic · 3 al 33 %', active: (p) => p.shotCharge >= RULES.overchargeTap && !windFull(p) },
+          { label: 'Clic + Espacio al máximo · 3 de viento', active: windFull },
+        ],
+      },
     );
   if (classId === 'mage')
     slots.push({

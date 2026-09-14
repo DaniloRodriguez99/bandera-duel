@@ -58,7 +58,11 @@ export class Controls {
       }
       if (!e.repeat && this.classId === 'archer') {
         if (e.code === 'KeyQ') this.actions.trap = true;
-        if (e.code === 'KeyE') this.actions.volley = true;
+        if (e.code === 'KeyE') {
+          this.actions.volley = true;
+          // The volley spends a held shot charge, so releasing the click afterwards fires nothing.
+          this.chargeSources.clear();
+        }
       }
       if (e.code === 'Space' && !e.repeat) this.pressSpecial('key');
     });
