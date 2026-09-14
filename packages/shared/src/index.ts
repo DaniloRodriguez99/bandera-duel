@@ -36,6 +36,8 @@ export const RULES = {
   guardDuration: 1.2,
   magicShieldHits: 2,
   magicShieldCooldown: 15,
+  iceCooldown: 3,
+  freezeDuration: .5,
   guardCooldown: 1.5,
   guardRecovery: .15,
   guardSpeed: .25,
@@ -112,6 +114,7 @@ export interface Input {
   dash: boolean;
   guard: boolean;
   summon: boolean;
+  ice: boolean;
 }
 export const idleInput = (seq = 0, angle = 0): Input => ({
   seq,
@@ -123,6 +126,7 @@ export const idleInput = (seq = 0, angle = 0): Input => ({
   dash: false,
   guard: false,
   summon: false,
+  ice: false,
 });
 export function sanitizeInput(raw: unknown): Input | null {
   if (!raw || typeof raw !== 'object') return null;
@@ -150,6 +154,7 @@ export function sanitizeInput(raw: unknown): Input | null {
     dash: r.dash === true,
     guard: r.guard === true,
     summon: r.summon === true,
+    ice: r.ice === true,
   };
 }
 export function validName(raw: unknown): string | null {
@@ -191,6 +196,8 @@ export interface Player extends Vec {
   deaths: number;
   eliminated: boolean;
   summonCd: number;
+  iceCd: number;
+  frozenLeft: number;
 }
 export interface Flag extends Vec {
   team: Team;
@@ -201,6 +208,7 @@ export interface Flag extends Vec {
   lockLeft: number;
 }
 export interface Arrow extends Vec {
+  ice?: boolean;
   id: number;
   owner: string;
   team: Team;
@@ -209,6 +217,7 @@ export interface Arrow extends Vec {
   life: number;
 }
 export interface Zombie extends Vec {
+  frozenLeft?: number;
   id: string;
   owner: string;
   team: Team;
@@ -337,10 +346,13 @@ export function lowerGuard(p: Player) {
 }
 /** Shared fixed-step prediction of timers, defense, attacks and movement. */
 export function movePlayer(p: Player, input: Input, carrying: boolean, dt = RULES.tick as number) {
-  const result = { swing: false, shoot: false, summon: false };
+  const result = { swing: false, shoot: false, summon: false, ice: false };
   if (p.hp <= 0) return result;
   const stats = CLASSES[p.classId];
   const wasWinding = p.windup > 0;
+  const frozenDt = Math.min(dt, p.frozenLeft);
+  p.frozenLeft = Math.max(0, p.frozenLeft - dt);
+  p.iceCd = Math.max(0, p.iceCd - dt);
   for (const key of ['swordCd','shotCd','dashCd','attackLock','invuln','hitFlash','guardCd','guardRecovery','summonCd','magicShieldCd'] as const)
     p[key] = Math.max(0, p[key] - dt);
   p.angle = input.angle;
@@ -354,7 +366,7 @@ export function movePlayer(p: Player, input: Input, carrying: boolean, dt = RULE
     p.magicShieldCd = 0;
   }
   p.guardHeld = input.guard;
-  if (stats.dash && input.dash && p.dashCd <= 0 && !wasWinding && p.attackLock <= 0) {
+  if (frozenDt === 0 && stats.dash && input.dash && p.dashCd <= 0 && !wasWinding && p.attackLock <= 0) {
     const mag = Math.hypot(input.x, input.y);
     p.dashX = mag > 0.05 ? input.x / mag : Math.cos(input.angle);
     p.dashY = mag > 0.05 ? input.y / mag : Math.sin(input.angle);
@@ -367,7 +379,7 @@ export function movePlayer(p: Player, input: Input, carrying: boolean, dt = RULE
     translate(p, p.dashX * RULES.dashSpeed * dashDt, p.dashY * RULES.dashSpeed * dashDt);
   p.dashLeft = Math.max(0, p.dashLeft - dt);
   const speed = stats.speed * (carrying ? RULES.carryMultiplier : 1) * (p.guarding ? RULES.guardSpeed : 1);
-  translate(p, input.x * speed * (dt - dashDt), input.y * speed * (dt - dashDt));
+  translate(p, input.x * speed * Math.max(0, dt - dashDt - frozenDt), input.y * speed * Math.max(0, dt - dashDt - frozenDt));
   if (wasWinding) {
     p.windup = Math.max(0, p.windup - dt);
     result.swing = p.windup === 0;
@@ -379,6 +391,11 @@ export function movePlayer(p: Player, input: Input, carrying: boolean, dt = RULE
       p.swingAngle = p.angle;
       p.swordCd = stats.meleeCooldown;
       p.attackLock = RULES.attackLock;
+    } else if (input.ice && p.classId === 'mage' && p.iceCd <= 0) {
+      p.invuln = 0;
+      p.iceCd = RULES.iceCooldown;
+      p.attackLock = RULES.attackLock;
+      result.ice = true;
     } else if (input.shot && stats.ranged && p.shotCd <= 0) {
       p.invuln = 0;
       p.shotCd = projectileStats(p.classId).cooldown;
@@ -436,6 +453,8 @@ export function newPlayer(
     deaths: 0,
     eliminated: false,
     summonCd: 0,
+    iceCd: 0,
+    frozenLeft: 0,
   };
 }
 const newFlag = ({ team, home }: Base): Flag => ({
@@ -587,9 +606,9 @@ export class Duel {
     if (alive.length === 1 && s.phase !== 'lobby' && s.phase !== 'finished')
       this.finish(alive[0].team, reason);
   }
-  damage(target: Player, source: Player, angle: number, amount = 1) {
+  damage(target: Player, source: Player, angle: number, amount = 1, freeze = false) {
     if (target.hp <= 0 || target.invuln > 0 || target.dashInvulnerable) return;
-    if (target.classId === 'mage' && target.magicShieldHits > 0 && amount > 0) {
+    if (target.classId === 'mage' && target.magicShieldHits > 0 && (amount > 0 || freeze)) {
       target.magicShieldHits--;
       if (target.magicShieldHits === 0) target.magicShieldCd = RULES.magicShieldCooldown;
       this.event('block', target, target.team, angle, target.classId);
@@ -601,6 +620,12 @@ export class Duel {
     const difference = Math.atan2(Math.sin(relative), Math.cos(relative));
     if (target.guarding && Math.abs(difference) <= RULES.guardArc / 2 + 1e-8) {
       this.event('block',target,target.team,target.angle,target.classId);
+      return;
+    }
+    if (freeze) {
+      target.frozenLeft = RULES.freezeDuration;
+      target.dashLeft = 0;
+      target.dashInvulnerable = false;
       return;
     }
     target.hp = Math.max(0,target.hp-amount);
@@ -704,6 +729,8 @@ export class Duel {
     for (const z of s.zombies) {
       if (z.hp <= 0) continue;
       z.life -= dt;
+      const walkDt = Math.max(0, dt - (z.frozenLeft ?? 0));
+      z.frozenLeft = Math.max(0, (z.frozenLeft ?? 0) - dt);
       z.attackCd = Math.max(0, z.attackCd - dt);
       z.retarget -= dt;
       if (z.retarget <= 1e-9) {
@@ -739,7 +766,7 @@ export class Duel {
             ? owner
             : undefined
           : s.flags.filter((f) => f.team !== z.team).sort((a, b) => distance(z, a) - distance(z, b))[0]);
-      if (goal) this.walkZombie(z, goal, dt);
+      if (goal && walkDt > 0) this.walkZombie(z, goal, walkDt);
     }
     const list = s.zombies;
     for (let i = 0; i < list.length; i++)
@@ -749,8 +776,8 @@ export class Duel {
           gap = distance(a, b);
         if (gap >= 20) continue;
         const angle = gap > 1e-6 ? Math.atan2(b.y - a.y, b.x - a.x) : i + j;
-        translate(a, (-Math.cos(angle) * (20 - gap)) / 2, (-Math.sin(angle) * (20 - gap)) / 2);
-        translate(b, (Math.cos(angle) * (20 - gap)) / 2, (Math.sin(angle) * (20 - gap)) / 2);
+        if (!a.frozenLeft) translate(a, (-Math.cos(angle) * (20 - gap)) / 2, (-Math.sin(angle) * (20 - gap)) / 2);
+        if (!b.frozenLeft) translate(b, (Math.cos(angle) * (20 - gap)) / 2, (Math.sin(angle) * (20 - gap)) / 2);
       }
     s.zombies = s.zombies.filter((z) => z.hp > 0 && z.life > 0);
     for (const id of this.paths.keys()) if (!s.zombies.some((z) => z.id === id)) this.paths.delete(id);
@@ -786,8 +813,9 @@ export class Duel {
       }
       const action = movePlayer(p, input, s.flags.some(f => f.carrier === p.id), dt);
       if (action.swing) swings.push(p);
-      if (action.shoot) {
+      if (action.shoot || action.ice) {
         s.arrows.push({ id: ++this.arrowId, owner: p.id, team: p.team, classId: p.classId,
+          ice: action.ice,
           x: p.x, y: p.y, angle: p.angle, life: projectileStats(p.classId).life });
         this.event('shot', p, p.team, p.angle, p.classId);
       }
@@ -830,14 +858,15 @@ export class Duel {
           (p) => p.team !== a.team && p.hp > 0 && distance(p, a) < RULES.radius + stats.radius,
         );
         if (target) {
-          this.damage(target, owner, a.angle, stats.damage);
+          this.damage(target, owner, a.angle, a.ice ? 0 : stats.damage, a.ice === true);
           return false;
         }
         const zombie = s.zombies.find(
           (z) => z.team !== a.team && z.hp > 0 && distance(z, a) < RULES.zombieRadius + stats.radius,
         );
         if (zombie) {
-          this.damageZombie(zombie, a.team, stats.damage);
+          if (a.ice) zombie.frozenLeft = RULES.freezeDuration;
+          else this.damageZombie(zombie, a.team, stats.damage);
           return false;
         }
       }

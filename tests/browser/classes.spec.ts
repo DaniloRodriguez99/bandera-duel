@@ -26,6 +26,10 @@ test('el mago aparece y muestra sus controles',async({page})=>{
   await page.locator('#practice-start').click();
   await expect(page.locator('#cd-guard')).toHaveText('⛨ 2/2 golpes');
   await expect(page.locator('#cd-sword')).toBeHidden();
+  await page.locator('canvas').click({button:'middle'});
+  await expect(page.locator('#cd-ice')).toHaveText(/❄ [23]\.\ds/);
+  await expect(page.locator('#cd-shot')).toHaveText('✦ Lista');
+  await page.waitForTimeout(250);
   await page.locator('canvas').click({button:'right'});
   await expect(page.locator('#stage')).toHaveAttribute('data-magic-shield','2');
   await page.locator('canvas').click();

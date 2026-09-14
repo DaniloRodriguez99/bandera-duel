@@ -81,7 +81,8 @@ export class Arena extends Phaser.Scene {
     });
     this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
       if (p.wasTouch || !this.controls.enabled) return;
-      if (p.rightButtonDown()) this.controls.secondary(true);
+      if (p.middleButtonDown()) this.controls.tertiary();
+      else if (p.rightButtonDown()) this.controls.secondary(true);
       else this.controls.primary();
     });
     const preview = layout(['blue', 'red']);
@@ -450,6 +451,10 @@ export class Arena extends Phaser.Scene {
       }
     }
     v.hp.clear();
+    if(p.hp>0 && p.frozenLeft>0){
+      v.hp.fillStyle(0x94e7ff,.35);v.hp.fillRoundedRect(v.x-17,v.y-22,34,40,5);
+      v.hp.lineStyle(2,0xe3fbff,.9);v.hp.strokeRoundedRect(v.x-17,v.y-22,34,40,5);
+    }
     if (p.hp > 0 && p.classId === 'mage' && p.magicShieldHits > 0) {
       v.hp.fillStyle(0x78cfff,.10);v.hp.fillCircle(v.x,v.y-3,25);
       v.hp.lineStyle(2,0x9deaff,.8);v.hp.strokeCircle(v.x,v.y-3,25);
@@ -568,7 +573,11 @@ export class Arena extends Phaser.Scene {
         y: a.y + Math.sin(a.angle) * projectileStats(a.classId).speed * age,
       };
       const p = lineClear(a, next) ? next : a;
-      if(a.classId==='necromancer') {
+      if(a.ice) {
+        this.arrows.lineStyle(3,0x99eaff,.65);
+        this.arrows.lineBetween(p.x-Math.cos(a.angle)*17,p.y-Math.sin(a.angle)*17,p.x,p.y);
+        this.arrows.fillStyle(0xe4faff);this.arrows.fillTriangle(p.x+6,p.y,p.x-4,p.y-5,p.x-4,p.y+5);
+      } else if(a.classId==='necromancer') {
         this.arrows.lineStyle(6,0xff7a2f,.25);
         this.arrows.lineBetween(p.x-Math.cos(a.angle)*18,p.y-Math.sin(a.angle)*18,p.x,p.y);
         this.arrows.fillStyle(0xff9a3c,.5);this.arrows.fillCircle(p.x,p.y,8);

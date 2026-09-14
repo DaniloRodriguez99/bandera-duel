@@ -37,6 +37,8 @@ document.querySelector('#app')!.innerHTML = `
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const arena = new Arena();
+$('touch-guard').insertAdjacentHTML('afterend','<button id="touch-ice" class="touch-action" aria-label="Lanzar hielo" hidden>❄</button>');
+$('cooldowns').insertAdjacentHTML('beforeend','<span id="cd-ice" hidden></span>');
 new Phaser.Game({
   type: Phaser.AUTO,
   parent: 'game',
@@ -75,6 +77,7 @@ function showClassControls(id:ClassId) {
   if(displayedClass===id)return;
   displayedClass=id;
   const stats=CLASSES[id],ranged=stats.ranged,guardian=id==='guardian',mage=id==='mage';
+  $('touch-ice').hidden=!mage;$('cd-ice').hidden=!mage;
   const projectile=mage?'Hechizo':'Flecha',melee=mage?'Báculo':'Daga';
   $('touch-dash').hidden=!stats.dash;$('touch-guard').hidden=!stats.shield;
   $('touch-summon').hidden=!stats.summon;$('touch-sword').hidden=!stats.melee;$('cd-summon').hidden=!stats.summon;$('cd-sword').hidden=!stats.melee;
@@ -89,6 +92,7 @@ function showClassControls(id:ClassId) {
     $('touch-guard').hidden = false; $('cd-guard').hidden = false;
     $('stick-aim').setAttribute('aria-label','Apuntar y soltar para lanzar bola de fuego');
     $('control-guide').innerHTML='<span><kbd>W A S D</kbd> Mover</span><span><kbd>CLIC</kbd> Bola de fuego</span><span><kbd>CLIC DER.</kbd> Escudo mágico</span><span><kbd>ESPACIO</kbd> Esquivar</span><span class="mobile-help">El escudo absorbe 2 golpes. Al romperse, esperá 15 s y volvé a lanzarlo con clic derecho o el botón ⛨. Apuntá y soltá para lanzar fuego.</span>';
+    $('control-guide').insertAdjacentHTML('beforeend','<span><kbd>CLIC CENTRAL</kbd> Hielo · inmoviliza 0,5 s · recarga 3 s</span><span class="mobile-help">Tocá ❄ para lanzar hielo hacia donde apuntás.</span>');
   }
 }
 showClassControls(selectedClass);
@@ -354,6 +358,8 @@ function render(s: Snapshot) {
     $('stage').dataset.class=me.classId;
     $('stage').dataset.guarding=String(me.guarding);
     $('stage').dataset.magicShield=String(me.magicShieldHits);
+    $('stage').dataset.frozen=String(me.frozenLeft>0);
+    $('cd-ice').textContent=`❄ ${me.iceCd>0?me.iceCd.toFixed(1)+'s':'Listo'}`;
     $('stage').dataset.dashing=String(me.dashInvulnerable);
     $('health').textContent=`♥ ${me.hp}/${me.maxHp}`;
     $('health').setAttribute('aria-label',`Vida: ${me.hp} de ${me.maxHp}`);
