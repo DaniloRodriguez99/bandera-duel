@@ -29,8 +29,8 @@ it('solo el mago puede lanzar hielo y tiene recarga independiente',()=>{
 });
 it('los escudos y la invulnerabilidad bloquean la congelación',()=>{
   const {d,mage,target}=setup();target.classId='mage';target.magicShieldHits=2;
-  d.damage(target,mage,0,0,true);expect(target.magicShieldHits).toBe(1);expect(target.frozenLeft).toBe(0);
+  d.damage(target,mage,0,0,{freeze:true});expect(target.magicShieldHits).toBe(1);expect(target.frozenLeft).toBe(0);
   target.classId='guardian';target.guarding=true;target.angle=Math.PI;
-  d.damage(target,mage,0,0,true);expect(target.frozenLeft).toBe(0);
-  target.guarding=false;target.invuln=1;d.damage(target,mage,0,0,true);expect(target.frozenLeft).toBe(0);
+  d.damage(target,mage,0,0,{freeze:true});expect(target.frozenLeft).toBe(0);
+  target.guarding=false;target.invuln=1;d.damage(target,mage,0,0,{freeze:true});expect(target.frozenLeft).toBe(0);
 });

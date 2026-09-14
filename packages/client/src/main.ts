@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { Client, type Room } from '@colyseus/sdk';
-import { RULES, CLASSES, TEAMS, TEAM_NAMES, TEAM_ICONS, validName, type Snapshot, type ClassId, type Team } from '@bandera/shared';
+import { RULES, chargePower, CLASSES, TEAMS, TEAM_NAMES, TEAM_ICONS, validName, type Snapshot, type ClassId, type Team } from '@bandera/shared';
 import { Arena } from './scene.js';
 import {
   muted,
@@ -11,6 +11,7 @@ import {
   setMusicMode,
 } from './audio.js';
 import { savedClass, saveClass, mountClasses, updateClasses } from './classes.js';
+import { updateAbilities } from './abilities.js';
 import './style.css';
 import { Practice, PRACTICE_PLAYER } from './practice.js';
 
@@ -26,7 +27,7 @@ document.querySelector('#app')!.innerHTML = `
 <div class="entry-card"><div class="card-top"><span class="tiny">EL DESAFÍO EMPIEZA ACÁ</span><span class="swords">⚔</span></div><h2 id="entry-title">Prepará tu estandarte.</h2><p id="entry-description">Elegí tu guerrero, prepará una sala e invitá a tu rival.</p><form id="entry-form"><div class="player-setup"><div class="setup-heading"><span>01</span><h3>Tu guerrero</h3></div><label for="name">TU APODO</label><input id="name" name="name" placeholder="Caballero sin nombre" maxlength="16" autocomplete="nickname" required><fieldset id="entry-class-picker" class="class-picker"><legend>ELEGÍ TU GUERRERO</legend><div id="entry-classes" class="class-grid"></div></fieldset></div><div class="room-setup"><div class="setup-heading"><span>02</span><h3>Tu próximo duelo</h3></div><fieldset id="room-options"><legend>TU SALA</legend><label for="room-title">TÍTULO</label><input id="room-title" maxlength="48" value="Duelo medieval"><label for="visibility">VISIBILIDAD</label><select id="visibility"><option value="private">Privada · solo por enlace</option><option value="public">Pública · aparece en el listado</option></select><label class="check-option"><input id="allow-spectators" type="checkbox" checked> Permitir espectadores (máximo 5)</label></fieldset><label for="room-password">CONTRASEÑA (OPCIONAL)</label><input id="room-password" type="password" maxlength="64" autocomplete="off" placeholder="Sin contraseña"><label id="spectator-choice" hidden><input id="spectator" type="checkbox"> Entrar como espectador</label></div><div class="entry-actions"><button id="enter" class="primary" type="submit">Crear un duelo <span>↗</span></button><button id="practice-start" class="secondary" type="button">Probar contra un rival inmóvil</button><span class="entry-note">Práctica local, sin sala.</span></div></form><div id="status" class="status" role="status" aria-live="polite">Sin cuentas. Sin descargas. Solo el duelo.</div><button id="new-instead" class="text-btn" hidden>Crear otra sala</button></div></section>
 <section id="room-browser" class="room-browser"><div class="browser-heading"><div><span class="tiny">BUSCÁ TU PRÓXIMO RIVAL</span><h2>Salas públicas</h2></div><button id="refresh-rooms" class="secondary">↻ Actualizar salas</button></div><p id="rooms-status" role="status"></p><h3 class="room-group-title">● Combates en vivo</h3><p id="live-empty">No hay combates públicos en curso.</p><div id="live-rooms-list"></div><h3 class="room-group-title">Salas para jugar y próximas rondas</h3><div id="rooms-list"></div></section><section class="arena-section"><div class="arena-heading"><div><span class="live-dot"></span><span id="arena-label">EL PATIO DEL REY</span><span class="map-label">ARENA 01</span></div><span id="connection-label">ACERO · ARCO · MAGIA</span></div>
 <div id="practice-toolbar" hidden><span>PRÁCTICA · RIVAL INMÓVIL</span><button id="practice-reset" class="secondary">Reiniciar práctica</button><button id="practice-exit" class="secondary">Volver al inicio</button></div><div id="hud" class="hud" hidden>${hudTeam('blue')}${hudTeam('green')}<div class="clock"><span id="timer">3:00</span><small>PRIMERO A 3</small></div>${hudTeam('violet', true)}${hudTeam('red', true)}</div>
-<div id="stage" class="stage"><span id="spectator-count" hidden aria-live="polite"></span><div id="game"></div><div class="preview-tag" id="preview-tag">HASTA CUATRO ESTANDARTES. UNA SOLA GLORIA.</div>
+<div id="stage" class="stage"><span id="spectator-count" hidden aria-live="polite"></span><div id="game"></div><div id="abilities" class="abilities" hidden aria-label="Habilidades"></div><div class="preview-tag" id="preview-tag">HASTA CUATRO ESTANDARTES. UNA SOLA GLORIA.</div>
 <div id="overlay" class="overlay" hidden><div class="overlay-card"><span id="overlay-kicker" class="tiny">SALA</span><h2 id="overlay-title">Esperando a tu rival</h2><p id="overlay-description"></p><p id="room-heading"></p><div id="roster" class="roster"></div><fieldset id="room-picker" class="class-picker compact"><legend>TU CLASE · PODÉS CAMBIAR ANTES DE JUGAR</legend><div id="room-classes" class="class-grid"></div></fieldset><p id="selection-status" role="status" hidden></p><div id="invitation"><label for="invite">LINK DE INVITACIÓN</label><div class="invite-row"><input id="invite" readonly aria-label="Link de invitación"><button id="copy" class="secondary">Copiar</button></div></div><button id="ready" class="primary">Estoy listo <span>⚔</span></button><button id="leave" class="text-btn">Salir de la sala</button></div></div>
 <div id="announcement" class="announcement" hidden aria-live="polite"></div>
 <div id="touch-controls"><div id="stick-move" class="stick" aria-label="Mover"><span></span><small>MOVER</small></div><div class="touch-right"><button id="touch-trap" class="touch-action" aria-label="Colocar trampa" hidden>Q</button><button id="touch-volley" class="touch-action" aria-label="Disparo triple" hidden>E</button><button id="touch-sword" class="touch-action" aria-label="Espada">⚔</button><button id="touch-guard" class="touch-action" aria-label="Mantener escudo" hidden>⛨</button><button id="touch-summon" class="touch-action" aria-label="Invocar zombies" hidden>☠</button><button id="touch-dash" class="touch-action" aria-label="Dash">➟</button><div id="stick-aim" class="stick" aria-label="Apuntar y soltar para disparar"><span></span><small>APUNTAR</small></div></div></div></div>
@@ -88,8 +89,8 @@ function showClassControls(id:ClassId) {
   $('cd-shot').hidden=!ranged;$('cd-dash').hidden=!stats.dash;$('cd-guard').hidden=!stats.shield;
   $('control-guide').innerHTML=`<span><kbd>W A S D</kbd> Mover</span><span><kbd>CLIC</kbd> ${ranged?projectile:'Espada'}</span>${id!=='vanguard'?`<span><kbd>CLIC DER.</kbd> ${ranged?melee:'Mantener escudo'}</span>`:''}${stats.dash?'<span><kbd>ESPACIO</kbd> Esquivar</span>':''}<span class="mobile-help">${ranged?`Mové a la izquierda. Apuntá y soltá a la derecha para lanzar ${mage?'magia':'una flecha'}. Botones de ${melee.toLowerCase()} y dash.`:guardian?'Mové y apuntá con las palancas. Golpeá con espada o mantené pulsado el escudo.':'Mové y apuntá con las palancas. El botón de espada prepara un golpe pesado.'}</span>`;
   if(id==='archer') $('control-guide').innerHTML += '<span><kbd>MANTENER CLIC</kbd> Cargar flecha · 0,8 s · +30 % daño y velocidad</span><span class="mobile-help">Mantené la palanca de apuntado para cargar; soltala para disparar.</span>';
-  if(id==='archer') $('control-guide').innerHTML += '<span><kbd>Q</kbd> Trampa · inmóvil 0,5 s</span><span><kbd>E</kbd> Triple flecha · 5 s</span>';
-  if(stats.summon)$('control-guide').innerHTML='<span><kbd>W A S D</kbd> Mover</span><span><kbd>CLIC</kbd> Fuego</span><span><kbd>CLIC DER.</kbd> Invocar zombies</span><span class="mobile-help">Mové a la izquierda. Apuntá y soltá a la derecha para lanzar fuego. El botón ☠ invoca dos zombies cada 5 s.</span>';
+  if(id==='archer') $('control-guide').innerHTML += '<span><kbd>Q</kbd> Trampa · inmóvil 0,5 s</span><span><kbd>E</kbd> Triple flecha · 5 s</span><span><kbd>CARGANDO + E</kbd> Triple al 33 %</span><span><kbd>SALTO CARGADO</kbd> Soltá el tiro o E en pleno salto (tiro cargado: flecha de viento que rompe escudos; ambos: triple de viento)</span>';
+  if(stats.summon)$('control-guide').innerHTML='<span><kbd>W A S D</kbd> Mover</span><span><kbd>CLIC</kbd> Fuego</span><span><kbd>ESPACIO</kbd> Invocar zombies</span><span class="mobile-help">Mové a la izquierda. Apuntá y soltá a la derecha para lanzar fuego. Espacio o el botón ☠ invocan dos zombies; hasta 2 invocaciones activas a la vez.</span>';
   $('touch-guard').setAttribute('aria-label', mage ? 'Lanzar escudo mágico' : 'Mantener escudo');
   if (mage) {
     $('touch-guard').hidden = false; $('cd-guard').hidden = false;
@@ -97,6 +98,9 @@ function showClassControls(id:ClassId) {
     $('control-guide').innerHTML='<span><kbd>W A S D</kbd> Mover</span><span><kbd>CLIC</kbd> Bola de fuego</span><span><kbd>CLIC DER.</kbd> Escudo mágico</span><span><kbd>ESPACIO</kbd> Esquivar</span><span class="mobile-help">El escudo absorbe 2 golpes. Al romperse, esperá 15 s y volvé a lanzarlo con clic derecho o el botón ⛨. Apuntá y soltá para lanzar fuego.</span>';
     $('control-guide').insertAdjacentHTML('beforeend','<span><kbd>CLIC CENTRAL</kbd> Hielo · inmoviliza 0,5 s · recarga 3 s</span><span class="mobile-help">Tocá ❄ para lanzar hielo hacia donde apuntás.</span>');
   }
+  if (id !== 'archer') $('control-guide').innerHTML += '<span><kbd>MANTENER CLIC</kbd> Cargar · más daño y alcance al soltar</span>';
+  if (stats.dash) $('control-guide').innerHTML += '<span><kbd>MANTENER ESPACIO</kbd> Dash más largo</span>';
+  if (stats.summon) $('control-guide').innerHTML += '<span><kbd>MANTENER ESPACIO</kbd> Zombie mago · aura llena: mandala bajo el mouse que resucita a un rival caído</span><span><kbd>E</kbd> Zombies: círculo rojo y mouse, o automáticos</span><span><kbd>⌘/CTRL E</kbd> Pasar al zombie bajo el cursor entre el círculo rojo y el mouse</span>';
 }
 showClassControls(selectedClass);
 function entryMode() {
@@ -351,11 +355,13 @@ function render(s: Snapshot) {
   $('overlay').hidden = !overlay;
   $('touch-controls').classList.toggle('active', !!me && s.phase === 'playing' && !s.paused);
   $('cooldowns').hidden = !me || s.phase !== 'playing';
+  $('abilities').hidden = !me || s.phase !== 'playing';
   $('room-picker').hidden = !me || !overlay;
   $('control-guide').hidden = !me;
   $('stage').dataset.role = me ? 'player' : 'spectator';
   if (me) {
     selectedClass=me.classId;saveClass(me.classId);showClassControls(me.classId);
+    updateAbilities($('abilities'), me);
     updateClasses($('room-classes'),me.classId,!overlay||s.paused);
     $('room-picker').hidden=!overlay;
     $('stage').dataset.class=me.classId;
@@ -372,16 +378,20 @@ function render(s: Snapshot) {
     if(me.classId==='mage') $('cd-guard').textContent=me.magicShieldHits>0?`⛨ ${me.magicShieldHits}/2 golpes`:`⛨ ${me.magicShieldCd>0?me.magicShieldCd.toFixed(1)+'s':'Listo · clic derecho'}`;
     $('cd-sword').textContent = `⚔ ${me.swordCd > 0 ? me.swordCd.toFixed(1) + 's' : 'Lista'}`;
     $('stage').dataset.charge = String(me.shotCharge);
+    $('stage').dataset.specialCharge = String(me.specialCharge);
     $('cd-shot').textContent = `${me.classId==='mage'?'✦':me.classId==='necromancer'?'✺':'➶'} ${me.shotCd > 0 ? me.shotCd.toFixed(1) + 's' : 'Lista'}`;
     if(me.classId==='archer' && me.shotCharge > 0) $('cd-shot').textContent = me.shotCharge>=RULES.chargeTime-1e-8 ? '➶ Cargada · +30 %' : `➶ Cargando ${Math.round(me.shotCharge/RULES.chargeTime*100)}%`;
+    if(me.classId!=='archer' && me.shotCharge > 0) $(CLASSES[me.classId].ranged ? 'cd-shot' : 'cd-sword').textContent = `⚡ Cargando ${Math.round(chargePower(me.shotCharge)*100)} %`;
     $('cd-dash').textContent = `➟ ${me.dashCd > 0 ? me.dashCd.toFixed(1) + 's' : 'Listo'}`;
+    if(me.specialCharge > 0 && CLASSES[me.classId].dash) $('cd-dash').textContent = `➟ Cargando ${Math.round(chargePower(me.specialCharge)*100)} %`;
     $('stage').dataset.trapLeft = String(me.trapLeft);
     $('stage').dataset.traps = String(s.traps.filter(t=>t.owner===me.id).length);
     $('cd-trap').textContent = me.trapLeft > 0 ? `Q Preparando ${me.trapLeft.toFixed(1)}s` : `Q Trampa · ${me.trapCd>0?me.trapCd.toFixed(1)+'s':'Lista'}`;
     $('cd-volley').textContent = `E Triple · ${me.volleyCd>0?me.volleyCd.toFixed(1)+'s':'Listo'}`;
     $('touch-trap').textContent = me.trapLeft>0?me.trapLeft.toFixed(1):me.trapCd>0?Math.ceil(me.trapCd)+'s':'Q';
     $('touch-volley').textContent = me.volleyCd>0?Math.ceil(me.volleyCd)+'s':'E';
-    $('cd-summon').textContent = `☠ ${me.summonCd > 0 ? me.summonCd.toFixed(1) + 's' : 'Listo'}`;
+    $('cd-summon').textContent = `☠ ${me.activeExecutions}/${RULES.zombieExecutions} · ${me.activeExecutions >= RULES.zombieExecutions ? 'Llenas' : me.summonCd > 0 ? me.summonCd.toFixed(1) + 's' : 'Listo'}`;
+    if(me.specialCharge > 0 && CLASSES[me.classId].summon) $('cd-summon').textContent = me.specialCharge >= RULES.overchargeTime ? `☠ Aura ${Math.round(Math.min(1, me.specialCharge / RULES.raiseCharge) * 100)} % · resucitar` : '☠ Cargando · zombie con gorro';
   }
   $('arena-hint').textContent = s.flags.some((f) => f.carrier === me?.id)
     ? '¡Tenés la bandera! Volvé a tu base.'

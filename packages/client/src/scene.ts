@@ -10,6 +10,8 @@ import {
   TEAM_ICONS,
   layout,
   projectileStats,
+  chargePower,
+  distance,
   movePlayer,
   newPlayer,
   lineClear,
@@ -22,7 +24,7 @@ import {
 } from '@bandera/shared';
 import { Controls } from './input.js';
 import { sound } from './audio.js';
-import { CLASS_ART, ZOMBIE_ART, palette, zombiePalette } from './art.js';
+import { CLASS_ART, ZOMBIE_ART, HAT_ZOMBIE_ART, palette, zombiePalette, hatPalette, undeadPalette } from './art.js';
 
 const GOLD = 0xf3ce86;
 const COLORS: Record<Team, number> = { blue: 0x73bbef, red: 0xee8b79, green: 0x86cf97, violet: 0xbf98ea };
@@ -56,7 +58,15 @@ export class Arena extends Phaser.Scene {
   private layoutKey = '';
   private zombieVisuals = new Map<
     string,
-    { body: Phaser.GameObjects.Sprite; hp: Phaser.GameObjects.Graphics; x: number; y: number }
+    {
+      body: Phaser.GameObjects.Sprite;
+      hp: Phaser.GameObjects.Graphics;
+      fx: Phaser.GameObjects.Graphics;
+      label?: Phaser.GameObjects.Text;
+      aura: Phaser.GameObjects.Graphics;
+      x: number;
+      y: number;
+    }
   >();
   private pending: Input[] = [];
   private seq = 0;
@@ -80,6 +90,9 @@ export class Arena extends Phaser.Scene {
     this.input.on('pointermove', (p: Phaser.Input.Pointer) => {
       if (p.wasTouch || !this.predicted) return;
       this.controls.angle = Math.atan2(p.y - this.predicted.y, p.x - this.predicted.x);
+      this.controls.aimX = Math.max(0, Math.min(RULES.width, p.x));
+      this.controls.aimY = Math.max(0, Math.min(RULES.height, p.y));
+      this.controls.aimFromPointer = true;
     });
     this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
       if (p.wasTouch || !this.controls.enabled) return;
@@ -112,6 +125,24 @@ export class Arena extends Phaser.Scene {
           pixelWidth: 2,
           palette: zombiePalette(CLOTH[team], LIGHT[team]) as Phaser.Types.Create.Palette,
         });
+      }
+    const stride = (rows: string[], from: number, frame: number) =>
+      rows.map((row, i) =>
+        frame === 1 && i >= from ? row.slice(0, 3) + row.slice(3, 13).split('').reverse().join('') + row.slice(13) : row,
+      );
+    for (const team of TEAMS)
+      for (let frame = 0; frame < 2; frame++) {
+        this.textures.generate(`${team}-hat-${frame}`, {
+          data: stride(HAT_ZOMBIE_ART, 12, frame),
+          pixelWidth: 2,
+          palette: hatPalette(CLOTH[team], LIGHT[team]) as Phaser.Types.Create.Palette,
+        });
+        for (const classId of CLASS_IDS)
+          this.textures.generate(`${team}-${classId}-undead-${frame}`, {
+            data: stride(CLASS_ART[classId], 13, frame),
+            pixelWidth: 2,
+            palette: undeadPalette(CLOTH[team], LIGHT[team]) as Phaser.Types.Create.Palette,
+          });
       }
   }
   private drawBases(bases: Base[]) {
@@ -264,15 +295,17 @@ export class Arena extends Phaser.Scene {
       sound(e.kind);
       if (e.kind === 'sword') {
         const slash = this.add.graphics().setDepth(15);
-        slash.lineStyle(4, 0xffe7b1, 0.9);
+        const power = e.power ?? 0;
+        slash.lineStyle(4 + power * 5, power > 0.05 ? 0xffc86b : 0xffe7b1, 0.9);
         slash.beginPath();
         const stats = CLASSES[e.classId ?? DEFAULT_CLASS];
+        const arc = stats.meleeArc * (1 + 0.2 * power);
         slash.arc(
           e.x,
           e.y,
-          stats.meleeRange,
-          (e.angle ?? 0) - stats.meleeArc / 2,
-          (e.angle ?? 0) + stats.meleeArc / 2,
+          stats.meleeRange * (1 + 0.3 * power),
+          (e.angle ?? 0) - arc / 2,
+          (e.angle ?? 0) + arc / 2,
         );
         slash.strokePath();
         this.tweens.add({
@@ -306,6 +339,7 @@ export class Arena extends Phaser.Scene {
           onComplete: () => smoke.destroy(),
         });
       }
+      this.spellEffect(e);
       if (e.kind === 'capture') {
         const pulse = this.add
           .rectangle(480, 270, 960, 540, COLORS[e.team], 0.2)
@@ -317,6 +351,173 @@ export class Arena extends Phaser.Scene {
           onComplete: () => pulse.destroy(),
         });
       }
+    }
+  }
+  private fade(target: Phaser.GameObjects.GameObject, props: object, duration: number) {
+    this.tweens.add({ targets: target, ...props, alpha: 0, duration, onComplete: () => target.destroy() });
+  }
+  private spellEffect(e: Snapshot['events'][number]) {
+    if (e.kind === 'explosion') {
+      const radius = RULES.explosionRadius * (0.6 + 0.4 * (e.power ?? 1));
+      this.fade(this.add.circle(e.x, e.y, 10, 0xff7a2f, 0.6).setDepth(16), { scale: radius / 10 }, 380);
+      this.fade(this.add.circle(e.x, e.y, 8).setStrokeStyle(3, 0xffe08a, 0.95).setDepth(16), { scale: 6 }, 460);
+    } else if (e.kind === 'freeze') {
+      this.fade(this.add.star(e.x, e.y - 6, 6, 4, 13, 0xbff4ff, 0.85).setDepth(16), { scale: 1.9, angle: 45 }, 520);
+    } else if (e.kind === 'heal') {
+      const plus = this.add
+        .text(e.x, e.y - 24, '+', { fontFamily: 'monospace', fontSize: '16px', color: '#7dffa0', stroke: '#0b2a14', strokeThickness: 3 })
+        .setOrigin(0.5)
+        .setDepth(16);
+      this.fade(plus, { y: e.y - 44 }, 700);
+    } else if (e.kind === 'raise') {
+      this.fade(this.add.rectangle(e.x, e.y - 40, 22, 96, 0x7dffb0, 0.4).setDepth(16), { scaleX: 0 }, 760);
+      this.fade(this.add.ellipse(e.x, e.y + 8, 30, 12).setStrokeStyle(2, 0x7dffb0, 0.9).setDepth(4), { scale: 3 }, 760);
+    } else if (e.kind === 'wind') {
+      this.fade(this.add.ellipse(e.x, e.y + 6, 30, 12).setStrokeStyle(2, 0xd8fbff, 0.9).setDepth(16), { scale: 3.2 }, 420);
+      for (const side of [-1, 1]) {
+        const a = (e.angle ?? 0) + Math.PI + side * 0.5;
+        this.fade(
+          this.add.rectangle(e.x, e.y, 18, 2, 0xe8fbff, 0.85).setRotation(a).setDepth(16),
+          { x: e.x + Math.cos(a) * 44, y: e.y + Math.sin(a) * 44 },
+          380,
+        );
+      }
+    } else if (e.kind === 'mandala') {
+      this.fade(this.add.ellipse(e.x, e.y + 8, 20, 9).setStrokeStyle(2, 0x7dffb0, 0.9).setDepth(4), { scale: 3.5 }, 520);
+    } else if (e.kind === 'shot' && (e.power ?? 0) > 0.05) {
+      const power = e.power ?? 0;
+      this.fade(this.add.circle(e.x, e.y, 10, 0xff7a2f, 0.6).setDepth(16), { scale: 2.5 + power * 2 }, 300);
+      this.fade(this.add.circle(e.x, e.y, 6).setStrokeStyle(3, 0xffe08a, 0.9).setDepth(16), { scale: 5 + power * 3 }, 380);
+    } else if (e.kind === 'summon' && e.power) {
+      this.fade(this.add.ellipse(e.x, e.y + 8, 36, 14).setStrokeStyle(3, 0xb06cff, 0.9).setDepth(4), { scale: 3.4 }, 700);
+    }
+  }
+  /** Wind arrow: a pale shaft wrapped in spiralling gusts and a streaming trail. */
+  private drawWind(p: { x: number; y: number }, angle: number, time: number, small: boolean) {
+    const g = this.arrows,
+      dx = Math.cos(angle),
+      dy = Math.sin(angle),
+      size = small ? 0.75 : 1;
+    for (let i = 0; i < 14; i++) {
+      const back = i * 5 * size,
+        swirl = (5 + i * 0.6) * size,
+        phase = time * 0.03 - i * 0.55;
+      for (const side of [1, -1]) {
+        const offset = Math.sin(phase) * swirl * side;
+        g.fillStyle(i % 3 ? 0xd8fbff : 0x8fe3ff, (1 - i / 14) * 0.7);
+        g.fillCircle(p.x - dx * back - dy * offset, p.y - dy * back + dx * offset, (2.2 - i * 0.1) * size);
+      }
+    }
+    g.lineStyle(1, 0xe8fbff, 0.5);
+    for (const ring of [10, 22]) {
+      const spin = time * 0.02 + ring;
+      g.beginPath();
+      g.arc(p.x - dx * ring * size, p.y - dy * ring * size, (8 + ring * 0.25) * size, spin, spin + Math.PI * 1.2);
+      g.strokePath();
+    }
+    g.lineStyle(3 * size, 0xf4feff, 0.95);
+    g.lineBetween(p.x - dx * 16 * size, p.y - dy * 16 * size, p.x, p.y);
+    g.fillStyle(0xffffff);
+    g.fillTriangle(
+      p.x + dx * 7 * size,
+      p.y + dy * 7 * size,
+      p.x - dy * 4 * size,
+      p.y + dx * 4 * size,
+      p.x + dy * 4 * size,
+      p.y - dx * 4 * size,
+    );
+  }
+  /** Original raising mandala on the ground: counter-rotating rune squares, orbiting petals, glowing core. */
+  private drawMandala(g: Phaser.GameObjects.Graphics, x: number, y: number, radius: number, time: number, alpha: number) {
+    const flat = 0.45,
+      spin = time * 0.0015;
+    const at = (angle: number, r: number) => ({ x: x + Math.cos(angle) * r, y: y + Math.sin(angle) * r * flat });
+    g.fillStyle(0x7dffb0, alpha * 0.2);
+    g.fillEllipse(x, y, radius * 0.9, radius * 0.9 * flat);
+    g.lineStyle(2, 0x7dffb0, alpha);
+    g.strokeEllipse(x, y, radius * 2, radius * 2 * flat);
+    g.lineStyle(1, 0xe8fff0, alpha * 0.8);
+    g.strokeEllipse(x, y, radius * 1.35, radius * 1.35 * flat);
+    for (const [turn, dir] of [
+      [0, 1],
+      [Math.PI / 4, -1],
+    ]) {
+      g.lineStyle(1, 0x7dffb0, alpha * 0.9);
+      g.strokePoints(
+        [0, 1, 2, 3].map((i) => at(spin * dir + turn + (i * Math.PI) / 2, radius * 0.95)),
+        true,
+      );
+    }
+    for (let i = 0; i < 8; i++) {
+      const petal = at(-spin * 1.5 + (i * Math.PI) / 4, radius * 0.68);
+      g.fillStyle(0xbfffd6, alpha * 0.85);
+      g.fillCircle(petal.x, petal.y, 1.8);
+    }
+  }
+  /** Charged fire: roaring core, long flickering flame trail, corona and orbiting embers. */
+  private drawBlaze(p: { x: number; y: number }, angle: number, power: number, time: number, core: number) {
+    const g = this.arrows,
+      dx = Math.cos(angle),
+      dy = Math.sin(angle);
+    for (let i = 9; i >= 1; i--) {
+      const back = i * (8 + power * 7),
+        fade = 1 - i / 10,
+        wobble = Math.sin(time * 0.035 + i * 1.3) * (2 + power * 2);
+      g.fillStyle(i % 2 ? 0xff3d0d : 0xffa132, 0.1 + fade * 0.3);
+      g.fillCircle(p.x - dx * back - dy * wobble, p.y - dy * back + dx * wobble, (5 + power * 11) * fade + 2);
+    }
+    const flicker = 0.85 + Math.sin(time * 0.05) * 0.15;
+    g.fillStyle(0xff2a00, 0.14);
+    g.fillCircle(p.x, p.y, (22 + power * 20) * flicker);
+    g.lineStyle(2, 0xffd36b, 0.6);
+    g.strokeCircle(p.x, p.y, (14 + power * 11) * flicker);
+    g.fillStyle(core, 0.9);
+    g.fillCircle(p.x, p.y, 8 + power * 8);
+    g.fillStyle(0xfff3c4);
+    g.fillCircle(p.x, p.y, 3 + power * 4);
+    for (let i = 0; i < 5; i++) {
+      const a = time * 0.02 + i * 1.26,
+        orbit = 12 + power * 10;
+      g.fillStyle(0xffc14a, 0.85);
+      g.fillRect(p.x + Math.cos(a) * orbit - dx * 10, p.y + Math.sin(a) * orbit - dy * 10, 2, 2);
+    }
+  }
+  /** Rune circle that grows and spins faster as a held ability charges. */
+  private drawCharge(g: Phaser.GameObjects.Graphics, p: Player, x: number, y: number, time: number) {
+    const stats = CLASSES[p.classId];
+    const special = p.specialCharge > 0;
+    if (!special && (p.shotCharge <= 0 || p.classId === 'archer')) return;
+    const seconds = special ? p.specialCharge : p.shotCharge;
+    const power = chargePower(seconds);
+    const summoning = special && stats.summon;
+    const raising = summoning && seconds >= RULES.overchargeTime;
+    const color = raising ? 0x7dffb0 : summoning ? 0x9b59d0 : special ? 0x9fe8ff : stats.ranged ? 0xff8a3c : GOLD;
+    const radius = 18 + power * 14,
+      spin = time * (0.002 + power * 0.01);
+    g.lineStyle(1 + power * 2, color, 0.35 + power * 0.45);
+    g.strokeEllipse(x, y + 8, radius * 2, radius * 0.8);
+    for (let i = 0; i < 6; i++) {
+      const a = spin + (i * Math.PI) / 3;
+      g.lineBetween(
+        x + Math.cos(a) * radius * 0.6,
+        y + 8 + Math.sin(a) * radius * 0.24,
+        x + Math.cos(a) * radius,
+        y + 8 + Math.sin(a) * radius * 0.4,
+      );
+    }
+    const progress = summoning ? Math.min(1, seconds / RULES.raiseCharge) : power;
+    g.lineStyle(3, color, 0.9);
+    g.beginPath();
+    g.arc(x, y - 4, 22, -Math.PI / 2, -Math.PI / 2 + progress * Math.PI * 2);
+    g.strokePath();
+    if (progress >= 1) {
+      const flare = 0.5 + Math.sin(time * 0.03) * 0.5;
+      g.lineStyle(2, 0xffffff, 0.3 + flare * 0.5);
+      g.strokeCircle(x, y - 4, 26 + flare * 3);
+    }
+    if (raising) {
+      g.lineStyle(1, color, 0.6);
+      g.strokeEllipse(x, y + 8, radius * 2.8, radius * 1.1);
     }
   }
   reset() {
@@ -457,9 +658,13 @@ export class Arena extends Phaser.Scene {
       }
     }
     v.hp.clear();
-    if(p.hp>0 && p.frozenLeft>0){
-      v.hp.fillStyle(0x94e7ff,.35);v.hp.fillRoundedRect(v.x-17,v.y-22,34,40,5);
-      v.hp.lineStyle(2,0xe3fbff,.9);v.hp.strokeRoundedRect(v.x-17,v.y-22,34,40,5);
+    if (p.hp > 0) this.drawCharge(v.hp, p, v.x, v.y, time);
+    if (p.hp > 0 && p.frozenLeft > 0) {
+      v.body.setTint(0x9fe8ff);
+      v.hp.fillStyle(0xbff4ff, 0.28);
+      v.hp.fillRoundedRect(v.x - 15, v.y - 27, 30, 38, 5);
+      v.hp.lineStyle(1, 0xe8fbff, 0.8);
+      v.hp.strokeRoundedRect(v.x - 15, v.y - 27, 30, 38, 5);
     }
     if (p.hp > 0 && p.classId === 'mage' && p.magicShieldHits > 0) {
       v.hp.fillStyle(0x78cfff,.10);v.hp.fillCircle(v.x,v.y-3,25);
@@ -487,6 +692,21 @@ export class Arena extends Phaser.Scene {
       v = {
         body: this.add.sprite(z.x, z.y, `${z.team}-zombie-0`).setOrigin(0.5, 0.7).setDepth(10),
         hp: this.add.graphics().setDepth(13),
+        fx: this.add.graphics().setDepth(14),
+        label:
+          z.kind === 'thrall'
+            ? this.add
+                .text(z.x, z.y - 34, `☠ ${z.name ?? ''}`, {
+                  fontFamily: 'monospace',
+                  fontSize: '10px',
+                  color: '#c9ffd8',
+                  stroke: '#10241a',
+                  strokeThickness: 3,
+                })
+                .setOrigin(0.5)
+                .setDepth(13)
+            : undefined,
+        aura: this.add.graphics().setDepth(3),
         x: z.x,
         y: z.y,
       };
@@ -496,30 +716,198 @@ export class Arena extends Phaser.Scene {
     const smooth = 1 - Math.exp(-delta / 55);
     v.x += (z.x - v.x) * smooth;
     v.y += (z.y - v.y) * smooth;
+    const rising = Math.min(1, z.rise / RULES.zombieRise);
+    // Two uneven rhythms offset by slot keep a pack from lurching in step.
+    const lurch = moving
+      ? Math.sin(time * 0.009 + z.slot * 1.7) * 7 + Math.sin(time * 0.023 + z.slot) * 3
+      : Math.sin(time * 0.003 + z.slot) * 2;
+    const frame = moving ? Math.floor((time + z.slot * 90) / 170) % 2 : 0;
+    const texture =
+      z.kind === 'hat'
+        ? `${z.team}-hat-${frame}`
+        : z.kind === 'thrall'
+          ? `${z.team}-${z.classId ?? 'guardian'}-undead-${frame}`
+          : `${z.team}-zombie-${frame}`;
     v.body
-      .setPosition(v.x, v.y + (moving ? Math.sin(time * 0.015) * 1.5 : 0))
-      .setTexture(`${z.team}-zombie-${moving ? Math.floor(time / 160) % 2 : 0}`)
+      .setPosition(
+        v.x,
+        v.y + (moving ? Math.abs(Math.sin(time * 0.012 + z.slot)) * 2 : 0) + rising * 12,
+      )
+      .setTexture(texture)
       .setFlipX(Math.cos(z.angle) < 0)
-      .setAngle(z.windup > 0 ? Math.sin(time * 0.05) * 8 : 0)
-      .setAlpha(Math.min(1, z.life / 1.5));
-    v.hp.clear();
-    for (let i = 0; i < RULES.zombieHp; i++) {
-      v.hp.fillStyle(0x1a282c);
-      v.hp.fillRect(v.x - 7 + i * 8, v.y - 25, 6, 2);
-      if (z.hp > i) {
-        v.hp.fillStyle(COLORS[z.team]);
-        v.hp.fillRect(v.x - 7 + i * 8, v.y - 25, 6, 2);
+      .setAngle(
+        z.windup > 0
+          ? Math.sin(time * 0.06) * 10
+          : z.kind === 'hat'
+            ? (moving ? Math.sin(time * 0.011) * 5 : Math.sin(time * 0.003) * 2) -
+              (z.cast > 0 ? Math.cos(z.angle) * 6 : 0)
+            : lurch,
+      )
+      .setScale(z.kind === 'hat' ? 1.15 : 1, (z.kind === 'hat' ? 1.15 : 1) * (1 - rising * 0.75))
+      .setAlpha(Math.min(1, z.life / 1.5) * (1 - rising * 0.45));
+    if (z.frozenLeft > 0) v.body.setTint(0x9fe8ff);
+    else if (z.windup > 0) v.body.setTint(0xff6b5e);
+    else v.body.clearTint();
+    v.label?.setPosition(v.x, v.y - 34);
+    // Guards glow red like the circle they keep to; the cursor squad glows violet.
+    const squad =
+      z.role === 'guard'
+        ? { dark: 0x240b0b, glow: 0x8f2d2d, line: 0xff5a4a }
+        : { dark: 0x1a0b24, glow: 0x6b2d8f, line: 0xb06cff };
+    const commanded = z.owner === this.localId && this.predicted?.zombieAuto === false;
+    const pulse = 0.5 + Math.sin(time * 0.006 + z.slot) * 0.5;
+    v.aura.clear();
+    v.aura.fillStyle(squad.dark, 0.45 + pulse * 0.15);
+    v.aura.fillEllipse(v.x, v.y + 8, 30 + pulse * 6, 11 + pulse * 2);
+    v.aura.fillStyle(squad.glow, (commanded ? 0.22 : 0.12) + pulse * 0.1);
+    v.aura.fillEllipse(v.x, v.y + 6, 42, 16);
+    if (commanded) {
+      v.aura.lineStyle(1, squad.line, 0.35 + pulse * 0.3);
+      v.aura.strokeEllipse(v.x, v.y + 8, 36, 13);
+    }
+    if (rising > 0) {
+      if (z.kind === 'thrall') this.drawMandala(v.aura, v.x, v.y + 8, 32, time, 0.35 + rising * 0.55);
+      v.aura.lineStyle(2, squad.line, 0.2 + rising * 0.6);
+      v.aura.strokeEllipse(v.x, v.y + 8, 40 + (1 - rising) * 10, 16 + (1 - rising) * 4);
+      for (let i = 0; i < 6; i++) {
+        const a = time * 0.004 + (i * Math.PI) / 3;
+        v.aura.lineBetween(
+          v.x + Math.cos(a) * 12,
+          v.y + 8 + Math.sin(a) * 5,
+          v.x + Math.cos(a) * 20,
+          v.y + 8 + Math.sin(a) * 8,
+        );
       }
     }
+    if (moving && Math.random() < delta / 240) {
+      const mote = this.add
+        .rectangle(v.x + (Math.random() - 0.5) * 16, v.y + 6, 2, 2, 0x3a1450, 0.85)
+        .setDepth(3);
+      this.tweens.add({
+        targets: mote,
+        y: mote.y - 16,
+        alpha: 0,
+        duration: 560,
+        onComplete: () => mote.destroy(),
+      });
+    }
+    v.hp.clear();
+    if (rising > 0) {
+      v.fx.clear();
+      return;
+    }
+    const bars = Math.ceil(z.maxHp);
+    const left = v.x - (bars * 8 - 2) / 2;
+    for (let i = 0; i < bars; i++) {
+      v.hp.fillStyle(0x1a282c);
+      v.hp.fillRect(left + i * 8, v.y - 25, 6, 2);
+      v.hp.fillStyle(z.kind === 'hat' ? 0xb06cff : COLORS[z.team]);
+      v.hp.fillRect(left + i * 8, v.y - 25, 6 * Math.min(1, Math.max(0, z.hp - i)), 2);
+    }
     if (z.windup > 0) {
-      v.hp.lineStyle(1, 0x9bd17a, 0.5);
+      v.hp.lineStyle(1, 0xff5a4a, 0.55);
       v.hp.strokeCircle(v.x, v.y, RULES.zombieRange);
+    }
+    v.fx.clear();
+    if (z.frozenLeft > 0) {
+      v.fx.fillStyle(0xbff4ff, 0.28);
+      v.fx.fillRoundedRect(v.x - 14, v.y - 26, 28, 36, 5);
+      v.fx.lineStyle(1, 0xe8fbff, 0.8);
+      v.fx.strokeRoundedRect(v.x - 14, v.y - 26, 28, 36, 5);
+    }
+    if (z.kind !== 'hat') return;
+    v.fx.fillStyle(0x2b0f3a, 0.3 + Math.sin(time * 0.005) * 0.1);
+    v.fx.fillEllipse(v.x, v.y + 9, 46, 16);
+    const until = 1 - Math.max(0, z.spawnLeft) / RULES.hatSpawnEvery;
+    v.fx.lineStyle(2, 0xb06cff, 0.8);
+    v.fx.beginPath();
+    v.fx.arc(v.x, v.y + 9, 14, -Math.PI / 2, -Math.PI / 2 + until * Math.PI * 2);
+    v.fx.strokePath();
+    this.drawRevivedCaster(v.fx, z, v.x, v.y, time, moving);
+  }
+  /**
+   * A revived corpse with a staff: the free arm hangs limp and sways, the staff is planted with
+   * each shamble; to cast, the staff rises overhead with fire while the other hand thrusts ice.
+   */
+  private drawRevivedCaster(
+    g: Phaser.GameObjects.Graphics,
+    z: Zombie,
+    x: number,
+    y: number,
+    time: number,
+    moving: boolean,
+  ) {
+    const face = Math.cos(z.angle) < 0 ? -1 : 1;
+    const seed = Number(z.id.slice(1)) || 0;
+    const gait = moving ? Math.sin(time * 0.011 + seed) : Math.sin(time * 0.0025 + seed) * 0.3;
+    const cast = z.cast > 0 ? 1 - z.cast / RULES.hatCastTime : 0;
+    const recoil = Math.max(0, (z.castCd - (RULES.hatCastCooldown - 0.25)) / 0.25);
+    const shoulderY = y - 11 + Math.abs(gait) * 1.5;
+    const front = { x: x + face * 7, y: shoulderY },
+      back = { x: x - face * 6, y: shoulderY + 1 };
+    let staffHand = { x: front.x + face * 5, y: front.y + 11 + gait * 2 };
+    let offHand = { x: back.x - face + gait * 3, y: back.y + 13 - Math.abs(gait) };
+    let tilt = face * (0.08 + gait * 0.05);
+    if (cast > 0) {
+      staffHand = { x: front.x + face * (5 + 3 * cast), y: front.y + 11 - 32 * cast };
+      offHand = { x: back.x + face * (6 + 16 * cast), y: back.y + 6 - 10 * cast };
+      tilt = face * 0.35 * cast;
+    } else if (recoil > 0) {
+      staffHand = { x: front.x + face * (8 + 12 * recoil), y: front.y - 10 * recoil };
+      offHand = { x: back.x + face * (10 + 14 * recoil), y: back.y - 2 * recoil };
+      tilt = face * 0.6 * recoil;
+    }
+    const top = { x: staffHand.x + Math.sin(tilt) * 26, y: staffHand.y - Math.cos(tilt) * 26 };
+    const foot = { x: staffHand.x - Math.sin(tilt) * 12, y: staffHand.y + Math.cos(tilt) * 12 };
+    g.lineStyle(3, 0x3a281b, 1);
+    g.lineBetween(foot.x, foot.y, top.x, top.y);
+    g.lineStyle(1, 0x6b4a30, 1);
+    g.lineBetween(foot.x, foot.y, top.x, top.y);
+    const pulse = 0.6 + Math.sin(time * 0.01) * 0.4;
+    g.fillStyle(cast > 0 || recoil > 0 ? 0xff8a3c : 0xb06cff, 0.25 + cast * 0.35);
+    g.fillCircle(top.x, top.y - 2, 5 + pulse * 2 + cast * 8);
+    g.fillStyle(0xd6cfb3);
+    g.fillCircle(top.x, top.y - 2, 3.5);
+    g.fillStyle(0x1a1414);
+    g.fillRect(top.x - 2, top.y - 3, 1, 1);
+    g.fillRect(top.x + 1, top.y - 3, 1, 1);
+    if (cast > 0) {
+      g.fillStyle(0xffd36b, 0.95);
+      g.fillCircle(top.x, top.y - 2, 2 + cast * 4);
+      g.fillStyle(0x9fe8ff, 0.35);
+      g.fillCircle(offHand.x, offHand.y, 3 + cast * 6);
+      g.fillStyle(0xe8fbff, 0.95);
+      g.fillCircle(offHand.x, offHand.y, 1.5 + cast * 3);
+    }
+    for (const [shoulder, hand] of [
+      [back, offHand],
+      [front, staffHand],
+    ]) {
+      const elbow = { x: (shoulder.x + hand.x) / 2 - face * 2, y: (shoulder.y + hand.y) / 2 + 3 };
+      for (const [width, color] of [
+        [4, 0x1d241c],
+        [2, 0x8c9a82],
+      ]) {
+        g.lineStyle(width, color, 1);
+        g.lineBetween(shoulder.x, shoulder.y, elbow.x, elbow.y);
+        g.lineBetween(elbow.x, elbow.y, hand.x, hand.y);
+      }
+      g.fillStyle(0x8c9a82);
+      g.fillCircle(hand.x, hand.y, 2);
+      g.lineStyle(1, 0xd6cfb3, 0.9);
+      g.lineBetween(hand.x, hand.y, hand.x + face * 2, hand.y + 2);
     }
   }
   update(time: number, delta: number) {
     if (!this.controls || !this.snapshot) return;
     let s = this.snapshot;
     this.accumulator += Math.min(delta, 100);
+    if (this.predicted && !this.controls.aimFromPointer) {
+      // Touch aiming has no cursor: project the aim direction into the arena instead.
+      const a = this.controls.angle;
+      this.controls.aimX = Math.max(0, Math.min(RULES.width, this.predicted.x + Math.cos(a) * 150));
+      this.controls.aimY = Math.max(0, Math.min(RULES.height, this.predicted.y + Math.sin(a) * 150));
+    }
     while (this.accumulator >= 1000 / 30) {
       this.accumulator -= 1000 / 30;
       if (this.localStep) {
@@ -550,6 +938,7 @@ export class Arena extends Phaser.Scene {
               y: this.predicted.y,
               angle: this.controls.angle,
               shotCharge: this.predicted.shotCharge,
+              specialCharge: this.predicted.specialCharge,
               guarding: this.predicted.guarding,
               guardLeft: this.predicted.guardLeft,
               dashInvulnerable: this.predicted.dashInvulnerable,
@@ -565,6 +954,9 @@ export class Arena extends Phaser.Scene {
       if (s.zombies.some((z) => z.id === id)) continue;
       v.body.destroy();
       v.hp.destroy();
+      v.fx.destroy();
+      v.label?.destroy();
+      v.aura.destroy();
       this.zombieVisuals.delete(id);
     }
     const flags = s.flags.map((f) => {
@@ -582,37 +974,74 @@ export class Arena extends Phaser.Scene {
       }
       this.traps.fillStyle(color,.2); this.traps.fillCircle(trap.x,trap.y,3);
     }
+    // Graves of fallen rivals: a necromancer can raise them until they crumble.
+    for (const g of s.graves) {
+      const fade = Math.min(1, g.left / 2);
+      this.traps.fillStyle(0x7dffb0, 0.1 * fade);
+      this.traps.fillEllipse(g.x, g.y + 5, 28, 9);
+      this.traps.fillStyle(0x6f6a5c, 0.85 * fade);
+      this.traps.fillRoundedRect(g.x - 6, g.y - 12, 12, 16, { tl: 5, tr: 5, bl: 1, br: 1 });
+      this.traps.lineStyle(1, 0x2c2a24, 0.9 * fade);
+      this.traps.strokeRoundedRect(g.x - 6, g.y - 12, 12, 16, { tl: 5, tr: 5, bl: 1, br: 1 });
+      this.traps.lineBetween(g.x, g.y - 9, g.x, g.y - 1);
+      this.traps.lineBetween(g.x - 3, g.y - 6, g.x + 3, g.y - 6);
+    }
+    // A necromancer casting a raise: the mandala grows where the dead will rise.
+    for (const q of s.players) {
+      if (q.raiseCast <= 0) continue;
+      const progress = 1 - q.raiseCast / RULES.raiseCast;
+      this.drawMandala(this.traps, q.raiseX, q.raiseY + 8, 16 + progress * 18, time, 0.35 + progress * 0.6);
+      this.traps.lineStyle(1, 0x7dffb0, 0.25 + progress * 0.4);
+      this.traps.lineBetween(q.x, q.y - 6, q.raiseX, q.raiseY);
+    }
     this.arrows.clear();
     for (const a of s.arrows) {
       const age = s.paused ? 0 : Math.min((performance.now() - this.receivedAt) / 1000, 1 / 15);
       const next = {
-        x: a.x + Math.cos(a.angle) * projectileStats(a.classId, a.charged).speed * age,
-        y: a.y + Math.sin(a.angle) * projectileStats(a.classId, a.charged).speed * age,
+        x: a.x + Math.cos(a.angle) * projectileStats(a.classId, a.charged, a.power).speed * age,
+        y: a.y + Math.sin(a.angle) * projectileStats(a.classId, a.charged, a.power).speed * age,
       };
       const p = lineClear(a, next) ? next : a;
-      if(a.ice) {
-        this.arrows.lineStyle(3,0x99eaff,.65);
-        this.arrows.lineBetween(p.x-Math.cos(a.angle)*17,p.y-Math.sin(a.angle)*17,p.x,p.y);
-        this.arrows.fillStyle(0xe4faff);this.arrows.fillTriangle(p.x+6,p.y,p.x-4,p.y-5,p.x-4,p.y+5);
+      const grow = 1 + (a.power ?? 0);
+      if (a.wind) {
+        this.drawWind(p, a.angle, time, a.volley !== undefined);
+        continue;
+      }
+      if (a.ice || a.element === 'ice') {
+        const dx = Math.cos(a.angle),
+          dy = Math.sin(a.angle);
+        this.arrows.lineStyle(4, 0x9fe8ff, 0.3);
+        this.arrows.lineBetween(p.x - dx * 16, p.y - dy * 16, p.x, p.y);
+        this.arrows.fillStyle(0xdffaff);
+        this.arrows.fillTriangle(p.x + dx * 7, p.y + dy * 7, p.x - dy * 4, p.y + dx * 4, p.x + dy * 4, p.y - dx * 4);
+        this.arrows.fillTriangle(p.x - dx * 5, p.y - dy * 5, p.x - dy * 4, p.y + dx * 4, p.x + dy * 4, p.y - dx * 4);
+      } else if ((a.classId === 'mage' || a.classId === 'necromancer') && (a.power ?? 0) > 0.05) {
+        this.drawBlaze(p, a.angle, a.power!, time, a.classId === 'necromancer' ? 0xc26bff : 0xff6a1f);
       } else if(a.classId==='necromancer') {
-        this.arrows.lineStyle(6,0xff7a2f,.25);
-        this.arrows.lineBetween(p.x-Math.cos(a.angle)*18,p.y-Math.sin(a.angle)*18,p.x,p.y);
-        this.arrows.fillStyle(0xff9a3c,.5);this.arrows.fillCircle(p.x,p.y,8);
-        this.arrows.fillStyle(0xffe08a);this.arrows.fillCircle(p.x,p.y,4);
+        const size = grow * (a.element === 'fire' ? 0.6 : 1);
+        this.arrows.lineStyle(6*size,0xff7a2f,.25);
+        this.arrows.lineBetween(p.x-Math.cos(a.angle)*18*grow,p.y-Math.sin(a.angle)*18*grow,p.x,p.y);
+        this.arrows.fillStyle(0xff9a3c,.5);this.arrows.fillCircle(p.x,p.y,8*size);
+        this.arrows.fillStyle(0xffe08a);this.arrows.fillCircle(p.x,p.y,4*size);
       } else if(a.classId==='mage') {
-        this.arrows.lineStyle(5,0xff6326,.35);
-        this.arrows.lineBetween(p.x-Math.cos(a.angle)*16,p.y-Math.sin(a.angle)*16,p.x,p.y);
-        this.arrows.fillStyle(0xff982c,.7);this.arrows.fillCircle(p.x,p.y,7);
-        this.arrows.fillStyle(0xffed9b);this.arrows.fillCircle(p.x,p.y,3);
+        if (a.power) {
+          this.arrows.fillStyle(0xff4a1a, 0.18);
+          this.arrows.fillCircle(p.x, p.y, 16 * grow);
+        }
+        this.arrows.lineStyle(5*grow,0xff6326,.35);
+        this.arrows.lineBetween(p.x-Math.cos(a.angle)*16*grow,p.y-Math.sin(a.angle)*16*grow,p.x,p.y);
+        this.arrows.fillStyle(0xff982c,.7);this.arrows.fillCircle(p.x,p.y,7*grow);
+        this.arrows.fillStyle(0xffed9b);this.arrows.fillCircle(p.x,p.y,3*grow);
       } else {
-        this.arrows.lineStyle(a.charged ? 4 : 2, a.charged ? 0xff842f : 0xe3cf96);
+        const hot = a.charged ? 1 : (a.power ?? 0);
+        this.arrows.lineStyle(2 + hot * 2, hot > 0 ? 0xff842f : 0xe3cf96);
         this.arrows.lineBetween(
           p.x - Math.cos(a.angle) * 12,
           p.y - Math.sin(a.angle) * 12,
           p.x,
           p.y,
         );
-        this.arrows.fillStyle(a.charged ? 0xffb24a : 0xf2e9cf);
+        this.arrows.fillStyle(hot > 0 ? 0xffb24a : 0xf2e9cf);
         this.arrows.fillCircle(p.x, p.y, 2);
       }
     }
@@ -628,6 +1057,74 @@ export class Arena extends Phaser.Scene {
         p.y + Math.sin(a) * 45,
       );
       this.aim.strokeCircle(p.x + Math.cos(a) * 48, p.y + Math.sin(a) * 48, 3);
+      if (CLASSES[p.classId].summon && p.specialCharge >= RULES.overchargeTime) {
+        // White twinkling perimeter: how far away the raising mandala can open.
+        const twinkle = 0.5 + Math.sin(time * 0.025) * 0.5;
+        const pointer = this.controls.aimFromPointer;
+        const toward = pointer ? Math.atan2(this.controls.aimY - p.y, this.controls.aimX - p.x) : a;
+        const reach = pointer
+          ? Math.min(RULES.raiseRange, Math.hypot(this.controls.aimX - p.x, this.controls.aimY - p.y))
+          : 26;
+        const spot = { x: p.x + Math.cos(toward) * reach, y: p.y + Math.sin(toward) * reach };
+        const grave = s.graves
+          .filter((g) => g.team !== p.team && distance(g, p) <= RULES.raiseRange)
+          .sort((m, n) => distance(m, spot) - distance(n, spot))[0];
+        const ready = !p.thrallAlive && (!!grave || (!!p.thrall && p.thrallCd <= 0));
+        this.aim.lineStyle(2, 0xffffff, ready ? 0.3 + twinkle * 0.6 : 0.1 + twinkle * 0.15);
+        this.aim.strokeCircle(p.x, p.y, RULES.raiseRange);
+        for (let i = 0; i < 16; i++) {
+          const around = time * 0.0006 + (i * Math.PI) / 8,
+            glint = 0.5 + Math.sin(time * 0.013 + i * 2.3) * 0.5;
+          this.aim.fillStyle(0xffffff, glint * (ready ? 0.95 : 0.3));
+          this.aim.fillCircle(
+            p.x + Math.cos(around) * RULES.raiseRange,
+            p.y + Math.sin(around) * RULES.raiseRange,
+            0.8 + glint * 1.6,
+          );
+        }
+        if (ready) {
+          const full = Math.min(
+            1,
+            (p.specialCharge - RULES.overchargeTime) / (RULES.raiseCharge - RULES.overchargeTime),
+          );
+          this.drawMandala(this.aim, spot.x, spot.y + 8, 28, time, 0.25 + full * 0.6);
+          if (grave) {
+            this.aim.lineStyle(1, 0x7dffb0, 0.2 + twinkle * 0.35);
+            this.aim.lineBetween(grave.x, grave.y, spot.x, spot.y);
+          }
+        }
+      }
+      if (p.classId === 'archer' && (p.windDash > 0 || p.specialCharge >= RULES.overchargeTime - 1e-8)) {
+        // Charged dash ready or in flight: gusts circle the archer, brighter once the shot is full too.
+        this.aim.lineStyle(2, 0xd8fbff, p.shotCharge >= RULES.chargeTime - 1e-8 ? 0.85 : 0.35);
+        for (let i = 0; i < 3; i++) {
+          const spin = time * 0.012 + (i * Math.PI * 2) / 3;
+          this.aim.beginPath();
+          this.aim.arc(p.x, p.y - 4, 24, spin, spin + 1.2);
+          this.aim.strokePath();
+        }
+      }
+      const mine = s.zombies.filter((z) => z.owner === this.localId);
+      const pulse = 0.5 + Math.sin(time * 0.008) * 0.5;
+      // Red: the circle the summoned zombies guard, travelling with the necromancer.
+      if (CLASSES[p.classId].summon && !p.zombieAuto && mine.some((z) => z.role === 'guard')) {
+        const radius = RULES.zombieGuardRadius * (0.92 + pulse * 0.08);
+        this.aim.fillStyle(0xff4a4a, 0.05 + pulse * 0.04);
+        this.aim.fillCircle(p.x, p.y, radius);
+        this.aim.lineStyle(1, 0xff4a4a, 0.3 + pulse * 0.25);
+        this.aim.strokeCircle(p.x, p.y, radius);
+      }
+      // Violet: the mouse area that the zombie mage, its minions and the thrall follow.
+      if (CLASSES[p.classId].summon && this.controls.aimFromPointer && !p.zombieAuto && mine.length > 0) {
+        this.aim.fillStyle(0xb06cff, 0.05 + pulse * 0.04);
+        this.aim.fillCircle(this.controls.aimX, this.controls.aimY, RULES.zombieAimRadius * (0.85 + pulse * 0.15));
+        this.aim.lineStyle(1, 0xb06cff, 0.3 + pulse * 0.25);
+        this.aim.strokeCircle(
+          this.controls.aimX,
+          this.controls.aimY,
+          RULES.zombieAimRadius * (0.85 + pulse * 0.15),
+        );
+      }
     }
   }
 }
