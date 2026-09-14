@@ -3,9 +3,10 @@ import {Duel,idleInput,RULES,movePlayer,newPlayer,type ClassId} from '@bandera/s
 function game(){const d=new Duel();d.add('a','A','archer');d.add('b','B','guardian');d.state.phase='playing';return d;}
 function ticks(d:Duel,n:number){for(let i=0;i<n;i++)d.step(new Map());}
 function place(d:Duel){const p=d.state.players[0];p.trapCd=0;d.step(new Map([['a',{...idleInput(),trap:true}]]));ticks(d,15);}
-it('triple de ±25 grados, recarga y exclusión de disparo normal',()=>{
+it('triple casi paralela que se abre de a poco, recarga y exclusión de disparo normal',()=>{
  const d=game();d.step(new Map([['a',{...idleInput(),volley:true,shot:true}]]));
- expect(d.state.arrows).toHaveLength(3);expect(d.state.arrows.map(a=>a.angle)).toEqual([-Math.PI*25/180,0,Math.PI*25/180]);
+ expect(d.state.arrows).toHaveLength(3);expect(d.state.arrows.map(a=>a.angle)).toEqual([-RULES.volleyAngle,0,RULES.volleyAngle]);
+ const gap=d.state.arrows[2].y-d.state.arrows[0].y;expect(gap).toBeGreaterThan(2*RULES.volleyGap);expect(gap).toBeLessThan(2*RULES.volleyGap+4);
  expect(d.state.players[0].volleyCd).toBe(5);
  d.step(new Map([['a',{...idleInput(),volley:true}]]));expect(d.state.arrows).toHaveLength(3);
 });

@@ -7,6 +7,7 @@ import {
   idleInput,
   sanitizeInput,
   findPath,
+  pathCells,
   blocked,
   distance,
   type ClassId,
@@ -74,22 +75,187 @@ describe('nigromante', () => {
     expect(sanitizeInput({ ...idleInput(), summon: 'sí' })?.summon).toBe(false);
     expect(sanitizeInput({ ...idleInput(), summon: true })?.summon).toBe(true);
   });
-  it('invoca dos zombies, espera 5 s y acumula hasta el tope reemplazando a los más viejos', () => {
+  it('cada ejecución invoca 2 zombies y hay como máximo 2 ejecuciones activas', () => {
     const { d, players: [n, g] } = setup();
     Object.assign(g, { x: 880, y: 500 });
     run(d, 1, { 0: { summon: true } });
     expect(d.state.zombies).toHaveLength(2);
+    expect(new Set(d.state.zombies.map((z) => z.execution)).size).toBe(1);
     expect(d.state.zombies.every((z) => z.owner === n.id && z.team === n.team)).toBe(true);
-    const first = d.state.zombies.map((z) => z.id);
     run(d, 1, { 0: { summon: true } });
     expect(d.state.zombies).toHaveLength(2);
     expect(n.summonCd).toBeGreaterThan(4.9);
-    for (const expected of [4, 6, RULES.zombieMaxPerOwner]) {
-      run(d, Math.ceil(RULES.summonCooldown / RULES.tick));
-      run(d, 1, { 0: { summon: true } });
-      expect(d.state.zombies).toHaveLength(expected);
+    run(d, Math.ceil(RULES.summonCooldown / RULES.tick));
+    run(d, 1, { 0: { summon: true } });
+    expect(d.state.zombies).toHaveLength(4);
+    expect(n.activeExecutions).toBe(2);
+    run(d, Math.ceil(RULES.summonCooldown / RULES.tick));
+    run(d, 1, { 0: { summon: true } });
+    expect(d.state.zombies).toHaveLength(4);
+    expect(n.summonCd).toBe(0);
+  });
+  it('terminar una ejecución libera su lugar y los zombies sin ejecución no cuentan', () => {
+    const { d, players: [n, g] } = setup();
+    Object.assign(g, { x: 880, y: 500 });
+    run(d, 1, { 0: { summon: true } });
+    run(d, Math.ceil(RULES.summonCooldown / RULES.tick));
+    run(d, 1, { 0: { summon: true } });
+    const first = d.state.zombies[0].execution;
+    for (const z of d.state.zombies.filter((z) => z.execution === first)) d.damageZombie(z, g.team, 99);
+    run(d, 1);
+    expect(n.activeExecutions).toBe(1);
+    run(d, Math.ceil(RULES.summonCooldown / RULES.tick));
+    run(d, 1, { 0: { summon: true } });
+    expect(d.state.zombies).toHaveLength(4);
+    d.state.zombies.push({ ...d.state.zombies[0], id: 'extra', execution: null, slot: 3 });
+    run(d, 1);
+    expect(n.activeExecutions).toBe(2);
+    expect(d.activeExecutions(n.id)).toBe(2);
+  });
+  it('los zombies van al rival marcado con el cursor aunque otro esté igual de cerca', () => {
+    const { d, players: [n, a, b] } = setup(['necromancer', 'guardian', 'vanguard']);
+    Object.assign(n, { x: 480, y: 100, angle: 0 });
+    Object.assign(a, { x: 330, y: 80 });
+    Object.assign(b, { x: 630, y: 80 });
+    run(d, 1, { 0: { summon: true, aimX: 640, aimY: 90 } });
+    for (const z of d.state.zombies) Object.assign(z, { role: 'cursor', retarget: 0 });
+    run(d, 3, { 0: { aimX: 640, aimY: 90 } });
+    expect(d.state.zombies.map((z) => z.target)).toEqual([b.id, b.id]);
+  });
+  it('sin rival cerca del cursor, los zombies caminan hacia esa zona', () => {
+    const { d, players: [n, g] } = setup();
+    Object.assign(n, { x: 200, y: 270, angle: 0 });
+    Object.assign(g, { x: 880, y: 500 });
+    run(d, 1, { 0: { summon: true, aimX: 420, aimY: 270 } });
+    for (const z of d.state.zombies) Object.assign(z, { role: 'cursor', retarget: 0 });
+    run(d, 70, { 0: { aimX: 420, aimY: 270 } });
+    for (const z of d.state.zombies) expect(distance(z, { x: 420, y: 270 })).toBeLessThan(90);
+  });
+  it('dos ejecuciones rodean al rival marcado desde varios lados en vez de hacer fila', () => {
+    const { d, players: [n, g] } = setup();
+    Object.assign(n, { x: 480, y: 470, angle: -Math.PI / 2 });
+    Object.assign(g, { x: 480, y: 270, invuln: 999 });
+    const aim = { aimX: 480, aimY: 270 };
+    run(d, 1, { 0: { summon: true, ...aim } });
+    Object.assign(n, { summonCd: 0, attackLock: 0 });
+    run(d, 1, { 0: { summon: true, ...aim } });
+    for (const z of d.state.zombies) Object.assign(z, { role: 'cursor', retarget: 0 });
+    expect(d.state.zombies).toHaveLength(4);
+    let closest = Infinity;
+    for (let i = 0; i < 120 && closest > 30; i++) {
+      run(d, 1, { 0: aim });
+      closest = Math.max(...d.state.zombies.map((z) => distance(z, g)));
     }
-    expect(d.state.zombies.map((z) => z.id)).not.toContain(first[0]);
+    expect(d.state.zombies.every((z) => z.target === g.id && distance(z, g) < 60)).toBe(true);
+    const bearings = d.state.zombies.map((z) => Math.atan2(z.y - g.y, z.x - g.x)).sort((a, b) => a - b);
+    const gaps = bearings.map((b, i) => (i ? b - bearings[i - 1] : b + 2 * Math.PI - bearings.at(-1)!));
+    expect(2 * Math.PI - Math.max(...gaps)).toBeGreaterThan((150 * Math.PI) / 180);
+  });
+  it('en una zona vacía cada zombie ocupa su propio lugar alrededor del cursor', () => {
+    const { d, players: [n, g] } = setup();
+    Object.assign(n, { x: 200, y: 270, angle: 0 });
+    Object.assign(g, { x: 880, y: 500 });
+    const aim = { aimX: 420, aimY: 270 };
+    run(d, 1, { 0: { summon: true, ...aim } });
+    Object.assign(n, { summonCd: 0, attackLock: 0 });
+    run(d, 1, { 0: { summon: true, ...aim } });
+    for (const z of d.state.zombies) Object.assign(z, { role: 'cursor', retarget: 0 });
+    run(d, 90, { 0: aim });
+    const zombies = d.state.zombies;
+    expect(zombies).toHaveLength(4);
+    for (const z of zombies) expect(distance(z, { x: 420, y: 270 })).toBeLessThan(90);
+    for (let i = 0; i < zombies.length; i++)
+      for (let j = i + 1; j < zombies.length; j++) expect(distance(zombies[i], zombies[j])).toBeGreaterThan(30);
+  });
+  it('salen del suelo escalonados y toman caminos distintos', () => {
+    const { d, players: [n, g] } = setup();
+    Object.assign(n, { x: 200, y: 270, angle: 0 });
+    Object.assign(g, { x: 880, y: 500 });
+    run(d, 1, { 0: { summon: true } });
+    const [first, second] = d.state.zombies;
+    expect(second.rise).toBeGreaterThan(first.rise);
+    const x = first.x;
+    run(d, 5);
+    expect(first.x).toBe(x);
+    const over = findPath({ x: 200, y: 160 }, { x: 340, y: 160 });
+    const around = findPath({ x: 200, y: 160 }, { x: 340, y: 160 }, pathCells(over));
+    const shared = [...pathCells(around)].filter((cell) => pathCells(over).has(cell));
+    expect(around.length).toBeGreaterThan(2);
+    expect(shared.length).toBeLessThan(around.length / 2);
+  });
+  it('el cursor sobre un rival lejano lo marca en todo el mapa', () => {
+    const { d, players: [n, g] } = setup();
+    Object.assign(n, { x: 200, y: 270, angle: 0 });
+    Object.assign(g, { x: 880, y: 270 });
+    run(d, 1, { 0: { summon: true, aimX: 880, aimY: 270 } });
+    for (const z of d.state.zombies) Object.assign(z, { role: 'cursor', retarget: 0 });
+    run(d, 60, { 0: { aimX: 880, aimY: 270 } });
+    expect(d.state.zombies.every((z) => z.target === g.id && z.x > 300)).toBe(true);
+  });
+  it('⌘E pasa al zombie bajo el cursor entre el círculo rojo y el mouse, y E alterna el automático', () => {
+    const { d, players: [n, g] } = setup();
+    Object.assign(n, { x: 200, y: 270, angle: 0 });
+    Object.assign(g, { x: 880, y: 500 });
+    run(d, 1, { 0: { summon: true } });
+    const [first, second] = d.state.zombies;
+    expect([first.role, second.role]).toEqual(['guard', 'guard']);
+    run(d, 1, { 0: { mark: true, aimX: first.x + 20, aimY: first.y } });
+    expect([first.role, second.role]).toEqual(['cursor', 'guard']);
+    run(d, 1, { 0: { mark: true, aimX: first.x, aimY: first.y } });
+    expect(first.role).toBe('guard');
+    run(d, 1, { 0: { command: true } });
+    expect(n.zombieAuto).toBe(true);
+    run(d, 1, { 0: { command: true } });
+    expect(n.zombieAuto).toBe(false);
+  });
+  it('los invocados siguen al nigromante dentro del círculo rojo y atacan solo a quien entra', () => {
+    const { d, players: [n, g] } = setup();
+    Object.assign(n, { x: 200, y: 270, angle: 0 });
+    Object.assign(g, { x: 420, y: 270, invuln: 999 });
+    run(d, 1, { 0: { summon: true } });
+    run(d, 45);
+    for (const z of d.state.zombies) {
+      expect(z.target).toBeNull();
+      expect(distance(z, n)).toBeLessThan(RULES.zombieGuardRadius);
+    }
+    Object.assign(g, { x: 290, y: 270 });
+    run(d, 30);
+    expect(d.state.zombies.every((z) => z.target === g.id)).toBe(true);
+    expect(blocked(200, 450)).toBe(false);
+    Object.assign(g, { x: 700, y: 270 });
+    Object.assign(n, { x: 200, y: 450 });
+    run(d, 75);
+    for (const z of d.state.zombies) {
+      expect(z.target).toBeNull();
+      expect(distance(z, n)).toBeLessThan(RULES.zombieGuardRadius);
+    }
+  });
+  it('el zombie mago y sus lacayos siguen el mouse', () => {
+    const { d, players: [n, g] } = setup();
+    Object.assign(n, { x: 200, y: 270, angle: 0 });
+    Object.assign(g, { x: 880, y: 500 });
+    const aim = { aimX: 700, aimY: 270 };
+    run(d, Math.ceil(0.6 / RULES.tick), { 0: { special: true, ...aim } });
+    run(d, 1, { 0: { summon: true, ...aim } });
+    expect(d.state.zombies.map((z) => [z.kind, z.role])).toEqual([['hat', 'cursor']]);
+    run(d, Math.ceil((RULES.hatSpawnEvery + 2.5) / RULES.tick), { 0: aim });
+    const minions = d.state.zombies.filter((z) => z.kind === 'brute');
+    expect(minions.length).toBeGreaterThan(0);
+    expect(minions.every((z) => z.role === 'cursor')).toBe(true);
+    expect(Math.min(...d.state.zombies.map((z) => z.x))).toBeGreaterThan(450);
+  });
+  it('tira fuego e invoca en el mismo instante', () => {
+    const { d, players: [n, g] } = setup();
+    Object.assign(n, { x: 200, y: 270, angle: 0 });
+    Object.assign(g, { x: 880, y: 500 });
+    run(d, 1, { 0: { shot: true, summon: true } });
+    expect(d.state.arrows).toHaveLength(1);
+    expect(d.state.zombies).toHaveLength(2);
+  });
+  it('valida el punto apuntado', () => {
+    expect(sanitizeInput({ ...idleInput(), command: true, mark: 'x' })).toMatchObject({ command: true, mark: false });
+    expect(sanitizeInput({ ...idleInput(), aimX: 9999, aimY: 20 })).toMatchObject({ aimX: RULES.width, aimY: 20 });
+    expect(sanitizeInput({ ...idleInput(), aimX: 'x', aimY: -5 })).toMatchObject({ aimX: -1, aimY: -1 });
   });
   it('los zombies son más lentos que todas las clases', () => {
     expect(RULES.zombieSpeed).toBeLessThan(Math.min(...CLASS_IDS.map((id) => CLASSES[id].speed)));
@@ -99,9 +265,11 @@ describe('nigromante', () => {
     Object.assign(n, { x: 480, y: 100, angle: 0 });
     Object.assign(a, { x: 330, y: 80 });
     Object.assign(b, { x: 630, y: 80 });
+    n.zombieAuto = true;
     run(d, 1, { 0: { summon: true } });
     run(d, 3);
     expect(new Set(d.state.zombies.map((z) => z.target))).toEqual(new Set([a.id, b.id]));
+    run(d, Math.ceil((RULES.zombieRise + 0.15) / RULES.tick));
     const chaser = d.state.zombies.find((z) => z.target === a.id)!;
     const before = { x: chaser.x, y: chaser.y },
       gap = distance(chaser, a);
@@ -117,7 +285,7 @@ describe('nigromante', () => {
     expect(path.length).toBeGreaterThan(2);
     expect(path.every((p) => !blocked(p.x, p.y))).toBe(true);
     const { d, players: [n, g] } = setup();
-    Object.assign(n, { x: 200, y: 160, angle: Math.PI / 2 });
+    Object.assign(n, { x: 200, y: 160, angle: Math.PI / 2, zombieAuto: true });
     Object.assign(g, { x: 340, y: 160 });
     run(d, 1, { 0: { summon: true, angle: Math.PI / 2 } });
     for (let i = 0; i < 150 && g.hp === 3; i++) run(d, 1, { 0: { angle: Math.PI / 2 } });
