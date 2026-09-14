@@ -8,6 +8,12 @@ export const CLASS_ART: Record<ClassId, string[]> = {
     '..7333444337....','..77335553377...','...33333333.....','....335533......',
     '....335533......','....55..55......','....55..55......','....88..88......',
   ],
+  mage: [
+    '......44........','.....4444.......','....433334......','...43333334.....',
+    '...33277233.....','....327723......','.....5555.......','...33344333.....',
+    '..3333444333....','.733334433337...','.773333333377...','...33355333.....',
+    '....335533......','....33..33......','....88..88......','....88..88......',
+  ],
   guardian: [
     '.....1111.......','....111111......','...01111110.....','...01222210.....',
     '...01222210.....','....011110......','...33111133.....','..3331661333....',
@@ -27,6 +33,6 @@ export function palette(cloth: string, light: string): Record<string,string> {
 export function classIllustration(classId:ClassId):string {
   const colors=palette('#64897e','#b6cbb0');
   const pixels=CLASS_ART[classId].flatMap((row,y)=>row.split('').map((c,x)=>c==='.'?'':`<rect x="${x+5}" y="${y+3}" width="1" height="1" fill="${colors[c]}"/>`)).join('');
-  const weapon=classId==='archer'?'<path d="M22 6Q30 13 22 20M22 6V20" stroke="#eac787" fill="none"/><path d="M22 13H29" stroke="#ede7d1"/>':classId==='guardian'?'<path d="M20 11H27V17L23.5 20L20 17Z" fill="#eac787" stroke="#655940"/><path d="M23.5 12V17M21 14H26" stroke="#596f63"/>':'<path d="M23 2L25 4V18H23Z" fill="#e3e5d5"/><path d="M20 17H28V19H20ZM23 19H25V23H23Z" fill="#eac787"/>';
+  const weapon=classId==='archer'?'<path d="M22 6Q30 13 22 20M22 6V20" stroke="#eac787" fill="none"/><path d="M22 13H29" stroke="#ede7d1"/>':classId==='mage'?'<path d="M24 5V21" stroke="#796452" stroke-width="2"/><path d="M24 4L27 7L24 10L21 7Z" fill="#9edcff" stroke="#e8f7ff"/><circle cx="24" cy="7" r="1" fill="#fff"/>':classId==='guardian'?'<path d="M20 11H27V17L23.5 20L20 17Z" fill="#eac787" stroke="#655940"/><path d="M23.5 12V17M21 14H26" stroke="#596f63"/>':'<path d="M23 2L25 4V18H23Z" fill="#e3e5d5"/><path d="M20 17H28V19H20ZM23 19H25V23H23Z" fill="#eac787"/>';
   return `<svg viewBox="0 0 32 25" aria-hidden="true" shape-rendering="crispEdges">${pixels}${weapon}</svg>`;
 }

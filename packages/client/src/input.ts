@@ -14,7 +14,7 @@ export class Controls {
   secondary(held: boolean) {
     if (!held) { this.guardSources.delete('mouse'); return; }
     if (!this.enabled) return;
-    if (this.classId === 'archer') this.actions.sword = true;
+    if (CLASSES[this.classId].ranged) this.actions.sword = true;
     else if (this.classId === 'guardian') this.guardSources.add('mouse');
   }
   private sticks = new Map<

@@ -18,6 +18,12 @@ test('selección compartida, ataques de arquero y escudo con mouse',async({page,
   await expect(rival.locator('#cd-guard')).toHaveText(/⛨ [01]\.\ds/);await expect(rival.locator('#cd-dash')).toBeHidden();await expect(rival.locator('#cd-shot')).toBeHidden();
   expect(errors).toEqual([]);await context.close();
 });
+test('el mago aparece y muestra sus controles',async({page})=>{
+  await page.goto('/');await expect(page.locator('#entry-classes [data-class="mage"]')).toContainText('Mago');
+  await page.locator('#entry-classes [data-class="mage"]').click();
+  await expect(page.locator('#control-guide')).toContainText('Hechizo');
+  await expect(page.locator('#control-guide')).toContainText('Báculo');
+});
 test('escudo móvil con tres dedos, liberación y clase pesada',async({browser},info)=>{
   const pc=await browser.newContext(),opponent=await pc.newPage();await enter(opponent,'/','Heavy','vanguard');
   const mobile=await browser.newContext({viewport:{width:844,height:390},isMobile:true,hasTouch:true,deviceScaleFactor:2});const page=await mobile.newPage();const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));

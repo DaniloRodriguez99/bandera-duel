@@ -348,6 +348,10 @@ export class Arena extends Phaser.Scene {
         w.lineStyle(2,GOLD);w.beginPath();w.arc(9,0,15,-Math.PI/2,Math.PI/2);w.strokePath();
         w.lineStyle(1,0xdad6bd);w.lineBetween(9,-15,9,15);
         if(p.windup>0){w.fillStyle(0xe3e5d5);w.fillRect(12,-2,14,3);}
+      } else if(p.classId==='mage') {
+        w.lineStyle(4,0x796452);w.lineBetween(8,0,30,0);
+        w.fillStyle(0x8edcff);w.fillCircle(32,0,6);w.lineStyle(2,0xe8f7ff,.85);w.strokeCircle(32,0,7);
+        if(p.windup>0){w.lineStyle(2,0xb9edff,.65);w.strokeCircle(32,0,11);}
       } else {
         const wind=p.windup>0?Math.min(1,p.windup/stats.windup):0;
         w.setRotation(p.angle-wind*.9);
@@ -419,10 +423,17 @@ export class Arena extends Phaser.Scene {
         y: a.y + Math.sin(a.angle) * RULES.arrowSpeed * age,
       };
       const p = lineClear(a, next) ? next : a;
-      this.arrows.lineStyle(2, 0xe3cf96);
-      this.arrows.lineBetween(p.x - Math.cos(a.angle) * 12, p.y - Math.sin(a.angle) * 12, p.x, p.y);
-      this.arrows.fillStyle(0xf2e9cf);
-      this.arrows.fillCircle(p.x, p.y, 2);
+      if(a.classId==='mage') {
+        this.arrows.lineStyle(5,0x78cfff,.22);
+        this.arrows.lineBetween(p.x-Math.cos(a.angle)*16,p.y-Math.sin(a.angle)*16,p.x,p.y);
+        this.arrows.fillStyle(0x8edcff,.45);this.arrows.fillCircle(p.x,p.y,7);
+        this.arrows.fillStyle(0xe8f7ff);this.arrows.fillCircle(p.x,p.y,3);
+      } else {
+        this.arrows.lineStyle(2, 0xe3cf96);
+        this.arrows.lineBetween(p.x - Math.cos(a.angle) * 12, p.y - Math.sin(a.angle) * 12, p.x, p.y);
+        this.arrows.fillStyle(0xf2e9cf);
+        this.arrows.fillCircle(p.x, p.y, 2);
+      }
     }
     this.aim.clear();
     if (this.controls.enabled && this.predicted) {

@@ -1,6 +1,6 @@
 # Bandera Duel
 
-Juego web de captura de bandera **1v1**, con espada, arco y dash. Partidas de tres minutos, salas privadas por link, controles para PC y celular y servidor autoritativo. Primera versión: un mapa, dos equipos de un jugador, sin cuentas ni base de datos.
+Juego web de captura de bandera **1v1**, con espada, arco, magia y dash. Partidas de tres minutos, salas privadas por link, controles para PC y celular y servidor autoritativo. Primera versión: un mapa, dos equipos de un jugador, sin cuentas ni base de datos.
 
 ## Requisitos e inicio
 
@@ -33,16 +33,17 @@ El cliente deduce el servidor desde el hostname de la página si `VITE_SERVER_UR
 | Mover   | WASD o flechas | Palanca izquierda                |
 | Apuntar | Mouse          | Palanca derecha                  |
 | Espada  | Clic izquierdo | Botón ⚔                         |
-| Flecha  | Clic derecho   | Apuntar y soltar palanca derecha |
+| Distancia | Clic izquierdo | Apuntar y soltar palanca derecha |
+| Golpe secundario | Clic derecho | Botón de daga o báculo |
 | Dash    | Espacio        | Botón ➟                          |
 
-La espada usa la última dirección apuntada. El dash usa el movimiento actual o el apuntado si estás quieto. El botón de sonido está en la cabecera; su elección se conserva en el dispositivo. El audio comienza después de una interacción del usuario.
+El arquero dispara flechas y usa una daga; el mago lanza hechizos y golpea con el báculo. Ambos pueden usar dash. La espada usa la última dirección apuntada. El dash usa el movimiento actual o el apuntado si estás quieto. El botón de sonido está en la cabecera; su elección se conserva en el dispositivo. El audio comienza después de una interacción del usuario.
 
 - Robá la bandera enemiga al tocarla y volvé al círculo de tu base. **Tu bandera debe estar en casa para anotar.**
 - Llevarla reduce 15 % la velocidad normal; permite atacar y hacer dash.
 - Recibir daño suelta la bandera. Quien la soltó no puede recogerla durante 0,7 s.
 - Tocar tu bandera caída la devuelve inmediatamente; abandonada vuelve a los 10 s.
-- Tres puntos de vida. Espada y flecha hacen un punto de daño. El dash no da invulnerabilidad.
+- El arquero, el mago y el caballero tienen tres puntos de vida; el guerrero tiene cinco. Espada, flecha y hechizo hacen daño según su clase.
 - Reaparición a los 3 s, con 1 s de protección, cancelada al atacar o recoger bandera.
 - Cada captura reinicia la arena y pausa el reloj 2 s. Tres capturas ganan; a los 3 minutos gana el mayor marcador, o se declara empate.
 - Ambos deben aceptar la revancha. Una desconexión pausa y reserva el asiento 15 s; si no vuelve, pierde por abandono. Salir expresamente abandona inmediatamente.

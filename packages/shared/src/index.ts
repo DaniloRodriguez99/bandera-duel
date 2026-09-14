@@ -1,13 +1,14 @@
 export type Team = 'blue' | 'red';
 export type Phase = 'lobby' | 'countdown' | 'playing' | 'capture' | 'finished';
-export type ClassId = 'archer' | 'guardian' | 'vanguard';
-export const CLASS_IDS: ClassId[] = ['archer', 'guardian', 'vanguard'];
+export type ClassId = 'archer' | 'mage' | 'guardian' | 'vanguard';
+export const CLASS_IDS: ClassId[] = ['archer', 'mage', 'guardian', 'vanguard'];
 export const DEFAULT_CLASS: ClassId = 'guardian';
 export function validClass(value: unknown): value is ClassId {
   return typeof value === 'string' && CLASS_IDS.includes(value as ClassId);
 }
 export const CLASSES = {
   archer: { name: 'Arquero', label: 'ARCO Y DAGA', description: 'Distancia, precisión y una salida rápida.', hp: 3, speed: 190, meleeDamage: .5, meleeRange: 30, meleeArc: Math.PI * .6, windup: .1, meleeCooldown: .5, ranged: true, shield: false, dash: true },
+  mage: { name: 'Mago', label: 'MAGIA Y BÁCULO', description: 'Hechizos a distancia y movilidad arcana.', hp: 3, speed: 180, meleeDamage: .5, meleeRange: 34, meleeArc: Math.PI * .6, windup: .12, meleeCooldown: .55, ranged: true, shield: false, dash: true },
   guardian: { name: 'Caballero', label: 'ESPADA Y ESCUDO', description: 'Protegé tu bandera. Respondé de cerca.', hp: 3, speed: 180, meleeDamage: 1, meleeRange: 55, meleeArc: Math.PI * .72, windup: .12, meleeCooldown: .6, ranged: false, shield: true, dash: false },
   vanguard: { name: 'Guerrero', label: 'ESPADA DE DOS MANOS', description: 'Más alcance. Más daño. Acero pesado.', hp: 5, speed: 155, meleeDamage: 2, meleeRange: 80, meleeArc: Math.PI * 130 / 180, windup: .3, meleeCooldown: 1, ranged: false, shield: false, dash: false },
 } as const;
@@ -155,6 +156,7 @@ export interface Arrow extends Vec {
   id: number;
   owner: string;
   team: Team;
+  classId: ClassId;
   angle: number;
   life: number;
 }
@@ -454,7 +456,7 @@ export class Duel {
       const action = movePlayer(p, input, s.flags.some(f => f.carrier === p.id), dt);
       if (action.swing) swings.push(p);
       if (action.shoot) {
-        s.arrows.push({ id: ++this.arrowId, owner: p.id, team: p.team,
+        s.arrows.push({ id: ++this.arrowId, owner: p.id, team: p.team, classId: p.classId,
           x: p.x, y: p.y, angle: p.angle, life: RULES.arrowLife });
         this.event('shot', p, p.team, p.angle, p.classId);
       }

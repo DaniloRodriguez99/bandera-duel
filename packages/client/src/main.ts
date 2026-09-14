@@ -11,7 +11,7 @@ document.querySelector('#app')!.innerHTML = `
 <main>
 <section id="intro" class="intro"><div class="hero-copy"><div class="eyebrow"><i></i> DUELO ONLINE · 1 CONTRA 1</div><h1>Tu rival tiene<br>algo <em>tuyo.</em></h1><p>Entrá al castillo. Robá su bandera.<br>Volvé con la gloria antes de que te alcancen.</p><div class="facts"><span><b>02</b> rivales</span><span><b>03</b> minutos</span><span><b>01</b> vencedor</span></div></div>
 <div class="entry-card"><div class="card-top"><span class="tiny">EL DESAFÍO EMPIEZA ACÁ</span><span class="swords">⚔</span></div><h2 id="entry-title">Prepará tu estandarte.</h2><p id="entry-description">Creá una sala privada e invitá a tu rival.</p><form id="entry-form"><label for="name">TU APODO</label><input id="name" name="name" placeholder="Caballero sin nombre" maxlength="16" autocomplete="nickname" required><fieldset class="class-picker"><legend>ELEGÍ TU GUERRERO</legend><div id="entry-classes" class="class-grid"></div></fieldset><button id="enter" class="primary" type="submit">Crear un duelo <span>↗</span></button></form><div id="status" class="status" role="status" aria-live="polite">Sin cuentas. Sin descargas. Solo el duelo.</div><button id="new-instead" class="text-btn" hidden>Crear otra sala</button></div></section>
-<section class="arena-section"><div class="arena-heading"><div><span class="live-dot"></span><span id="arena-label">EL PATIO DEL REY</span><span class="map-label">ARENA 01</span></div><span id="connection-label">ESPADA · ARCO · DASH</span></div>
+<section class="arena-section"><div class="arena-heading"><div><span class="live-dot"></span><span id="arena-label">EL PATIO DEL REY</span><span class="map-label">ARENA 01</span></div><span id="connection-label">ACERO · ARCO · MAGIA</span></div>
 <div id="hud" class="hud" hidden><div class="team blue"><span>◆ AZUR</span><b id="score-blue">0</b><small id="flag-blue">En base</small></div><div class="clock"><span id="timer">3:00</span><small>PRIMERO A 3</small></div><div class="team red"><small id="flag-red">En base</small><b id="score-red">0</b><span>CARMESÍ ✚</span></div></div>
 <div id="stage" class="stage"><div id="game"></div><div class="preview-tag" id="preview-tag">DOS ESTANDARTES. UN SOLO CAMINO A LA VICTORIA.</div>
 <div id="overlay" class="overlay" hidden><div class="overlay-card"><span id="overlay-kicker" class="tiny">SALA PRIVADA</span><h2 id="overlay-title">Esperando a tu rival</h2><p id="overlay-description"></p><div id="roster" class="roster"></div><fieldset id="room-picker" class="class-picker compact"><legend>TU CLASE · PODÉS CAMBIAR ANTES DE JUGAR</legend><div id="room-classes" class="class-grid"></div></fieldset><p id="selection-status" role="status" hidden></p><div id="invitation"><label for="invite">LINK DE INVITACIÓN</label><div class="invite-row"><input id="invite" readonly aria-label="Link de invitación"><button id="copy" class="secondary">Copiar</button></div></div><button id="ready" class="primary">Estoy listo <span>⚔</span></button><button id="leave" class="text-btn">Salir de la sala</button></div></div>
@@ -57,13 +57,14 @@ let displayedClass: ClassId | undefined;
 function showClassControls(id:ClassId) {
   if(displayedClass===id)return;
   displayedClass=id;
-  const archer=id==='archer',guardian=id==='guardian';
-  $('touch-dash').hidden=!archer;$('touch-guard').hidden=!guardian;
-  $('touch-sword').textContent=archer?'†':'⚔';
-  $('touch-sword').setAttribute('aria-label',archer?'Daga':id==='vanguard'?'Espada pesada':'Espada');
-  $('stick-aim').setAttribute('aria-label',archer?'Apuntar y soltar para disparar':'Apuntar');
-  $('cd-shot').hidden=!archer;$('cd-dash').hidden=!archer;$('cd-guard').hidden=!guardian;
-  $('control-guide').innerHTML=`<span><kbd>W A S D</kbd> Mover</span><span><kbd>CLIC</kbd> ${archer?'Flecha':'Espada'}</span>${id!=='vanguard'?`<span><kbd>CLIC DER.</kbd> ${archer?'Daga':'Mantener escudo'}</span>`:''}${archer?'<span><kbd>ESPACIO</kbd> Esquivar</span>':''}<span class="mobile-help">${archer?'Mové a la izquierda. Apuntá y soltá a la derecha para disparar. Botones de daga y dash.':guardian?'Mové y apuntá con las palancas. Golpeá con espada o mantené pulsado el escudo.':'Mové y apuntá con las palancas. El botón de espada prepara un golpe pesado.'}</span>`;
+  const stats=CLASSES[id],ranged=stats.ranged,guardian=id==='guardian',mage=id==='mage';
+  const projectile=mage?'Hechizo':'Flecha',melee=mage?'Báculo':'Daga';
+  $('touch-dash').hidden=!stats.dash;$('touch-guard').hidden=!stats.shield;
+  $('touch-sword').textContent=ranged?(mage?'✦':'†'):'⚔';
+  $('touch-sword').setAttribute('aria-label',ranged?melee:id==='vanguard'?'Espada pesada':'Espada');
+  $('stick-aim').setAttribute('aria-label',ranged?`Apuntar y soltar ${mage?'el hechizo':'para disparar'}`:'Apuntar');
+  $('cd-shot').hidden=!ranged;$('cd-dash').hidden=!stats.dash;$('cd-guard').hidden=!stats.shield;
+  $('control-guide').innerHTML=`<span><kbd>W A S D</kbd> Mover</span><span><kbd>CLIC</kbd> ${ranged?projectile:'Espada'}</span>${id!=='vanguard'?`<span><kbd>CLIC DER.</kbd> ${ranged?melee:'Mantener escudo'}</span>`:''}${stats.dash?'<span><kbd>ESPACIO</kbd> Esquivar</span>':''}<span class="mobile-help">${ranged?`Mové a la izquierda. Apuntá y soltá a la derecha para lanzar ${mage?'magia':'una flecha'}. Botones de ${melee.toLowerCase()} y dash.`:guardian?'Mové y apuntá con las palancas. Golpeá con espada o mantené pulsado el escudo.':'Mové y apuntá con las palancas. El botón de espada prepara un golpe pesado.'}</span>`;
 }
 showClassControls(selectedClass);
 function entryMode() {
@@ -265,7 +266,7 @@ function render(s: Snapshot) {
     $('health').setAttribute('aria-label',`Vida: ${me.hp} de ${me.maxHp}`);
     $('cd-guard').textContent=me.guarding?`⛨ Cubriendo ${me.guardLeft.toFixed(1)}s`:`⛨ ${me.guardCd>0?me.guardCd.toFixed(1)+'s':'Listo'}`;
     $('cd-sword').textContent = `⚔ ${me.swordCd > 0 ? me.swordCd.toFixed(1) + 's' : 'Lista'}`;
-    $('cd-shot').textContent = `➶ ${me.shotCd > 0 ? me.shotCd.toFixed(1) + 's' : 'Lista'}`;
+    $('cd-shot').textContent = `${me.classId==='mage'?'✦':'➶'} ${me.shotCd > 0 ? me.shotCd.toFixed(1) + 's' : 'Lista'}`;
     $('cd-dash').textContent = `➟ ${me.dashCd > 0 ? me.dashCd.toFixed(1) + 's' : 'Listo'}`;
   }
   $('arena-hint').textContent = s.flags.some((f) => f.carrier === me?.id)

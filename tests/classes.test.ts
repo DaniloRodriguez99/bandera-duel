@@ -33,7 +33,12 @@ describe('armas y permisos',()=>{
   it.each(['guardian','vanguard'] as ClassId[])('%s rechaza flechas y dash',id=>{
     const {d,p}=setup(id);const x=p.x;step(d,p,{shot:true,dash:true});expect(d.state.arrows).toHaveLength(0);expect(p.x).toBe(x);expect(p.dashCd).toBe(0);
   });
-  it.each(['archer','vanguard'] as ClassId[])('%s no puede cubrirse',id=>{const {d,p}=setup(id);step(d,p,{guard:true});expect(p.guarding).toBe(false);});
+  it.each(['archer','mage','vanguard'] as ClassId[])('%s no puede cubrirse',id=>{const {d,p}=setup(id);step(d,p,{guard:true});expect(p.guarding).toBe(false);});
+  it('el mago lanza magia, golpea con báculo y puede esquivar',()=>{
+    const {d,p,q}=setup('mage','vanguard');q.y=450;step(d,p,{shot:true});expect(d.state.arrows[0].classId).toBe('mage');
+    step(d,p,{},28);Object.assign(q,{x:p.x+33,y:p.y});step(d,p,{sword:true});step(d,p,{},5);expect(q.hp).toBeLessThan(5);
+    step(d,p,{},15);step(d,p,{dash:true});expect(p.dashCd).toBeGreaterThan(0);
+  });
   it('flechas rápidas alcanzan como máximo 672 unidades',()=>{
     const {d,p,q}=setup('archer');p.x=80;q.y=450;step(d,p,{shot:true});const arrow=d.state.arrows[0];expect(arrow.x-80).toBeCloseTo(560/30);
     step(d,p,{},35);expect(arrow.x-80).toBeCloseTo(672);step(d,p);expect(d.state.arrows).toHaveLength(0);
@@ -41,7 +46,7 @@ describe('armas y permisos',()=>{
   it('la espada pesada tampoco atraviesa paredes',()=>{const {d,p,q}=setup('vanguard');Object.assign(p,{x:480,y:150});Object.assign(q,{x:480,y:219});step(d,p,{sword:true,angle:Math.PI/2});step(d,p,{},12);expect(q.hp).toBe(3);});
 });
 describe('escudo',()=>{
-  it.each(['archer','guardian','vanguard'] as ClassId[])('bloquea el golpe frontal de %s y conserva bandera y posición',attacker=>{
+  it.each(CLASS_IDS)('bloquea el golpe frontal de %s y conserva bandera y posición',attacker=>{
     const {d,p,q}=setup('guardian',attacker);Object.assign(q,{x:445,y:270});Object.assign(d.state.flags[1],{status:'carried',carrier:p.id});
     d.step(new Map([[p.id,input({guard:true})],[q.id,input({sword:true,angle:Math.PI})]]));
     step(d,p,{guard:true},12);expect(p.hp).toBe(3);expect(p.x).toBe(420);expect(d.state.flags[1].carrier).toBe(p.id);expect(d.state.events.some(e=>e.kind==='block')).toBe(true);
