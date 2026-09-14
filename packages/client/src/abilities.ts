@@ -186,6 +186,16 @@ export function abilitySlots(classId: ClassId): AbilitySlot[] {
       max: RULES.magicShieldCooldown,
       detail: (p) => (p.magicShieldHits > 0 ? `${p.magicShieldHits}/${RULES.magicShieldHits}` : null),
     });
+  if (classId === 'mage')
+    slots.push({
+      id: 'ice',
+      key: 'CLIC 3',
+      name: 'Flecha de hielo',
+      icon: '❄',
+      cooldown: (p) => p.iceCd,
+      max: RULES.iceCooldown,
+      tiers: [{ label: 'Clic central · inmoviliza 0,5 s' }],
+    });
   if (stats.shield)
     slots.push({
       id: 'guard',

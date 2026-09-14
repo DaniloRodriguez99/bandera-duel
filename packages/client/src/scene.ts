@@ -1007,7 +1007,26 @@ export class Arena extends Phaser.Scene {
         this.drawWind(p, a.angle, time, a.volley !== undefined);
         continue;
       }
-      if (a.ice || a.element === 'ice') {
+      if (a.ice) {
+        const dx = Math.cos(a.angle), dy = Math.sin(a.angle);
+        const point = (along: number, across: number) => ({
+          x: p.x + dx * along - dy * across,
+          y: p.y + dy * along + dx * across,
+        });
+        const tail = point(-22, 0), tip = point(7, 0);
+        this.arrows.lineStyle(5, 0x66d8ff, .16);
+        this.arrows.lineBetween(tail.x, tail.y, p.x, p.y);
+        this.arrows.lineStyle(2, 0xb6efff);
+        const shaft = point(-15, 0);
+        this.arrows.lineBetween(shaft.x, shaft.y, p.x, p.y);
+        // Faceted crystal tip and swept-back ice fins, aligned with flight.
+        this.arrows.fillStyle(0x62c9ef);
+        this.arrows.fillPoints([tip, point(-2, -4), point(0, 0)], true);
+        this.arrows.fillStyle(0xe7fbff);
+        this.arrows.fillPoints([tip, point(0, 0), point(-2, 4)], true);
+        this.arrows.fillStyle(0x8edfff);
+        this.arrows.fillPoints([point(-9, 0), point(-17, -4), point(-15, 0), point(-17, 4)], true);
+      } else if (a.element === 'ice') {
         const dx = Math.cos(a.angle),
           dy = Math.sin(a.angle);
         this.arrows.lineStyle(4, 0x9fe8ff, 0.3);
