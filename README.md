@@ -37,7 +37,7 @@ El cliente deduce el servidor desde el hostname de la página si `VITE_SERVER_UR
 | Golpe secundario | Clic derecho | Botón de daga o báculo |
 | Dash    | Espacio        | Botón ➟                          |
 
-El arquero dispara flechas y usa una daga; el mago lanza hechizos y golpea con el báculo. Ambos pueden usar dash. La espada usa la última dirección apuntada. El dash usa el movimiento actual o el apuntado si estás quieto. El botón de sonido está en la cabecera; su elección se conserva en el dispositivo. El audio comienza después de una interacción del usuario.
+El arquero dispara flechas y usa una daga; el mago lanza hechizos y golpea con el báculo. Ambos pueden usar dash. El nigromante lanza fuego (clic izquierdo o palanca derecha) e invoca dos zombies con clic derecho o el botón ☠ cada 5 s. Los zombies son más lentos que cualquier clase, eligen solos al rival más cercano, se reparten si hay varios objetivos y rodean los muros; duran 20 s, hay como máximo seis por nigromante y cualquier ataque los destruye. Sus golpes cuentan como daño del nigromante: sueltan banderas y suman muertes. La espada usa la última dirección apuntada. El dash usa el movimiento actual o el apuntado si estás quieto. El botón de sonido está en la cabecera; su elección se conserva en el dispositivo. El audio comienza después de una interacción del usuario.
 
 - Robá la bandera enemiga al tocarla y volvé al círculo de tu base. **Tu bandera debe estar en casa para anotar.**
 - Llevarla reduce 15 % la velocidad normal; permite atacar y hacer dash.

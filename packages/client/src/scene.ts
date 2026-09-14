@@ -9,6 +9,7 @@ import {
   TEAM_NAMES,
   TEAM_ICONS,
   layout,
+  projectileStats,
   movePlayer,
   newPlayer,
   lineClear,
@@ -16,11 +17,12 @@ import {
   type Player,
   type Team,
   type Base,
+  type Zombie,
   type Input,
 } from '@bandera/shared';
 import { Controls } from './input.js';
 import { sound } from './audio.js';
-import { CLASS_ART, palette } from './art.js';
+import { CLASS_ART, ZOMBIE_ART, palette, zombiePalette } from './art.js';
 
 const GOLD = 0xf3ce86;
 const COLORS: Record<Team, number> = { blue: 0x73bbef, red: 0xee8b79, green: 0x86cf97, violet: 0xbf98ea };
@@ -50,6 +52,10 @@ export class Arena extends Phaser.Scene {
   private bases!: Phaser.GameObjects.Graphics;
   private baseLabels: Phaser.GameObjects.Text[] = [];
   private layoutKey = '';
+  private zombieVisuals = new Map<
+    string,
+    { body: Phaser.GameObjects.Sprite; hp: Phaser.GameObjects.Graphics; x: number; y: number }
+  >();
   private pending: Input[] = [];
   private seq = 0;
   private accumulator = 0;
@@ -91,6 +97,17 @@ export class Arena extends Phaser.Scene {
       for (const classId of CLASS_IDS) for(let frame=0;frame<2;frame++) {
         const data=CLASS_ART[classId].map((row,i)=>frame===1&&i>=13?row.slice(0,3)+row.slice(3,13).split('').reverse().join('')+row.slice(13):row);
         this.textures.generate(`${team}-${classId}-${frame}`, { data,pixelWidth:2,palette:palette(CLOTH[team],LIGHT[team]) as Phaser.Types.Create.Palette });
+      }
+    for (const team of TEAMS)
+      for (let frame = 0; frame < 2; frame++) {
+        const data = ZOMBIE_ART.map((row, i) =>
+          frame === 1 && i >= 11 ? row.slice(0, 3) + row.slice(3, 13).split('').reverse().join('') + row.slice(13) : row,
+        );
+        this.textures.generate(`${team}-zombie-${frame}`, {
+          data,
+          pixelWidth: 2,
+          palette: zombiePalette(CLOTH[team], LIGHT[team]) as Phaser.Types.Create.Palette,
+        });
       }
   }
   private drawBases(bases: Base[]) {
@@ -269,6 +286,16 @@ export class Arena extends Phaser.Scene {
           });
         }
       }
+      if (e.kind === 'summon') {
+        const smoke = this.add.circle(e.x, e.y, 12, 0x6a4c93, 0.4).setDepth(8);
+        this.tweens.add({
+          targets: smoke,
+          scale: 3.2,
+          alpha: 0,
+          duration: 520,
+          onComplete: () => smoke.destroy(),
+        });
+      }
       if (e.kind === 'capture') {
         const pulse = this.add
           .rectangle(480, 270, 960, 540, COLORS[e.team], 0.2)
@@ -368,6 +395,10 @@ export class Arena extends Phaser.Scene {
         w.lineStyle(2,GOLD);w.beginPath();w.arc(9,0,15,-Math.PI/2,Math.PI/2);w.strokePath();
         w.lineStyle(1,0xdad6bd);w.lineBetween(9,-15,9,15);
         if(p.windup>0){w.fillStyle(0xe3e5d5);w.fillRect(12,-2,14,3);}
+      } else if(p.classId==='necromancer') {
+        w.lineStyle(3,0x4a3a2b);w.lineBetween(6,4,28,-2);
+        w.fillStyle(0xe8e2c8);w.fillCircle(29,-3,4);w.fillStyle(0x26353b);w.fillRect(27,-4,1,1);w.fillRect(30,-4,1,1);
+        if(p.summonCd>RULES.summonCooldown-.4){w.lineStyle(2,0xa070e0,.7);w.strokeCircle(29,-3,9);}
       } else if(p.classId==='mage') {
         w.lineStyle(4,0x796452);w.lineBetween(8,0,30,0);
         w.fillStyle(0x8edcff);w.fillCircle(32,0,6);w.lineStyle(2,0xe8f7ff,.85);w.strokeCircle(32,0,7);
@@ -402,6 +433,41 @@ export class Arena extends Phaser.Scene {
       v.name.setText(p.eliminated ? `☠ ${p.name}` : `${p.name} · ${Math.ceil(p.respawnLeft)}`);
     }
   }
+  private drawZombie(z: Zombie, time: number, delta: number) {
+    let v = this.zombieVisuals.get(z.id);
+    if (!v) {
+      v = {
+        body: this.add.sprite(z.x, z.y, `${z.team}-zombie-0`).setOrigin(0.5, 0.7).setDepth(10),
+        hp: this.add.graphics().setDepth(13),
+        x: z.x,
+        y: z.y,
+      };
+      this.zombieVisuals.set(z.id, v);
+    }
+    const moving = Math.hypot(z.x - v.x, z.y - v.y) > 0.3;
+    const smooth = 1 - Math.exp(-delta / 55);
+    v.x += (z.x - v.x) * smooth;
+    v.y += (z.y - v.y) * smooth;
+    v.body
+      .setPosition(v.x, v.y + (moving ? Math.sin(time * 0.015) * 1.5 : 0))
+      .setTexture(`${z.team}-zombie-${moving ? Math.floor(time / 160) % 2 : 0}`)
+      .setFlipX(Math.cos(z.angle) < 0)
+      .setAngle(z.windup > 0 ? Math.sin(time * 0.05) * 8 : 0)
+      .setAlpha(Math.min(1, z.life / 1.5));
+    v.hp.clear();
+    for (let i = 0; i < RULES.zombieHp; i++) {
+      v.hp.fillStyle(0x1a282c);
+      v.hp.fillRect(v.x - 7 + i * 8, v.y - 25, 6, 2);
+      if (z.hp > i) {
+        v.hp.fillStyle(COLORS[z.team]);
+        v.hp.fillRect(v.x - 7 + i * 8, v.y - 25, 6, 2);
+      }
+    }
+    if (z.windup > 0) {
+      v.hp.lineStyle(1, 0x9bd17a, 0.5);
+      v.hp.strokeCircle(v.x, v.y, RULES.zombieRange);
+    }
+  }
   update(time: number, delta: number) {
     if (!this.controls || !this.snapshot) return;
     const s = this.snapshot;
@@ -430,6 +496,13 @@ export class Arena extends Phaser.Scene {
         time,
         delta,
       );
+    for (const z of s.zombies) this.drawZombie(z, time, delta);
+    for (const [id, v] of this.zombieVisuals) {
+      if (s.zombies.some((z) => z.id === id)) continue;
+      v.body.destroy();
+      v.hp.destroy();
+      this.zombieVisuals.delete(id);
+    }
     const flags = s.flags.map((f) => {
       const carrier = f.carrier ? this.visuals.get(f.carrier) : undefined;
       return carrier ? { ...f, x: carrier.x, y: carrier.y } : f;
@@ -439,11 +512,16 @@ export class Arena extends Phaser.Scene {
     for (const a of s.arrows) {
       const age = s.paused ? 0 : Math.min((performance.now() - this.receivedAt) / 1000, 1 / 15);
       const next = {
-        x: a.x + Math.cos(a.angle) * RULES.arrowSpeed * age,
-        y: a.y + Math.sin(a.angle) * RULES.arrowSpeed * age,
+        x: a.x + Math.cos(a.angle) * projectileStats(a.classId).speed * age,
+        y: a.y + Math.sin(a.angle) * projectileStats(a.classId).speed * age,
       };
       const p = lineClear(a, next) ? next : a;
-      if(a.classId==='mage') {
+      if(a.classId==='necromancer') {
+        this.arrows.lineStyle(6,0xff7a2f,.25);
+        this.arrows.lineBetween(p.x-Math.cos(a.angle)*18,p.y-Math.sin(a.angle)*18,p.x,p.y);
+        this.arrows.fillStyle(0xff9a3c,.5);this.arrows.fillCircle(p.x,p.y,8);
+        this.arrows.fillStyle(0xffe08a);this.arrows.fillCircle(p.x,p.y,4);
+      } else if(a.classId==='mage') {
         this.arrows.lineStyle(5,0x78cfff,.22);
         this.arrows.lineBetween(p.x-Math.cos(a.angle)*16,p.y-Math.sin(a.angle)*16,p.x,p.y);
         this.arrows.fillStyle(0x8edcff,.45);this.arrows.fillCircle(p.x,p.y,7);
