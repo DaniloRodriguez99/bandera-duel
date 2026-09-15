@@ -30,8 +30,11 @@ describe('armas y permisos',()=>{
     step(d,p,{},Math.ceil(CLASSES[id].windup/RULES.tick)+1);expect(q.hp).toBe(5-CLASSES[id].meleeDamage);
     const fresh=setup(id,'vanguard');fresh.q.x=fresh.p.x+CLASSES[id].meleeRange+1;step(fresh.d,fresh.p,{sword:true});step(fresh.d,fresh.p,{},12);expect(fresh.q.hp).toBe(5);
   });
-  it.each(['guardian','vanguard'] as ClassId[])('%s rechaza flechas y dash',id=>{
+  it.each(['vanguard'] as ClassId[])('%s rechaza flechas y dash',id=>{
     const {d,p}=setup(id);const x=p.x;step(d,p,{shot:true,dash:true});expect(d.state.arrows).toHaveLength(0);expect(p.x).toBe(x);expect(p.dashCd).toBe(0);
+  });
+  it('guardian rechaza flechas pero esquiva con espacio',()=>{
+    const {d,p}=setup('guardian');step(d,p,{shot:true,dash:true});expect(d.state.arrows).toHaveLength(0);expect(p.dashCd).toBeGreaterThan(0);
   });
   it.each(['archer','mage','necromancer','vanguard'] as ClassId[])('%s no puede cubrirse',id=>{const {d,p}=setup(id);step(d,p,{guard:true});expect(p.guarding).toBe(false);});
   it('el mago lanza fuego, rechaza báculo y puede esquivar',()=>{

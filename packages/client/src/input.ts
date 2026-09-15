@@ -12,6 +12,7 @@ export class Controls {
   private chargeSources = new Set<string>();
   private specialSources = new Set<string>();
   private guardSources = new Set<string>();
+  private counterSources = new Set<string>();
   configure(classId: ClassId) {
     if (this.classId !== classId) { this.clear(); this.classId = classId; }
   }
@@ -60,6 +61,7 @@ export class Controls {
         e.preventDefault();
         if (!e.repeat) this.actions[e.metaKey || e.ctrlKey ? 'mark' : 'command'] = true;
       }
+      if (e.code === 'KeyQ' && this.classId === 'guardian') this.counterSources.add('key');
       if (!e.repeat && this.classId === 'archer') {
         if (e.code === 'KeyQ') this.actions.trap = true;
         if (e.code === 'KeyE') {
@@ -73,6 +75,7 @@ export class Controls {
     window.addEventListener('keyup', (e) => {
       this.keys.delete(e.code);
       if (e.code === 'Space') this.releaseSpecial('key');
+      if (e.code === 'KeyQ') this.counterSources.delete('key');
     });
     window.addEventListener('pointerup', e => { if (e.button === 2) this.secondary(false); if(e.button === 0) this.releasePrimary(); });
     window.addEventListener('pointercancel', () => this.clear());
@@ -175,13 +178,14 @@ export class Controls {
       (this.keys.has('KeyS') || this.keys.has('ArrowDown') ? 1 : 0) -
       (this.keys.has('KeyW') || this.keys.has('ArrowUp') ? 1 : 0);
     const n = Math.max(1, Math.hypot(x, y));
-    const result = { seq, x: x / n, y: y / n, angle: this.angle, ...this.actions, charge: this.chargeSources.size > 0, special: this.specialSources.size > 0, guard: this.guardSources.size > 0, aimX: this.aimX, aimY: this.aimY };
+    const result = { seq, x: x / n, y: y / n, angle: this.angle, ...this.actions, charge: this.chargeSources.size > 0, special: this.specialSources.size > 0, guard: this.guardSources.size > 0, counter: this.counterSources.size > 0, aimX: this.aimX, aimY: this.aimY };
     this.actions = { sword: false, shot: false, dash: false, summon: false, trap: false, volley: false, command: false, mark: false, ice: false };
     return result;
   }
   clear() {
     this.keys.clear();
     this.guardSources.clear();
+    this.counterSources.clear();
     this.chargeSources.clear();
     this.specialSources.clear();
     this.move = { x: 0, y: 0 };

@@ -71,7 +71,7 @@ export const CLASSES = {
     meleeCooldown: 0.6,
     ranged: false,
     shield: true,
-    dash: false,
+    dash: true,
     melee: true,
     summon: false,
   },
@@ -139,6 +139,12 @@ export const RULES = {
   guardRecovery: 0.15,
   guardSpeed: 0.25,
   guardArc: (Math.PI * 2) / 3,
+  counterWindow: 0.45,
+  counterMaxHold: 2.5,
+  counterChargeTime: 1,
+  counterCooldown: 4,
+  counterBoost: 2,
+  counterSpeed: 0.5,
   attackLock: 0.2,
   dashDuration: 0.15,
   dashCooldown: 1.5,
@@ -264,6 +270,8 @@ export interface Input {
   trap: boolean;
   volley: boolean;
   special: boolean;
+  /** Q held by the knight: full counter. */
+  counter: boolean;
   /** E: toggles automatic zombies (no guard circle, no cursor squad). */
   command: boolean;
   /** ⌘E / Ctrl+E: moves the zombie under the cursor between the guard circle and the cursor. */
@@ -288,6 +296,7 @@ export const idleInput = (seq = 0, angle = 0): Input => ({
   trap: false,
   volley: false,
   special: false,
+  counter: false,
   command: false,
   mark: false,
   aimX: -1,
@@ -327,6 +336,7 @@ export function sanitizeInput(raw: unknown): Input | null {
     trap: r.trap === true,
     volley: r.volley === true,
     special: r.special === true,
+    counter: r.counter === true,
     command: r.command === true,
     mark: r.mark === true,
     aimX: aimCoordinate(r.aimX, RULES.width),
@@ -380,6 +390,11 @@ export interface Player extends Vec {
   stunLeft: number;
   /** Seconds left of a fully charged archer dash: shot or volley released now become the dash combo. */
   windDash: number;
+  /** Knight's full counter: seconds it stays up, seconds held (charge), cooldown, Q still held. */
+  counterLeft: number;
+  counterCharge: number;
+  counterCd: number;
+  counterHeld: boolean;
   activeTraps: number;
   specialCharge: number;
   swingPower: number;
@@ -418,6 +433,8 @@ export interface Arrow extends Vec {
   hits?: string[];
   /** Arrows of one volley share this id. */
   volley?: number;
+  /** Sent back by a knight's counter: 1 normal, 2 charged (double speed and damage). */
+  reflected?: number;
   id: number;
   owner: string;
   team: Team;
@@ -476,7 +493,8 @@ export interface GameEvent extends Vec {
     | 'cast'
     | 'explosion'
     | 'wind'
-    | 'mandala';
+    | 'mandala'
+    | 'counter';
   team: Team;
   angle?: number;
   classId?: ClassId;
@@ -716,6 +734,7 @@ export function movePlayer(p: Player, input: Input, carrying: boolean, dt = RULE
     'magicShieldCd',
     'thrallCd',
     'windDash',
+    'counterCd',
   ] as const)
     p[key] = Math.max(0, p[key] - dt);
   if (p.stunLeft > 0) {
@@ -794,6 +813,28 @@ export function movePlayer(p: Player, input: Input, carrying: boolean, dt = RULE
     p.magicShieldCd = 0;
   }
   p.guardHeld = input.guard;
+  // Knight's full counter (Q): held it stays up and charges; released it lingers a moment, then cools
+  // down. Holding past the maximum ends it too, and Q must be released before the next one.
+  if (p.classId === 'guardian') {
+    const holding =
+      input.counter &&
+      p.counterCd <= 0 &&
+      p.counterCharge < RULES.counterMaxHold &&
+      (p.counterLeft > 0 || !p.counterHeld);
+    if (holding) {
+      p.counterCharge = Math.min(RULES.counterMaxHold, p.counterCharge + dt);
+      p.counterLeft = RULES.counterWindow;
+      lowerGuard(p);
+    } else if (p.counterLeft > 0) {
+      p.counterLeft = Math.max(0, p.counterLeft - dt);
+      if (p.counterLeft <= 1e-8) {
+        p.counterLeft = 0;
+        p.counterCharge = 0;
+        p.counterCd = RULES.counterCooldown;
+      }
+    }
+    p.counterHeld = input.counter;
+  }
   // Space charges while held; the release pulse (dash or summon) spends the charge.
   const specialReady = (stats.dash && p.dashCd <= 0) || (stats.summon && p.summonCd <= 0);
   if (specialReady && input.special && !input.dash && !input.summon)
@@ -820,7 +861,11 @@ export function movePlayer(p: Player, input: Input, carrying: boolean, dt = RULE
   if (dashDt > 0)
     translate(p, p.dashX * RULES.dashSpeed * dashDt, p.dashY * RULES.dashSpeed * dashDt);
   p.dashLeft = Math.max(0, p.dashLeft - dt);
-  const speed = stats.speed * (carrying ? RULES.carryMultiplier : 1) * (p.guarding ? RULES.guardSpeed : 1);
+  const speed =
+    stats.speed *
+    (carrying ? RULES.carryMultiplier : 1) *
+    (p.guarding ? RULES.guardSpeed : 1) *
+    (p.counterLeft > 0 ? RULES.counterSpeed : 1);
   translate(p, input.x * speed * Math.max(0, dt - dashDt - frozenDt), input.y * speed * Math.max(0, dt - dashDt - frozenDt));
   if (wasWinding) {
     p.windup = Math.max(0, p.windup - dt);
@@ -954,6 +999,10 @@ export function newPlayer(
     volleyCd: 0,
     stunLeft: 0,
     windDash: 0,
+    counterLeft: 0,
+    counterCharge: 0,
+    counterCd: 0,
+    counterHeld: false,
     activeTraps: 0,
     specialCharge: 0,
     swingPower: 0,
@@ -1837,14 +1886,15 @@ export class Duel {
       const travelTime = Math.min(dt, a.life);
       if (travelTime <= 1e-8) return false;
       a.life = Math.max(0, a.life - dt);
-      const owner = s.players.find((p) => p.id === a.owner);
+      let owner = s.players.find((p) => p.id === a.owner);
       if (!owner) return false;
       const stats = projectileStats(a.classId, a.charged, a.power);
-      const amount = stats.damage * (a.damageScale ?? 1);
-      const steps = Math.max(1, Math.ceil((stats.speed * travelTime) / 5));
+      const speed = stats.speed * (a.reflected === 2 ? RULES.counterBoost : 1);
+      let amount = stats.damage * (a.damageScale ?? 1);
+      const steps = Math.max(1, Math.ceil((speed * travelTime) / 5));
       for (let i = 0; i < steps; i++) {
-        a.x += (Math.cos(a.angle) * stats.speed * travelTime) / steps;
-        a.y += (Math.sin(a.angle) * stats.speed * travelTime) / steps;
+        a.x += (Math.cos(a.angle) * speed * travelTime) / steps;
+        a.y += (Math.sin(a.angle) * speed * travelTime) / steps;
         if (blocked(a.x, a.y, 3)) {
           this.explode(a, owner, amount);
           return false;
@@ -1856,6 +1906,24 @@ export class Duel {
             distance(p, a) < RULES.radius + stats.radius &&
             !a.hits?.includes(p.id),
         );
+        if (target && target.counterLeft > 0) {
+          // Full counter: the projectile flies back as the knight's; charged, twice as fast and hard.
+          const boosted = target.counterCharge >= RULES.counterChargeTime - 1e-8;
+          owner = target;
+          a.owner = target.id;
+          a.team = target.team;
+          a.angle += Math.PI;
+          a.reflected = boosted ? 2 : 1;
+          if (boosted) {
+            a.damageScale = (a.damageScale ?? 1) * RULES.counterBoost;
+            amount *= RULES.counterBoost;
+          }
+          a.life = stats.life;
+          if (a.hits) a.hits = [];
+          a.volley = undefined;
+          this.event('counter', target, target.team, a.angle, target.classId, boosted ? 1 : 0);
+          continue;
+        }
         if (target && this.volleyPasses(a, target.id)) continue;
         if (target && a.wind) {
           // Wind pierces and breaks shields; the arrows of a wind volley all land on the same rival.

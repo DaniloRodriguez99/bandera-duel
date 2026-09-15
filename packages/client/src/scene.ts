@@ -372,6 +372,8 @@ export class Arena extends Phaser.Scene {
     } else if (e.kind === 'raise') {
       this.fade(this.add.rectangle(e.x, e.y - 40, 22, 96, 0x7dffb0, 0.4).setDepth(16), { scaleX: 0 }, 760);
       this.fade(this.add.ellipse(e.x, e.y + 8, 30, 12).setStrokeStyle(2, 0x7dffb0, 0.9).setDepth(4), { scale: 3 }, 760);
+    } else if (e.kind === 'counter') {
+      this.fade(this.add.star(e.x, e.y - 4, 8, 6, 20, e.power ? 0xff9a3c : 0xffd36b, 0.9).setDepth(16), { scale: 2, angle: 60 }, 380);
     } else if (e.kind === 'wind') {
       this.fade(this.add.ellipse(e.x, e.y + 6, 30, 12).setStrokeStyle(2, 0xd8fbff, 0.9).setDepth(16), { scale: 3.2 }, 420);
       for (const side of [-1, 1]) {
@@ -670,6 +672,27 @@ export class Arena extends Phaser.Scene {
       v.hp.fillStyle(0x78cfff,.10);v.hp.fillCircle(v.x,v.y-3,25);
       v.hp.lineStyle(2,0x9deaff,.8);v.hp.strokeCircle(v.x,v.y-3,25);
       if(p.magicShieldHits===2){v.hp.lineStyle(1,0xe6faff,.55);v.hp.strokeCircle(v.x,v.y-3,29);}
+    }
+    if (p.hp > 0 && p.counterLeft > 0) {
+      // Knight's full counter: a spinning golden ward; once charged it spins faster and burns orange.
+      const charged = p.counterCharge >= RULES.counterChargeTime - 1e-8;
+      const now = this.time.now;
+      v.hp.lineStyle(2, charged ? 0xff9a3c : 0xffd36b, 0.9);
+      for (let i = 0; i < 6; i++) {
+        const from = now * (charged ? 0.012 : 0.006) + (i * Math.PI) / 3;
+        v.hp.beginPath();
+        v.hp.arc(v.x, v.y - 3, 24, from, from + 0.6);
+        v.hp.strokePath();
+      }
+      if (charged) {
+        v.hp.lineStyle(1, 0xffe7b1, 0.75);
+        v.hp.strokeCircle(v.x, v.y - 3, 29 + Math.sin(now * 0.02) * 2);
+      } else {
+        v.hp.lineStyle(2, 0xfff3c4, 0.6);
+        v.hp.beginPath();
+        v.hp.arc(v.x, v.y - 3, 29, -Math.PI / 2, -Math.PI / 2 + Math.min(1, p.counterCharge / RULES.counterChargeTime) * Math.PI * 2);
+        v.hp.strokePath();
+      }
     }
     if (p.hp > 0) {
       const left=v.x-(p.maxHp*8-2)/2;
@@ -998,11 +1021,16 @@ export class Arena extends Phaser.Scene {
     for (const a of s.arrows) {
       const age = s.paused ? 0 : Math.min((performance.now() - this.receivedAt) / 1000, 1 / 15);
       const next = {
-        x: a.x + Math.cos(a.angle) * projectileStats(a.classId, a.charged, a.power).speed * age,
-        y: a.y + Math.sin(a.angle) * projectileStats(a.classId, a.charged, a.power).speed * age,
+        x: a.x + Math.cos(a.angle) * projectileStats(a.classId, a.charged, a.power).speed * (a.reflected === 2 ? RULES.counterBoost : 1) * age,
+        y: a.y + Math.sin(a.angle) * projectileStats(a.classId, a.charged, a.power).speed * (a.reflected === 2 ? RULES.counterBoost : 1) * age,
       };
       const p = lineClear(a, next) ? next : a;
       const grow = 1 + (a.power ?? 0);
+      if (a.reflected) {
+        // Countered projectile: a golden halo, bigger when the counter was charged.
+        this.arrows.fillStyle(0xffd36b, 0.18 + 0.1 * a.reflected);
+        this.arrows.fillCircle(p.x, p.y, 7 + 5 * a.reflected);
+      }
       if (a.wind) {
         this.drawWind(p, a.angle, time, a.volley !== undefined);
         continue;
