@@ -16,6 +16,7 @@ import {
   chargePower,
   distance,
   movePlayer,
+  movementInput,
   resolveSlotInput,
   newPlayer,
   lineClear,
@@ -377,12 +378,14 @@ export class Arena extends Phaser.Scene {
       this.seq = Math.max(this.seq, own.ack);
       this.pending = this.pending.filter((i) => i.seq > own.ack);
       if (snapshot.phase !== this.phase || snapshot.paused || own.hp <= 0) this.pending = [];
+      if (snapshot.phase !== this.phase && (snapshot.phase === 'rewards' || this.phase === 'rewards'))
+        this.controls.clearCombat();
       this.predicted = { ...own };
-      if (snapshot.phase === 'playing' && !snapshot.paused)
+      if ((snapshot.phase === 'playing' || snapshot.phase === 'rewards') && !snapshot.paused)
         for (const input of this.pending)
           movePlayer(
             this.predicted,
-            resolveSlotInput(this.predicted,input),
+            snapshot.phase === 'rewards' ? movementInput(input) : resolveSlotInput(this.predicted,input),
             snapshot.flags.some((f) => f.carrier === id),
             RULES.tick,
             MAPS[snapshot.mapId].walls,
@@ -390,7 +393,7 @@ export class Arena extends Phaser.Scene {
     }
     this.phase = snapshot.phase;
     this.controls.enabled =
-      snapshot.phase === 'playing' && !snapshot.paused && !!own?.hp && own.stunLeft <= 0;
+      (snapshot.phase === 'playing' || snapshot.phase === 'rewards') && !snapshot.paused && !!own?.hp && own.stunLeft <= 0;
     if (!this.controls.enabled) this.controls.clear();
     if (first) this.lastEvent = snapshot.events.at(-1)?.id ?? 0;
     for (const e of snapshot.events) {
@@ -1622,7 +1625,8 @@ export class Arena extends Phaser.Scene {
         continue;
       }
       if (this.controls.enabled) {
-        const input = this.controls.read(++this.seq);
+        const rawInput = this.controls.read(++this.seq);
+        const input = s.phase === 'rewards' ? movementInput(rawInput) : rawInput;
         this.send(input);
         this.pending.push(input);
         if (this.pending.length > 90) this.pending.shift();
@@ -1854,7 +1858,7 @@ export class Arena extends Phaser.Scene {
       }
     }
     this.aim.clear();
-    if (this.controls.enabled && this.predicted) {
+    if (this.controls.enabled && this.predicted && s.phase === 'playing') {
       const p = this.predicted,
         a = this.controls.angle;
       const targeting = this.controls.targetingAbility;

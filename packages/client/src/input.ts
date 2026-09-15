@@ -364,6 +364,26 @@ export class Controls {
     return result;
   }
 
+  clearCombat() {
+    this.guardSources.clear();
+    this.counterSources.clear();
+    this.chargeSources.clear();
+    this.specialSources.clear();
+    this.physical.clear();
+    this.slotPressed.clear();
+    this.slotReleased.clear();
+    this.guardPulse = false;
+    this.directionalDashPulse = false;
+    this.actions = emptyActions();
+    this.gestures.clear();
+    document.querySelectorAll<HTMLElement>('[data-touch-ability]').forEach((element) => {
+      element.dataset.aiming = 'false';
+      element.dataset.cancel = 'false';
+      element.style.setProperty('--aim-x', '0px');
+      element.style.setProperty('--aim-y', '0px');
+    });
+  }
+
   clear() {
     this.keys.clear();
     this.guardSources.clear();

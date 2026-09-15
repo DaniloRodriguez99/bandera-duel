@@ -4,6 +4,7 @@ packages/*/dist
 .git
 .env
 .env.local
+gha-creds-*.json
 *.log
 test-results
 playwright-report

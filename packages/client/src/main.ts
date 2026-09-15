@@ -519,7 +519,9 @@ function render(s: Snapshot) {
   $('pve-hud').hidden=!pve;
   $('boss-hud').hidden=!pve?.bossActive;
   if(pve){
-    $('pve-wave').textContent=`OLEADA ${pve.wave}${pve.endless?' · INFINITO':''}`;
+    $('pve-wave').textContent = s.phase === 'rewards'
+      ? `DESCANSO · OLEADA ${pve.wave + 1} EN ${Math.ceil(pve.rewardLeft)} s`
+      : `OLEADA ${pve.wave}${pve.endless?' · INFINITO':''}`;
     $('pve-enemies').textContent=`${pve.enemiesRemaining} enemigo${pve.enemiesRemaining===1?'':'s'}`;
     $('pve-alive').textContent=`${s.players.filter(p=>p.hp>0).length}/${s.participants.length} vivos`;
     const boss=s.mobs.find(m=>m.boss);$<HTMLElement>('boss-health').style.width=boss?`${Math.max(0,boss.hp/boss.maxHp)*100}%`:'0%';
@@ -529,7 +531,7 @@ function render(s: Snapshot) {
   const overlay = s.phase === 'lobby' || s.phase === 'finished';
   if(s.phase!=='rewards'&&currentOffer)$('pve-rewards').hidden=true;
   $('overlay').hidden = !overlay;
-  $('touch-controls').classList.toggle('active', !!me && s.phase === 'playing' && !s.paused);
+  $('touch-controls').classList.toggle('active', !!me && (s.phase === 'playing' || s.phase === 'rewards') && !s.paused);
   $('cooldowns').hidden = !me || s.phase !== 'playing';
   $('abilities').hidden = !me || s.phase !== 'playing';
   $('room-picker').hidden = !me || !overlay;
@@ -703,14 +705,14 @@ function render(s: Snapshot) {
   if(me?.stunLeft) $('arena-hint').textContent = `Aturdido · ${me.stunLeft.toFixed(1)} s`;
   if(pve&&s.phase==='finished'){$('overlay-title').textContent=s.reason==='pveVictory'?'¡La cripta ha caído!':'La expedición terminó';$('overlay-description').textContent=`Oleada ${pve.wave} · ${Object.values(pve.kills).reduce((a,b)=>a+b,0)} enemigos eliminados.`;}
   const announce = $('announcement');
-  announce.hidden = overlay || !(s.paused || s.phase === 'countdown' || s.phase === 'capture');
+  announce.hidden = overlay || !(s.paused || s.phase === 'countdown' || s.phase === 'capture' || s.phase === 'rewards');
   if (s.paused) {
     announce.hidden = false;
     announce.textContent = `Rival desconectado · ${Math.ceil(s.reconnectLeft)} s para volver`;
   } else if (s.phase === 'countdown')
     announce.textContent = String(Math.max(1, Math.ceil(s.phaseLeft)));
   else if (s.phase === 'capture') announce.textContent = '¡BANDERA CAPTURADA!';
-  else if(s.phase==='rewards')announce.textContent=`Elegí una recompensa · ${Math.ceil(s.pve?.rewardLeft??0)} s`;
+  else if(s.phase==='rewards')announce.textContent=`SIGUIENTE OLEADA EN ${Math.ceil(s.pve?.rewardLeft??0)}`;
 }
 setInterval(() => {
   if (room && online) room.send('ping', performance.now());

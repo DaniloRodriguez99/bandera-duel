@@ -2,6 +2,7 @@ node_modules/
 dist/
 .env
 .env.local
+gha-creds-*.json
 *.log
 test-results/
 playwright-report/

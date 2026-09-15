@@ -1,0 +1,53 @@
+name: Deploy Cloud Run
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - Dockerfile
+      - package.json
+      - package-lock.json
+      - tsconfig.base.json
+      - packages/server/**
+      - packages/shared/**
+      - .github/workflows/deploy-cloud-run.yml
+  workflow_dispatch:
+
+concurrency:
+  group: cloud-run-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Deploy server
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3
+        with:
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Deploy to Cloud Run
+        id: deploy
+        uses: google-github-actions/deploy-cloudrun@v3
+        with:
+          service: ${{ vars.CLOUD_RUN_SERVICE }}
+          region: ${{ vars.GCP_REGION }}
+          source: .
+          env_vars: |
+            NODE_ENV=production
+            ALLOWED_ORIGINS=${{ vars.ALLOWED_ORIGINS }}
+
+      - name: Health check
+        run: curl --fail --silent --show-error "${{ steps.deploy.outputs.url }}/health"

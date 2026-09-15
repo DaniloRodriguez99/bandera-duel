@@ -549,6 +549,14 @@ export const idleInput = (seq = 0, angle = 0): Input => ({
   aimY: -1,
   slots: idleSlots(),
 });
+/** During PvE rewards only movement and facing are authoritative; every combat action is discarded. */
+export const movementInput = (input: Input): Input => ({
+  ...idleInput(input.seq, input.angle),
+  x: input.x,
+  y: input.y,
+  aimX: input.aimX,
+  aimY: input.aimY,
+});
 /** A world point under the cursor; -1 means the client did not provide one. */
 const aimCoordinate = (value: unknown, max: number) =>
   typeof value === 'number' && Number.isFinite(value) && value >= 0 ? Math.min(max, value) : -1;
@@ -3192,6 +3200,11 @@ export class Duel {
   private pveOfferRewards() {
     const s=this.state,pve=s.pve;if(!pve)return;
     s.phase='rewards'; pve.rewardLeft=10; pve.chosen=[]; this.pveOffers.clear();
+    for (const p of s.players) {
+      p.windup = 0; p.dashLeft = 0; p.dashInvulnerable = false; p.shotCharge = 0;
+      p.specialCharge = 0; p.trapLeft = 0; p.raiseCast = 0; p.counterLeft = 0;
+      lowerGuard(p);
+    }
     const alive=s.players.filter(p=>p.hp>0&&!p.eliminated), dead=s.players.filter(p=>p.eliminated);
     const forced=dead.length&&alive.length?alive[Math.floor(Math.random()*alive.length)]?.id:undefined;
     const targets=dead.map(p=>({id:p.id,name:p.name}));
@@ -3278,7 +3291,16 @@ export class Duel {
     s.tick++;
     if (s.paused || s.phase === 'lobby' || s.phase === 'finished') return;
     if (s.phase === 'rewards') {
-      if(s.pve){s.pve.rewardLeft=Math.max(0,s.pve.rewardLeft-dt);if(s.pve.rewardLeft<=0)this.beginPveWave(s.pve.wave+1);}
+      for (const p of s.players) {
+        if (p.hp <= 0 || p.eliminated || !p.connected) continue;
+        const input = movementInput(inputs.get(p.id) ?? idleInput(p.ack, p.angle));
+        p.ack = Math.max(p.ack, input.seq);
+        p.revealLeft = Math.max(0, p.revealLeft - dt);
+        movePlayer(p, input, false, dt, this.map.walls);
+        p.bushId = pointBush(this.map, p);
+      }
+      if(s.pve){s.pve.rewardLeft=Math.max(0,s.pve.rewardLeft-dt);if(s.pve.rewardLeft<=1e-8)this.beginPveWave(s.pve.wave+1);}
+      this.syncParticipants();
       return;
     }
     if (s.phase === 'countdown' || s.phase === 'capture') {

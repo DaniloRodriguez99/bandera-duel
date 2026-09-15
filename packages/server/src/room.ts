@@ -128,7 +128,7 @@ export class DuelRoom extends Room {
       if (!input || input.seq <= (this.seen.get(client.sessionId) ?? -1)) return;
       this.seen.set(client.sessionId, input.seq);
       if (this.isHumanInput(client.sessionId, input)) this.touchActivity();
-      if (this.game.state.phase !== 'playing' || this.game.state.paused) return;
+      if (!(this.game.state.phase === 'playing' || (this.game.state.mode === 'pve' && this.game.state.phase === 'rewards')) || this.game.state.paused) return;
       const queue = this.queues.get(client.sessionId) || [];
       if (queue.length < 6) queue.push(input);
       this.queues.set(client.sessionId, queue);
@@ -189,7 +189,7 @@ export class DuelRoom extends Room {
         ? Math.max(0, (Math.min(...this.drops.values()) - Date.now()) / 1000)
         : 0;
       for (const p of s.players) {
-        if (s.phase !== 'playing' || s.paused) {
+        if (!(s.phase === 'playing' || (s.mode === 'pve' && s.phase === 'rewards')) || s.paused) {
           this.queues.set(p.id, []);
           this.last.delete(p.id);
           continue;
