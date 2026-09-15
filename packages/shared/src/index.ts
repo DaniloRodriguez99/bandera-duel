@@ -134,7 +134,7 @@ export const RULES = {
   magicShieldHits: 2,
   magicShieldCooldown: 5,
   iceCooldown: .5,
-  freezeDuration: .5,
+  freezeDuration: 1,
   guardCooldown: 1.5,
   guardRecovery: 0.15,
   guardSpeed: 0.25,
@@ -873,6 +873,7 @@ export function movePlayer(p: Player, input: Input, carrying: boolean, dt = RULE
       p.iceCd = RULES.iceCooldown;
       p.attackLock = RULES.attackLock;
       result.ice = true;
+      result.angle = p.angle;
     } else if (input.shot && stats.ranged && p.shotCd <= 0) {
       p.invuln = 0;
       p.shotCd = projectileStats(p.classId).cooldown;

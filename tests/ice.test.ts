@@ -6,13 +6,22 @@ function setup() {
   d.state.phase='playing';Object.assign(mage,{x:400,y:270});Object.assign(target,{x:460,y:270});
   return {d,mage,target};
 }
-it('el hielo impacta sin daño y bloquea movimiento y dash durante exactamente medio segundo',()=>{
+it.each([Math.PI/2, Math.PI, -Math.PI/2, Math.PI/4])('hielo y fuego salen hacia el mismo ángulo: %s', angle => {
+  const ice=setup(),fire=setup();
+  ice.target.y=450;fire.target.y=450;
+  ice.d.step(new Map([[ice.mage.id,{...idleInput(),angle,ice:true}]]));
+  fire.d.step(new Map([[fire.mage.id,{...idleInput(),angle,shot:true}]]));
+  expect(ice.d.state.arrows[0].angle).toBeCloseTo(angle);
+  expect(ice.d.state.arrows[0].x).toBeCloseTo(fire.d.state.arrows[0].x);
+  expect(ice.d.state.arrows[0].y).toBeCloseTo(fire.d.state.arrows[0].y);
+});
+it('el hielo impacta sin daño y bloquea movimiento y dash durante exactamente un segundo',()=>{
   const {d,mage,target}=setup();
   d.step(new Map([[mage.id,{...idleInput(),ice:true}]]));
   for(let i=0;i<4 && !target.frozenLeft;i++)d.step(new Map());
-  expect(target.frozenLeft).toBe(.5);expect(target.hp).toBe(3);
+  expect(target.frozenLeft).toBe(1);expect(target.hp).toBe(3);
   const x=target.x;
-  for(let i=0;i<15;i++) movePlayer(target,{...idleInput(),x:1,dash:true},false);
+  for(let i=0;i<30;i++) movePlayer(target,{...idleInput(),x:1,dash:true},false);
   expect(target.x).toBeCloseTo(x);expect(target.dashCd).toBe(0);
   movePlayer(target,{...idleInput(),x:1},false);
   expect(target.x-x).toBeCloseTo(190/30);

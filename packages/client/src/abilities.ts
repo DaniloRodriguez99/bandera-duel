@@ -194,7 +194,7 @@ export function abilitySlots(classId: ClassId): AbilitySlot[] {
       icon: '❄',
       cooldown: (p) => p.iceCd,
       max: RULES.iceCooldown,
-      tiers: [{ label: 'Clic central · inmoviliza 0,5 s' }],
+      tiers: [{ label: 'Clic central · inmoviliza 1 s' }],
     });
   if (stats.shield)
     slots.push({

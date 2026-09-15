@@ -28,7 +28,7 @@ El cliente deduce el servidor desde el hostname de la página si `VITE_SERVER_UR
 
 ## Controles y reglas
 
-El mago también lanza un proyectil de hielo con clic central (presionar la rueda, botón 3) o el botón táctil ❄. Inmoviliza al objetivo durante 0,5 segundos, sin daño adicional, y tiene 0,5 segundos de recarga independiente del fuego. Bloquea caminar y dash, pero permite apuntar y atacar. Los escudos y la invulnerabilidad bloquean el efecto.
+El mago también lanza un proyectil de hielo con clic central (presionar la rueda, botón 3) o el botón táctil ❄. Inmoviliza al objetivo durante 1 segundo, sin daño adicional, y tiene 0,5 segundos de recarga independiente del fuego. Bloquea caminar y dash, pero permite apuntar y atacar. Los escudos y la invulnerabilidad bloquean el efecto.
 
 La banda sonora es original y sintetizada: melodía medieval en el menú, ritmo de aventura durante el duelo, más intensidad en los últimos 30 segundos y un cierre musical al terminar. Comienza tras la primera interacción y se pausa al ocultar la pestaña. El control «Música» ajusta su volumen sin cambiar los efectos; el botón de sonido silencia todo. Ambas preferencias se guardan en el navegador.
 
