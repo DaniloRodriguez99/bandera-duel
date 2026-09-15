@@ -196,6 +196,27 @@ export function abilitySlots(classId: ClassId): AbilitySlot[] {
       max: RULES.guardCooldown,
       detail: (p) => (p.guarding ? 'Cubriendo' : null),
     });
+  if (classId === 'guardian')
+    slots.push({
+      id: 'counter',
+      key: 'Q',
+      name: 'Contraataque',
+      icon: '↺',
+      cooldown: (p) => p.counterCd,
+      max: RULES.counterCooldown,
+      detail: (p) => (p.counterLeft > 0 ? 'Activo' : null),
+      tiers: [
+        {
+          label: 'Toque · devuelve proyectiles',
+          active: (p) => p.counterLeft > 0 && p.counterCharge < RULES.counterChargeTime - 1e-8,
+        },
+        {
+          label: 'Mantener 1 s · doble de rápido y fuerte',
+          active: (p) => p.counterCharge >= RULES.counterChargeTime - 1e-8,
+          state: (p) => (p.counterLeft > 0 ? percent(p.counterCharge / RULES.counterChargeTime) : null),
+        },
+      ],
+    });
   return slots;
 }
 
