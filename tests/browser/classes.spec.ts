@@ -15,7 +15,7 @@ test('selección compartida, ataques de arquero y escudo con mouse',async({page,
   await expect(rival.locator('#stage')).toHaveAttribute('data-guardiNg'.toLowerCase(),'true');
   await rival.mouse.down({button:'left'});await rival.mouse.up({button:'left'});await expect(rival.locator('#cd-sword')).toHaveText('⚔ Lista');
   await rival.screenshot({path:info.outputPath('escudo-pc.png'),fullPage:true});await rival.mouse.up({button:'right'});await expect(rival.locator('#stage')).toHaveAttribute('data-guarding','false');
-  await expect(rival.locator('#cd-guard')).toHaveText(/⛨ [01]\.\ds/);await expect(rival.locator('#cd-dash')).toBeHidden();await expect(rival.locator('#cd-shot')).toBeHidden();
+  await expect(rival.locator('#cd-guard')).toHaveText(/⛨ [01]\.\ds/);await expect(rival.locator('#cd-dash')).toBeVisible();await expect(rival.locator('#cd-shot')).toBeHidden();
   expect(errors).toEqual([]);await context.close();
 });
 test('el mago aparece y muestra sus controles',async({page})=>{
@@ -53,6 +53,6 @@ test('escudo móvil con tres dedos, liberación y clase pesada',async({browser},
   await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:touches});touches[0].x-=25;touches[1].y-=25;await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:touches});
   await expect(page.locator('#stage')).toHaveAttribute('data-guarding','true');await expect(page.locator('#stick-move')).toHaveAttribute('style',/--dx: -/);await expect(page.locator('#stick-aim')).toHaveAttribute('style',/--dy: -/);
   await page.screenshot({path:info.outputPath('escudo-mobile.png')});await cdp.send('Input.dispatchTouchEvent',{type:'touchCancel',touchPoints:[]});await expect(page.locator('#stage')).toHaveAttribute('data-guarding','false');
-  await expect(page.locator('#stick-move')).toHaveAttribute('style',/--dx: 0px/);await expect(page.locator('#cd-shot')).toBeHidden();await expect(page.locator('#touch-dash')).toBeHidden();
+  await expect(page.locator('#stick-move')).toHaveAttribute('style',/--dx: 0px/);await expect(page.locator('#cd-shot')).toBeHidden();await expect(page.locator('#touch-dash')).toBeVisible();
   expect(errors).toEqual([]);await mobile.close();await pc.close();
 });
