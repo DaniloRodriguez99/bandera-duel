@@ -942,12 +942,16 @@ export class Arena extends Phaser.Scene {
   ) {
     const stats = CLASSES[p.classId];
     const special = p.specialCharge > 0;
-    if (!special && (p.shotCharge <= 0 || p.classId === 'archer')) return;
+    if (!special && p.shotCharge <= 0) return;
     const seconds = special ? p.specialCharge : p.shotCharge;
-    const power = chargePower(seconds);
+    const power = p.classId === 'archer' && !special
+      ? Math.min(1, seconds / RULES.chargeTime)
+      : chargePower(seconds);
     const summoning = special && stats.summon;
     const raising = summoning && seconds >= RULES.overchargeTime;
-    const color = raising
+    const color = p.classId === 'archer' && !special
+      ? 0x9feeff
+      : raising
       ? 0x7dffb0
       : summoning
         ? 0x9b59d0
@@ -1086,18 +1090,21 @@ export class Arena extends Phaser.Scene {
     if (p.hp > 0) {
       if (p.classId === 'archer') {
         const charge = Math.min(1, Math.max(0, p.shotCharge / RULES.chargeTime));
-        const red = 0xf04432;
-        const channel = (shift: number) =>
-          Math.round(
-            ((GOLD >> shift) & 255) + (((red >> shift) & 255) - ((GOLD >> shift) & 255)) * charge,
-          );
-        const bowColor = (channel(16) << 16) | (channel(8) << 8) | channel(0);
-        w.lineStyle(2, bowColor);
+        w.lineStyle(2, GOLD);
         w.beginPath();
         w.arc(9, 0, 15, -Math.PI / 2, Math.PI / 2);
         w.strokePath();
         w.lineStyle(1, 0xdad6bd);
         w.lineBetween(9, -15, 9, 15);
+        if (charge > 0) {
+          const pulse = 0.45 + Math.sin(time * (0.012 + charge * 0.02)) * 0.2;
+          w.lineStyle(1 + charge * 2, 0x9feeff, 0.25 + charge * 0.55);
+          w.strokeCircle(10, 0, 8 + charge * 10 + pulse * 2);
+          for (let i = 0; i < 3; i++) {
+            const gust = time * 0.01 + i * (Math.PI * 2) / 3;
+            w.lineBetween(8 + Math.cos(gust) * (7 + charge * 8), Math.sin(gust) * (5 + charge * 5), 15 + charge * 11, Math.sin(gust) * 3);
+          }
+        }
         if (p.windup > 0) {
           w.fillStyle(0xe3e5d5);
           w.fillRect(12, -2, 14, 3);

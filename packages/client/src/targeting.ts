@@ -67,8 +67,10 @@ export function blueprintSpec(p: Player, abilityId: string): BlueprintSpec | nul
   }
   if (abilityId === 'dagger')
     return { kind: 'cone', range: stats.meleeRange, radius: 0, arc: stats.meleeArc };
-  if (abilityId === 'ice')
-    return { kind: 'cone', range: RULES.iceConeRange, radius: 0, arc: RULES.iceConeArc };
+  if (abilityId === 'ice') {
+    const projectile = projectileStats('mage');
+    return { kind: 'line', range: projectile.speed * projectile.life, radius: projectile.radius };
+  }
   if (abilityId === 'shield-bash')
     return { kind: 'cone', range: RULES.shieldBashRange, radius: 0, arc: RULES.shieldBashArc };
   if (abilityId === 'slash') {

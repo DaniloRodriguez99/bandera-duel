@@ -153,7 +153,7 @@ export const RULES = {
   arrowSpeed: 560,
   arrowLife: 1.2,
   archerShotCooldown: 0.7,
-  archerArrowSpeed: 650,
+  archerArrowSpeed: 720,
   archerArrowRange: 672,
   arrowDamage: 1,
   guardDuration: 1.2,
@@ -1163,13 +1163,9 @@ export function movePlayer(
           (1 + 0.8 * chargePower(p.specialCharge)) *
           (p.classId === 'vanguard' ? RULES.vanguardDash : 1);
     p.dashCd = p.classId === 'guardian' ? RULES.guardianDashCooldown : RULES.dashCooldown;
-    if (p.classId === 'guardian') p.shotCharge = 0;
     result.dashStarted = true;
-    // A fully charged archer dash opens the combo window for the rest of the jump (plus a grace).
-    p.windDash =
-      p.classId === 'archer' && p.specialCharge >= RULES.overchargeTime - 1e-8
-        ? p.dashLeft + RULES.windGrace
-        : 0;
+    // Every archer dash preserves the bow charge and opens the wind-combo window.
+    p.windDash = p.classId === 'archer' ? p.dashLeft + RULES.windGrace : 0;
     p.specialCharge = 0;
   }
   const dashDt = Math.min(dt, p.dashLeft);
@@ -1200,14 +1196,14 @@ export function movePlayer(
   }
   // Archer combos read the charge held before this tick's release.
   const heldCharge = p.shotCharge;
-  // During a fully charged dash the archer keeps its charge and can loose shot or volley mid-jump
-  // toward the cursor; a full shot charge turns them into wind.
+  // During any dash the archer keeps charging and can release toward the cursor.
+  // A full primary charge or any volley released in this window becomes wind.
   const dashCombo = p.classId === 'archer' && p.windDash > 0;
-  const windReady = dashCombo && heldCharge >= RULES.chargeTime - 1e-8;
+  const fullArcherCharge = p.classId === 'archer' && heldCharge >= RULES.chargeTime - 1e-8;
+  const dashAttackWindow = dashCombo || p.classId === 'vanguard';
   const canCharge =
     !p.guarding &&
-    (!p.dashInvulnerable || dashCombo) &&
-    (p.classId !== 'guardian' || p.dashLeft <= 0) &&
+    (!p.dashInvulnerable || dashAttackWindow) &&
     !wasWinding &&
     p.attackLock <= 0 &&
     !result.fury &&
@@ -1221,8 +1217,7 @@ export function movePlayer(
   if (
     !p.guarding &&
     p.guardRecovery <= 0 &&
-    (!p.dashInvulnerable || dashCombo) &&
-    (p.classId !== 'guardian' || p.dashLeft <= 0) &&
+    (!p.dashInvulnerable || dashAttackWindow) &&
     p.attackLock <= 0 &&
     !wasWinding &&
     !result.fury
@@ -1232,7 +1227,7 @@ export function movePlayer(
       p.volleyCd = RULES.volleyCooldown;
       p.attackLock = RULES.attackLock;
       result.volley = true;
-      result.wind = windReady;
+      result.wind = dashCombo;
       // Released mid-charge: three arrows carrying a third of the charged power.
       result.volleyPower = heldCharge >= RULES.overchargeTap ? RULES.volleyChargedPower : 0;
       result.angle = p.angle;
@@ -1260,8 +1255,8 @@ export function movePlayer(
       p.invuln = 0;
       p.shotCd = projectileStats(p.classId).cooldown;
       p.attackLock = RULES.attackLock;
-      result.charged = p.classId === 'archer' && heldCharge >= RULES.chargeTime - 1e-8;
-      result.wind = windReady;
+      result.charged = fullArcherCharge;
+      result.wind = fullArcherCharge;
       result.angle = p.angle;
       if (dashCombo) p.windDash = 0;
       result.power = p.classId === 'archer' ? 0 : chargePower(p.shotCharge);
@@ -1735,7 +1730,12 @@ export class Duel {
     return true;
   }
   private freeze(p: Player) {
-    if (p.hp <= 0) return;
+    if (
+      p.hp <= 0 ||
+      (p.classId === 'guardian' && p.guarding) ||
+      (p.classId === 'vanguard' && p.counterLeft > 0)
+    )
+      return;
     p.stunLeft = Math.max(p.stunLeft, RULES.freeze);
     p.guardStunExempt = false;
     p.frozenLeft = RULES.freeze;
@@ -2971,6 +2971,11 @@ export class Duel {
       const angle = Math.atan2(hit.entity.y - p.y, hit.entity.x - p.x);
       if (hit.kind === 'player') {
         if (this.damage(hit.entity, p, angle, RULES.shieldBashDamage)) {
+          if (
+            (hit.entity.classId === 'guardian' && hit.entity.guarding) ||
+            (hit.entity.classId === 'vanguard' && hit.entity.counterLeft > 0)
+          )
+            continue;
           hit.entity.stunLeft = RULES.shieldBashStun;
           hit.entity.guardStunExempt = false;
           hit.entity.windup = 0;
@@ -3168,6 +3173,10 @@ export class Duel {
       // A floor trap strikes beneath the shield, while normal damage protection still applies.
       this.damage(target, owner, target.angle, RULES.trapDamage);
       if (target.hp > 0) {
+        const controlImmune =
+          (target.classId === 'guardian' && target.guarding) ||
+          (target.classId === 'vanguard' && target.counterLeft > 0);
+        if (controlImmune) return false;
         target.stunLeft = RULES.trapStun;
         target.guardStunExempt = target.classId === 'guardian';
         target.windup = 0;

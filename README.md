@@ -195,14 +195,14 @@ Las salas públicas en cuenta regresiva, combate o pausa de captura aparecen en 
 
 ### Flecha cargada del arquero
 
-Mantener clic izquierdo durante 0,8 s carga el arco; soltar dispara. En móvil, mantener el botón de flecha, arrastrarlo para orientar y soltarlo para disparar. La carga completa vuelve naranja la flecha, aumenta daño a 1,3 y velocidad a 845 unidades/s (+30 %), conservando el alcance máximo. La flecha normal viaja a 650 unidades/s y su recarga es de 0,7 s. Soltar antes dispara una flecha normal. La carga se valida en la simulación; perder foco cancela sin disparar. Dash, trampa, daga y triple descartan la carga.
+Mantener clic izquierdo durante 0,8 s carga el arco; soltar dispara. En móvil, mantener el botón de flecha, arrastrarlo para orientar y soltarlo para disparar. Mientras carga, el arco muestra runas y ráfagas de viento cada vez más intensas. La carga completa aumenta el daño a 1,3 y la velocidad a 936 unidades/s (+30 %), conserva el alcance máximo y libera una flecha de viento penetrante. La flecha normal viaja a 720 unidades/s y su recarga es de 0,7 s. Soltar antes dispara una flecha normal. La carga se valida en la simulación; perder foco cancela sin disparar. El dash conserva la carga para poder disparar durante el desplazamiento; trampa, daga y triple la consumen.
 
 ### Sobrecarga
 
 Mantener clic o Espacio carga la habilidad y soltar la ejecuta; un toque rápido conserva la habilidad normal. Un círculo rúnico bajo el personaje crece y gira más rápido mientras carga, y destella al llegar al máximo (1,5 s).
 
 - Mago: gran bola de fuego (daño de 1 a 2,5, doble tamaño) que explota al impactar y quema a los cercanos con la mitad del daño.
-- Nigromante (clic): fuego cargado de 1 a 2 de daño y casi el doble de tamaño. Caballero y guerrero: golpe cargado con más daño (×2 y ×1,75) y más alcance. Arquero y mago (Espacio): dash hasta 1,8 veces más largo. La embestida del caballero es inmediata y siempre recorre unas 190 unidades. La flecha cargada del arquero mantiene su regla propia.
+- Nigromante (clic): fuego cargado de 1 a 2 de daño y casi el doble de tamaño. Caballero y guerrero: golpe cargado con más daño (×2 y ×1,75) y más alcance. Arquero y mago (Espacio): dash hasta 1,8 veces más largo. La embestida del caballero es inmediata, siempre recorre unas 190 unidades y conserva la carga de espada para atacar durante el recorrido. La flecha cargada del arquero mantiene su regla propia.
 - Nigromante (Espacio): una carga corta invoca un solo **zombie con gorro** (máximo uno): tiene 5 de vida, se cura, cada 5 s invoca un zombie que no respeta el tope normal y lanza con los dos brazos un hechizo doble de fuego y hielo (0,5 de daño cada uno); el hielo congela 1,2 s al que golpea. Si se mantiene hasta llenar el aura (2,5 s, cambia a verde) con un rival muerto a menos de 200 px, lo **resucita como esclavo** con su clase y su nombre; el jugador reaparece normalmente y el nigromante puede volver a invocar a ese esclavo con el aura completa 20 s después de que muera.
 
 ### Panel de habilidades
@@ -243,4 +243,4 @@ Mientras se mantiene o apunta una habilidad aparece una guía blueprint local: c
 - **Salto cargado:** con Espacio al máximo, al soltarlo el arquero salta y, mientras está en el aire (y hasta 0,6 s después), lo que suelte (siempre hacia el mouse) se combina con el salto. Mantener el clic no se pierde durante ese salto. Un combo por salto:
   - **Tiro cargado al máximo:** **flecha de viento** penetrante que cruza la arena, atraviesa a cada rival una vez, atraviesa la guardia continua sin bajarla, rompe el escudo mágico y hace el doble que la flecha cargada.
   - **E:** triple (al 33 % si venía cargando el clic).
-  - **Clic lleno + E:** 3 flechas de viento potenciadas y penetrantes que se abren de a poco. Pensado para saltar a la cara del rival: a quemarropa entran las 3 y suman el 120 % de la flecha de viento (40 % cada una); más lejos se reparten entre varios.
+  - **Dash + E:** 3 flechas de viento potenciadas y penetrantes que se abren de a poco. Pensado para saltar a la cara del rival: a quemarropa entran las 3 y suman el 120 % de la flecha de viento (40 % cada una); más lejos se reparten entre varios.

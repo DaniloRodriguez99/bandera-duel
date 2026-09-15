@@ -13,7 +13,7 @@ const icon = (name: string) => `/assets/skills/${name}.png`;
 const seconds = (value: number) => `${String(value).replace('.', ',')} s`;
 const CLASS_SKILLS: Record<ClassId, SkillPreview[]> = {
   archer: [
-    { name: 'Flecha del cazador', icon: icon('archer-arrow'), description: 'Tensá el arco para aumentar el daño y la velocidad del proyectil.', damage: `${RULES.arrowDamage}–${RULES.arrowDamage * RULES.chargeMultiplier}`, cooldown: seconds(RULES.archerShotCooldown) },
+    { name: 'Flecha del cazador', icon: icon('archer-arrow'), description: 'Tensá el arco para liberar una flecha de viento veloz y penetrante.', damage: `${RULES.arrowDamage}–${RULES.arrowDamage * RULES.chargeMultiplier}`, cooldown: seconds(RULES.archerShotCooldown) },
     { name: 'Paso del viento', icon: icon('archer-wind'), description: 'Una ráfaga evasiva que puede cargarse para recorrer más distancia.', damage: '0', cooldown: seconds(RULES.dashCooldown) },
     { name: 'Daga veloz', icon: icon('guardian-slash'), description: 'Corte corto y rápido para castigar enemigos demasiado cercanos.', damage: String(CLASSES.archer.meleeDamage).replace('.', ','), cooldown: seconds(CLASSES.archer.meleeCooldown) },
     { name: 'Cepo del bosque', icon: icon('archer-trap'), description: `Trampa oculta que hiere e inmoviliza durante ${seconds(RULES.trapStun)}.`, damage: String(RULES.trapDamage).replace('.', ','), cooldown: seconds(RULES.trapCooldown) },
@@ -37,16 +37,16 @@ const CLASS_SKILLS: Record<ClassId, SkillPreview[]> = {
   ],
   guardian: [
     { name: 'Acero juramentado', icon: icon('guardian-slash'), description: 'Tajo frontal que puede cargarse para duplicar su fuerza.', damage: `${CLASSES.guardian.meleeDamage}–${CLASSES.guardian.meleeDamage * 2}`, cooldown: seconds(CLASSES.guardian.meleeCooldown) },
-    { name: 'Carga del bastión', icon: icon('vanguard-dash'), description: 'Arremetida blindada que hiere, desplaza y rompe la formación rival.', damage: String(RULES.guardianDashDamage), cooldown: seconds(RULES.guardianDashCooldown) },
+    { name: 'Carga del bastión', icon: icon('vanguard-dash'), description: 'Arremetida blindada que hiere y conserva la carga de la espada para combinar el golpe.', damage: String(RULES.guardianDashDamage), cooldown: seconds(RULES.guardianDashCooldown) },
     { name: 'Muralla de acero', icon: icon('guardian-shield'), description: 'Alzá el escudo para bloquear ataques dentro del arco frontal.', damage: '0', cooldown: seconds(RULES.guardCooldown) },
     { name: 'Impacto del baluarte', icon: icon('guardian-bash'), description: `Golpe de escudo que empuja y aturde durante ${seconds(RULES.shieldBashStun)}.`, damage: String(RULES.shieldBashDamage).replace('.', ','), cooldown: seconds(RULES.shieldBashCooldown) },
     { name: 'Furia dorada', icon: icon('guardian-fury'), description: `Durante ${seconds(RULES.furyDuration)}, la espada inflige un 40 % más de daño.`, damage: '+40 %', cooldown: seconds(RULES.furyCooldown) },
   ],
   vanguard: [
     { name: 'Mandoble colosal', icon: icon('vanguard-sword'), description: 'Un barrido pesado de gran alcance que puede cargarse para devastar.', damage: `${CLASSES.vanguard.meleeDamage}–${CLASSES.vanguard.meleeDamage * 2}`, cooldown: seconds(CLASSES.vanguard.meleeCooldown) },
-    { name: 'Avance imparable', icon: icon('vanguard-dash'), description: 'Impulso de combate que puede cargarse para atravesar más terreno.', damage: '0', cooldown: seconds(RULES.dashCooldown) },
+    { name: 'Avance imparable', icon: icon('vanguard-dash'), description: 'Impulso de combate que conserva la carga de la espada para combinar ambas acciones.', damage: '0', cooldown: seconds(RULES.dashCooldown) },
     { name: 'Creciente escarlata', icon: icon('vanguard-slash'), description: 'Proyecta un tajo ancho que atraviesa a cuantos encuentre.', damage: String(RULES.slashDamage).replace('.', ','), cooldown: seconds(RULES.slashCooldown) },
-    { name: 'Revancha de hierro', icon: icon('vanguard-counter'), description: 'Devuelve proyectiles; canalizado, duplica su daño y velocidad.', damage: '×1–×2', cooldown: seconds(RULES.counterCooldown) },
+    { name: 'Revancha de hierro', icon: icon('vanguard-counter'), description: 'Devuelve proyectiles y evita sus efectos; canalizado, duplica su daño y velocidad.', damage: '×1–×2', cooldown: seconds(RULES.counterCooldown) },
   ],
 };
 
