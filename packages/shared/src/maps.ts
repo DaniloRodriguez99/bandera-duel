@@ -1,6 +1,6 @@
 export type Team = 'blue' | 'red' | 'green' | 'violet';
 export type MapId = 'courtyard' | 'forest' | 'ruins' | 'crossroads';
-export type GameMode = 'duel' | 'teams' | 'ffa3' | 'ffa4';
+export type GameMode = 'duel' | 'teams' | 'ffa3' | 'ffa4' | 'pve';
 export interface Vec { x: number; y: number }
 export interface Rect extends Vec { w: number; h: number }
 export interface Bush extends Rect { id: string }
@@ -15,13 +15,17 @@ export interface MapDefinition {
   sideSpawns: Record<'blue' | 'red', Vec[]>;
   cornerHomes: Record<Team, Vec>;
   cornerSpawns: Record<Team, Vec[]>;
+  pveSpawns: Vec[];
+  pveBossSpawn: Vec;
 }
 
 const sideHomes = { blue: {x:145,y:270}, red:{x:815,y:270} };
 const sideSpawns = { blue:[{x:70,y:270},{x:70,y:310}], red:[{x:890,y:270},{x:890,y:310}] };
 const cornerHomes = {blue:{x:145,y:120},red:{x:815,y:120},green:{x:145,y:420},violet:{x:815,y:420}};
 const cornerSpawns = {blue:[{x:70,y:95},{x:70,y:145}],red:[{x:890,y:95},{x:890,y:145}],green:[{x:70,y:395},{x:70,y:445}],violet:[{x:890,y:395},{x:890,y:445}]};
-const common = {sideHomes,sideSpawns,cornerHomes,cornerSpawns} as const;
+const pveSpawns=[{x:45,y:90},{x:45,y:270},{x:45,y:450},{x:915,y:90},{x:915,y:270},{x:915,y:450},{x:480,y:45},{x:480,y:495}];
+const pveBossSpawn={x:480,y:55};
+const common = {sideHomes,sideSpawns,cornerHomes,cornerSpawns,pveSpawns,pveBossSpawn} as const;
 export const MAPS: Record<MapId, MapDefinition> = {
   courtyard: {id:'courtyard',name:'Patio del Rey',description:'Rutas abiertas para aprender y comparar clases.',theme:'stone',...common,walls:[
     {x:245,y:116,w:52,h:96},{x:245,y:328,w:52,h:96},{x:663,y:116,w:52,h:96},{x:663,y:328,w:52,h:96},{x:423,y:164,w:114,h:42},{x:423,y:334,w:114,h:42}],bushes:[]},
@@ -38,9 +42,10 @@ export const MAPS: Record<MapId, MapDefinition> = {
 export const MAP_IDS = Object.keys(MAPS) as MapId[];
 export const DEFAULT_MAP: MapId = 'courtyard';
 export const validMap = (value: unknown): value is MapId => typeof value === 'string' && MAP_IDS.includes(value as MapId);
-export const MODE_INFO: Record<GameMode,{name:string;maxPlayers:number;kind:'duel'|'teams'|'ffa'}> = {
+export const MODE_INFO: Record<GameMode,{name:string;maxPlayers:number;kind:'duel'|'teams'|'ffa'|'pve'}> = {
   duel:{name:'Duelo 1v1',maxPlayers:2,kind:'duel'},teams:{name:'Equipos 2v2',maxPlayers:4,kind:'teams'},
   ffa3:{name:'Todos contra todos · 3',maxPlayers:3,kind:'ffa'},ffa4:{name:'Todos contra todos · 4',maxPlayers:4,kind:'ffa'},
+  pve:{name:'Hordas PvE · 1–4',maxPlayers:4,kind:'pve'},
 };
 export const GAME_MODES = Object.keys(MODE_INFO) as GameMode[];
 export const DEFAULT_MODE: GameMode = 'duel';

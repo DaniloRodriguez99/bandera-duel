@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import {
   RULES,
+  MOB_STATS,
   CLASSES,
   CLASS_IDS,
   DEFAULT_CLASS,
@@ -25,6 +26,8 @@ import {
   type Zombie,
   type Input,
   type MapId,
+  type Mob,
+  type MobKind,
 } from '@bandera/shared';
 import { Controls } from './input.js';
 import { blueprintSpec, clipRay } from './targeting.js';
@@ -33,10 +36,12 @@ import {
   CLASS_ART,
   ZOMBIE_ART,
   HAT_ZOMBIE_ART,
+  PVE_MOB_ART,
   palette,
   zombiePalette,
   hatPalette,
   undeadPalette,
+  pveMobPalette,
   mageSkinArt,
 } from './art.js';
 
@@ -81,6 +86,7 @@ export class Arena extends Phaser.Scene {
   private flags!: Phaser.GameObjects.Graphics;
   private traps!: Phaser.GameObjects.Graphics;
   private arrows!: Phaser.GameObjects.Graphics;
+  private mobs!: Phaser.GameObjects.Graphics;
   private aim!: Phaser.GameObjects.Graphics;
   private bases!: Phaser.GameObjects.Graphics;
   private baseLabels: Phaser.GameObjects.Text[] = [];
@@ -96,6 +102,10 @@ export class Arena extends Phaser.Scene {
       x: number;
       y: number;
     }
+  >();
+  private mobVisuals = new Map<
+    string,
+    { body: Phaser.GameObjects.Sprite; hp: Phaser.GameObjects.Graphics; fx: Phaser.GameObjects.Graphics; x: number; y: number }
   >();
   private pending: Input[] = [];
   private seq = 0;
@@ -116,6 +126,7 @@ export class Arena extends Phaser.Scene {
     this.flags = this.add.graphics().setDepth(5);
     this.traps = this.add.graphics().setDepth(4);
     this.arrows = this.add.graphics().setDepth(9);
+    this.mobs = this.add.graphics().setDepth(8);
     this.aim = this.add.graphics().setDepth(4);
     this.controls = new Controls();
     this.input.mouse?.disableContextMenu();
@@ -184,6 +195,13 @@ export class Arena extends Phaser.Scene {
           ? row.slice(0, 3) + row.slice(3, 13).split('').reverse().join('') + row.slice(13)
           : row,
       );
+    for (const kind of Object.keys(PVE_MOB_ART) as MobKind[])
+      for (let frame = 0; frame < 2; frame++)
+        this.textures.generate(`pve-${kind}-${frame}`, {
+          data: stride(PVE_MOB_ART[kind], kind === 'wolf' ? 11 : 12, frame),
+          pixelWidth: 2,
+          palette: pveMobPalette(kind) as Phaser.Types.Create.Palette,
+        });
     for (const team of TEAMS)
       for (let frame = 0; frame < 2; frame++) {
         this.textures.generate(`${team}-hat-${frame}`, {
@@ -1487,6 +1505,99 @@ export class Arena extends Phaser.Scene {
       g.lineBetween(hand.x, hand.y, hand.x + face * 2, hand.y + 2);
     }
   }
+  private drawPveMob(m: Mob, time: number, delta: number) {
+    let v = this.mobVisuals.get(m.id);
+    if (!v) {
+      v = {
+        body: this.add.sprite(m.x, m.y, `pve-${m.kind}-0`).setOrigin(0.5, 0.72).setDepth(10),
+        hp: this.add.graphics().setDepth(13),
+        fx: this.add.graphics().setDepth(9),
+        x: m.x,
+        y: m.y,
+      };
+      this.mobVisuals.set(m.id, v);
+    }
+    const moving = Math.hypot(m.x - v.x, m.y - v.y) > 0.25;
+    const smooth = 1 - Math.exp(-delta / 55);
+    v.x += (m.x - v.x) * smooth;
+    v.y += (m.y - v.y) * smooth;
+    const seed = Number(m.id.slice(1)) || 0;
+    const pulse = 0.5 + Math.sin(time * 0.008 + seed) * 0.5;
+    const frame = moving ? Math.floor((time + seed * 73) / (m.kind === 'wolf' ? 115 : 175)) % 2 : 0;
+    const baseScale = m.boss ? 1.75 : m.kind === 'brute' ? 1.38 : m.kind === 'wolf' ? 1.08 : 1;
+    const appearing = Math.max(0, Math.min(1, 1 - m.spawnLeft / 0.8));
+    const bob = moving ? Math.abs(Math.sin(time * (m.kind === 'wolf' ? 0.018 : 0.011) + seed)) * 2 : pulse;
+    v.body
+      .setTexture(`pve-${m.kind}-${frame}`)
+      .setPosition(v.x, v.y + bob + (1 - appearing) * 10)
+      .setFlipX(Math.cos(m.angle) < 0)
+      .setAngle(m.kind === 'wolf' ? Math.sin(time * 0.012 + seed) * 3 : moving ? Math.sin(time * 0.009 + seed) * 5 : 0)
+      .setScale(baseScale, baseScale * Math.max(0.25, appearing))
+      .setAlpha(0.3 + appearing * 0.7);
+    if (m.frozenLeft > 0) v.body.setTint(0x9fe8ff);
+    else if (m.windup > 0) v.body.setTint(0xff8068);
+    else if (m.elite) v.body.setTint(0xffd083);
+    else v.body.clearTint();
+
+    const radius = MOB_STATS[m.kind].radius;
+    v.fx.clear();
+    v.fx.fillStyle(0x050706, 0.35);
+    v.fx.fillEllipse(v.x, v.y + 11, radius * 2.25, radius * 0.72);
+    if (m.spawnLeft > 0) {
+      v.fx.lineStyle(2, m.boss ? 0xd58cff : 0xe65b4f, 0.4 + appearing * 0.55);
+      v.fx.strokeCircle(v.x, v.y, radius * (1.8 - appearing * 0.45));
+      for (let i = 0; i < 5; i++) {
+        const angle = time * 0.004 + i * Math.PI * 0.4;
+        v.fx.fillStyle(m.boss ? 0xc26ce0 : 0xc84036, 0.4 + pulse * 0.3);
+        v.fx.fillRect(v.x + Math.cos(angle) * radius, v.y + Math.sin(angle) * radius * 0.45, 2, 2);
+      }
+    }
+    if (m.elite) {
+      v.fx.lineStyle(2, 0xf0b556, 0.55 + pulse * 0.35);
+      v.fx.strokeEllipse(v.x, v.y + 7, radius * 2.4, radius * 0.82);
+    }
+    if (m.boss) {
+      v.fx.fillStyle(0x6b267c, 0.1 + pulse * 0.08);
+      v.fx.fillCircle(v.x, v.y - 4, 36 + pulse * 3);
+      v.fx.lineStyle(2, 0xc879df, 0.45 + pulse * 0.3);
+      v.fx.strokeCircle(v.x, v.y - 4, 34 + pulse * 2);
+    }
+    if (m.windup > 0) {
+      const reach = MOB_STATS[m.kind].range;
+      v.fx.fillStyle(0xe95445, 0.12 + pulse * 0.08);
+      v.fx.slice(v.x, v.y, reach + radius, m.angle - 0.62, m.angle + 0.62, false);
+      v.fx.fillPath();
+      v.fx.lineStyle(1, 0xffa17f, 0.65);
+      v.fx.beginPath();
+      v.fx.arc(v.x, v.y, reach + radius, m.angle - 0.62, m.angle + 0.62);
+      v.fx.strokePath();
+    }
+    const dx = Math.cos(m.angle), dy = Math.sin(m.angle);
+    if (m.kind === 'skeleton') {
+      const handX = v.x + dx * 7, handY = v.y - 5 + dy * 4;
+      v.fx.lineStyle(2, 0x6b4930, 1);
+      v.fx.beginPath();
+      v.fx.arc(handX + dx * 7, handY + dy * 7, 10, m.angle - Math.PI / 2, m.angle + Math.PI / 2);
+      v.fx.strokePath();
+      v.fx.lineStyle(1, 0xd7c6a4, 0.9);
+      v.fx.lineBetween(handX - dy * 9, handY + dx * 9, handX + dy * 9, handY - dx * 9);
+    } else if (m.kind === 'brute' || m.boss) {
+      const handX = v.x + dx * 8, handY = v.y - 4 + dy * 8;
+      const length = m.boss ? 30 : 23;
+      v.fx.lineStyle(m.boss ? 5 : 4, 0x2b211d, 1);
+      v.fx.lineBetween(handX, handY, handX + dx * length, handY + dy * length);
+      v.fx.fillStyle(m.boss ? 0xa95bc2 : 0x777d74, 1);
+      v.fx.fillCircle(handX + dx * length, handY + dy * length, m.boss ? 7 : 5);
+    }
+    v.hp.clear();
+    if (!m.boss && m.spawnLeft <= 0) {
+      const width = m.kind === 'brute' ? 38 : 30;
+      v.hp.fillStyle(0x111817, 0.95);
+      v.hp.fillRect(v.x - width / 2, v.y - 31 * baseScale, width, 4);
+      v.hp.fillStyle(m.elite ? 0xf0b556 : 0xd95a4f, 1);
+      v.hp.fillRect(v.x - width / 2, v.y - 31 * baseScale, width * Math.max(0, m.hp / m.maxHp), 4);
+    }
+  }
   update(time: number, delta: number) {
     if (!this.controls) return;
     this.updateCamera(delta);
@@ -1546,6 +1657,16 @@ export class Arena extends Phaser.Scene {
         delta,
       );
     for (const z of s.zombies) this.drawZombie(z, time, delta);
+    this.mobs.clear();
+    for (const mob of s.mobs) this.drawPveMob(mob, time, delta);
+    for(const shot of s.mobProjectiles){const dx=Math.cos(shot.angle),dy=Math.sin(shot.angle);this.mobs.lineStyle(3,0xe9e4cf,.9);this.mobs.lineBetween(shot.x-dx*10,shot.y-dy*10,shot.x,shot.y);this.mobs.fillStyle(0xd25d45);this.mobs.fillTriangle(shot.x+dx*4,shot.y+dy*4,shot.x-dy*3,shot.y+dx*3,shot.x+dy*3,shot.y-dx*3);}
+    for (const [id, v] of this.mobVisuals) {
+      if (s.mobs.some((mob) => mob.id === id)) continue;
+      v.body.destroy();
+      v.hp.destroy();
+      v.fx.destroy();
+      this.mobVisuals.delete(id);
+    }
     for (const [id, v] of this.zombieVisuals) {
       if (s.zombies.some((z) => z.id === id)) continue;
       v.body.destroy();

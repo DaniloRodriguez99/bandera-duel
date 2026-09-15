@@ -1,4 +1,4 @@
-import { MAGE_SKINS, type ClassId } from '@bandera/shared';
+import { MAGE_SKINS, type ClassId, type MobKind } from '@bandera/shared';
 // Original pixel matrices: 0 outline, 1 steel, 2 shadow, 3 cloth, 4 highlight,
 // 5 leather, 6 blade, 7 skin, 8 boots. Shared by class cards and in-game sprites.
 export const CLASS_ART: Record<ClassId, string[]> = {
@@ -51,11 +51,26 @@ export const ZOMBIE_ART: string[] = [
   '.7773626263.777.','77..336263..77..','....333333......','....33.3.33.....',
   '....77...77.....','...77.....77....','...88.....88....','................',
 ];
+/** Hostile PvE creatures use the same 16×16 pixel grammar as necromancer summons. */
+export const PVE_MOB_ART: Record<MobKind, string[]> = {
+  zombie: ZOMBIE_ART,
+  wolf: ["................", "............77..", "..77.......777..", ".0777.....07770.", ".07777777777770.", ".07777222777770.", "..077799777770..", "...0777777770...", "....077777770...", "..777777777777..", ".07777555577770.", ".0777......7770.", "..77.......77...", "..88.......88...", ".88.........88..", "................"],
+  skeleton: [".....00000......", "....0666660.....", "....0696960.....", "....0662660.....", ".....06660......", "......060.......", "....00666000....", "...06.6666.60...", "..06..6666..60..", "..0...6336...0..", "......6336......", "......6336......", ".....06..60.....", "....06....60....", "...08......80...", "................"],
+  brute: ["....00000000....", "...0777777770...", "..077799997770..", "..077722227770..", "...077777770....", "..001111111100..", ".01113333331110.", "0111334444331110", "0771333333331770", "0771336666331770", ".01133333333110.", "..0133553310....", "...11100111.....", "...11100111.....", "..0880..0880....", "................"],
+  cryptGuardian: ["..4..000000..4..", "...4001111004...", "...0111111110...", "..011122221110..", "..011199991110..", "...011111110....", "..001113311100..", ".01133344333110.", "0111334444331110", "0771336666331770", ".01133333333110.", "..01135533110...", "..1111001111....", "..1111001111....", ".08880..08880...", "................"],
+};
 export function palette(cloth: string, light: string): Record<string,string> {
   return {0:'#26353b',1:'#a9b7b8',2:'#17272d',3:cloth,4:light,5:'#796452',6:'#e3e5d5',7:'#d1a77f',8:'#423b38',9:'#000000',A:'#000000',B:'#000000',C:'#000000',D:'#000000',E:'#000000',F:'#000000'};
 }
 export function zombiePalette(cloth: string, light: string): Record<string,string> {
   return {...palette(cloth, light), 2:'#1d241c', 6:'#d6cfb3', 7:'#7f9a6e', 9:'#ff4a3d'};
+}
+export function pveMobPalette(kind: MobKind): Record<string, string> {
+  if (kind === 'wolf') return {...palette('#58382f', '#c38b61'), 0:'#201a19', 2:'#35251f', 7:'#78543e', 9:'#ff5a42'};
+  if (kind === 'skeleton') return {...palette('#6e2730', '#c85d55'), 0:'#24201e', 1:'#d8d0b7', 2:'#5d5448', 6:'#e8e0c8', 7:'#b8aa8d', 9:'#ff493d'};
+  if (kind === 'brute') return {...zombiePalette('#71312d', '#ca6250'), 0:'#202723', 1:'#737a71', 4:'#d48a61', 7:'#708962', 9:'#ff493d'};
+  if (kind === 'cryptGuardian') return {...zombiePalette('#55265f', '#be79d1'), 0:'#17131c', 1:'#74717c', 2:'#24182a', 4:'#d08ce3', 7:'#65725f', 9:'#ff395c'};
+  return {...zombiePalette('#6e2b2b', '#c55c50'), 0:'#1d211d', 3:'#6e2b2b', 4:'#c55c50', 9:'#ff493d'};
 }
 export function classIllustration(classId:ClassId,skinId?:string):string {
   const skin=classId==='mage'?MAGE_SKINS.find(item=>item.id===skinId):undefined;

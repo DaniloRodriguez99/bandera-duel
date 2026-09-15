@@ -31,6 +31,7 @@ export class DuelRoom extends Room {
   private passwordHash?: Buffer;
   private watching = new Set<string>();
   private perspectives=new Map<string,Team>();
+  private hostId: string | null = null;
   publicInfo() {
     return { roomId: this.roomId, title: this.title, visibility: this.visibility,
       passwordRequired: !!this.passwordHash, allowSpectators: this.allowSpectators,
@@ -39,11 +40,13 @@ export class DuelRoom extends Room {
       playerSlots: this.game.state.players.length, phase: this.game.state.phase,
       mapId:this.game.state.mapId,mapName:MAPS[this.game.state.mapId].name,mode:this.game.state.mode,modeName:MODE_INFO[this.game.state.mode].name,maxPlayers:this.game.state.maxPlayers,
       score: {...this.game.state.score}, timeLeft: this.game.state.timeLeft, paused: this.game.state.paused,
+      hostId:this.hostId,wave:this.game.state.pve?.wave??0,enemies:this.game.state.pve?.enemiesRemaining??0,pveCompleted:this.game.state.pve?.completed??false,
       names: this.game.state.players.map(p => p.name),teams:this.game.state.players.map(p=>p.team) };
   }
   private publishInfo() { this.broadcast('roomInfo', this.publicInfo()); }
   private viewFor(client:Client):Snapshot{const source=this.game.state,own=source.players.find(p=>p.id===client.sessionId),perspective=own?.team??this.perspectives.get(client.sessionId)??source.players[0]?.team??'blue';const hidden=source.players.filter(p=>!playerVisibleTo(source,p,perspective)),visibleIds=new Set(source.players.filter(p=>playerVisibleTo(source,p,perspective)).map(p=>p.id)),view=structuredClone(source);view.perspective=perspective;view.participants=source.players.map(({id,name,team,classId,ready,connected,deaths})=>({id,name,team,classId,ready,connected,deaths}));view.players=view.players.filter(p=>visibleIds.has(p.id));view.zombies=view.zombies.filter(z=>zombieVisibleTo(source,z,perspective));for(const z of view.zombies)if(z.target&&!visibleIds.has(z.target))z.target=null;const detected=(where:{x:number;y:number},team:Team)=>{if(team===perspective)return true;const bush=pointBush(MAPS[source.mapId],where);if(!bush)return true;return source.players.some(p=>p.team===perspective&&p.hp>0&&p.bushId===bush&&Math.hypot(p.x-where.x,p.y-where.y)<=90&&lineClear(p,where,MAPS[source.mapId].walls));};view.traps=view.traps.filter(t=>detected(t,t.team));view.graves=view.graves.filter(g=>detected(g,g.team));view.events=view.events.filter(e=>!hidden.some(p=>Math.hypot(e.x-p.x,e.y-p.y)<25));return view;}
   private sendSnapshots(){for(const client of this.clients)client.send('snapshot',this.viewFor(client));}
+  private sendUpgradeOffers(){for(const client of this.clients)client.send('upgradeOffer',this.game.getUpgradeOffer(client.sessionId)??null);}
   onDispose() {
     listedRooms.delete(this.roomId);
     this.chatMessages.length = 0;
@@ -151,7 +154,10 @@ export class DuelRoom extends Room {
     });
     this.onMessage('selectTeam',(client,team)=>{if(this.closing)return;if(!this.game.selectTeam(client.sessionId,team as Team))client.send('selectionError','No se puede elegir ese equipo.');else this.touchActivity();this.sendSnapshots();});
     this.onMessage('perspective',(client,team)=>{if(this.closing)return;if(!this.spectators.has(client.sessionId)||!this.game.state.players.some(p=>p.team===team))return;const current=this.perspectives.get(client.sessionId),exists=this.game.state.players.some(p=>p.team===current);if(!['lobby','finished'].includes(this.game.state.phase)&&exists)return;this.perspectives.set(client.sessionId,team as Team);this.touchActivity();this.sendSnapshots();});
-    this.onMessage('sync', (client) => { client.send('snapshot', this.viewFor(client)); client.send('roomInfo', this.publicInfo()); this.sendChatHistory(client); });
+    this.onMessage('startPve',(client)=>{if(this.closing||client.sessionId!==this.hostId)return client.send('selectionError','Solo el anfitrión puede iniciar la expedición.');if(!this.game.startPve())return client.send('selectionError','Todos los jugadores presentes deben estar listos.');this.touchActivity();this.sendSnapshots();this.publishInfo();});
+    this.onMessage('continuePve',(client)=>{if(this.closing||client.sessionId!==this.hostId)return;if(this.game.continuePve()){this.touchActivity();this.sendSnapshots();this.sendUpgradeOffers();this.publishInfo();}});
+    this.onMessage('selectUpgrade',(client,raw)=>{if(this.closing||!raw||typeof raw!=='object')return;const value=raw as {offerId?:unknown;key?:unknown;targetId?:unknown};if(!this.game.selectUpgrade(client.sessionId,value.offerId,value.key,value.targetId))return client.send('selectionError','La recompensa ya no está disponible.');this.touchActivity();client.send('upgradeOffer',null);this.sendSnapshots();});
+    this.onMessage('sync', (client) => { client.send('snapshot', this.viewFor(client)); client.send('roomInfo', this.publicInfo()); this.sendChatHistory(client); client.send('upgradeOffer',this.game.getUpgradeOffer(client.sessionId)??null); });
     this.onMessage('chat', (client, raw) => {
       if (this.closing) return client.send('chatError', 'La sala se está cerrando.');
       if (this.connectedPlayerCount() < 2) return client.send('chatError', 'El chat se habilita cuando haya al menos 2 jugadores.');
@@ -202,6 +208,7 @@ export class DuelRoom extends Room {
       const phase = s.phase;
       this.game.step(inputs);
       if (s.tick % 2 === 0) this.sendSnapshots();
+      if(phase!==s.phase){this.sendSnapshots();this.sendUpgradeOffers();this.publishInfo();}
       if (phase !== 'finished' && s.phase === 'finished')
         console.info(
           JSON.stringify({
@@ -247,8 +254,9 @@ export class DuelRoom extends Room {
       this.spectatorNames.set(client.sessionId, validName(options.name)!);
       this.watching.add(client.sessionId);
       const requested=options.perspective;this.perspectives.set(client.sessionId,this.game.state.players.some(p=>p.team===requested)?requested as Team:this.game.state.players[0]?.team??'blue');
-    } else { const classId=options.classId??DEFAULT_CLASS;this.game.add(client.sessionId,validName(options.name)!,classId,options.customization??defaultCustomization(classId));this.playerSessions.add(client.sessionId);this.hadPlayer=true; }
+    } else { const classId=options.classId??DEFAULT_CLASS;this.game.add(client.sessionId,validName(options.name)!,classId,options.customization??defaultCustomization(classId));this.playerSessions.add(client.sessionId);this.hadPlayer=true;if(!this.hostId)this.hostId=client.sessionId; }
     this.sendSnapshots();
+    client.send('upgradeOffer', this.game.getUpgradeOffer(client.sessionId) ?? null);
     this.sendChatHistory(client);
     this.publishChatStatus();
     this.publishInfo();
@@ -285,6 +293,7 @@ export class DuelRoom extends Room {
     this.queues.set(client.sessionId, []);
     this.last.delete(client.sessionId);
     this.sendSnapshots();
+    client.send('upgradeOffer', this.game.getUpgradeOffer(client.sessionId) ?? null);
     this.sendChatHistory(client);
     this.publishChatStatus();
   }
@@ -306,6 +315,7 @@ export class DuelRoom extends Room {
     this.lastHumanInput.delete(client.sessionId);
     if (!p) { this.publishChatStatus(); return; }
     this.playerSessions.delete(client.sessionId);
+    if(this.hostId===client.sessionId){this.hostId=this.playerSessions.values().next().value??null;this.publishInfo();}
     if (s.phase === 'lobby' || s.phase === 'finished') this.game.remove(client.sessionId);
     else {
       p.connected = false;

@@ -65,6 +65,16 @@ El arquero dispara flechas y usa una daga. El mago lanza bolas de fuego con clic
 
 Dentro de un arbusto, un enemigo no recibe la posición ni el estado espacial del personaje. Puede detectarlo si entra en el mismo grupo, se acerca a 90 unidades y tiene línea de visión. Los aliados comparten visión; llevar una bandera impide ocultarse. Atacar o recibir daño revela durante 1,5 s. Proyectiles siguen visibles y las trampas ocultas solo se envían a su dueño o a una facción que detecte esa zona.
 
+## Hordas PvE
+
+El formato **Hordas PvE** admite de **1 a 4 jugadores**. El anfitrión puede comenzar sin llenar los cuatro lugares cuando todos los jugadores que sí están presentes hayan marcado listo. Una vez iniciada la expedición, las entradas nuevas quedan limitadas a espectadores.
+
+La expedición tiene diez oleadas y un Guardián de la cripta como jefe final. Zombies, lobos, esqueletos y brutos escalan según la oleada y la cantidad inicial de jugadores, con un máximo de 24 enemigos activos. Si el grupo vence al jefe, el anfitrión puede continuar en modo infinito conservando las mejoras.
+
+Entre oleadas hay diez segundos para elegir una de tres mejoras privadas. Hay aumentos universales de daño, vida, recargas, movimiento, regeneración y resistencia, además de cartas propias de cada clase, segunda oportunidad y resurrección de compañeros. Un jugador caído no reaparece ni recibe cartas salvo que se consuma una resurrección.
+
+El HUD muestra oleada, enemigos restantes, aliados vivos y la vida del jefe. Las salas públicas publican también la oleada en curso. El modo conserva espectadores, chat, contraseña y la reserva de reconexión de 15 segundos.
+
 ## Organización y red
 
 - `packages/shared`: mapa, geometría, tipos, constantes `RULES`, movimiento determinista y clase `Duel`. Es la única fuente de reglas.

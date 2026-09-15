@@ -10,6 +10,11 @@ export {
   pointBush,
 } from './maps.js';
 export type { MapId, GameMode, MapDefinition, Bush } from './maps.js';
+export * from './pve.js';
+import {
+  MOB_STATS, availableMobs, waveBudget, emptyUpgrades, makeUpgradeChoices,
+  type Mob, type MobKind, type MobProjectile, type PveState, type UpgradeOffer, type UpgradeId,
+} from './pve.js';
 import {
   MAPS,
   DEFAULT_MAP,
@@ -22,7 +27,7 @@ import {
 } from './maps.js';
 
 export type Team = 'blue' | 'red' | 'green' | 'violet';
-export type Phase = 'lobby' | 'countdown' | 'playing' | 'capture' | 'finished';
+export type Phase = 'lobby' | 'countdown' | 'playing' | 'capture' | 'rewards' | 'finished';
 export type ClassId = 'archer' | 'mage' | 'necromancer' | 'guardian' | 'vanguard';
 export const CLASS_IDS: ClassId[] = ['archer', 'mage', 'necromancer', 'guardian', 'vanguard'];
 export const DEFAULT_CLASS: ClassId = 'guardian';
@@ -684,6 +689,9 @@ export interface Player extends Vec {
   aimY: number;
   bushId: string | null;
   revealLeft: number;
+  pve: import('./pve.js').PlayerUpgradeState;
+  pveKills: number;
+  pveDamage: number;
 }
 export interface Flag extends Vec {
   team: Team;
@@ -699,6 +707,7 @@ export interface Arrow extends Vec {
   charged?: boolean;
   power?: number;
   damageScale?: number;
+  speedScale?: number;
   element?: 'fire' | 'ice';
   /** Wind arrow: pierces every target once, crosses knight guard and breaks magic shields. */
   wind?: boolean;
@@ -723,6 +732,7 @@ export interface Arrow extends Vec {
 }
 export interface Trap extends Vec {
   id: number;
+  pveScale?: number;
   owner: string;
   team: Team;
   armLeft: number;
@@ -822,7 +832,11 @@ export interface GameEvent extends Vec {
     | 'bash'
     | 'fury'
     | 'levelup'
-    | 'icecone';
+    | 'icecone'
+    | 'mobSpawn'
+    | 'mobAttack'
+    | 'wave'
+    | 'upgrade';
   team: Team;
   angle?: number;
   classId?: ClassId;
@@ -875,12 +889,15 @@ export interface Snapshot {
   flags: Flag[];
   arrows: Arrow[];
   zombies: Zombie[];
+  mobs: Mob[];
+  mobProjectiles: MobProjectile[];
   graves: Grave[];
   traps: Trap[];
   score: Record<Team, number>;
   winner: Team | 'draw' | null;
   reason: string;
   events: GameEvent[];
+  pve: PveState | null;
 }
 export const distance = (a: Vec, b: Vec) => Math.hypot(a.x - b.x, a.y - b.y);
 export function playerVisibleTo(state: Snapshot, target: Player, viewerTeam: Team): boolean {
@@ -1297,7 +1314,7 @@ export function movePlayer(
     p.magicShieldHits === 0 &&
     p.magicShieldCd <= 1e-8
   ) {
-    p.magicShieldHits = RULES.magicShieldHits;
+    p.magicShieldHits = RULES.magicShieldHits + Math.floor((p.pve?.classRanks.mage ?? 0) / 2);
     p.magicShieldCd = 0;
   }
   p.guardHeld = input.guard;
@@ -1347,7 +1364,7 @@ export function movePlayer(
       (p.counterLeft > 0 || !p.counterHeld);
     if (holding) {
       p.counterCharge = Math.min(RULES.counterMaxHold, p.counterCharge + dt);
-      p.counterLeft = RULES.counterWindow;
+      p.counterLeft = RULES.counterWindow * (1 + (p.pve?.classRanks.vanguard ?? 0) * .15);
     } else if (p.counterLeft > 0) {
       p.counterLeft = Math.max(0, p.counterLeft - dt);
       if (p.counterLeft <= 1e-8) {
@@ -1411,8 +1428,9 @@ export function movePlayer(
   p.dashLeft = Math.max(0, p.dashLeft - dt);
   const speed =
     stats.speed *
+    (1 + (p.pve?.speed ?? 0)) *
     (carrying ? RULES.carryMultiplier : 1) *
-    (p.guarding ? RULES.guardSpeed : 1) *
+    (p.guarding ? RULES.guardSpeed + (p.pve?.classRanks.guardian ?? 0) * .04 : 1) *
     (p.counterLeft > 0 ? RULES.counterSpeed : 1);
   translate(
     p,
@@ -1503,7 +1521,7 @@ export function movePlayer(
     p.summonCd <= 0 &&
     // A charged summon (hat zombie or thrall) never takes an execution slot.
     // A fallen guard's sword zombie reuses that guard's slot too.
-    (p.activeExecutions < RULES.zombieExecutions ||
+    (p.activeExecutions < RULES.zombieExecutions + (p.pve?.classRanks.necromancer ?? 0) ||
       p.specialCharge >= RULES.overchargeTap ||
       p.fallenGuards > 0)
   ) {
@@ -1601,6 +1619,9 @@ export function newPlayer(
     aimY: -1,
     bushId: null,
     revealLeft: 0,
+    pve: emptyUpgrades(),
+    pveKills: 0,
+    pveDamage: 0,
   };
 }
 const newFlag = ({ team, home }: Base): Flag => ({
@@ -1630,17 +1651,24 @@ export class Duel {
     flags: [],
     arrows: [],
     zombies: [],
+    mobs: [],
+    mobProjectiles: [],
     graves: [],
     traps: [],
     score: emptyScore(),
     winner: null,
     reason: '',
     events: [],
+    pve: null,
   };
   private eventId = 0;
   private arrowId = 0;
   private trapId = 0;
   private zombieId = 0;
+  private mobId = 0;
+  private mobProjectileId = 0;
+  private pveSpawnClock = 0;
+  private pveOffers = new Map<string, UpgradeOffer>();
   private executionId = 0;
   private paths = new Map<string, { goal: Vec; points: Vec[] }>();
   private packBearings = new Map<string, number>();
@@ -1678,7 +1706,9 @@ export class Duel {
   add(id: string, name: string, classId: ClassId = DEFAULT_CLASS, customization = defaultCustomization(classId)) {
     const s = this.state;
     const team =
-      s.mode === 'teams'
+      s.mode === 'pve'
+        ? 'blue'
+        : s.mode === 'teams'
         ? (['blue', 'red'] as Team[]).sort(
             (a, b) =>
               s.players.filter((p) => p.team === a).length -
@@ -1710,6 +1740,10 @@ export class Duel {
   private spawnFor(p: Player): Vec {
     const same = this.state.players.filter((q) => q.team === p.team),
       i = Math.max(0, same.indexOf(p));
+    if (this.state.mode === 'pve') {
+      const slots = [this.map.sideSpawns.blue[0], this.map.sideSpawns.blue[1], {x:90,y:225}, {x:90,y:350}];
+      return slots[Math.max(0, same.indexOf(p))] ?? slots[0];
+    }
     if (this.state.mode === 'duel')
       return this.map.sideSpawns[p.team === 'red' ? 'red' : 'blue'][0];
     if (this.state.mode === 'teams')
@@ -1718,6 +1752,11 @@ export class Duel {
   }
   private arrange() {
     const s = this.state;
+    if (s.mode === 'pve') {
+      s.bases = []; s.flags = [];
+      for (const p of s.players) { const spawn=this.spawnFor(p); Object.assign(p,spawn,{angle:0,team:'blue'}); }
+      return;
+    }
     s.bases = layout(
       s.players.map((p) => p.team),
       s.mapId,
@@ -1743,7 +1782,11 @@ export class Duel {
       fallenGuards: p.fallenGuards,
       profileRevision: p.profileRevision,
       invuln,
+      pve: p.pve,
+      pveKills: p.pveKills,
+      pveDamage: p.pveDamage,
     });
+    p.maxHp=CLASSES[p.classId].hp*(1+(p.pve?.maxHpBonus??0));p.hp=p.maxHp;
   }
   setCustomization(id: string, customization: CharacterCustomization): boolean {
     const p = this.state.players.find((player) => player.id === id);
@@ -1784,6 +1827,7 @@ export class Duel {
       p = s.players.find((p) => p.id === id);
     if (!p || s.paused || !['lobby', 'finished'].includes(s.phase)) return;
     p.ready = !p.ready;
+    if (s.mode === 'pve') { this.syncParticipants(); return; }
     if (s.players.length === s.maxPlayers && s.players.every((p) => p.ready && p.connected)) {
       s.score = emptyScore();
       s.timeLeft = RULES.matchTime;
@@ -1800,7 +1844,13 @@ export class Duel {
   selectClass(id: string, classId: ClassId): boolean {
     const s = this.state,
       p = s.players.find((p) => p.id === id);
-    if (!p || !validClass(classId) || s.paused || !['lobby', 'finished'].includes(s.phase))
+    if (
+      !p ||
+      !validClass(classId) ||
+      s.paused ||
+      !['lobby', 'finished'].includes(s.phase) ||
+      (s.mode === 'pve' && s.phase === 'finished' && s.reason === 'pveVictory')
+    )
       return false;
     if (p.classId === classId) return true;
     Object.assign(p, newPlayer(p.id, p.name, p.team, classId, this.spawnFor(p)), {
@@ -1837,6 +1887,7 @@ export class Duel {
     s.players = s.players.filter((q) => q.id !== id);
     s.zombies = s.zombies.filter((z) => z.owner !== id);
     s.traps = s.traps.filter((t) => t.owner !== id);
+    if(s.mode==='pve'){this.syncParticipants();return;}
     if (!s.players.some((q) => q.team === p.team)) {
       s.flags = s.flags.filter((f) => f.team !== p.team);
       s.bases = s.bases.filter((b) => b.team !== p.team);
@@ -1849,6 +1900,8 @@ export class Duel {
     const s = this.state;
     s.arrows = [];
     s.zombies = [];
+    s.mobs = [];
+    s.mobProjectiles = [];
     s.graves = [];
     this.raising.clear();
     this.fallen.clear();
@@ -2008,13 +2061,16 @@ export class Duel {
   private explode(a: Arrow, owner: Player, amount: number, skip?: string) {
     if ((a.skillId ? a.skillId !== 'mage.fireball' : a.classId !== 'mage') || !a.power) return;
     const s = this.state,
-      radius = RULES.explosionRadius * (0.6 + 0.4 * a.power);
+      radius = RULES.explosionRadius * (0.6 + 0.4 * a.power) * (1+(owner.pve?.classRanks.mage??0)*.12);
     for (const q of s.players)
       if (q.id !== skip && q.team !== a.team && q.hp > 0 && distance(q, a) <= radius)
         this.damage(q, owner, Math.atan2(q.y - a.y, q.x - a.x), amount * 0.5);
     for (const z of s.zombies)
       if (z.id !== skip && z.team !== a.team && z.hp > 0 && distance(z, a) <= radius)
         this.damageZombie(z, a.team, amount * 0.5);
+    for (const mob of s.mobs)
+      if (mob.id !== skip && mob.hp > 0 && mob.spawnLeft <= 0 && distance(mob, a) <= radius + MOB_STATS[mob.kind].radius)
+        this.damageMob(mob, owner, amount * 0.5);
     this.event('explosion', a, a.team, a.angle, a.classId, a.power);
   }
   damageZombie(z: Zombie, team: Team, amount = 1, angle?: number) {
@@ -2255,6 +2311,11 @@ export class Duel {
         this.damageZombie(q, z.team, RULES.spellDamage, z.angle);
         q.frozenLeft = RULES.freeze;
         this.event('freeze', q, q.team);
+      }
+    for (const mob of s.mobs)
+      if (mob.hp > 0 && mob.spawnLeft <= 0 && inside(mob, MOB_STATS[mob.kind].radius)) {
+        this.damageMob(mob, owner, RULES.spellDamage, RULES.freeze);
+        this.event('freeze', mob, 'red');
       }
   }
   /** A rival projectile about to reach this zombie: within 120 px and flying straight at it. */
@@ -2502,6 +2563,8 @@ export class Duel {
       if (p.team !== z.team && p.hp > 0 && within(p)) this.damage(p, owner, angle, amount);
     for (const q of s.zombies)
       if (q.team !== z.team && q.hp > 0 && within(q)) this.damageZombie(q, z.team, amount, angle);
+    for (const mob of s.mobs)
+      if (mob.hp > 0 && mob.spawnLeft <= 0 && within(mob)) this.damageMob(mob, owner, amount);
     this.event('sword', z, z.team, angle, z.classId, 1);
   }
   /** A revived archer's triple shot; with `wind`, the three wind arrows of its jump combo. */
@@ -2760,6 +2823,7 @@ export class Duel {
       ...s.zombies
         .filter((q) => q.team !== z.team && q.hp > 0 && zombieVisibleTo(s, q, z.team))
         .map((q) => ({ id: q.id, at: q as Vec, carrying: false })),
+      ...s.mobs.filter(m=>m.hp>0&&m.spawnLeft<=0).map(m=>({id:m.id,at:m as Vec,carrying:false})),
     ];
     // Cursor zombies only attack the rival under the cursor, guards only whoever steps into the
     // red circle around their necromancer, and automatic ones hunt anyone nearby.
@@ -2842,7 +2906,8 @@ export class Duel {
       const zombie = s.zombies.find(
         (q) => q.id === z.target && q.hp > 0 && zombieVisibleTo(s, q, z.team),
       );
-      const target: Vec | undefined = player ?? zombie;
+      const mob=s.mobs.find(m=>m.id===z.target&&m.hp>0&&m.spawnLeft<=0);
+      const target: Vec | undefined = player ?? zombie ?? mob;
       if (!target) z.target = null;
       const owner = s.players.find((p) => p.id === z.owner);
       const pace =
@@ -2971,6 +3036,7 @@ export class Duel {
             lineClear(z, q, this.map.walls);
           const players = sword?.cleave ? s.players.filter(inReach) : player ? [player] : [];
           const zombies = sword?.cleave ? s.zombies.filter(inReach) : zombie ? [zombie] : [];
+          const mobs=sword?.cleave?s.mobs.filter(q=>q.hp>0&&distance(z,q)<=reach+8&&lineClear(z,q,this.map.walls)):mob?[mob]:[];
           let kills = 0;
           if (owner)
             for (const q of players)
@@ -2980,6 +3046,7 @@ export class Duel {
             this.damageZombie(q, z.team, amount, Math.atan2(q.y - z.y, q.x - z.x));
             if (q.hp <= 0) kills++;
           }
+          if(owner)for(const q of mobs){this.damageMob(q,owner,amount);if(q.hp<=0)kills++;}
           if (melee || sword) this.event('sword', z, z.team, angle, z.classId ?? 'guardian');
           if (sword) for (let i = 0; i < kills; i++) this.levelUp(z);
         }
@@ -3067,17 +3134,160 @@ export class Duel {
     this.packSeen.clear();
     for (const p of s.players) p.activeExecutions = this.activeExecutions(p.id);
   }
+  private pveDamage(source: Player, amount: number) {
+    return amount * (1 + (source.pve?.damage ?? 0)) * (1 + (source.pve?.classRanks[source.classId] ?? 0) * .06);
+  }
+  damageMob(mob: Mob, source: Player, amount = 1, freeze = 0) {
+    if (mob.hp <= 0 || mob.spawnLeft > 0) return false;
+    const dealt = Math.min(mob.hp, this.pveDamage(source, amount));
+    mob.hp = Math.max(0, mob.hp - dealt);
+    mob.revealLeft = 1.5;
+    if (freeze > 0) mob.frozenLeft = Math.max(mob.frozenLeft, freeze);
+    source.pveDamage += dealt;
+    if (this.state.pve) this.state.pve.damage[source.id] = (this.state.pve.damage[source.id] ?? 0) + dealt;
+    this.event('hit', mob, source.team);
+    if (mob.hp <= 0) {
+      source.pveKills++;
+      if (this.state.pve) this.state.pve.kills[source.id] = (this.state.pve.kills[source.id] ?? 0) + 1;
+      this.event('death', mob, source.team);
+    }
+    return true;
+  }
+  private mobCanSee(mob: Mob, target: Player) {
+    if (!target.bushId || target.revealLeft > 0) return true;
+    return mob.bushId === target.bushId && distance(mob, target) <= 90 && lineClear(mob, target, this.map.walls);
+  }
+  private hitPlayerFromMob(target: Player, mob: Mob, angle: number, raw: number) {
+    if (target.hp <= 0 || target.invuln > 0 || target.dashInvulnerable) return false;
+    if (target.counterLeft > 0) {
+      const boost = target.counterCharge >= RULES.counterChargeTime - 1e-8 ? RULES.counterBoost : 1;
+      this.damageMob(mob, target, raw * boost);
+      this.event('counter', target, target.team, target.angle, target.classId, boost > 1 ? 1 : 0);
+      return false;
+    }
+    if (target.classId === 'mage' && target.magicShieldHits > 0) {
+      target.magicShieldHits--;
+      if (!target.magicShieldHits) target.magicShieldCd = RULES.magicShieldCooldown;
+      this.event('block', target, target.team, target.angle, target.classId);
+      return false;
+    }
+    const relative=angle+Math.PI-target.angle;
+    if (target.guarding && Math.abs(wrapAngle(relative)) <= RULES.guardArc/2) {
+      this.event('block',target,target.team,target.angle,target.classId); return false;
+    }
+    const amount=raw*(1-(target.pve?.resistance??0));
+    target.hp=Math.max(0,target.hp-amount);
+    target.invuln=RULES.hurtProtection; target.hitFlash=.18; target.revealLeft=1.5;
+    target.shotCharge=0; target.specialCharge=0; target.trapLeft=0;
+    this.event('hit',target,'red');
+    if (target.hp<=0) {
+      target.deaths++; target.windup=0; target.dashLeft=0; target.dashInvulnerable=false;
+      target.furyLeft=0; target.raiseCast=0; lowerGuard(target);
+      if (target.pve.selfRevives>0) { target.pve.selfRevives--; target.respawnLeft=2; target.eliminated=false; }
+      else { target.respawnLeft=0; target.eliminated=true; }
+      this.event('death',target,target.team);
+    } else translate(target,Math.cos(angle)*16,Math.sin(angle)*16,this.map.walls);
+    return true;
+  }
+  private pveOfferRewards() {
+    const s=this.state,pve=s.pve;if(!pve)return;
+    s.phase='rewards'; pve.rewardLeft=10; pve.chosen=[]; this.pveOffers.clear();
+    const alive=s.players.filter(p=>p.hp>0&&!p.eliminated), dead=s.players.filter(p=>p.eliminated);
+    const forced=dead.length&&alive.length?alive[Math.floor(Math.random()*alive.length)]?.id:undefined;
+    const targets=dead.map(p=>({id:p.id,name:p.name}));
+    for(const p of alive){
+      const offer:UpgradeOffer={id:`${pve.wave}:${p.id}:${s.tick}`,wave:pve.wave,deadline:Date.now()+10000,choices:makeUpgradeChoices(p.classId,p.pve,pve.wave,Math.random,targets,p.id===forced)};
+      this.pveOffers.set(p.id,offer);
+    }
+  }
+  getUpgradeOffer(id:string){return this.pveOffers.get(id);}
+  selectUpgrade(id:string,offerId:unknown,key:unknown,targetId?:unknown){
+    const s=this.state,p=s.players.find(q=>q.id===id),offer=this.pveOffers.get(id);
+    if(!p||!offer||s.phase!=='rewards'||offer.id!==offerId||typeof key!=='string')return false;
+    const choice=offer.choices.find(c=>c.key===key);if(!choice)return false;
+    const u=p.pve,stack=(u.stacks[choice.id]??0)+1;
+    if(choice.id==='reviveAlly'){
+      if(typeof targetId!=='string'||!choice.reviveTargets?.some(t=>t.id===targetId))return false;
+      const target=s.players.find(q=>q.id===targetId&&q.eliminated);if(!target)return false;
+      target.eliminated=false;this.revive(target,RULES.spawnProtection);target.hp=target.maxHp*.5;
+    } else if(choice.id==='power')u.damage=Math.min(1,u.damage+choice.value);
+    else if(choice.id==='vitality'){
+      const old=p.maxHp;u.maxHpBonus=Math.min(.75,u.maxHpBonus+choice.value);p.maxHp=CLASSES[p.classId].hp*(1+u.maxHpBonus);p.hp=Math.min(p.maxHp,p.hp+p.maxHp-old);
+    } else if(choice.id==='haste')u.cooldownReduction=Math.min(.4,u.cooldownReduction+choice.value);
+    else if(choice.id==='speed')u.speed=Math.min(.25,u.speed+choice.value);
+    else if(choice.id==='resistance')u.resistance=Math.min(.35,u.resistance+choice.value);
+    else if(choice.id==='regeneration'){u.regenRank=Math.min(3,u.regenRank+1);u.regenLeft=0;}
+    else if(choice.id==='secondChance')u.selfRevives=1;
+    else u.classRanks[p.classId]=Math.min(3,(u.classRanks[p.classId]??0)+1);
+    u.stacks[choice.id]=stack;this.pveOffers.delete(id);s.pve!.chosen.push(id);this.event('upgrade',p,p.team);return true;
+  }
+  startPve() {
+    const s=this.state;if(s.mode!=='pve'||!['lobby','finished'].includes(s.phase)||!s.players.length||!s.players.every(p=>p.ready&&p.connected))return false;
+    s.pve={objective:'elimination',wave:0,initialPartySize:s.players.length,pendingBudget:0,spawnedAll:false,enemiesRemaining:0,rewardLeft:0,chosen:[],completed:false,endless:false,bossActive:false,kills:{},damage:{}};
+    s.winner=null;s.reason='';s.timeLeft=0;s.phase='countdown';s.phaseLeft=RULES.countdown;s.flags=[];s.bases=[];s.arrows=[];s.zombies=[];s.mobs=[];s.mobProjectiles=[];this.pveOffers.clear();
+    for(const p of s.players){p.pve=emptyUpgrades();p.pveKills=0;p.pveDamage=0;p.deaths=0;p.eliminated=false;p.ready=false;this.revive(p);}
+    this.syncParticipants();return true;
+  }
+  continuePve(){const s=this.state;if(s.mode!=='pve'||s.phase!=='finished'||!s.pve?.completed)return false;s.winner=null;s.reason='';s.pve.endless=true;this.pveOfferRewards();return true;}
+  private beginPveWave(wave:number){
+    const s=this.state,pve=s.pve;if(!pve)return;s.phase='playing';pve.wave=wave;pve.rewardLeft=0;pve.chosen=[];pve.spawnedAll=false;pve.bossActive=wave>=10&&wave%5===0;pve.pendingBudget=pve.bossActive?Math.round(waveBudget(wave,pve.initialPartySize)*.35):waveBudget(wave,pve.initialPartySize);s.mobs=[];s.mobProjectiles=[];this.pveSpawnClock=0;this.pveOffers.clear();
+    if(pve.bossActive)this.spawnPveMob('cryptGuardian');this.event('wave',{x:RULES.width/2,y:RULES.height/2},'blue',undefined,undefined,wave);
+  }
+  private spawnPveMob(kind:MobKind){
+    const s=this.state,pve=s.pve;if(!pve)return;const stats=MOB_STATS[kind],scale=1+.1*Math.max(0,pve.wave-1),elite=kind!=='cryptGuardian'&&pve.wave>=5&&Math.random()<.15;
+    const living=s.players.filter(p=>p.hp>0);const spots=kind==='cryptGuardian'?[this.map.pveBossSpawn]:this.map.pveSpawns;const available=spots.filter(at=>living.every(p=>distance(at,p)>=180)&&!blocked(at.x,at.y,kind==='cryptGuardian'?22:12,this.map.walls));const at=(available.length?available:spots).reduce((best,point)=>Math.min(...living.map(p=>distance(point,p)),Infinity)>Math.min(...living.map(p=>distance(best,p)),Infinity)?point:best,spots[0]);
+    const bossScale=kind==='cryptGuardian'?(1+.65*(pve.initialPartySize-1)):1,maxHp=stats.hp*scale*bossScale*(elite?1.6:1);
+    s.mobs.push({id:`m${++this.mobId}`,kind,x:at.x,y:at.y,hp:maxHp,maxHp,angle:0,speed:stats.speed*(1+Math.min(.15,.015*Math.max(0,pve.wave-1))),damage:stats.damage*scale,attackCd:.5,specialCd:kind==='wolf'?2:kind==='cryptGuardian'?4:0,windup:0,spawnLeft:.8,frozenLeft:0,target:null,elite,boss:kind==='cryptGuardian',bushId:null,revealLeft:0});
+  }
+  private choosePveKind(){
+    const pve=this.state.pve!,list=availableMobs(pve.wave).filter(k=>MOB_STATS[k].cost<=pve.pendingBudget+.01);if(!list.length)return null;return list[Math.floor(Math.random()*list.length)];
+  }
+  private walkPveMob(mob:Mob,goal:Vec,dt:number){
+    const radius=mob.boss?22:mob.kind==='brute'?16:12;let aim=goal;
+    if(bodyClear(mob,goal,radius-1,this.map.walls))this.paths.delete(mob.id);
+    else{let route=this.paths.get(mob.id);if(!route?.points.length||distance(route.goal,goal)>40)route={goal:{x:goal.x,y:goal.y},points:findPath(mob,goal,new Set(),this.map.walls)},this.paths.set(mob.id,route);while(route.points.length>1&&bodyClear(mob,route.points[1],radius-1,this.map.walls))route.points.shift();if(route.points.length&&distance(mob,route.points[0])<4)route.points.shift();aim=route.points[0]??goal;}
+    const gap=distance(mob,aim);if(gap<1e-6)return;const angle=Math.atan2(aim.y-mob.y,aim.x-mob.x);mob.angle=angle;const stride=Math.min(gap,mob.speed*dt);translate(mob,Math.cos(angle)*stride,Math.sin(angle)*stride,this.map.walls);
+  }
+  private stepPveWorld(dt:number){
+    const s=this.state,pve=s.pve;if(!pve)return;
+    this.pveSpawnClock-=dt;
+    if(pve.pendingBudget>0&&s.mobs.filter(m=>m.hp>0).length<24&&this.pveSpawnClock<=0){const kind=this.choosePveKind();if(kind){this.spawnPveMob(kind);pve.pendingBudget=Math.max(0,pve.pendingBudget-MOB_STATS[kind].cost);this.pveSpawnClock=.65;}else pve.pendingBudget=0;}
+    pve.spawnedAll=pve.pendingBudget<=.01;
+    for(const mob of s.mobs){
+      if(mob.hp<=0)continue;mob.spawnLeft=Math.max(0,mob.spawnLeft-dt);mob.attackCd=Math.max(0,mob.attackCd-dt);mob.specialCd=Math.max(0,mob.specialCd-dt);mob.revealLeft=Math.max(0,mob.revealLeft-dt);mob.bushId=pointBush(this.map,mob);if(mob.spawnLeft>0)continue;
+      if(mob.frozenLeft>0){mob.frozenLeft=Math.max(0,mob.frozenLeft-dt);continue;}
+      const players=s.players.filter(p=>p.hp>0&&this.mobCanSee(mob,p));const allies=s.zombies.filter(z=>z.hp>0);const candidates=[...players.map(entity=>({entity,player:true})),...allies.map(entity=>({entity,player:false}))];const chosen=candidates.sort((a,b)=>distance(mob,a.entity)-distance(mob,b.entity))[0];if(!chosen){mob.target=null;continue;}const target=chosen.entity;mob.target=target.id;const gap=distance(mob,target);mob.angle=Math.atan2(target.y-mob.y,target.x-mob.x);
+      if(mob.kind==='skeleton'){
+        if(gap<=280&&lineClear(mob,target,this.map.walls)&&mob.attackCd<=0){mob.attackCd=MOB_STATS.skeleton.cooldown;s.mobProjectiles.push({id:++this.mobProjectileId,owner:mob.id,x:mob.x,y:mob.y,angle:mob.angle,speed:280,damage:mob.damage,life:1.5,radius:5});this.event('mobAttack',mob,'red',mob.angle);}
+        const dir=gap<170?-1:gap>245?1:0;if(dir>0)this.walkPveMob(mob,target,dt);else if(dir<0)translate(mob,-Math.cos(mob.angle)*mob.speed*dt,-Math.sin(mob.angle)*mob.speed*dt,this.map.walls);continue;
+      }
+      if(mob.kind==='cryptGuardian'&&mob.specialCd<=0){mob.specialCd=5;if(s.mobs.filter(m=>m.hp>0).length<22){this.spawnPveMob('zombie');this.spawnPveMob(pve.wave>=10?'skeleton':'wolf');}for(const p of players)if(distance(mob,p)<=115)this.hitPlayerFromMob(p,mob,Math.atan2(p.y-mob.y,p.x-mob.x),mob.damage);for(const z of allies)if(distance(mob,z)<=115)this.damageZombie(z,'red',mob.damage);this.event('mobAttack',mob,'red',mob.angle,undefined,2);}
+      if(mob.kind==='wolf'&&mob.specialCd<=0&&gap<180&&gap>45){mob.specialCd=3;translate(mob,Math.cos(mob.angle)*Math.min(120,gap-18),Math.sin(mob.angle)*Math.min(120,gap-18),this.map.walls);}
+      const reach=MOB_STATS[mob.kind].range;
+      if(mob.windup>0){mob.windup=Math.max(0,mob.windup-dt);if(mob.windup<=0){const area=mob.kind==='brute'||mob.kind==='cryptGuardian';if(area){for(const q of players)if(distance(mob,q)<=reach+12&&lineClear(mob,q,this.map.walls))this.hitPlayerFromMob(q,mob,Math.atan2(q.y-mob.y,q.x-mob.x),mob.damage);for(const q of allies)if(distance(mob,q)<=reach+12&&lineClear(mob,q,this.map.walls))this.damageZombie(q,'red',mob.damage,Math.atan2(q.y-mob.y,q.x-mob.x));}else if(distance(mob,target)<=reach+12&&lineClear(mob,target,this.map.walls)){if(chosen.player)this.hitPlayerFromMob(target as Player,mob,mob.angle,mob.damage);else this.damageZombie(target as Zombie,'red',mob.damage,mob.angle);}mob.attackCd=MOB_STATS[mob.kind].cooldown;this.event('mobAttack',mob,'red',mob.angle);}continue;}
+      if(gap<=reach&&mob.attackCd<=0){mob.windup=mob.kind==='brute'?.55:mob.kind==='cryptGuardian'?.4:.2;continue;}
+      if(gap>reach*.8)this.walkPveMob(mob,target,dt);
+    }
+    s.mobProjectiles=s.mobProjectiles.filter(a=>{a.life-=dt;if(a.life<=0)return false;const steps=Math.max(1,Math.ceil(a.speed*dt/5));for(let i=0;i<steps;i++){a.x+=Math.cos(a.angle)*a.speed*dt/steps;a.y+=Math.sin(a.angle)*a.speed*dt/steps;if(blocked(a.x,a.y,a.radius,this.map.walls))return false;const mob=s.mobs.find(m=>m.id===a.owner);if(!mob)return false;const p=s.players.find(q=>q.hp>0&&distance(q,a)<RULES.radius+a.radius);if(p){this.hitPlayerFromMob(p,mob,a.angle,a.damage);return false;}const z=s.zombies.find(q=>q.hp>0&&distance(q,a)<RULES.zombieRadius+a.radius);if(z){this.damageZombie(z,'red',a.damage,a.angle);return false;}}return true;});
+    s.mobs=s.mobs.filter(m=>m.hp>0);for(const id of this.paths.keys())if(id.startsWith('m')&&!s.mobs.some(m=>m.id===id))this.paths.delete(id);pve.enemiesRemaining=s.mobs.length+Math.ceil(pve.pendingBudget);
+    const survivors=s.players.some(p=>p.hp>0||(!p.eliminated&&p.respawnLeft>0));if(!survivors){this.finish('draw','pveDefeat');return;}
+    if(pve.spawnedAll&&!s.mobs.length){s.mobProjectiles=[];if(pve.wave===10&&!pve.endless){pve.completed=true;this.finish('blue','pveVictory');}else this.pveOfferRewards();}
+  }
   step(inputs: Map<string, Input>, dt = RULES.tick as number) {
     const s = this.state;
     s.tick++;
     if (s.paused || s.phase === 'lobby' || s.phase === 'finished') return;
-    if (s.phase === 'countdown' || s.phase === 'capture') {
-      s.phaseLeft = Math.max(0, s.phaseLeft - dt);
-      if (s.phaseLeft <= 0) s.phase = 'playing';
+    if (s.phase === 'rewards') {
+      if(s.pve){s.pve.rewardLeft=Math.max(0,s.pve.rewardLeft-dt);if(s.pve.rewardLeft<=0)this.beginPveWave(s.pve.wave+1);}
       return;
     }
-    s.timeLeft = Math.max(0, s.timeLeft - dt);
-    if (s.timeLeft <= 0) {
+    if (s.phase === 'countdown' || s.phase === 'capture') {
+      s.phaseLeft = Math.max(0, s.phaseLeft - dt);
+      if (s.phaseLeft <= 0) { if(s.mode==='pve')this.beginPveWave(1); else s.phase = 'playing'; }
+      return;
+    }
+    if(s.mode!=='pve') s.timeLeft = Math.max(0, s.timeLeft - dt);
+    if (s.mode!=='pve' && s.timeLeft <= 0) {
       const teams = [...new Set(s.players.filter((p) => !p.eliminated).map((p) => p.team))];
       const best = Math.max(...teams.map((t) => s.score[t]));
       const leaders = teams.filter((t) => s.score[t] === best);
@@ -3096,6 +3306,7 @@ export class Duel {
       p.revealLeft = Math.max(0, p.revealLeft - dt);
       p.bushId = pointBush(this.map, p);
       if (p.hp <= 0) {
+        if (s.mode==='pve') { if(!p.eliminated&&p.respawnLeft>0){p.respawnLeft-=dt;if(p.respawnLeft<=0){this.revive(p,RULES.spawnProtection);p.hp=p.maxHp*.4;}} continue; }
         if (p.eliminated) continue;
         p.respawnLeft -= dt;
         if (p.respawnLeft <= 0) this.revive(p, RULES.spawnProtection);
@@ -3206,22 +3417,36 @@ export class Duel {
         this.damageZombie(z, p.team, RULES.guardianDashDamage);
         this.event('dash', z, p.team, p.angle, p.classId, 1);
       }
+      for (const mob of s.mobs) {
+        if (
+          mob.hp <= 0 ||
+          mob.spawnLeft > 0 ||
+          struck.has(mob.id) ||
+          distance(p, mob) > RULES.radius + MOB_STATS[mob.kind].radius + 4
+        ) continue;
+        struck.add(mob.id);
+        this.damageMob(mob, p, RULES.guardianDashDamage);
+        this.event('dash', mob, p.team, p.angle, p.classId, 1);
+      }
     }
     for (const p of bashers) {
       this.event('bash', p, p.team, p.shieldBashAngle, p.classId);
       const candidates = [
         ...s.players
           .filter((q) => q.team !== p.team && q.hp > 0)
-          .map((q) => ({ kind: 'player' as const, entity: q })),
+          .map((q) => ({ kind: 'player' as const, entity: q, radius: 0 })),
         ...s.zombies
           .filter((z) => z.team !== p.team && z.hp > 0)
-          .map((z) => ({ kind: 'zombie' as const, entity: z })),
+          .map((z) => ({ kind: 'zombie' as const, entity: z, radius: 0 })),
+        ...s.mobs
+          .filter((mob) => mob.hp > 0 && mob.spawnLeft <= 0)
+          .map((mob) => ({ kind: 'mob' as const, entity: mob, radius: MOB_STATS[mob.kind].radius })),
       ]
-        .filter(({ entity }) => {
+        .filter(({ entity, radius }) => {
           const angle = Math.atan2(entity.y - p.y, entity.x - p.x);
           const diff = wrapAngle(angle - p.shieldBashAngle);
           return (
-            distance(p, entity) <= RULES.shieldBashRange &&
+            distance(p, entity) <= RULES.shieldBashRange + radius &&
             Math.abs(diff) <= RULES.shieldBashArc / 2 &&
             lineClear(p, entity, this.map.walls)
           );
@@ -3246,9 +3471,11 @@ export class Duel {
           hit.entity.dashInvulnerable = false;
           lowerGuard(hit.entity);
         }
-      } else {
+      } else if (hit.kind === 'zombie') {
         this.damageZombie(hit.entity, p.team, RULES.shieldBashDamage);
         hit.entity.frozenLeft = Math.max(hit.entity.frozenLeft, RULES.shieldBashStun);
+      } else {
+        this.damageMob(hit.entity, p, RULES.shieldBashDamage, RULES.shieldBashStun);
       }
     }
     const hits: { target: Player; source: Player; angle: number; amount: number }[] = [];
@@ -3286,6 +3513,17 @@ export class Duel {
           lineClear(p, z, this.map.walls)
         )
           this.damageZombie(z, p.team, amount);
+      }
+      for (const mob of s.mobs) {
+        const angle = Math.atan2(mob.y - p.y, mob.x - p.x);
+        const diff = Math.atan2(Math.sin(angle - p.swingAngle), Math.cos(angle - p.swingAngle));
+        if (
+          mob.hp > 0 &&
+          mob.spawnLeft <= 0 &&
+          distance(p, mob) <= range + MOB_STATS[mob.kind].radius &&
+          Math.abs(diff) <= arc / 2 &&
+          lineClear(p, mob, this.map.walls)
+        ) this.damageMob(mob, p, amount);
       }
     }
     for (const hit of hits) this.damage(hit.target, hit.source, hit.angle, hit.amount);
@@ -3398,6 +3636,26 @@ export class Duel {
           this.explode(a, owner, amount, zombie.id);
           return false;
         }
+        const mob = s.mobs.find(
+          (candidate) =>
+            candidate.hp > 0 &&
+            candidate.spawnLeft <= 0 &&
+            distance(candidate, a) < MOB_STATS[candidate.kind].radius + radius &&
+            !a.hits?.includes(candidate.id),
+        );
+        if (mob && this.volleyPasses(a, mob.id)) continue;
+        if (mob) {
+          this.markVolley(a, mob.id);
+          const freeze = a.ice ? RULES.freezeDuration : a.element === 'ice' ? RULES.freeze : 0;
+          this.damageMob(mob, owner, a.ice ? 0 : amount, freeze);
+          if (freeze > 0) this.event('freeze', mob, 'red');
+          if (a.wind || a.slash || a.blast) {
+            a.hits!.push(mob.id);
+            continue;
+          }
+          this.explode(a, owner, amount, mob.id);
+          return false;
+        }
       }
       return true;
     });
@@ -3409,6 +3667,7 @@ export class Duel {
       if (owned.length >= RULES.trapMax) s.traps = s.traps.filter((t) => t.id !== owned[0].id);
       s.traps.push({
         id: ++this.trapId,
+        pveScale: 1 + (p.pve?.classRanks.archer ?? 0) * .12,
         owner: p.id,
         team: p.team,
         x: p.x,
@@ -3430,6 +3689,15 @@ export class Duel {
           distance(p, t) < RULES.trapRadius + RULES.radius &&
           lineClear(p, t, this.map.walls),
       );
+      const mob = s.mode === 'pve'
+        ? s.mobs.find((candidate) => candidate.hp > 0 && candidate.spawnLeft <= 0 && distance(candidate, t) < RULES.trapRadius + MOB_STATS[candidate.kind].radius && lineClear(candidate, t, this.map.walls))
+        : undefined;
+      if (!target && !mob) return true;
+      if (mob) {
+        this.damageMob(mob, owner, RULES.trapDamage * (t.pveScale ?? 1), RULES.trapStun);
+        this.event('freeze', mob, 'red');
+        return false;
+      }
       if (!target || target.invuln > 0 || target.dashInvulnerable) return true;
       // A floor trap strikes beneath the shield, while normal damage protection still applies.
       this.damage(target, owner, target.angle, RULES.trapDamage);
@@ -3453,6 +3721,7 @@ export class Duel {
       return;
     }
     for (const p of s.players) p.activeTraps = s.traps.filter((t) => t.owner === p.id).length;
+    if(s.mode==='pve'){this.stepPveWorld(dt);this.syncParticipants();return;}
     // Own-flag returns precede enemy pickups and scoring, independent of player iteration order.
     for (const f of s.flags) {
       f.lockLeft = Math.max(0, f.lockLeft - dt);
