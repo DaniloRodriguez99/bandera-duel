@@ -15,7 +15,7 @@ test('selección compartida, ataques de arquero y escudo con mouse',async({page,
   await expect(rival.locator('#stage')).toHaveAttribute('data-guardiNg'.toLowerCase(),'true');
   await rival.mouse.down({button:'left'});await rival.mouse.up({button:'left'});await expect(rival.locator('#cd-sword')).toHaveText('⚔ Lista');
   await rival.screenshot({path:info.outputPath('escudo-pc.png'),fullPage:true});await rival.mouse.up({button:'right'});await expect(rival.locator('#stage')).toHaveAttribute('data-guarding','false');
-  await expect(rival.locator('#cd-guard')).toHaveText(/⛨ [01]\.\ds/);await expect(rival.locator('#cd-dash')).toBeVisible();await expect(rival.locator('#cd-shot')).toBeHidden();
+  await expect(rival.locator('#cd-guard')).toHaveText(/⛨ [01]\.\ds/);await expect(rival.locator('#cd-dash')).toBeHidden();await expect(rival.locator('#cd-shot')).toBeHidden();
   expect(errors).toEqual([]);await context.close();
 });
 test('el mago aparece y muestra sus controles',async({page})=>{
@@ -55,13 +55,13 @@ test('escudo móvil con tres dedos, liberación y clase pesada',async({browser},
   const pc=await browser.newContext(),opponent=await pc.newPage();await enter(opponent,'/','Heavy','vanguard');
   const mobile=await browser.newContext({viewport:{width:844,height:390},isMobile:true,hasTouch:true,deviceScaleFactor:2});const page=await mobile.newPage();const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
   await enter(page,opponent.url(),'Shield','guardian');await page.screenshot({path:info.outputPath('clases-mobile.png')});await opponent.locator('#ready').click();await page.locator('#ready').click();await expect(page.locator('#stage')).toHaveAttribute('data-phase','playing',{timeout:7000});
-  await expect(opponent.locator('#health')).toHaveText('♥ 5/5');await expect(opponent.locator('#cd-dash')).toBeHidden();
+  await expect(opponent.locator('#health')).toHaveText('♥ 5/5');await expect(opponent.locator('#cd-dash')).toBeVisible();
   await opponent.locator('canvas').click();await expect(opponent.locator('#cd-sword')).toHaveText(/⚔ [01]\.\ds/);
   const cdp=await mobile.newCDPSession(page);const boxes=await Promise.all(['#stick-move','#stick-aim','#touch-guard'].map(id=>page.locator(id).boundingBox()));
   const touches=boxes.map((b,i)=>({id:i+1,x:b!.x+b!.width/2,y:b!.y+b!.height/2}));
   await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:touches});touches[0].x-=25;touches[1].y-=25;await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:touches});
   await expect(page.locator('#stage')).toHaveAttribute('data-guarding','true');await expect(page.locator('#stick-move')).toHaveAttribute('style',/--dx: -/);await expect(page.locator('#stick-aim')).toHaveAttribute('style',/--dy: -/);
   await page.screenshot({path:info.outputPath('escudo-mobile.png')});await cdp.send('Input.dispatchTouchEvent',{type:'touchCancel',touchPoints:[]});await expect(page.locator('#stage')).toHaveAttribute('data-guarding','false');
-  await expect(page.locator('#stick-move')).toHaveAttribute('style',/--dx: 0px/);await expect(page.locator('#cd-shot')).toBeHidden();await expect(page.locator('#touch-dash')).toBeVisible();
+  await expect(page.locator('#stick-move')).toHaveAttribute('style',/--dx: 0px/);await expect(page.locator('#cd-shot')).toBeHidden();await expect(page.locator('#touch-dash')).toBeHidden();
   expect(errors).toEqual([]);await mobile.close();await pc.close();
 });

@@ -179,9 +179,10 @@ Sobre cada tarjeta crece su árbol: qué hace un toque, qué hace mantener y (en
 - **E** activa o desactiva el modo **automático**: sin círculos, todos atacan solos al rival cercano y, si no hay ninguno, te acompañan.
 - Invocar no espera ni bloquea al fuego: se puede lanzar fuego e invocar a la vez. Resucitar castea **0,5 s** con el nigromante quieto; recién entonces se abre el mandala y se levanta el esclavo.
 
-### Caballero
-- **Espacio:** dash, como el arquero y el mago (mantener para un dash más largo).
-- **Q · contraataque:** mientras está activo, todo proyectil que lo alcance (flechas, fuego, hielo, bolas de fuego, flechas de viento) vuelve en sentido contrario y pasa a ser del caballero, con el mismo daño. Un toque lo deja activo 0,45 s; mantener Q lo sostiene hasta 2,5 s (moviéndose a mitad de velocidad y sin escudo). Si se mantiene **1 s o más**, lo que devuelve sale **al doble de velocidad y de daño**. Al terminar entra en recarga de 4 s y hay que soltar Q para volver a usarlo.
+### Guerrero
+- **Espacio:** dash, más corto que el del arquero y el mago (mantener para uno más largo). Camina un poco más lento que antes (145).
+- **Q · tajo viajero:** lanza una media luna que avanza unos 270 px, atraviesa y corta a todos los rivales y zombies en su camino (1,5 de daño a cada uno), hasta chocar con un muro. Recarga de 5 s. Los escudos lo bloquean.
+- **E · contraataque:** mientras está activo, todo proyectil que lo alcance (flechas, fuego, hielo, bolas de fuego, flechas de viento, tajos) vuelve en sentido contrario y pasa a ser del guerrero, con el mismo daño. Un toque lo deja activo 0,45 s; mantener E lo sostiene hasta 2,5 s (a mitad de velocidad). Si se mantiene **1 s o más**, lo que devuelve sale **al doble de velocidad y de daño**. Al terminar entra en recarga de 4 s y hay que soltar E para volver a usarlo.
 
 ### Combos del arquero
 - **Triple (E):** las 3 flechas salen casi en fila y se abren de a poco. Si una ya alcanzó a un rival, las otras siguen de largo hacia el próximo en línea.

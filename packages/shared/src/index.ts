@@ -94,7 +94,7 @@ export const CLASSES = {
     meleeCooldown: 0.6,
     ranged: false,
     shield: true,
-    dash: true,
+    dash: false,
     melee: true,
     summon: false,
   },
@@ -103,7 +103,7 @@ export const CLASSES = {
     label: 'ESPADA DE DOS MANOS',
     description: 'Más alcance. Más daño. Acero pesado.',
     hp: 5,
-    speed: 155,
+    speed: 145,
     meleeDamage: 2,
     meleeRange: 80,
     meleeArc: (Math.PI * 130) / 180,
@@ -111,7 +111,7 @@ export const CLASSES = {
     meleeCooldown: 1,
     ranged: false,
     shield: false,
-    dash: false,
+    dash: true,
     melee: true,
     summon: false,
   },
@@ -162,6 +162,12 @@ export const RULES = {
   guardRecovery: 0.15,
   guardSpeed: 0.25,
   guardArc: (Math.PI * 2) / 3,
+  slashCooldown: 5,
+  slashSpeed: 420,
+  slashLife: 0.65,
+  slashDamage: 1.5,
+  slashRadius: 24,
+  vanguardDash: 0.75,
   counterWindow: 0.45,
   counterMaxHold: 2.5,
   counterChargeTime: 1,
@@ -307,7 +313,9 @@ export interface Input {
   trap: boolean;
   volley: boolean;
   special: boolean;
-  /** Q held by the knight: full counter. */
+  /** Q by the warrior: travelling slash. */
+  slash: boolean;
+  /** E held by the warrior: full counter. */
   counter: boolean;
   /** E: toggles automatic zombies (no guard circle, no cursor squad). */
   command: boolean;
@@ -333,6 +341,7 @@ export const idleInput = (seq = 0, angle = 0): Input => ({
   trap: false,
   volley: false,
   special: false,
+  slash: false,
   counter: false,
   command: false,
   mark: false,
@@ -373,6 +382,7 @@ export function sanitizeInput(raw: unknown): Input | null {
     trap: r.trap === true,
     volley: r.volley === true,
     special: r.special === true,
+    slash: r.slash === true,
     counter: r.counter === true,
     command: r.command === true,
     mark: r.mark === true,
@@ -427,7 +437,9 @@ export interface Player extends Vec {
   stunLeft: number;
   /** Seconds left of a fully charged archer dash: shot or volley released now become the dash combo. */
   windDash: number;
-  /** Knight's full counter: seconds it stays up, seconds held (charge), cooldown, Q still held. */
+  /** Warrior's travelling slash cooldown (Q). */
+  slashCd: number;
+  /** Warrior's full counter (E): seconds it stays up, seconds held (charge), cooldown, E still held. */
   counterLeft: number;
   counterCharge: number;
   counterCd: number;
@@ -474,7 +486,9 @@ export interface Arrow extends Vec {
   hits?: string[];
   /** Arrows of one volley share this id. */
   volley?: number;
-  /** Sent back by a knight's counter: 1 normal, 2 charged (double speed and damage). */
+  /** Warrior's travelling slash: a wide crescent that cuts through everyone in its path. */
+  slash?: boolean;
+  /** Sent back by a warrior's counter: 1 normal, 2 charged (double speed and damage). */
   reflected?: number;
   id: number;
   owner: string;
@@ -539,6 +553,7 @@ export interface GameEvent extends Vec {
     | 'explosion'
     | 'wind'
     | 'mandala'
+    | 'slash'
     | 'counter'
     | 'levelup';
   team: Team;
@@ -677,6 +692,15 @@ export function chargePower(seconds: number) {
   );
 }
 export function projectileStats(classId: ClassId, charged = false, power = 0) {
+  if (classId === 'vanguard')
+    // The warrior's travelling slash: a wide crescent with a short reach.
+    return {
+      speed: RULES.slashSpeed,
+      life: RULES.slashLife,
+      damage: RULES.slashDamage,
+      radius: RULES.slashRadius,
+      cooldown: RULES.slashCooldown,
+    };
   if (classId === 'archer' && charged)
     return {
       speed: RULES.arrowSpeed * RULES.chargeMultiplier,
@@ -828,6 +852,7 @@ export function movePlayer(
 ) {
   const result = {
     ice: false,
+    slash: false,
     swing: false,
     shoot: false,
     summon: false,
@@ -862,6 +887,7 @@ export function movePlayer(
     'magicShieldCd',
     'thrallCd',
     'windDash',
+    'slashCd',
     'counterCd',
   ] as const)
     p[key] = Math.max(0, p[key] - dt);
@@ -941,9 +967,9 @@ export function movePlayer(
     p.magicShieldCd = 0;
   }
   p.guardHeld = input.guard;
-  // Knight's full counter (Q): held it stays up and charges; released it lingers a moment, then cools
-  // down. Holding past the maximum ends it too, and Q must be released before the next one.
-  if (p.classId === 'guardian') {
+  // Warrior's full counter (E): held it stays up and charges; released it lingers a moment, then cools
+  // down. Holding past the maximum ends it too, and E must be released before the next one.
+  if (p.classId === 'vanguard') {
     const holding =
       input.counter &&
       p.counterCd <= 0 &&
@@ -952,7 +978,6 @@ export function movePlayer(
     if (holding) {
       p.counterCharge = Math.min(RULES.counterMaxHold, p.counterCharge + dt);
       p.counterLeft = RULES.counterWindow;
-      lowerGuard(p);
     } else if (p.counterLeft > 0) {
       p.counterLeft = Math.max(0, p.counterLeft - dt);
       if (p.counterLeft <= 1e-8) {
@@ -982,7 +1007,11 @@ export function movePlayer(
     const mag = Math.hypot(input.x, input.y);
     p.dashX = mag > 0.05 ? input.x / mag : Math.cos(input.angle);
     p.dashY = mag > 0.05 ? input.y / mag : Math.sin(input.angle);
-    p.dashLeft = RULES.dashDuration * (1 + 0.8 * chargePower(p.specialCharge));
+    // The heavy warrior's dash is shorter.
+    p.dashLeft =
+      RULES.dashDuration *
+      (1 + 0.8 * chargePower(p.specialCharge)) *
+      (p.classId === 'vanguard' ? RULES.vanguardDash : 1);
     p.dashCd = RULES.dashCooldown;
     // A fully charged archer dash opens the combo window for the rest of the jump (plus a grace).
     p.windDash =
@@ -1046,6 +1075,12 @@ export function movePlayer(
       result.volleyPower = heldCharge >= RULES.overchargeTap ? RULES.volleyChargedPower : 0;
       result.angle = p.angle;
       if (dashCombo) p.windDash = 0;
+    } else if (input.slash && p.classId === 'vanguard' && p.slashCd <= 0) {
+      p.invuln = 0;
+      p.slashCd = RULES.slashCooldown;
+      p.attackLock = RULES.attackLock;
+      result.slash = true;
+      result.angle = p.angle;
     } else if (input.sword && stats.melee && p.swordCd <= 0) {
       p.invuln = 0;
       p.windup = stats.windup;
@@ -1142,6 +1177,7 @@ export function newPlayer(
     volleyCd: 0,
     stunLeft: 0,
     windDash: 0,
+    slashCd: 0,
     counterLeft: 0,
     counterCharge: 0,
     counterCd: 0,
@@ -2198,7 +2234,7 @@ export class Duel {
         p.revealLeft = 1.5;
       if (action.swing) swings.push(p);
       if (action.trap) placements.push(p);
-      if (action.shoot || action.volley || action.ice) {
+      if (action.shoot || action.volley || action.ice || action.slash) {
         const volley = action.volley ? ++this.volleyId : undefined;
         const charged = action.wind || (action.shoot && action.charged);
         const power = action.volley ? action.volleyPower : action.power;
@@ -2225,9 +2261,10 @@ export class Duel {
             ...(action.wind
               ? { wind: true, damageScale: action.volley ? RULES.windVolleyScale : RULES.windScale }
               : {}),
+            ...(action.slash ? { slash: true, hits: [] } : {}),
           });
         }
-        this.event(action.wind ? 'wind' : 'shot', p, p.team, aim, p.classId, action.power);
+        this.event(action.wind ? 'wind' : action.slash ? 'slash' : 'shot', p, p.team, aim, p.classId, action.power);
       }
       if (action.raised) this.finishRaise(p);
       if (action.summon) this.summon(p, action.special);
@@ -2296,7 +2333,7 @@ export class Duel {
             !a.hits?.includes(p.id),
         );
         if (target && target.counterLeft > 0) {
-          // Full counter: the projectile flies back as the knight's; charged, twice as fast and hard.
+          // Full counter: the projectile flies back as the warrior's; charged, twice as fast and hard.
           const boosted = target.counterCharge >= RULES.counterChargeTime - 1e-8;
           owner = target;
           a.owner = target.id;
@@ -2311,6 +2348,12 @@ export class Duel {
           if (a.hits) a.hits = [];
           a.volley = undefined;
           this.event('counter', target, target.team, a.angle, target.classId, boosted ? 1 : 0);
+          continue;
+        }
+        if (target && a.slash) {
+          // The travelling slash cuts through every rival in its path, once each.
+          a.hits!.push(target.id);
+          this.damage(target, owner, a.angle, amount);
           continue;
         }
         if (target && this.volleyPasses(a, target.id)) continue;
@@ -2344,7 +2387,7 @@ export class Duel {
           this.markVolley(a, zombie.id);
           if (a.ice) zombie.frozenLeft = RULES.freezeDuration;
           else this.damageZombie(zombie, a.team, amount);
-          if (a.wind) {
+          if (a.wind || a.slash) {
             a.hits!.push(zombie.id);
             continue;
           }

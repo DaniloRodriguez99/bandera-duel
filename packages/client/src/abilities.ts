@@ -211,10 +211,17 @@ export function abilitySlots(classId: ClassId): AbilitySlot[] {
       max: RULES.guardCooldown,
       detail: (p) => (p.guarding ? 'Cubriendo' : null),
     });
-  if (classId === 'guardian')
+  if (classId === 'vanguard')
     slots.push({
-      id: 'counter',
+      id: 'slash',
       key: 'Q',
+      name: 'Tajo viajero',
+      icon: '☽',
+      cooldown: (p) => p.slashCd,
+      max: RULES.slashCooldown,
+    }, {
+      id: 'counter',
+      key: 'E',
       name: 'Contraataque',
       icon: '↺',
       cooldown: (p) => p.counterCd,
