@@ -32,16 +32,16 @@ El mago también lanza un proyectil de hielo con clic central (presionar la rued
 
 La banda sonora es original y sintetizada: melodía medieval en el menú, ritmo de aventura durante el duelo, más intensidad en los últimos 30 segundos y un cierre musical al terminar. Comienza tras la primera interacción y se pausa al ocultar la pestaña. El control «Música» ajusta su volumen sin cambiar los efectos; el botón de sonido silencia todo. Ambas preferencias se guardan en el navegador.
 
-| Acción  | PC             | Celular horizontal               |
-| ------- | -------------- | -------------------------------- |
-| Mover   | WASD o flechas | Palanca izquierda                |
-| Apuntar | Mouse          | Palanca derecha                  |
-| Espada  | Clic izquierdo | Botón ⚔                         |
-| Distancia | Clic izquierdo | Apuntar y soltar palanca derecha |
-| Acción secundaria | Clic derecho | Botón de daga, escudo o invocación |
-| Dash    | Espacio        | Botón ➟                          |
-| Habilidad Q | Q | Botón Q |
-| Habilidad E | E | Botón E |
+| Acción            | PC             | Celular horizontal                 |
+| ----------------- | -------------- | ---------------------------------- |
+| Mover             | WASD o flechas | Palanca izquierda                  |
+| Apuntar           | Mouse          | Palanca derecha                    |
+| Espada            | Clic izquierdo | Botón ⚔                            |
+| Distancia         | Clic izquierdo | Apuntar y soltar palanca derecha   |
+| Acción secundaria | Clic derecho   | Botón de daga, escudo o invocación |
+| Dash              | Espacio        | Botón ➟                            |
+| Habilidad Q       | Q              | Botón Q                            |
+| Habilidad E       | E              | Botón E                            |
 
 El arquero dispara flechas y usa una daga. El mago lanza bolas de fuego con clic izquierdo y comienza con un escudo mágico que absorbe dos golpes desde cualquier dirección, sin perder vida ni soltar la bandera. Al romperse, hay que esperar 5 segundos y hacer un nuevo clic derecho (o tocar ⛨) para recuperarlo; no se repone automáticamente ni permite recargar una carga restante. Reaparecer o reiniciar la arena restaura las dos cargas. Ambos pueden usar dash. El nigromante lanza fuego (clic izquierdo o palanca derecha) e invoca dos zombies con espacio, clic derecho o el botón ☠ (recarga de 5 s). Cada invocación es una ejecución de 2 zombies y puede haber como máximo 2 ejecuciones activas a la vez (4 zombies); una tercera no se inicia hasta que terminen los 2 zombies de alguna. Los zombies emergen del suelo escalonados, son más lentos que cualquier clase, persiguen al rival más cercano al cursor del nigromante (o el más cercano a ellos), no hacen fila: los que van tras el mismo objetivo se reparten a su alrededor (en pinza de a dos o en círculo de a más), cada uno se acerca por su lado y recién desde su lugar se lanza al ataque; sin rival cerca del cursor ocupan puestos separados alrededor de esa zona, y toman caminos distintos alrededor de los muros; duran 20 s y cualquier ataque los destruye. Sus golpes cuentan como daño del nigromante: sueltan banderas y suman muertes. La espada usa la última dirección apuntada. El dash usa el movimiento actual o el apuntado si estás quieto. El botón de sonido está en la cabecera; su elección se conserva en el dispositivo. El audio comienza después de una interacción del usuario.
 
@@ -171,43 +171,47 @@ Si usás previews de Vercel, agregá cada origen permitido a `ALLOWED_ORIGINS`, 
 Ver `VALIDATION.md` para los resultados comprobados y las limitaciones de validación. El repositorio se entrega inicializado, sin remoto ni publicación. Las dependencias quedan fijadas en `package-lock.json`.
 
 ## Espectadores
+
 Al abrir una invitación, marcá **Entrar como espectador**, elegí una perspectiva e ingresá un apodo. Hay de 2 a 4 lugares de jugador según el formato y hasta 5 de espectador por sala. La perspectiva queda fija durante la ronda y usa la visión de esa facción; puede cambiarse en la sala o en resultados. Los espectadores no controlan personajes ni marcan listo, y su desconexión no pausa la partida.
 
-
-
 ## Salas públicas y privadas
+
 Al crear una sala podés elegir título, mapa, formato, visibilidad pública o privada, contraseña opcional y permitir o desactivar espectadores. La lista pública se actualiza cada 2 segundos, muestra mapa, formato, cupo y partidas en curso. Las salas privadas solo se comparten por enlace. La contraseña se exige a jugadores y espectadores y nunca se incluye en el enlace ni en el listado. El contador muestra espectadores conectados en tiempo real. `GET /rooms` devuelve únicamente datos públicos.
 
-
 ## Práctica local
+
 En la pantalla inicial, elegí una clase y uno de los cuatro mapas, y pulsá **Probar contra un rival inmóvil**. No requiere apodo, sala ni servidor. El rival recibe daño y reaparece, pero no se mueve ni ataca. Podés probar armas, movilidad, arbustos y banderas con las reglas habituales.
 
-
 ### Combates en vivo
+
 Las salas públicas en cuenta regresiva, combate o pausa de captura aparecen en **Combates en vivo**, con nombres, marcador y tiempo restante. **Ver combate** prepara el acceso como espectador. Las privadas siguen accesibles solo por invitación; las contraseñas y el cupo de espectadores siguen vigentes.
 
-
 ## Habilidades del arquero
+
 - Q / botón Q: coloca una trampa tras 0,5 s inmóvil. Durante la preparación no puede moverse, atacar ni hacer dash; recibir daño la cancela. La recarga de 8 s empieza al iniciar la preparación, incluso si se interrumpe.
 - La trampa tiene un tono apagado, sutilmente visible, se arma en 0,5 s, dura 20 s y causa 0,5 de daño y aturde durante 1 s (sin movimiento ni habilidades). Máximo tres por arquero; colocar otra sustituye la más antigua. No afecta aliados, respeta la protección de daño y el dash; el escudo no bloquea una trampa del suelo.
 - E / botón E: dispara tres flechas con apertura de -25°, 0° y +25°. Recarga independiente de 5 s y bloqueo breve compartido con otros ataques.
 - Funcionan en práctica y online; capturar o reiniciar limpia las trampas.
 
-
 ### Flecha cargada del arquero
+
 Mantener clic izquierdo durante 0,8 s carga el arco; soltar dispara. En móvil, mantener y soltar la palanca de apuntado. La carga completa vuelve naranja la flecha, aumenta daño a 1,3 y velocidad a 728 unidades/s (+30 %), conservando alcance máximo y recarga. Soltar antes dispara una flecha normal. La carga se valida en la simulación; perder foco cancela sin disparar. Dash, trampa, daga y triple descartan la carga.
 
-
 ### Sobrecarga
+
 Mantener clic o Espacio carga la habilidad y soltar la ejecuta; un toque rápido conserva la habilidad normal. Un círculo rúnico bajo el personaje crece y gira más rápido mientras carga, y destella al llegar al máximo (1,5 s).
+
 - Mago: gran bola de fuego (daño de 1 a 2,5, doble tamaño) que explota al impactar y quema a los cercanos con la mitad del daño.
 - Nigromante (clic): fuego cargado de 1 a 2 de daño y casi el doble de tamaño. Caballero y guerrero: golpe cargado con más daño (×2 y ×1,75) y más alcance. Arquero y mago (Espacio): dash hasta 1,8 veces más largo. La embestida del caballero es inmediata y siempre recorre unas 190 unidades. La flecha cargada del arquero mantiene su regla propia.
 - Nigromante (Espacio): una carga corta invoca un solo **zombie con gorro** (máximo uno): tiene 5 de vida, se cura, cada 5 s invoca un zombie que no respeta el tope normal y lanza con los dos brazos un hechizo doble de fuego y hielo (0,5 de daño cada uno); el hielo congela 1,2 s al que golpea. Si se mantiene hasta llenar el aura (2,5 s, cambia a verde) con un rival muerto a menos de 200 px, lo **resucita como esclavo** con su clase y su nombre; el jugador reaparece normalmente y el nigromante puede volver a invocar a ese esclavo con el aura completa 20 s después de que muera.
+
 ### Panel de habilidades
+
 Durante la partida, abajo a la izquierda del escenario aparece una tarjeta por habilidad con su ícono, su tecla (CLIC, ESPACIO y, según la clase, CLIC DER., Q o E) y un velo circular con los segundos de recarga restantes; la tarjeta se ilumina cuando está lista. En pantallas táctiles el panel se ubica arriba a la izquierda para no tapar la palanca de movimiento. En el nigromante, Espacio invoca zombies.
 Sobre cada tarjeta crece su árbol: qué hace un toque, qué hace mantener y (en el nigromante) el aura llena, con el estado de cada rama (ejecuciones activas, zombie mago vivo, recarga del esclavo, porcentaje de carga). La rama que se dispararía al soltar se ilumina mientras se carga. En táctil el árbol se oculta para no tapar el escenario.
 
 ### Control de zombies (nigromante)
+
 - Los **zombies normales** que invocás con Espacio (2 por invocación) te siguen dentro de un **círculo rojo** de 110 px que viaja con el nigromante. Solo atacan a quien entra en ese círculo; si el rival sale, vuelven a tu lado.
 - El **zombie mago**, sus **lacayos** y el **esclavo** siguen el **mouse** (círculo violeta): van a esa zona repartiéndose alrededor y, si el mouse queda cerca de un rival, lo rodean y lo atacan.
 - Cuando muere un rival queda su **tumba** durante 10 s. Con el aura llena aparece una circunferencia blanca que titila con el alcance (200 px); al soltar, se abre un **mandala bajo el mouse** dentro de ese alcance y ahí se levanta el caído de la tumba más cercana como lacayo hasta que lo maten, aunque el jugador ya haya reaparecido y aunque tenga otros zombies vivos (máximo 1 esclavo).
@@ -226,15 +230,16 @@ Sobre cada tarjeta crece su árbol: qué hace un toque, qué hace mantener y (en
 - **E · furia:** durante 5 s la espada hace 40 % más daño, multiplicado también por la carga. El aura roja oscura revela al caballero durante 1,5 s si está en arbustos. Recarga de 15 s; termina al morir, cambiar de clase, capturar o reiniciarse la ronda.
 
 ### Guerrero
+
 - **Espacio:** dash, más corto que el del arquero y el mago (mantener para uno más largo). Camina un poco más lento que antes (145).
 - **Q · tajo viajero:** lanza una media luna que avanza unos 270 px, atraviesa y corta a todos los rivales y zombies en su camino (1,5 de daño a cada uno), hasta chocar con un muro. Recarga de 5 s. Los escudos lo bloquean.
 - **E · contraataque:** mientras está activo, todo proyectil que lo alcance (flechas, fuego, hielo, bolas de fuego, flechas de viento, tajos) vuelve en sentido contrario y pasa a ser del guerrero, con el mismo daño. Un toque lo deja activo 0,45 s; mantener E lo sostiene hasta 2,5 s (a mitad de velocidad). Si se mantiene **1 s o más**, lo que devuelve sale **al doble de velocidad y de daño**. Al terminar entra en recarga de 4 s y hay que soltar E para volver a usarlo.
 
 ### Combos del arquero
+
 - **Triple (E):** las 3 flechas salen casi en fila y se abren de a poco. Si una ya alcanzó a un rival, las otras siguen de largo hacia el próximo en línea.
 - **Cargando el clic + E:** 3 flechas potenciadas al 33 % de la carga completa.
 - **Salto cargado:** con Espacio al máximo, al soltarlo el arquero salta y, mientras está en el aire (y hasta 0,6 s después), lo que suelte (siempre hacia el mouse) se combina con el salto. Mantener el clic no se pierde durante ese salto. Un combo por salto:
   - **Tiro cargado al máximo:** **flecha de viento** penetrante que cruza la arena, atraviesa a cada rival una vez, atraviesa la guardia continua sin bajarla, rompe el escudo mágico y hace el doble que la flecha cargada.
   - **E:** triple (al 33 % si venía cargando el clic).
   - **Clic lleno + E:** 3 flechas de viento potenciadas y penetrantes que se abren de a poco. Pensado para saltar a la cara del rival: a quemarropa entran las 3 y suman el 120 % de la flecha de viento (40 % cada una); más lejos se reparten entre varios.
-
