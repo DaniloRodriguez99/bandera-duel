@@ -10,6 +10,11 @@ it('triple casi paralela que se abre de a poco, recarga y exclusión de disparo 
  expect(d.state.players[0].volleyCd).toBe(5);
  d.step(new Map([['a',{...idleInput(),volley:true}]]));expect(d.state.arrows).toHaveLength(3);
 });
+it('triple mientras se desplaza sale penetrante',()=>{
+ const d=game();d.step(new Map([['a',{...idleInput(),volley:true,x:1}]]));
+ expect(d.state.arrows).toHaveLength(3);
+ expect(d.state.arrows.every(a=>a.wind&&a.hits&&a.volley!==undefined)).toBe(true);
+});
 it.each(['guardian','vanguard','mage','necromancer'] as ClassId[])('%s no usa habilidades de arquero',id=>{
  const p=newPlayer('a','A','blue',id);expect(movePlayer(p,{...idleInput(),volley:true,trap:true},false)).toMatchObject({trap:false,volley:false});expect(p.trapLeft).toBe(0);
 });

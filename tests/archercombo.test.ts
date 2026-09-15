@@ -66,12 +66,12 @@ describe('combos del arquero', () => {
     // It pierces everything in its path, zombies included.
     expect(d.state.zombies.find((z) => z.id === 'z-test')?.hp).toBeCloseTo(9 - WIND);
   });
-  it('sin saltar, soltar con clic y espacio llenos da la flecha cargada normal', () => {
+  it('sin saltar, soltar con clic y espacio llenos da la flecha cargada de viento', () => {
     const { d } = setup();
     run(d, ticks(RULES.overchargeTime), { charge: true, special: true });
     run(d, 1, { shot: true, special: true, x: 1 });
     expect(d.state.arrows[0]).toMatchObject({ charged: true });
-    expect(d.state.arrows[0].wind).toBeUndefined();
+    expect(d.state.arrows[0].wind).toBe(true);
   });
   it('E en pleno salto cargado: triple hacia el mouse aunque se salte en otra dirección', () => {
     const { d } = setup();
@@ -80,7 +80,7 @@ describe('combos del arquero', () => {
     run(d, 1, { volley: true, y: 1 });
     const angles = d.state.arrows.map((arrow) => arrow.angle);
     [-RULES.volleyAngle, 0, RULES.volleyAngle].forEach((angle, i) => expect(angles[i]).toBeCloseTo(angle));
-    expect(d.state.arrows.every((arrow) => !arrow.wind && !arrow.power)).toBe(true);
+    expect(d.state.arrows.every((arrow) => arrow.wind && !arrow.power)).toBe(true);
   });
   it('salto cargado a la cara del rival con el clic lleno y E: 3 flechas de viento que a quemarropa suman el 120 %', () => {
     const { d, a, g } = setup();
@@ -99,12 +99,12 @@ describe('combos del arquero', () => {
     run(d, 20);
     expect(10 - g.hp).toBeCloseTo(1.2 * WIND);
   });
-  it('un salto no cargado no permite tirar en el aire', () => {
+  it('un salto con tiro cargado permite tirar viento en el aire', () => {
     const { d, a } = setup();
     run(d, ticks(RULES.chargeTime), { charge: true });
     run(d, 1, { dash: true, charge: true, x: 1 });
-    expect(a.windDash).toBe(0);
+    expect(a.windDash).toBeGreaterThan(0);
     run(d, 1, { shot: true, x: 1 });
-    expect(d.state.arrows).toHaveLength(0);
+    expect(d.state.arrows[0]).toMatchObject({ wind: true, charged: true });
   });
 });

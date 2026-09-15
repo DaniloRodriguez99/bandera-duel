@@ -1455,8 +1455,9 @@ export function movePlayer(
   // During any dash the archer keeps charging and can release toward the cursor.
   // A full primary charge or any volley released in this window becomes wind.
   const dashCombo = p.classId === 'archer' && p.windDash > 0;
+  const movingVolley = p.classId === 'archer' && (dashCombo || input.x !== 0 || input.y !== 0);
   const fullArcherCharge = p.classId === 'archer' && heldCharge >= RULES.chargeTime - 1e-8;
-  const dashAttackWindow = dashCombo || p.classId === 'vanguard';
+  const dashAttackWindow = movingVolley || p.classId === 'vanguard';
   const canCharge =
     !p.guarding &&
     (!p.dashInvulnerable || dashAttackWindow) &&
@@ -1483,7 +1484,7 @@ export function movePlayer(
       p.volleyCd = RULES.volleyCooldown;
       p.attackLock = RULES.attackLock;
       result.volley = true;
-      result.wind = dashCombo;
+      result.wind = movingVolley;
       // Released mid-charge: three arrows carrying a third of the charged power.
       result.volleyPower = heldCharge >= RULES.overchargeTap ? RULES.volleyChargedPower : 0;
       result.angle = p.angle;
