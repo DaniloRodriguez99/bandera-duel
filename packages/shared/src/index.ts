@@ -292,6 +292,134 @@ export const RULES = {
   zombieMarkPick: 70,
   zombieGuardRadius: 110,
 } as const;
+
+export const SKILL_SLOTS = ['primary', 'secondary', 'mobility', 'skill1', 'skill2'] as const;
+export type SkillSlot = (typeof SKILL_SLOTS)[number];
+export type SkillId =
+  | 'archer.arrow' | 'archer.dagger' | 'archer.trap' | 'archer.volley'
+  | 'mage.fireball' | 'mage.magicShield' | 'mage.ice'
+  | 'necromancer.fire' | 'necromancer.summon'
+  | 'guardian.sword' | 'guardian.guard' | 'guardian.dash' | 'guardian.shieldBash' | 'guardian.fury'
+  | 'vanguard.sword' | 'vanguard.slash' | 'vanguard.counter'
+  | 'common.dash';
+export type AnimationAction =
+  | 'idle' | 'move' | 'dash' | 'attack' | 'castForward' | 'castGround' | 'castChannel'
+  | 'charge' | 'hit' | 'crowdControl' | 'death' | 'respawn' | 'victory';
+export type SkillBranch = 'archer' | 'mage' | 'necromancer' | 'guardian' | 'vanguard' | 'common';
+export interface SkillDefinition {
+  id: SkillId;
+  name: string;
+  branch: SkillBranch;
+  description: string;
+  icon: string;
+  compatibleClasses: readonly ClassId[];
+  compatibleSlots: readonly SkillSlot[];
+  trigger: 'press' | 'hold-release' | 'hold';
+  animationAction: AnimationAction;
+  cooldown: number;
+  damage: string;
+  grants?: readonly ('ranged' | 'melee' | 'mobility' | 'shield' | 'summon' | 'companionControl')[];
+}
+const skill = (definition: SkillDefinition) => definition;
+export const SKILLS: Record<SkillId, SkillDefinition> = {
+  'archer.arrow': skill({id:'archer.arrow',name:'Flecha del cazador',branch:'archer',description:'Disparo preciso que puede cargarse.',icon:'archer-arrow',compatibleClasses:['archer'],compatibleSlots:['primary'],trigger:'hold-release',animationAction:'attack',cooldown:RULES.shotCooldown,damage:'1–1,3',grants:['ranged']}),
+  'archer.dagger': skill({id:'archer.dagger',name:'Daga veloz',branch:'archer',description:'Corte corto para enemigos cercanos.',icon:'guardian-slash',compatibleClasses:['archer'],compatibleSlots:['secondary'],trigger:'press',animationAction:'attack',cooldown:CLASSES.archer.meleeCooldown,damage:'0,5',grants:['melee']}),
+  'archer.trap': skill({id:'archer.trap',name:'Cepo del bosque',branch:'archer',description:'Hiere e inmoviliza al rival.',icon:'archer-trap',compatibleClasses:['archer'],compatibleSlots:['skill1','skill2'],trigger:'press',animationAction:'castGround',cooldown:RULES.trapCooldown,damage:'0,5'}),
+  'archer.volley': skill({id:'archer.volley',name:'Salva triple',branch:'archer',description:'Libera tres flechas en sucesión.',icon:'archer-volley',compatibleClasses:['archer'],compatibleSlots:['skill1','skill2'],trigger:'press',animationAction:'attack',cooldown:RULES.volleyCooldown,damage:'3 × 1'}),
+  'mage.fireball': skill({id:'mage.fireball',name:'Orbe de fuego',branch:'mage',description:'Esfera ígnea que explota al cargarla.',icon:'mage-fireball',compatibleClasses:['mage'],compatibleSlots:['primary'],trigger:'hold-release',animationAction:'castForward',cooldown:RULES.shotCooldown,damage:'1–2,5',grants:['ranged']}),
+  'mage.magicShield': skill({id:'mage.magicShield',name:'Égida de dos sellos',branch:'mage',description:'Anula dos impactos.',icon:'mage-shield',compatibleClasses:['mage'],compatibleSlots:['secondary','skill1','skill2'],trigger:'press',animationAction:'castChannel',cooldown:RULES.magicShieldCooldown,damage:'0',grants:['shield']}),
+  'mage.ice': skill({id:'mage.ice',name:'Saeta glacial',branch:'mage',description:'Inmoviliza durante un segundo.',icon:'mage-ice',compatibleClasses:['mage'],compatibleSlots:['secondary','skill1','skill2'],trigger:'press',animationAction:'castForward',cooldown:RULES.iceCooldown,damage:'0'}),
+  'necromancer.fire': skill({id:'necromancer.fire',name:'Llama de ultratumba',branch:'necromancer',description:'Fuego espectral que puede canalizarse.',icon:'necromancer-fire',compatibleClasses:['mage','necromancer'],compatibleSlots:['primary'],trigger:'hold-release',animationAction:'castForward',cooldown:RULES.fireCooldown,damage:'1–2',grants:['ranged']}),
+  'necromancer.summon': skill({id:'necromancer.summon',name:'Alzar a los caídos',branch:'necromancer',description:'Invoca zombies, arcanistas y esclavos.',icon:'necromancer-summon',compatibleClasses:['mage','necromancer'],compatibleSlots:['secondary','skill1','skill2'],trigger:'hold-release',animationAction:'castGround',cooldown:RULES.summonCooldown,damage:'1 por golpe',grants:['summon','companionControl']}),
+  'guardian.sword': skill({id:'guardian.sword',name:'Acero juramentado',branch:'guardian',description:'Tajo frontal cargable.',icon:'guardian-slash',compatibleClasses:['guardian'],compatibleSlots:['primary'],trigger:'hold-release',animationAction:'attack',cooldown:CLASSES.guardian.meleeCooldown,damage:'1–2',grants:['melee']}),
+  'guardian.guard': skill({id:'guardian.guard',name:'Muralla de acero',branch:'guardian',description:'Bloqueo frontal continuo.',icon:'guardian-shield',compatibleClasses:['guardian'],compatibleSlots:['secondary'],trigger:'hold',animationAction:'castChannel',cooldown:RULES.guardCooldown,damage:'0',grants:['shield']}),
+  'guardian.dash': skill({id:'guardian.dash',name:'Carga del bastión',branch:'guardian',description:'Arremetida que daña y empuja.',icon:'guardian-bash',compatibleClasses:['guardian'],compatibleSlots:['mobility'],trigger:'press',animationAction:'dash',cooldown:RULES.guardianDashCooldown,damage:'1',grants:['mobility']}),
+  'guardian.shieldBash': skill({id:'guardian.shieldBash',name:'Impacto del baluarte',branch:'guardian',description:'Empuja y aturde al rival.',icon:'guardian-bash',compatibleClasses:['guardian'],compatibleSlots:['skill1','skill2'],trigger:'press',animationAction:'attack',cooldown:RULES.shieldBashCooldown,damage:'0,5'}),
+  'guardian.fury': skill({id:'guardian.fury',name:'Furia dorada',branch:'guardian',description:'Aumenta el daño de espada.',icon:'guardian-fury',compatibleClasses:['guardian'],compatibleSlots:['skill1','skill2'],trigger:'press',animationAction:'castChannel',cooldown:RULES.furyCooldown,damage:'+40 %'}),
+  'vanguard.sword': skill({id:'vanguard.sword',name:'Mandoble colosal',branch:'vanguard',description:'Barrido pesado de gran alcance.',icon:'vanguard-sword',compatibleClasses:['vanguard'],compatibleSlots:['primary'],trigger:'hold-release',animationAction:'attack',cooldown:CLASSES.vanguard.meleeCooldown,damage:'2–4',grants:['melee']}),
+  'vanguard.slash': skill({id:'vanguard.slash',name:'Creciente escarlata',branch:'vanguard',description:'Tajo que atraviesa enemigos.',icon:'vanguard-slash',compatibleClasses:['vanguard'],compatibleSlots:['skill1','skill2'],trigger:'press',animationAction:'attack',cooldown:RULES.slashCooldown,damage:'1,5'}),
+  'vanguard.counter': skill({id:'vanguard.counter',name:'Revancha de hierro',branch:'vanguard',description:'Devuelve proyectiles.',icon:'vanguard-counter',compatibleClasses:['vanguard'],compatibleSlots:['skill1','skill2'],trigger:'hold',animationAction:'castChannel',cooldown:RULES.counterCooldown,damage:'×1–×2'}),
+  'common.dash': skill({id:'common.dash',name:'Traslación',branch:'common',description:'Desplazamiento cargable.',icon:'mage-dash',compatibleClasses:['archer','mage','vanguard'],compatibleSlots:['mobility'],trigger:'hold-release',animationAction:'dash',cooldown:RULES.dashCooldown,damage:'0',grants:['mobility']}),
+};
+export type PhysicalBinding = 'MouseLeft' | 'MouseRight' | 'MouseMiddle' | 'Space' | 'Shift' | 'Ctrl' | `Key${'Q'|'E'|'R'|'F'|'C'|'X'|'Z'|'V'|'G'|'T'}`;
+export const ALLOWED_BINDINGS:readonly PhysicalBinding[]=['MouseLeft','MouseRight','MouseMiddle','Space','Shift','Ctrl','KeyQ','KeyE','KeyR','KeyF','KeyC','KeyX','KeyZ','KeyV','KeyG','KeyT'];
+export const validBinding=(value:unknown):value is PhysicalBinding=>typeof value==='string'&&(ALLOWED_BINDINGS as readonly string[]).includes(value);
+export type BindableAction = SkillSlot | 'companionCommand';
+export type InputBindings = Record<BindableAction, PhysicalBinding>;
+export type CharacterLoadout = Record<SkillSlot, SkillId | null>;
+export interface CharacterPreset {
+  loadout: CharacterLoadout;
+  bindings: InputBindings;
+  skillTreeSelection: SkillId[];
+}
+export interface CharacterCustomization {
+  version: 1;
+  classId: ClassId;
+  selectedSkin: string;
+  activePresetId: string;
+  presets: Record<string, CharacterPreset>;
+}
+export interface CharacterSkinDefinition {
+  id: string;
+  classId: ClassId;
+  name: string;
+  description: string;
+  cloth: string;
+  light: string;
+  accent: string;
+  silhouette: 'classic' | 'hood' | 'crown' | 'armor' | 'turban' | 'horns';
+}
+export const MAGE_SKINS: CharacterSkinDefinition[] = [
+  {id:'mage.arcaneRoyal',classId:'mage',name:'Arcanista Real',description:'La túnica tradicional de la corte.',cloth:'#64897e',light:'#b6cbb0',accent:'#9edcff',silhouette:'classic'},
+  {id:'mage.crimsonPyromancer',classId:'mage',name:'Piromante Carmesí',description:'Vestiduras quemadas y un núcleo de fuego.',cloth:'#9d3c2f',light:'#ff9b45',accent:'#ff5a24',silhouette:'hood'},
+  {id:'mage.glacialSage',classId:'mage',name:'Sabio Glacial',description:'Capas de hielo y cristal eterno.',cloth:'#3979a5',light:'#b9efff',accent:'#72dfff',silhouette:'crown'},
+  {id:'mage.shadowWeaver',classId:'mage',name:'Tejedor de Sombras',description:'Un manto que bebe la luz.',cloth:'#392a57',light:'#9b78d1',accent:'#c66bff',silhouette:'hood'},
+  {id:'mage.violetAstronomer',classId:'mage',name:'Astrónomo Violeta',description:'Lee el destino entre constelaciones.',cloth:'#59458c',light:'#d4b7ff',accent:'#eee2ff',silhouette:'crown'},
+  {id:'mage.runicBattlemage',classId:'mage',name:'Mago de Batalla Rúnico',description:'Acero encantado para la primera línea.',cloth:'#4c6670',light:'#c5d2cf',accent:'#f0c66f',silhouette:'armor'},
+  {id:'mage.desertOracle',classId:'mage',name:'Oráculo del Desierto',description:'Arena, oro y secretos antiguos.',cloth:'#a56c35',light:'#f2d28d',accent:'#78d8c8',silhouette:'turban'},
+  {id:'mage.stormCaller',classId:'mage',name:'Invocador de Tormentas',description:'Canaliza relámpagos en su bastón.',cloth:'#315f78',light:'#95cbdf',accent:'#f5ed7d',silhouette:'classic'},
+  {id:'mage.bloodWarlock',classId:'mage',name:'Brujo de Sangre',description:'Poder prohibido escrito en carmesí.',cloth:'#671d2c',light:'#d35a64',accent:'#ff334f',silhouette:'horns'},
+  {id:'mage.emeraldGuardian',classId:'mage',name:'Guardián Esmeralda',description:'Magia viva de los bosques antiguos.',cloth:'#376b48',light:'#9fd58b',accent:'#77f0a1',silhouette:'crown'},
+];
+const loadout = (primary:SkillId|null,secondary:SkillId|null,mobility:SkillId|null,skill1:SkillId|null,skill2:SkillId|null):CharacterLoadout => ({primary,secondary,mobility,skill1,skill2});
+const bindings = (secondary:PhysicalBinding, mobility:PhysicalBinding, skill1:PhysicalBinding, skill2:PhysicalBinding):InputBindings => ({primary:'MouseLeft',secondary,mobility,skill1,skill2,companionCommand:'KeyE'});
+export const DEFAULT_LOADOUTS: Record<ClassId, CharacterLoadout> = {
+  archer:loadout('archer.arrow','archer.dagger','common.dash','archer.trap','archer.volley'),
+  mage:loadout('mage.fireball','mage.magicShield','common.dash','mage.ice',null),
+  necromancer:loadout('necromancer.fire',null,null,'necromancer.summon',null),
+  guardian:loadout('guardian.sword','guardian.guard','guardian.dash','guardian.shieldBash','guardian.fury'),
+  vanguard:loadout('vanguard.sword',null,'common.dash','vanguard.slash','vanguard.counter'),
+};
+export const DEFAULT_BINDINGS: Record<ClassId, InputBindings> = {
+  archer:bindings('MouseRight','Space','KeyQ','KeyE'), mage:bindings('MouseRight','Space','MouseMiddle','KeyE'),
+  necromancer:bindings('MouseRight','Space','Space','KeyQ'), guardian:bindings('MouseRight','Space','KeyQ','KeyE'),
+  vanguard:bindings('MouseRight','Space','KeyQ','KeyE'),
+};
+export const defaultSkin = (classId:ClassId) => classId === 'mage' ? MAGE_SKINS[0].id : `${classId}.default`;
+export function defaultCustomization(classId:ClassId):CharacterCustomization {
+  const preset={loadout:{...DEFAULT_LOADOUTS[classId]},bindings:{...DEFAULT_BINDINGS[classId]},skillTreeSelection:Object.values(DEFAULT_LOADOUTS[classId]).filter(Boolean) as SkillId[]};
+  return {version:1,classId,selectedSkin:defaultSkin(classId),activePresetId:'default',presets:{default:preset}};
+}
+export const activePreset = (customization:CharacterCustomization) => customization.presets[customization.activePresetId] ?? customization.presets.default;
+export const validSkill = (value:unknown):value is SkillId => typeof value === 'string' && value in SKILLS;
+export function validLoadout(classId:ClassId,value:unknown):value is CharacterLoadout {
+  if(!value||typeof value!=='object')return false;
+  const record=value as Record<string,unknown>,seen=new Set<string>();
+  return SKILL_SLOTS.every(slot=>{const id=record[slot];if(id===null)return true;if(!validSkill(id)||seen.has(id))return false;seen.add(id);const def=SKILLS[id];return def.compatibleClasses.includes(classId)&&def.compatibleSlots.includes(slot);});
+}
+export function validCustomization(classId:ClassId,value:unknown):value is CharacterCustomization {
+  if(!value||typeof value!=='object')return false;const c=value as CharacterCustomization;
+  if(c.version!==1||c.classId!==classId||typeof c.activePresetId!=='string'||!c.presets||typeof c.presets!=='object')return false;
+  if(classId==='mage'?!MAGE_SKINS.some(s=>s.id===c.selectedSkin):c.selectedSkin!==defaultSkin(classId))return false;
+  const presets=Object.values(c.presets);if(!presets.length||!c.presets[c.activePresetId])return false;
+  return presets.every(preset=>{
+    if(!validLoadout(classId,preset.loadout)||!preset.bindings||!Array.isArray(preset.skillTreeSelection)||!preset.skillTreeSelection.every(validSkill))return false;
+    const used=new Set<string>();for(const slot of SKILL_SLOTS){if(!preset.loadout[slot])continue;const binding=preset.bindings[slot];if(!validBinding(binding)||used.has(binding))return false;used.add(binding);}
+    if(!validBinding(preset.bindings.companionCommand))return false;
+    return !Object.values(preset.loadout).includes('necromancer.summon')||!used.has(preset.bindings.companionCommand);
+  });
+}
+export const equippedSkill = (p:{loadout:CharacterLoadout},id:SkillId) => Object.values(p.loadout).includes(id);
 export const TEAMS: Team[] = ['blue', 'red', 'green', 'violet'];
 export const TEAM_NAMES: Record<Team, string> = {
   blue: 'AZUL',
@@ -380,7 +508,15 @@ export interface Input {
   mark: boolean;
   aimX: number;
   aimY: number;
+  /** Logical controls sent over the network. Skill ids never cross the input boundary. */
+  slots: SlotInputMap;
 }
+export interface SlotInputState { pressed: boolean; held: boolean; released: boolean }
+export type SlotInputMap = Record<SkillSlot, SlotInputState>;
+const idleSlot = (): SlotInputState => ({ pressed: false, held: false, released: false });
+export const idleSlots = (): SlotInputMap => ({
+  primary: idleSlot(), secondary: idleSlot(), mobility: idleSlot(), skill1: idleSlot(), skill2: idleSlot(),
+});
 /** Guards stay in the red circle around their necromancer; cursor zombies follow the mouse. */
 export type ZombieRole = 'guard' | 'cursor';
 export const idleInput = (seq = 0, angle = 0): Input => ({
@@ -406,6 +542,7 @@ export const idleInput = (seq = 0, angle = 0): Input => ({
   mark: false,
   aimX: -1,
   aimY: -1,
+  slots: idleSlots(),
 });
 /** A world point under the cursor; -1 means the client did not provide one. */
 const aimCoordinate = (value: unknown, max: number) =>
@@ -426,6 +563,14 @@ export function sanitizeInput(raw: unknown): Input | null {
   )
     return null;
   const n = Math.max(1, Math.hypot(r.x as number, r.y as number));
+  const rawSlots = r.slots && typeof r.slots === 'object' ? r.slots as Record<string, unknown> : {};
+  const slots = idleSlots();
+  for (const slot of SKILL_SLOTS) {
+    const state = rawSlots[slot];
+    if (!state || typeof state !== 'object') continue;
+    const value = state as Record<string, unknown>;
+    slots[slot] = { pressed: value.pressed === true, held: value.held === true, released: value.released === true };
+  }
   return {
     seq: r.seq as number,
     x: (r.x as number) / n,
@@ -449,6 +594,7 @@ export function sanitizeInput(raw: unknown): Input | null {
     mark: r.mark === true,
     aimX: aimCoordinate(r.aimX, RULES.width),
     aimY: aimCoordinate(r.aimY, RULES.height),
+    slots,
   };
 }
 export function validName(raw: unknown): string | null {
@@ -461,6 +607,9 @@ export interface Player extends Vec {
   name: string;
   team: Team;
   classId: ClassId;
+  skinId: string;
+  loadout: CharacterLoadout;
+  profileRevision: number;
   maxHp: number;
   hp: number;
   angle: number;
@@ -545,6 +694,7 @@ export interface Flag extends Vec {
   lockLeft: number;
 }
 export interface Arrow extends Vec {
+  skillId?: SkillId;
   ice?: boolean;
   charged?: boolean;
   power?: number;
@@ -676,6 +826,7 @@ export interface GameEvent extends Vec {
   team: Team;
   angle?: number;
   classId?: ClassId;
+  skillId?: SkillId;
   power?: number;
 }
 /** Zombies from the charged summon (hat, its minions, thrall) never use the normal cap. */
@@ -810,13 +961,21 @@ export function chargePower(seconds: number) {
 }
 /** Speed and hit radius of a projectile, covering the zombie mage's fireball and gusts and countered shots. */
 export function arrowMotion(a: Arrow) {
-  const stats = projectileStats(a.classId, a.charged, a.power);
+  const stats = projectileSkillStats(a.skillId, a.classId, a.charged, a.power);
   const speed = a.blast ? RULES.hatFireSpeed : a.gust ? RULES.gustSpeed : stats.speed;
   return {
     stats,
     speed: speed * (a.reflected === 2 ? RULES.counterBoost : 1),
     radius: a.blast ? RULES.hatFireRadius : stats.radius,
   };
+}
+export function projectileSkillStats(skillId: SkillId | undefined, casterClassId: ClassId, charged = false, power = 0) {
+  if (skillId === 'necromancer.fire') return projectileStats('necromancer', charged, power);
+  if (skillId === 'mage.fireball') return projectileStats('mage', charged, power);
+  if (skillId === 'mage.ice') return projectileStats('mage', false, 0);
+  if (skillId === 'vanguard.slash') return projectileStats('vanguard', charged, power);
+  if (skillId === 'archer.arrow' || skillId === 'archer.volley') return projectileStats('archer', charged, power);
+  return projectileStats(casterClassId, charged, power);
 }
 export function projectileStats(classId: ClassId, charged = false, power = 0) {
   if (classId === 'vanguard')
@@ -961,6 +1120,43 @@ export function lowerGuard(p: Player) {
   p.guardCd = RULES.guardCooldown;
   p.guardRecovery = RULES.guardRecovery;
 }
+const hasLogicalInput = (input: Input) => SKILL_SLOTS.some((slot) => {
+  const state = input.slots[slot];
+  return state.pressed || state.held || state.released;
+});
+/** Server-side adapter from validated logical slots to the established simulation actions. */
+export function resolveSlotInput(p: Player, input: Input): Input {
+  if (!hasLogicalInput(input)) return input;
+  const resolved: Input = { ...input, sword:false, shot:false, charge:false, dash:false, guard:false, summon:false,
+    ice:false, trap:false, volley:false, special:false, shieldBash:false, fury:false, slash:false, counter:false,
+    command:false, mark:false };
+  for (const slot of SKILL_SLOTS) {
+    const skillId = p.loadout[slot], state = input.slots[slot];
+    if (!skillId) continue;
+    const pulse = state.pressed || state.released;
+    switch (skillId) {
+      case 'mage.fireball': case 'necromancer.fire': case 'archer.arrow':
+        resolved.charge ||= state.held; resolved.shot ||= state.released; break;
+      case 'guardian.sword': case 'vanguard.sword':
+        resolved.charge ||= state.held; resolved.sword ||= state.released; break;
+      case 'common.dash':
+        resolved.special ||= state.held; resolved.dash ||= state.released; break;
+      case 'guardian.dash': resolved.dash ||= state.pressed; break;
+      case 'mage.magicShield': resolved.guard ||= state.pressed || state.held; break;
+      case 'mage.ice': resolved.ice ||= pulse; break;
+      case 'necromancer.summon': resolved.special ||= state.held; resolved.summon ||= state.released; break;
+      case 'archer.dagger': resolved.sword ||= state.pressed; break;
+      case 'archer.trap': resolved.trap ||= state.pressed; break;
+      case 'archer.volley': resolved.volley ||= state.pressed; break;
+      case 'guardian.guard': resolved.guard ||= state.held; break;
+      case 'guardian.shieldBash': resolved.shieldBash ||= state.pressed; break;
+      case 'guardian.fury': resolved.fury ||= state.pressed; break;
+      case 'vanguard.slash': resolved.slash ||= state.pressed; break;
+      case 'vanguard.counter': resolved.counter ||= state.held; break;
+    }
+  }
+  return resolved;
+}
 /** Shared fixed-step prediction of timers, defense, attacks and movement. */
 export function movePlayer(
   p: Player,
@@ -970,6 +1166,7 @@ export function movePlayer(
   walls: Rect[] = WALLS,
 ) {
   const result = {
+    skillId: undefined as SkillId | undefined,
     ice: false,
     slash: false,
     swing: false,
@@ -1094,7 +1291,7 @@ export function movePlayer(
     p.guardLeft = RULES.guardDuration;
   }
   if (
-    p.classId === 'mage' &&
+    p.classId === 'mage' && equippedSkill(p, 'mage.magicShield') &&
     input.guard &&
     !p.guardHeld &&
     p.magicShieldHits === 0 &&
@@ -1162,17 +1359,19 @@ export function movePlayer(
     p.counterHeld = input.counter;
   }
   // Space charges while held; the release pulse (dash or summon) spends the charge.
+  const canDash = equippedSkill(p, 'common.dash') || equippedSkill(p, 'guardian.dash');
+  const canSummon = equippedSkill(p, 'necromancer.summon');
   const specialReady =
-    (stats.dash && p.classId !== 'guardian' && p.dashCd <= 0) || (stats.summon && p.summonCd <= 0);
+    (canDash && p.classId !== 'guardian' && p.dashCd <= 0) || (canSummon && p.summonCd <= 0);
   if (specialReady && input.special && !input.dash && !input.summon)
     p.specialCharge = Math.min(
-      stats.summon ? RULES.raiseCharge : RULES.overchargeTime,
+      canSummon ? RULES.raiseCharge : RULES.overchargeTime,
       p.specialCharge + dt,
     );
   else if (!specialReady || (!input.special && !input.dash && !input.summon)) p.specialCharge = 0;
   if (
     frozenDt === 0 &&
-    stats.dash &&
+    canDash &&
     input.dash &&
     p.dashCd <= 0 &&
     !wasWinding &&
@@ -1192,8 +1391,11 @@ export function movePlayer(
           (p.classId === 'vanguard' ? RULES.vanguardDash : 1);
     p.dashCd = p.classId === 'guardian' ? RULES.guardianDashCooldown : RULES.dashCooldown;
     result.dashStarted = true;
-    // Every archer dash preserves the bow charge and opens the wind-combo window.
-    p.windDash = p.classId === 'archer' ? p.dashLeft + RULES.windGrace : 0;
+    // Only a fully drawn bow opens the wind-combo window during the archer's dash.
+    p.windDash =
+      p.classId === 'archer' && p.shotCharge >= RULES.chargeTime - 1e-8
+        ? p.dashLeft + RULES.windGrace
+        : 0;
     p.specialCharge = 0;
   }
   const dashDt = Math.min(dt, p.dashLeft);
@@ -1273,21 +1475,23 @@ export function movePlayer(
       p.swingPower = p.classId === 'archer' ? 0 : chargePower(p.shotCharge);
       p.swordCd = stats.meleeCooldown;
       p.attackLock = RULES.attackLock;
-    } else if (input.ice && p.classId === 'mage' && p.iceCd <= 0) {
+    } else if (input.ice && p.classId === 'mage' && equippedSkill(p, 'mage.ice') && p.iceCd <= 0) {
       p.invuln = 0;
       p.iceCd = RULES.iceCooldown;
       p.attackLock = RULES.attackLock;
       result.ice = true;
+      result.skillId = 'mage.ice';
       result.angle = p.angle;
-    } else if (input.shot && stats.ranged && p.shotCd <= 0) {
+    } else if (input.shot && (equippedSkill(p, 'mage.fireball') || equippedSkill(p, 'necromancer.fire') || equippedSkill(p, 'archer.arrow')) && p.shotCd <= 0) {
       p.invuln = 0;
-      p.shotCd = projectileStats(p.classId).cooldown;
+      result.skillId = p.loadout.primary ?? undefined;
+      p.shotCd = projectileSkillStats(result.skillId, p.classId).cooldown;
       p.attackLock = RULES.attackLock;
       result.charged = fullArcherCharge;
-      result.wind = fullArcherCharge;
+      result.wind = dashCombo && fullArcherCharge;
       result.angle = p.angle;
       if (dashCombo) p.windDash = 0;
-      result.power = p.classId === 'archer' ? 0 : chargePower(p.shotCharge);
+      result.power = result.skillId === 'archer.arrow' ? 0 : chargePower(p.shotCharge);
       p.shotCharge = 0;
       result.shoot = true;
     }
@@ -1295,7 +1499,7 @@ export function movePlayer(
   // Summoning neither waits for nor blocks attacks: fire and summon can go out on the same tick.
   if (
     input.summon &&
-    stats.summon &&
+    canSummon &&
     p.summonCd <= 0 &&
     // A charged summon (hat zombie or thrall) never takes an execution slot.
     // A fallen guard's sword zombie reuses that guard's slot too.
@@ -1306,6 +1510,7 @@ export function movePlayer(
     p.invuln = 0;
     p.summonCd = RULES.summonCooldown;
     result.summon = true;
+    result.skillId = 'necromancer.summon';
     result.special = p.specialCharge;
     p.specialCharge = 0;
   }
@@ -1319,13 +1524,18 @@ export function newPlayer(
   team: Team,
   classId: ClassId = DEFAULT_CLASS,
   spawn: Vec = team === 'blue' || team === 'red' ? SPAWNS[team] : CORNER_SPAWNS[team],
+  customization: CharacterCustomization = defaultCustomization(classId),
 ): Player {
+  const profile = validCustomization(classId, customization) ? customization : defaultCustomization(classId);
   return {
     id,
     name,
     team,
     ...spawn,
     classId,
+    skinId: profile.selectedSkin,
+    loadout: { ...activePreset(profile).loadout },
+    profileRevision: 1,
     hp: CLASSES[classId].hp,
     maxHp: CLASSES[classId].hp,
     angle: spawn.x < RULES.width / 2 ? 0 : Math.PI,
@@ -1346,7 +1556,7 @@ export function newPlayer(
     guardCd: 0,
     guardRecovery: 0,
     guardHeld: false,
-    magicShieldHits: classId === 'mage' ? RULES.magicShieldHits : 0,
+    magicShieldHits: activePreset(profile).loadout.secondary === 'mage.magicShield' || Object.values(activePreset(profile).loadout).includes('mage.magicShield') ? RULES.magicShieldHits : 0,
     magicShieldCd: 0,
     windup: 0,
     swingAngle: 0,
@@ -1465,7 +1675,7 @@ export class Duel {
   }
   /** Executions of guard zombies killed in the red circle, per necromancer, oldest first. */
   private fallen = new Map<string, number[]>();
-  add(id: string, name: string, classId: ClassId = DEFAULT_CLASS) {
+  add(id: string, name: string, classId: ClassId = DEFAULT_CLASS, customization = defaultCustomization(classId)) {
     const s = this.state;
     const team =
       s.mode === 'teams'
@@ -1476,7 +1686,8 @@ export class Duel {
           )[0]
         : TEAMS.find((t) => !s.players.some((p) => p.team === t));
     if (!team || s.players.length >= s.maxPlayers) throw Error('Sala llena');
-    const p = newPlayer(id, name, team, classId);
+    const spawn = team === 'blue' || team === 'red' ? SPAWNS[team] : CORNER_SPAWNS[team];
+    const p = newPlayer(id, name, team, classId, spawn, customization);
     s.players.push(p);
     this.arrange();
     this.syncParticipants();
@@ -1519,7 +1730,10 @@ export class Duel {
     }
   }
   private revive(p: Player, invuln = 0) {
-    Object.assign(p, newPlayer(p.id, p.name, p.team, p.classId, this.spawnFor(p)), {
+    const customization = defaultCustomization(p.classId);
+    customization.selectedSkin = p.skinId;
+    customization.presets.default.loadout = { ...p.loadout };
+    Object.assign(p, newPlayer(p.id, p.name, p.team, p.classId, this.spawnFor(p), customization), {
       ack: p.ack,
       connected: p.connected,
       deaths: p.deaths,
@@ -1527,8 +1741,21 @@ export class Duel {
       thrall: p.thrall,
       thrallCd: p.thrallCd,
       fallenGuards: p.fallenGuards,
+      profileRevision: p.profileRevision,
       invuln,
     });
+  }
+  setCustomization(id: string, customization: CharacterCustomization): boolean {
+    const p = this.state.players.find((player) => player.id === id);
+    if (!p || !['lobby', 'finished'].includes(this.state.phase) || !validCustomization(p.classId, customization)) return false;
+    p.skinId = customization.selectedSkin;
+    p.loadout = { ...activePreset(customization).loadout };
+    p.profileRevision++;
+    p.magicShieldHits = equippedSkill(p, 'mage.magicShield') ? RULES.magicShieldHits : 0;
+    p.magicShieldCd = 0;
+    this.state.players.forEach((player) => (player.ready = false));
+    this.syncParticipants();
+    return true;
   }
   event(
     kind: GameEvent['kind'],
@@ -1537,6 +1764,7 @@ export class Duel {
     angle?: number,
     classId?: ClassId,
     power?: number,
+    skillId?: SkillId,
   ) {
     this.state.events.push({
       id: ++this.eventId,
@@ -1547,6 +1775,7 @@ export class Duel {
       angle,
       classId,
       power,
+      skillId,
     });
     this.state.events = this.state.events.slice(-24);
   }
@@ -1702,7 +1931,7 @@ export class Duel {
       target.dashInvulnerable
     )
       return false;
-    if (target.classId === 'mage' && target.magicShieldHits > 0 && (amount > 0 || options.freeze)) {
+    if ((target.classId === 'mage' || equippedSkill(target, 'mage.magicShield')) && target.magicShieldHits > 0 && (amount > 0 || options.freeze)) {
       target.magicShieldHits = options.pierce ? 0 : target.magicShieldHits - 1;
       if (target.magicShieldHits === 0) target.magicShieldCd = RULES.magicShieldCooldown;
       this.event('block', target, target.team, angle, target.classId);
@@ -1777,7 +2006,7 @@ export class Duel {
   }
   /** A charged fireball bursts on impact, splashing half its damage around. */
   private explode(a: Arrow, owner: Player, amount: number, skip?: string) {
-    if (a.classId !== 'mage' || !a.power) return;
+    if ((a.skillId ? a.skillId !== 'mage.fireball' : a.classId !== 'mage') || !a.power) return;
     const s = this.state,
       radius = RULES.explosionRadius * (0.6 + 0.4 * a.power);
     for (const q of s.players)
@@ -1996,7 +2225,7 @@ export class Duel {
       x: z.x - Math.sin(angle) * side * RULES.volleyGap,
       y: z.y + Math.cos(angle) * side * RULES.volleyGap,
       angle: angle + side * RULES.volleyAngle,
-      life: projectileStats(shot.classId, shot.charged, shot.power).life,
+      life: projectileSkillStats(shot.skillId,shot.classId, shot.charged, shot.power).life,
       ...shot,
     });
   }
@@ -2872,10 +3101,11 @@ export class Duel {
         if (p.respawnLeft <= 0) this.revive(p, RULES.spawnProtection);
         continue;
       }
-      if (CLASSES[p.classId].summon && (input.command || input.mark)) this.commandZombies(p, input);
+      if (equippedSkill(p, 'necromancer.summon') && (input.command || input.mark)) this.commandZombies(p, input);
+      const resolvedInput = resolveSlotInput(p, input);
       const action = movePlayer(
         p,
-        input,
+        resolvedInput,
         s.flags.some((f) => f.carrier === p.id),
         dt,
         this.map.walls,
@@ -2908,7 +3138,8 @@ export class Duel {
         const volley = action.volley ? ++this.volleyId : undefined;
         const charged = action.wind || (action.shoot && action.charged);
         const power = action.volley ? action.volleyPower : action.power;
-        const stats = projectileStats(p.classId, charged, power);
+        const skillId = action.ice ? 'mage.ice' : action.slash ? 'vanguard.slash' : action.volley ? 'archer.volley' : action.skillId;
+        const stats = projectileSkillStats(skillId, p.classId, charged, power);
         const aim = action.angle;
         // Volley arrows leave side by side and open up slowly: point blank (the archer's risky jump into
         // a rival's face) all three land, farther away they spread across a line of rivals.
@@ -2919,6 +3150,7 @@ export class Duel {
             owner: p.id,
             team: p.team,
             classId: p.classId,
+            skillId,
             ice: action.ice,
             x: p.x - Math.sin(aim) * gap,
             y: p.y + Math.cos(aim) * gap,
@@ -2941,6 +3173,7 @@ export class Duel {
           aim,
           p.classId,
           action.power,
+          skillId,
         );
       }
       if (action.raised) this.finishRaise(p);

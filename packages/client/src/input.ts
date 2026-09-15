@@ -1,7 +1,7 @@
-import { idleInput, CLASSES, DEFAULT_CLASS, type ClassId, type Input } from '@bandera/shared';
-import { primaryAbility, touchAbilitySlots, type TouchAbilitySlot } from './mobile-controls.js';
+import { idleInput, idleSlots, CLASSES, DEFAULT_CLASS, DEFAULT_BINDINGS, DEFAULT_LOADOUTS, activePreset, SKILL_SLOTS, type CharacterCustomization, type ClassId, type Input, type PhysicalBinding, type SkillSlot } from '@bandera/shared';
+import { primaryAbility, touchMeta, type TouchAbilitySlot } from './mobile-controls.js';
 
-type ActionState = Omit<Input, 'seq' | 'x' | 'y' | 'angle' | 'charge' | 'special' | 'guard' | 'counter' | 'aimX' | 'aimY'>;
+type ActionState = Omit<Input, 'seq' | 'x' | 'y' | 'angle' | 'charge' | 'special' | 'guard' | 'counter' | 'aimX' | 'aimY' | 'slots'>;
 
 const emptyActions = (): ActionState => ({
   sword: false,
@@ -19,13 +19,14 @@ const emptyActions = (): ActionState => ({
 });
 
 interface TouchGesture {
-  slot: TouchAbilitySlot;
+  slot: Pick<TouchAbilitySlot,'id'|'mode'|'directional'|'primary'>;
   source: string;
   element: HTMLElement;
   x: number;
   y: number;
   dragged: boolean;
   cancelled: boolean;
+  started: number;
 }
 
 export class Controls {
@@ -38,6 +39,11 @@ export class Controls {
   actions = emptyActions();
   enabled = false;
   classId: ClassId = DEFAULT_CLASS;
+  bindings = { ...DEFAULT_BINDINGS[DEFAULT_CLASS] };
+  loadout = { ...DEFAULT_LOADOUTS[DEFAULT_CLASS] };
+  private physical = new Set<PhysicalBinding>();
+  private slotPressed = new Set<SkillSlot>();
+  private slotReleased = new Set<SkillSlot>();
   private chargeSources = new Set<string>();
   private specialSources = new Set<string>();
   private guardSources = new Set<string>();
@@ -47,12 +53,20 @@ export class Controls {
   private movePointers = new Map<number, { x: number; y: number; el: HTMLElement }>();
   private gestures = new Map<number, TouchGesture>();
 
-  configure(classId: ClassId) {
+  configure(classId: ClassId, customization?: CharacterCustomization) {
     if (this.classId !== classId) {
       this.clear();
       this.classId = classId;
     }
+    const preset=customization?.classId===classId?activePreset(customization):undefined;
+    this.bindings={...(preset?.bindings??DEFAULT_BINDINGS[classId])};
+    this.loadout={...(preset?.loadout??DEFAULT_LOADOUTS[classId])};
   }
+
+  private mouseBinding(button:number):PhysicalBinding|undefined{return button===0?'MouseLeft':button===1?'MouseMiddle':button===2?'MouseRight':undefined;}
+  private keyBinding(code:string):PhysicalBinding|undefined{const value=code==='ControlLeft'||code==='ControlRight'?'Ctrl':code==='ShiftLeft'||code==='ShiftRight'?'Shift':code;return Object.values(this.bindings).includes(value as PhysicalBinding)?value as PhysicalBinding:undefined;}
+  private pressPhysical(binding:PhysicalBinding){this.physical.add(binding);for(const slot of SKILL_SLOTS)if(this.loadout[slot]&&this.bindings[slot]===binding)this.slotPressed.add(slot);}
+  private releasePhysical(binding:PhysicalBinding){this.physical.delete(binding);for(const slot of SKILL_SLOTS)if(this.loadout[slot]&&this.bindings[slot]===binding)this.slotReleased.add(slot);}
 
   get targetingAbility(): string | null {
     const touches = [...this.gestures.values()];
@@ -100,6 +114,7 @@ export class Controls {
   constructor() {
     document.querySelector('#game')!.addEventListener('mousedown', (event) => {
       const mouse = event as MouseEvent;
+      const binding=this.mouseBinding(mouse.button);if(binding)this.pressPhysical(binding);
       if (mouse.button === 1) mouse.preventDefault();
       if (mouse.button === 0) this.primary();
     });
@@ -109,10 +124,14 @@ export class Controls {
     window.addEventListener('keydown', (event) => this.keyDown(event));
     window.addEventListener('keyup', (event) => this.keyUp(event));
     window.addEventListener('pointerup', (event) => {
+      if(event.pointerType==='touch')return;
+      const binding=this.mouseBinding(event.button);if(binding)this.releasePhysical(binding);
       if (event.button === 2) this.secondary(false);
       if (event.button === 0) this.releasePrimary();
     });
     window.addEventListener('mouseup', (event) => {
+      if((event.target as HTMLElement)?.closest?.('#touch-controls'))return;
+      const binding=this.mouseBinding(event.button);if(binding)this.releasePhysical(binding);
       if (event.button === 2) this.secondary(false);
       if (event.button === 0) this.releasePrimary();
     });
@@ -130,7 +149,8 @@ export class Controls {
     if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.code))
       event.preventDefault();
     this.keys.add(event.code);
-    if (event.code === 'KeyE' && CLASSES[this.classId].summon) {
+    const binding=this.keyBinding(event.code);if(binding&&!event.repeat)this.pressPhysical(binding);
+    if (binding === this.bindings.companionCommand && Object.values(this.loadout).includes('necromancer.summon')) {
       event.preventDefault();
       if (!event.repeat) this.actions[event.metaKey || event.ctrlKey ? 'mark' : 'command'] = true;
     }
@@ -155,6 +175,7 @@ export class Controls {
 
   private keyUp(event: KeyboardEvent) {
     this.keys.delete(event.code);
+    const binding=this.keyBinding(event.code);if(binding)this.releasePhysical(binding);
     if (event.code === 'Space') this.releaseSpecial('key');
     if (event.code === 'KeyE') this.counterSources.delete('key');
   }
@@ -192,10 +213,8 @@ export class Controls {
     root.addEventListener('pointerdown', (event) => {
       const element = (event.target as HTMLElement).closest<HTMLElement>('[data-touch-ability]');
       if (!element || !this.enabled) return;
-      const slot = touchAbilitySlots(this.classId).find(
-        (candidate) => candidate.id === element.dataset.touchAbility,
-      );
-      if (!slot) return;
+      const id=element.dataset.touchAbility!;
+      const slot={id,...touchMeta(id,this.classId)};
       event.preventDefault();
       element.setPointerCapture(event.pointerId);
       const rect = element.getBoundingClientRect();
@@ -207,6 +226,7 @@ export class Controls {
         y: rect.top + rect.height / 2,
         dragged: false,
         cancelled: false,
+        started: performance.now(),
       };
       this.gestures.set(event.pointerId, gesture);
       this.beginTouch(gesture);
@@ -276,7 +296,7 @@ export class Controls {
       this.guardSources.delete(gesture.source);
       this.counterSources.delete(gesture.source);
     }
-    if (mode === 'release' && cast) this.releaseAction(id);
+    if (mode === 'release' && cast) this.releaseAction(id,performance.now()-gesture.started);
     gesture.element.dataset.aiming = 'false';
     gesture.element.dataset.cancel = 'false';
     gesture.element.style.setProperty('--aim-x', '0px');
@@ -284,7 +304,8 @@ export class Controls {
     this.gestures.delete(event.pointerId);
   }
 
-  private releaseAction(id: string) {
+  private releaseAction(id: string,duration=0) {
+    if(id==='command'&&duration>=500){this.actions.mark=true;return;}
     if (id === 'dagger') this.actions.sword = true;
     else if (id === 'shield-bash') this.actions.shieldBash = true;
     else if (id in this.actions) (this.actions as Record<string, boolean>)[id] = true;
@@ -333,8 +354,11 @@ export class Controls {
       counter: this.counterSources.size > 0,
       aimX: this.aimX,
       aimY: this.aimY,
+      slots:idleSlots(),
     };
+    for(const slot of SKILL_SLOTS)if(this.loadout[slot])result.slots[slot]={pressed:this.slotPressed.has(slot),held:this.physical.has(this.bindings[slot]),released:this.slotReleased.has(slot)};
     this.actions = emptyActions();
+    this.slotPressed.clear();this.slotReleased.clear();
     this.guardPulse = false;
     this.directionalDashPulse = false;
     return result;
@@ -346,6 +370,7 @@ export class Controls {
     this.counterSources.clear();
     this.chargeSources.clear();
     this.specialSources.clear();
+    this.physical.clear();this.slotPressed.clear();this.slotReleased.clear();
     this.guardPulse = false;
     this.directionalDashPulse = false;
     this.move = { x: 0, y: 0 };

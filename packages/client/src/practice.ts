@@ -1,11 +1,11 @@
-import { Duel, type ClassId, type Input, type MapId } from '@bandera/shared';
+import { Duel, defaultCustomization, type CharacterCustomization, type ClassId, type Input, type MapId } from '@bandera/shared';
 
 export const PRACTICE_PLAYER = 'practice-player';
 export class Practice {
   readonly duel: Duel;
-  constructor(classId: ClassId, name = 'Vos', mapId: MapId = 'courtyard') {
+  constructor(classId: ClassId, name = 'Vos', mapId: MapId = 'courtyard', customization:CharacterCustomization=defaultCustomization(classId)) {
     this.duel = new Duel(mapId, 'duel');
-    this.duel.add(PRACTICE_PLAYER, name, classId);
+    this.duel.add(PRACTICE_PLAYER, name, classId,customization);
     this.duel.add('practice-dummy', 'Rival de práctica', 'guardian');
     this.duel.state.phase = 'playing';
     this.placeDummy();

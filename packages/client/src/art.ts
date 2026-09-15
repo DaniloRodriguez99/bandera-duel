@@ -1,4 +1,4 @@
-import { type ClassId } from '@bandera/shared';
+import { MAGE_SKINS, type ClassId } from '@bandera/shared';
 // Original pixel matrices: 0 outline, 1 steel, 2 shadow, 3 cloth, 4 highlight,
 // 5 leather, 6 blade, 7 skin, 8 boots. Shared by class cards and in-game sprites.
 export const CLASS_ART: Record<ClassId, string[]> = {
@@ -33,6 +33,16 @@ export const CLASS_ART: Record<ClassId, string[]> = {
     '...11100111.....','...11100111.....','...11100111.....','...888..888.....',
   ],
 };
+export function mageSkinArt(skinId?:string):string[]{
+  const skin=MAGE_SKINS.find(item=>item.id===skinId),rows=[...CLASS_ART.mage];
+  if(!skin)return rows;
+  if(skin.silhouette==='crown'){rows[0]='....4.44.4......';rows[1]='.....4444.......';}
+  if(skin.silhouette==='hood'){rows[0]='.....33333......';rows[1]='....334433......';rows[2]='...33333333.....';}
+  if(skin.silhouette==='armor'){rows[6]='..1113333111....';rows[7]='.111334433111...';rows[8]='11133444333111..';}
+  if(skin.silhouette==='turban'){rows[0]='....444444......';rows[1]='...43333334.....';rows[2]='....433334......';}
+  if(skin.silhouette==='horns'){rows[0]='...4..44..4.....';rows[1]='....433334......';}
+  return rows;
+}
 // Hunched ghoul: rotting skin (7), sockets and jaw (2), glowing red eyes (9), exposed
 // ribs and teeth (6), rags dyed in the summoner's color (3) and long clawed arms.
 export const ZOMBIE_ART: string[] = [
@@ -47,10 +57,11 @@ export function palette(cloth: string, light: string): Record<string,string> {
 export function zombiePalette(cloth: string, light: string): Record<string,string> {
   return {...palette(cloth, light), 2:'#1d241c', 6:'#d6cfb3', 7:'#7f9a6e', 9:'#ff4a3d'};
 }
-export function classIllustration(classId:ClassId):string {
-  const colors=palette('#64897e','#b6cbb0');
-  const pixels=CLASS_ART[classId].flatMap((row,y)=>row.split('').map((c,x)=>c==='.'?'':`<rect x="${x+5}" y="${y+3}" width="1" height="1" fill="${colors[c]}"/>`)).join('');
-  const weapon=classId==='archer'?'<path d="M22 6Q30 13 22 20M22 6V20" stroke="#eac787" fill="none"/><path d="M22 13H29" stroke="#ede7d1"/>':classId==='mage'?'<path d="M24 5V21" stroke="#796452" stroke-width="2"/><path d="M24 4L27 7L24 10L21 7Z" fill="#9edcff" stroke="#e8f7ff"/><circle cx="24" cy="7" r="1" fill="#fff"/>':classId==='necromancer'?'<path d="M24 6V21" stroke="#4a3a2b" stroke-width="2"/><circle cx="24" cy="6" r="2.5" fill="#e8e2c8"/><path d="M23 6H23.5M24.5 6H25" stroke="#26353b"/><circle cx="24" cy="2.5" r="1.5" fill="#f08a4b"/>':classId==='guardian'?'<path d="M20 11H27V17L23.5 20L20 17Z" fill="#eac787" stroke="#655940"/><path d="M23.5 12V17M21 14H26" stroke="#596f63"/>':'<path d="M23 2L25 4V18H23Z" fill="#e3e5d5"/><path d="M20 17H28V19H20ZM23 19H25V23H23Z" fill="#eac787"/>';
+export function classIllustration(classId:ClassId,skinId?:string):string {
+  const skin=classId==='mage'?MAGE_SKINS.find(item=>item.id===skinId):undefined;
+  const colors=palette(skin?.cloth??'#64897e',skin?.light??'#b6cbb0');
+  const pixels=(classId==='mage'?mageSkinArt(skinId):CLASS_ART[classId]).flatMap((row,y)=>row.split('').map((c,x)=>c==='.'?'':`<rect x="${x+5}" y="${y+3}" width="1" height="1" fill="${colors[c]}"/>`)).join('');
+  const weapon=classId==='archer'?'<path d="M22 6Q30 13 22 20M22 6V20" stroke="#eac787" fill="none"/><path d="M22 13H29" stroke="#ede7d1"/>':classId==='mage'?`<path d="M24 5V21" stroke="#796452" stroke-width="2"/><path d="M24 4L27 7L24 10L21 7Z" fill="${skin?.accent??'#9edcff'}" stroke="#e8f7ff"/><circle cx="24" cy="7" r="1" fill="#fff"/>`:classId==='necromancer'?'<path d="M24 6V21" stroke="#4a3a2b" stroke-width="2"/><circle cx="24" cy="6" r="2.5" fill="#e8e2c8"/><path d="M23 6H23.5M24.5 6H25" stroke="#26353b"/><circle cx="24" cy="2.5" r="1.5" fill="#f08a4b"/>':classId==='guardian'?'<path d="M20 11H27V17L23.5 20L20 17Z" fill="#eac787" stroke="#655940"/><path d="M23.5 12V17M21 14H26" stroke="#596f63"/>':'<path d="M23 2L25 4V18H23Z" fill="#e3e5d5"/><path d="M20 17H28V19H20ZM23 19H25V23H23Z" fill="#eac787"/>';
   return `<svg viewBox="0 0 32 25" aria-hidden="true" shape-rendering="crispEdges">${pixels}${weapon}</svg>`;
 }
 // The necromancer zombie is a revived person: wide-brimmed hat banded in the summoner's

@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { Client, type Room } from '@colyseus/sdk';
-import { RULES, chargePower, CLASSES, TEAMS, TEAM_NAMES, TEAM_ICONS, MAPS, MODE_INFO, validName, type Snapshot, type ClassId, type Team, type MapId, type GameMode, type ChatMessage, type ChatHistory, type ChatStatus, type RoomClosingReason } from '@bandera/shared';
+import { RULES, chargePower, CLASSES, TEAMS, TEAM_NAMES, TEAM_ICONS, MAPS, MODE_INFO, validName, defaultCustomization, activePreset, type Snapshot, type ClassId, type Team, type MapId, type GameMode, type ChatMessage, type ChatHistory, type ChatStatus, type RoomClosingReason, type CharacterCustomization } from '@bandera/shared';
 import { Arena } from './scene.js';
 import {
   muted,
@@ -10,11 +10,12 @@ import {
   setMusicVolume,
   setMusicMode,
 } from './audio.js';
-import { savedClass, saveClass, mountClasses, updateClasses } from './classes.js';
+import { savedClass, saveClass, mountClasses, updateClasses, updateMageSkin } from './classes.js';
 import { updateAbilities } from './abilities.js';
 import { mountTouchAbilities, updateTouchAbilities } from './mobile-controls.js';
 import './style.css';
 import { Practice, PRACTICE_PLAYER } from './practice.js';
+import { loadMageCustomization, mountMageCustomization } from './customization.js';
 
 function hudTeam(team: Team, right = false) {
   const label = right ? `${TEAM_NAMES[team]} ${TEAM_ICONS[team]}` : `${TEAM_ICONS[team]} ${TEAM_NAMES[team]}`;
@@ -37,7 +38,7 @@ document.querySelector('#app')!.innerHTML = `
 <div class="arena-bottom"><span id="arena-hint">Robá la bandera rival y traela a tu base. La tuya debe estar en casa.</span><div id="cooldowns" hidden><span id="health" aria-label="Vida"></span><span id="lives" aria-label="Muertes"></span><span id="stealth-state"></span><span id="cd-sword"></span><span id="cd-shot"></span><span id="cd-dash"></span><span id="cd-guard" hidden></span><span id="cd-trap" hidden></span><span id="cd-volley" hidden></span><span id="cd-summon" hidden></span></div><span class="corner-detail">◆ &nbsp; ✚ &nbsp; ▲ &nbsp; ●</span></div></section>
 <section id="guide" class="guide"><article><span class="step">01 / ROBÁ</span><h3>Entrá en terreno rival.</h3><p>Tocá su bandera para llevarla. Podés pelear mientras la transportás.</p></article><article><span class="step">02 / RESISTÍ</span><h3>Un golpe cambia todo.</h3><p>Si te hieren, soltás la bandera. Recuperá la tuya con solo tocarla.</p></article><article><span class="step">03 / VOLVÉ</span><h3>Tu base. Tu victoria.</h3><p>Capturá con tu bandera en casa. Tres capturas deciden la partida; las reapariciones son ilimitadas.</p></article></section>
 <div id="control-guide" class="control-guide"></div>
-</main><footer><span>BANDERA DUEL <b> / </b> HECHO PARA LA REVANCHA.</span><span>HASTA 4 · V0.1</span></footer><div id="rotate"><span>↻</span><h2>Giralo para el duelo.</h2><p>La arena se juega con el celular horizontal.</p></div>`;
+</main><footer><span>BANDERA DUEL <b> / </b> HECHO PARA LA REVANCHA.</span><span>HASTA 4 · V0.1</span></footer><div id="customization" class="customization" hidden></div><div id="rotate"><span>↻</span><h2>Giralo para el duelo.</h2><p>La arena se juega con el celular horizontal.</p></div>`;
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const arena = new Arena();
@@ -104,13 +105,21 @@ $<HTMLSelectElement>('map-select').onchange = (event) => {
 $<HTMLSelectElement>('game-mode').addEventListener('change', updateMapPreview);
 updateMapPreview();
 let selectedClass = savedClass();
+let mageCustomization:CharacterCustomization=loadMageCustomization();
+const customizer=mountMageCustomization($('customization'),mageCustomization,(value)=>{
+  mageCustomization=value;
+  updateMageSkin($('entry-classes'),value.selectedSkin);updateMageSkin($('room-classes'),value.selectedSkin);
+  arena.controls.configure('mage',value);
+  if(room&&current?.players.some(player=>player.id===room!.sessionId&&player.classId==='mage')&&['lobby','finished'].includes(current.phase))room.send('selectCustomization',value);
+});
 mountClasses($('entry-classes'), selectedClass, (id) => {
   selectedClass = id;
   saveClass(id);
   updateClasses($('entry-classes'), id);
   showClassControls(id);
-});
-mountClasses($('room-classes'), selectedClass, (id) => room?.send('selectClass', id));
+},()=>customizer.open());
+mountClasses($('room-classes'), selectedClass, (id) => {room?.send('selectClass', id);if(id==='mage')room?.send('selectCustomization',mageCustomization);},()=>customizer.open());
+updateMageSkin($('entry-classes'),mageCustomization.selectedSkin);updateMageSkin($('room-classes'),mageCustomization.selectedSkin);
 let displayedClass: ClassId | undefined;
 function showClassControls(id: ClassId) {
   if (displayedClass === id) return;
@@ -370,6 +379,7 @@ $('entry-form').onsubmit = async (e) => {
       ? await client.joinById(target, {
           name,
           classId: selectedClass,
+          customization: selectedClass==='mage'?mageCustomization:defaultCustomization(selectedClass),
           spectator: $<HTMLInputElement>('spectator').checked,
           perspective: $<HTMLSelectElement>('spectator-perspective').value,
           password: $<HTMLInputElement>('room-password').value,
@@ -377,6 +387,7 @@ $('entry-form').onsubmit = async (e) => {
       : await client.create('duel', {
           name,
           classId: selectedClass,
+          customization: selectedClass==='mage'?mageCustomization:defaultCustomization(selectedClass),
           title: $<HTMLInputElement>('room-title').value,
           visibility: $<HTMLSelectElement>('visibility').value,
           password: $<HTMLInputElement>('room-password').value,
@@ -488,7 +499,8 @@ function render(s: Snapshot) {
   $('stage').dataset.role = me ? 'player' : 'spectator';
   if (me) {
     selectedClass=me.classId;saveClass(me.classId);showClassControls(me.classId);
-    updateAbilities($('abilities'), me);
+    arena.controls.configure(me.classId,me.classId==='mage'?mageCustomization:defaultCustomization(me.classId));
+    updateAbilities($('abilities'), me,me.classId==='mage'?activePreset(mageCustomization).bindings:undefined);
     updateTouchAbilities($('touch-actions'), me);
     updateClasses($('room-classes'),me.classId,!overlay||s.paused);
     $('room-picker').hidden=!overlay;
@@ -775,7 +787,9 @@ function startPractice() {
   resetChat();
   if (room || busy || !arena.controls) return;
   unlockAudio();
-  practice = new Practice(selectedClass, validName(nameInput.value) || 'Vos', selectedMap);
+  const customization=selectedClass==='mage'?mageCustomization:defaultCustomization(selectedClass);
+  practice = new Practice(selectedClass, validName(nameInput.value) || 'Vos', selectedMap,customization);
+  arena.controls.configure(selectedClass,customization);
   arena.reset();
   arena.send = () => {};
   arena.localStep = (input) => {
@@ -813,7 +827,7 @@ $('practice-exit').onclick = () => {
   $('stage').dataset.role = 'preview';
   $('arena-label').textContent = 'EL PATIO DEL REY';
   $('connection-label').textContent = 'ACERO · ARCO · MAGIA';
-  const preview = new Practice(selectedClass, 'Vos', selectedMap);
+  const preview = new Practice(selectedClass, 'Vos', selectedMap,selectedClass==='mage'?mageCustomization:defaultCustomization(selectedClass));
   preview.duel.state.phase = 'lobby';
   arena.receive(structuredClone(preview.duel.state), '');
   $('intro').scrollIntoView({ block: 'start' });

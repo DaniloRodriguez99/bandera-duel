@@ -8,12 +8,15 @@ import {
   validName,
   sanitizeChatText,
   validClass,
+  defaultCustomization,validCustomization,
+  idleSlots,SKILL_SLOTS,
   DEFAULT_CLASS,
   DEFAULT_MAP,DEFAULT_MODE,MAPS,MODE_INFO,validMap,validMode,playerVisibleTo,zombieVisibleTo,pointBush,lineClear,
   type ClassId,
   type Team,type Snapshot,type MapId,type GameMode,
   type Input,
   type ChatMessage, type ChatHistory, type ChatStatus, type RoomClosingReason,
+  type CharacterCustomization,
 } from '@bandera/shared';
 
 const listedRooms = new Map<string, DuelRoom>();
@@ -138,6 +141,14 @@ export class DuelRoom extends Room {
       this.touchActivity();
       this.sendSnapshots();
     });
+    this.onMessage('selectCustomization', (client, customization: unknown) => {
+      if(this.closing)return;
+      const player=this.game.state.players.find(p=>p.id===client.sessionId);
+      if(!player||!validCustomization(player.classId,customization)||!this.game.setCustomization(client.sessionId,customization)) {
+        client.send('selectionError','La configuración de habilidades no es válida.'); return;
+      }
+      this.touchActivity();client.send('profileRevision',player.profileRevision);this.sendSnapshots();
+    });
     this.onMessage('selectTeam',(client,team)=>{if(this.closing)return;if(!this.game.selectTeam(client.sessionId,team as Team))client.send('selectionError','No se puede elegir ese equipo.');else this.touchActivity();this.sendSnapshots();});
     this.onMessage('perspective',(client,team)=>{if(this.closing)return;if(!this.spectators.has(client.sessionId)||!this.game.state.players.some(p=>p.team===team))return;const current=this.perspectives.get(client.sessionId),exists=this.game.state.players.some(p=>p.team===current);if(!['lobby','finished'].includes(this.game.state.phase)&&exists)return;this.perspectives.set(client.sessionId,team as Team);this.touchActivity();this.sendSnapshots();});
     this.onMessage('sync', (client) => { client.send('snapshot', this.viewFor(client)); client.send('roomInfo', this.publicInfo()); this.sendChatHistory(client); });
@@ -182,7 +193,8 @@ export class DuelRoom extends Room {
         const input =
           next ??
           (Date.now() - (this.receivedAt.get(p.id) ?? 0) < 250
-            ? { ...old, sword: false, shot: false, dash: false, summon: false, trap: false, volley: false, command: false, mark: false, ice: false, slash: false, shieldBash: false, fury: false }
+            ? { ...old, sword: false, shot: false, dash: false, summon: false, trap: false, volley: false, command: false, mark: false, ice: false, slash: false, shieldBash: false, fury: false,
+                slots:Object.assign(idleSlots(),Object.fromEntries(SKILL_SLOTS.map(slot=>[slot,{pressed:false,held:old.slots[slot].held,released:false}])))}
             : idleInput(old.seq, p.angle));
         this.last.set(p.id, input);
         inputs.set(p.id, input);
@@ -204,7 +216,7 @@ export class DuelRoom extends Room {
     // Colyseus starts a second clock ticker and fixed-step elapsed time is lost.
     this.patchRate = null;
   }
-  onAuth(_client: Client, options: { name?: unknown; classId?: unknown; spectator?: unknown; password?: unknown }) {
+  onAuth(_client: Client, options: { name?: unknown; classId?: unknown; spectator?: unknown; password?: unknown; customization?:unknown }) {
     if (this.passwordHash && (typeof options.password !== 'string' || options.password.length > 64 || !timingSafeEqual(this.passwordHash, createHmac('sha256', this.passwordKey).update(options.password).digest())))
       throw new ServerError(403, 'Contraseña incorrecta.');
     if (options?.spectator !== undefined && typeof options.spectator !== 'boolean')
@@ -213,6 +225,9 @@ export class DuelRoom extends Room {
       throw new ServerError(400, 'Usá un apodo de 1 a 16 letras o números.');
     if (options.classId !== undefined && !validClass(options.classId))
       throw new ServerError(400, 'Clase de guerrero desconocida.');
+    const classId=validClass(options.classId)?options.classId:DEFAULT_CLASS;
+    if(options.customization!==undefined&&!validCustomization(classId,options.customization))
+      throw new ServerError(400,'La configuración de habilidades no es válida.');
     if (options.spectator === true) {
       if (!this.allowSpectators) throw new ServerError(403, 'Esta sala no admite espectadores.');
       if (this.spectators.size >= 5) throw new ServerError(409, 'No quedan lugares para espectadores.');
@@ -222,7 +237,7 @@ export class DuelRoom extends Room {
     if (this.game.state.phase !== 'lobby') throw new ServerError(409, 'Esta partida ya empezó.');
     return true;
   }
-  onJoin(client: Client, options: { name: string; classId?: ClassId; spectator?: boolean;perspective?:unknown }) {
+  onJoin(client: Client, options: { name: string; classId?: ClassId; spectator?: boolean;perspective?:unknown;customization?:CharacterCustomization }) {
     if (this.closing) throw new ServerError(410, 'La sala ya terminó.');
     this.touchActivity();
     if (options.spectator === true) {
@@ -232,7 +247,7 @@ export class DuelRoom extends Room {
       this.spectatorNames.set(client.sessionId, validName(options.name)!);
       this.watching.add(client.sessionId);
       const requested=options.perspective;this.perspectives.set(client.sessionId,this.game.state.players.some(p=>p.team===requested)?requested as Team:this.game.state.players[0]?.team??'blue');
-    } else { this.game.add(client.sessionId, validName(options.name)!, options.classId ?? DEFAULT_CLASS); this.playerSessions.add(client.sessionId); this.hadPlayer = true; }
+    } else { const classId=options.classId??DEFAULT_CLASS;this.game.add(client.sessionId,validName(options.name)!,classId,options.customization??defaultCustomization(classId));this.playerSessions.add(client.sessionId);this.hadPlayer=true; }
     this.sendSnapshots();
     this.sendChatHistory(client);
     this.publishChatStatus();

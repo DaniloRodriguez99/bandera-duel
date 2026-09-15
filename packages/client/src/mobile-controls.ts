@@ -1,5 +1,5 @@
 import { CLASSES, RULES, chargePower, type ClassId, type Player } from '@bandera/shared';
-import { abilitySlots, type AbilitySlot } from './abilities.js';
+import { abilitySlots, playerAbilitySlots, type AbilitySlot } from './abilities.js';
 
 export type TouchMode = 'charge' | 'hold' | 'release' | 'press';
 
@@ -27,11 +27,11 @@ const TOUCH_META: Record<string, Omit<TouchAbilitySlot, keyof AbilitySlot>> = {
   slash: { mode: 'release', directional: true, primary: false },
   counter: { mode: 'hold', directional: true, primary: false },
 };
+export const touchMeta=(id:string,classId:ClassId)=>{const meta=TOUCH_META[id];if(!meta)throw new Error(`Falta configuración táctil para ${classId}/${id}`);return {...meta,mode:id==='dash'&&classId==='guardian'?'release' as const:meta.mode};};
 
-export function touchAbilitySlots(classId: ClassId): TouchAbilitySlot[] {
-  return abilitySlots(classId).map((slot) => {
-    const meta = TOUCH_META[slot.id];
-    if (!meta) throw new Error(`Falta configuración táctil para ${classId}/${slot.id}`);
+export function touchAbilitySlots(classId: ClassId,player?:Player): TouchAbilitySlot[] {
+  return (player?.classId==='mage'?playerAbilitySlots(player):abilitySlots(classId)).map((slot) => {
+    const meta = touchMeta(slot.id,classId);
     return {
       ...slot,
       ...meta,
@@ -95,15 +95,16 @@ function button(slot: TouchAbilitySlot) {
   return node;
 }
 
-export function mountTouchAbilities(root: HTMLElement, classId: ClassId) {
-  if (root.dataset.class === classId) return;
-  root.dataset.class = classId;
-  root.replaceChildren(...touchAbilitySlots(classId).map(button));
+export function mountTouchAbilities(root: HTMLElement, classId: ClassId,player?:Player) {
+  const signature=player?.classId==='mage'?`${classId}:${Object.values(player.loadout).join('|')}`:classId;
+  if (root.dataset.class === signature) return;
+  root.dataset.class = signature;
+  root.replaceChildren(...touchAbilitySlots(classId,player).map(button));
 }
 
 export function updateTouchAbilities(root: HTMLElement, p: Player) {
-  mountTouchAbilities(root, p.classId);
-  const slots = touchAbilitySlots(p.classId);
+  mountTouchAbilities(root, p.classId,p);
+  const slots = touchAbilitySlots(p.classId,p);
   root.querySelectorAll<HTMLElement>('[data-touch-ability]').forEach((node, index) => {
     const slot = slots[index];
     const cooldown = slot.cooldown(p);

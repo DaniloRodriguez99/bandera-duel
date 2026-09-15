@@ -8,12 +8,14 @@ import {
   TEAMS,
   TEAM_NAMES,
   TEAM_ICONS,
+  MAGE_SKINS,
   layout,
   projectileStats,
   arrowMotion,
   chargePower,
   distance,
   movePlayer,
+  resolveSlotInput,
   newPlayer,
   lineClear,
   type Snapshot,
@@ -35,6 +37,7 @@ import {
   zombiePalette,
   hatPalette,
   undeadPalette,
+  mageSkinArt,
 } from './art.js';
 
 const GOLD = 0xf3ce86;
@@ -155,6 +158,12 @@ export class Arena extends Phaser.Scene {
             pixelWidth: 2,
             palette: palette(CLOTH[team], LIGHT[team]) as Phaser.Types.Create.Palette,
           });
+        }
+    for (const team of TEAMS)
+      for (const skin of MAGE_SKINS)
+        for (let frame=0;frame<2;frame++) {
+          const data=mageSkinArt(skin.id).map((row,i)=>frame===1&&i>=13?row.slice(0,3)+row.slice(3,13).split('').reverse().join('')+row.slice(13):row);
+          this.textures.generate(`${team}-mage-${skin.id}-${frame}`,{data,pixelWidth:2,palette:palette(skin.cloth,skin.light) as Phaser.Types.Create.Palette});
         }
     for (const team of TEAMS)
       for (let frame = 0; frame < 2; frame++) {
@@ -355,7 +364,7 @@ export class Arena extends Phaser.Scene {
         for (const input of this.pending)
           movePlayer(
             this.predicted,
-            input,
+            resolveSlotInput(this.predicted,input),
             snapshot.flags.some((f) => f.carrier === id),
             RULES.tick,
             MAPS[snapshot.mapId].walls,
@@ -1032,11 +1041,12 @@ export class Arena extends Phaser.Scene {
     }
   }
   private drawPlayer(p: Player, local: boolean, time: number, delta = 16.67) {
+    const texture=(frame:number)=>p.classId==='mage'&&MAGE_SKINS.some(s=>s.id===p.skinId)?`${p.team}-mage-${p.skinId}-${frame}`:`${p.team}-${p.classId}-${frame}`;
     let v = this.visuals.get(p.id);
     if (!v) {
       v = {
         body: this.add
-          .sprite(p.x, p.y, `${p.team}-${p.classId}-0`)
+          .sprite(p.x, p.y, texture(0))
           .setOrigin(0.5, 0.7)
           .setDepth(10),
         shadow: this.add.ellipse(p.x, p.y + 8, 26, 10, 0x081618, 0.4).setDepth(3),
@@ -1063,10 +1073,12 @@ export class Arena extends Phaser.Scene {
     v.y += (p.y - v.y) * smooth;
     v.body
       .setPosition(v.x, v.y + (moving ? Math.sin(time * 0.022) * 1.2 : 0))
-      .setTexture(`${p.team}-${p.classId}-${moving ? Math.floor(time / 110) % 2 : 0}`)
-      .setFlipX(Math.cos(p.angle) < 0);
+      .setTexture(texture(moving ? Math.floor(time / 110) % 2 : 0))
+      .setFlipX(Math.cos(p.angle) < 0)
+      .setScale(p.shotCharge>0||p.specialCharge>0?1+Math.sin(time*.018)*.045:1);
+    const actionAngle=p.hp<=0?90:p.frozenLeft>0?Math.sin(time*.045)*5:p.dashLeft>0?Math.cos(p.angle)*-9:p.windup>0?Math.cos(p.angle)*6:0;
     v.body
-      .setAngle(p.hp <= 0 ? 90 : 0)
+      .setAngle(actionAngle)
       .setAlpha(
         p.eliminated
           ? 0.08
@@ -1670,15 +1682,15 @@ export class Arena extends Phaser.Scene {
           p.x + dy * 4,
           p.y - dx * 4,
         );
-      } else if ((a.classId === 'mage' || a.classId === 'necromancer') && (a.power ?? 0) > 0.05) {
+      } else if ((a.skillId === 'mage.fireball' || a.skillId === 'necromancer.fire' || a.classId === 'mage' || a.classId === 'necromancer') && (a.power ?? 0) > 0.05) {
         this.drawBlaze(
           p,
           a.angle,
           a.power!,
           time,
-          a.classId === 'necromancer' ? 0xc26bff : 0xff6a1f,
+          a.skillId === 'necromancer.fire' || (!a.skillId&&a.classId === 'necromancer') ? 0xc26bff : 0xff6a1f,
         );
-      } else if (a.classId === 'necromancer') {
+      } else if (a.skillId === 'necromancer.fire' || (!a.skillId&&a.classId === 'necromancer')) {
         const size = grow * (a.element === 'fire' ? 0.6 : 1);
         this.arrows.lineStyle(6 * size, 0xff7a2f, 0.25);
         this.arrows.lineBetween(
@@ -1691,7 +1703,7 @@ export class Arena extends Phaser.Scene {
         this.arrows.fillCircle(p.x, p.y, 8 * size);
         this.arrows.fillStyle(0xffe08a);
         this.arrows.fillCircle(p.x, p.y, 4 * size);
-      } else if (a.classId === 'mage') {
+      } else if (a.skillId === 'mage.fireball' || (!a.skillId&&a.classId === 'mage')) {
         if (a.power) {
           this.arrows.fillStyle(0xff4a1a, 0.18);
           this.arrows.fillCircle(p.x, p.y, 16 * grow);
