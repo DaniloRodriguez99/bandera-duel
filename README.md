@@ -40,6 +40,8 @@ La banda sonora es original y sintetizada: melodía medieval en el menú, ritmo 
 | Distancia | Clic izquierdo | Apuntar y soltar palanca derecha |
 | Acción secundaria | Clic derecho | Botón de daga, escudo o invocación |
 | Dash    | Espacio        | Botón ➟                          |
+| Habilidad Q | Q | Botón Q |
+| Habilidad E | E | Botón E |
 
 El arquero dispara flechas y usa una daga. El mago lanza bolas de fuego con clic izquierdo y comienza con un escudo mágico que absorbe dos golpes desde cualquier dirección, sin perder vida ni soltar la bandera. Al romperse, hay que esperar 5 segundos y hacer un nuevo clic derecho (o tocar ⛨) para recuperarlo; no se repone automáticamente ni permite recargar una carga restante. Reaparecer o reiniciar la arena restaura las dos cargas. Ambos pueden usar dash. El nigromante lanza fuego (clic izquierdo o palanca derecha) e invoca dos zombies con espacio, clic derecho o el botón ☠ (recarga de 5 s). Cada invocación es una ejecución de 2 zombies y puede haber como máximo 2 ejecuciones activas a la vez (4 zombies); una tercera no se inicia hasta que terminen los 2 zombies de alguna. Los zombies emergen del suelo escalonados, son más lentos que cualquier clase, persiguen al rival más cercano al cursor del nigromante (o el más cercano a ellos), no hacen fila: los que van tras el mismo objetivo se reparten a su alrededor (en pinza de a dos o en círculo de a más), cada uno se acerca por su lado y recién desde su lugar se lanza al ataque; sin rival cerca del cursor ocupan puestos separados alrededor de esa zona, y toman caminos distintos alrededor de los muros; duran 20 s y cualquier ataque los destruye. Sus golpes cuentan como daño del nigromante: sueltan banderas y suman muertes. La espada usa la última dirección apuntada. El dash usa el movimiento actual o el apuntado si estás quieto. El botón de sonido está en la cabecera; su elección se conserva en el dispositivo. El audio comienza después de una interacción del usuario.
 
@@ -120,6 +122,42 @@ La dirección del servidor se incorpora **durante la compilación**: cambiarla r
 
 Después de publicar, comprobá `/health`, una invitación entre PC y móvil, una captura y una reconexión. El cliente muestra «Preparando servidor…» durante el arranque; la espera máxima es de unos 85 s antes de ofrecer reintentar.
 
+### Google Cloud Run: servidor en Latinoamérica
+
+El servidor ya respeta `PORT`, escucha en `0.0.0.0` y expone `/health`, por lo que Cloud Run puede ejecutarlo con el `Dockerfile` de la raíz.
+
+1. Elegí o creá un proyecto en Google Cloud y activá facturación. Cloud Run tiene capa gratuita, pero Google exige una cuenta con billing habilitado.
+2. Instalá e iniciá sesión con Google Cloud CLI.
+3. Desde la raíz del repo:
+
+```powershell
+gcloud auth login
+gcloud config set project TU_PROJECT_ID
+gcloud services enable run.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com
+gcloud run deploy bandera-duel-server `
+  --source . `
+  --region southamerica-east1 `
+  --allow-unauthenticated `
+  --port 8080 `
+  --set-env-vars NODE_ENV=production,ALLOWED_ORIGINS=https://TU-APP.vercel.app
+```
+
+Usá `southamerica-east1` para São Paulo. Si tus jugadores están más cerca de Chile, probá `southamerica-west1`.
+
+Cuando termine, Cloud Run devuelve una URL `https://...run.app`. Verificá:
+
+```powershell
+curl https://TU-SERVICIO.run.app/health
+```
+
+Después redeployá Vercel con:
+
+```text
+VITE_SERVER_URL=wss://TU-SERVICIO.run.app
+```
+
+Si usás previews de Vercel, agregá cada origen permitido a `ALLOWED_ORIGINS`, separado por comas y sin barra final.
+
 ### Límites de esta primera versión
 
 - Render Free se duerme tras 15 minutos sin tráfico, puede tardar alrededor de un minuto en despertar y puede reiniciarse. Las salas viven en memoria y se pierden al reiniciar. También aplica cuotas de uso y transferencia: gratis no significa ilimitado. Si querés evitar cobros por excedentes, revisá la configuración de pago y límites de la cuenta. [Render Free](https://render.com/docs/free).
@@ -163,7 +201,7 @@ Mantener clic izquierdo durante 0,8 s carga el arco; soltar dispara. En móvil, 
 ### Sobrecarga
 Mantener clic o Espacio carga la habilidad y soltar la ejecuta; un toque rápido conserva la habilidad normal. Un círculo rúnico bajo el personaje crece y gira más rápido mientras carga, y destella al llegar al máximo (1,5 s).
 - Mago: gran bola de fuego (daño de 1 a 2,5, doble tamaño) que explota al impactar y quema a los cercanos con la mitad del daño.
-- Nigromante (clic): fuego cargado de 1 a 2 de daño y casi el doble de tamaño. Caballero y guerrero: golpe cargado con más daño (×2 y ×1,75) y más alcance. Arquero y mago (Espacio): dash hasta 1,8 veces más largo. La flecha cargada del arquero mantiene su regla propia.
+- Nigromante (clic): fuego cargado de 1 a 2 de daño y casi el doble de tamaño. Caballero y guerrero: golpe cargado con más daño (×2 y ×1,75) y más alcance. Arquero y mago (Espacio): dash hasta 1,8 veces más largo. La embestida del caballero es inmediata y siempre recorre unas 190 unidades. La flecha cargada del arquero mantiene su regla propia.
 - Nigromante (Espacio): una carga corta invoca un solo **zombie con gorro** (máximo uno): tiene 5 de vida, se cura, cada 5 s invoca un zombie que no respeta el tope normal y lanza con los dos brazos un hechizo doble de fuego y hielo (0,5 de daño cada uno); el hielo congela 1,2 s al que golpea. Si se mantiene hasta llenar el aura (2,5 s, cambia a verde) con un rival muerto a menos de 200 px, lo **resucita como esclavo** con su clase y su nombre; el jugador reaparece normalmente y el nigromante puede volver a invocar a ese esclavo con el aura completa 20 s después de que muera.
 ### Panel de habilidades
 Durante la partida, abajo a la izquierda del escenario aparece una tarjeta por habilidad con su ícono, su tecla (CLIC, ESPACIO y, según la clase, CLIC DER., Q o E) y un velo circular con los segundos de recarga restantes; la tarjeta se ilumina cuando está lista. En pantallas táctiles el panel se ubica arriba a la izquierda para no tapar la palanca de movimiento. En el nigromante, Espacio invoca zombies.
@@ -179,6 +217,14 @@ Sobre cada tarjeta crece su árbol: qué hace un toque, qué hace mantener y (en
 - **E** activa o desactiva el modo **automático**: sin círculos, todos atacan solos al rival cercano y, si no hay ninguno, te acompañan.
 - Invocar no espera ni bloquea al fuego: se puede lanzar fuego e invocar a la vez. Resucitar castea **0,5 s** con el nigromante quieto; recién entonces se abre el mandala y se levanta el esclavo.
 
+### Caballero
+
+- **Espada:** ataque rápido en un arco frontal de 180°, alcance 60, 0,1 s de preparación y 0,4 s de recarga. Puede cortar a varios enemigos, pero nunca a aliados. Mantener clic hasta 1,5 s aumenta gradualmente alcance y daño hasta ×2.
+- **Clic derecho · guardia continua:** bloquea de frente, en un arco de 120°, todos los golpes cuerpo a cuerpo, flechas normales y hielo mientras se mantenga pulsado. No tiene límite ni se rompe al bloquear; permite caminar al 45 % de la velocidad. Las trampas y flechas de viento atraviesan la defensa sin bajarla. Soltar, atacar, quedar aturdido, morir o embestir inicia 1 s de recarga.
+- **Espacio · embestida:** recorre unas 190 unidades en la dirección de movimiento o de apuntado, hace 1 de daño y empuja una vez a cada enemigo atravesado. No daña aliados, se detiene en paredes, no concede invulnerabilidad y recarga en 3 s.
+- **Q · golpe de escudo:** golpe frontal corto de 0,5 de daño, empujón y 1,5 s de aturdimiento. Puede iniciarse desde guardia, pero baja el escudo durante el golpe. Otro caballero orientado correctamente puede bloquearlo. Recarga de 6 s.
+- **E · furia:** durante 5 s la espada hace 40 % más daño, multiplicado también por la carga. El aura roja oscura revela al caballero durante 1,5 s si está en arbustos. Recarga de 15 s; termina al morir, cambiar de clase, capturar o reiniciarse la ronda.
+
 ### Guerrero
 - **Espacio:** dash, más corto que el del arquero y el mago (mantener para uno más largo). Camina un poco más lento que antes (145).
 - **Q · tajo viajero:** lanza una media luna que avanza unos 270 px, atraviesa y corta a todos los rivales y zombies en su camino (1,5 de daño a cada uno), hasta chocar con un muro. Recarga de 5 s. Los escudos lo bloquean.
@@ -188,7 +234,7 @@ Sobre cada tarjeta crece su árbol: qué hace un toque, qué hace mantener y (en
 - **Triple (E):** las 3 flechas salen casi en fila y se abren de a poco. Si una ya alcanzó a un rival, las otras siguen de largo hacia el próximo en línea.
 - **Cargando el clic + E:** 3 flechas potenciadas al 33 % de la carga completa.
 - **Salto cargado:** con Espacio al máximo, al soltarlo el arquero salta y, mientras está en el aire (y hasta 0,6 s después), lo que suelte (siempre hacia el mouse) se combina con el salto. Mantener el clic no se pierde durante ese salto. Un combo por salto:
-  - **Tiro cargado al máximo:** **flecha de viento** penetrante que cruza la arena, atraviesa a cada rival una vez, rompe escudos (bloqueo del caballero y escudo mágico) y hace el doble que la flecha cargada.
+  - **Tiro cargado al máximo:** **flecha de viento** penetrante que cruza la arena, atraviesa a cada rival una vez, atraviesa la guardia continua sin bajarla, rompe el escudo mágico y hace el doble que la flecha cargada.
   - **E:** triple (al 33 % si venía cargando el clic).
   - **Clic lleno + E:** 3 flechas de viento potenciadas y penetrantes que se abren de a poco. Pensado para saltar a la cara del rival: a quemarropa entran las 3 y suman el 120 % de la flecha de viento (40 % cada una); más lejos se reparten entre varios.
 

@@ -88,6 +88,9 @@ const SPELL_NOTES: Record<string, number[]> = {
   raise: [98, 147, 196, 294],
   explosion: [82, 62],
   cast: [330, 494],
+  dash: [180, 120],
+  bash: [130, 86],
+  fury: [92, 138, 69],
 };
 export function sound(kind: string) {
   if (muted || !context) return;

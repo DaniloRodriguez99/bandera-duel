@@ -67,3 +67,24 @@ test('en táctil el panel queda arriba a la izquierda sin tapar la palanca', asy
   await page.screenshot({ path: info.outputPath('habilidades-movil.png') });
   await context.close();
 });
+
+test('el caballero muestra y activa embestida, golpe de escudo y furia', async ({ page }, info) => {
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  await practice(page, 'guardian');
+  const abilities = page.locator('#abilities');
+  await expect(abilities.locator('[data-ability="dash"]')).toContainText('Embestida');
+  await expect(abilities.locator('[data-ability="guard"]')).toContainText('Guardia continua');
+  await expect(abilities.locator('[data-ability="shield-bash"]')).toContainText('Golpe de escudo');
+  await expect(abilities.locator('[data-ability="fury"]')).toContainText('Furia');
+  await page.keyboard.press('KeyE');
+  await expect(page.locator('#stage')).toHaveAttribute('data-fury', 'true');
+  await expect(abilities.locator('[data-ability="fury"]')).toHaveAttribute('data-ready', 'false');
+  await page.keyboard.press('KeyQ');
+  await expect(abilities.locator('[data-ability="shield-bash"]')).toHaveAttribute('data-ready', 'false');
+  await page.waitForTimeout(250);
+  await page.keyboard.press('Space');
+  await expect(abilities.locator('[data-ability="dash"]')).toHaveAttribute('data-ready', 'false');
+  await page.screenshot({ path: info.outputPath('caballero-ofensivo.png') });
+  expect(errors).toEqual([]);
+});

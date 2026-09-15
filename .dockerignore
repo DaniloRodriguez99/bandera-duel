@@ -1,0 +1,11 @@
+node_modules
+packages/*/node_modules
+packages/*/dist
+.git
+.env
+.env.local
+*.log
+test-results
+playwright-report
+README.md
+VALIDATION.md

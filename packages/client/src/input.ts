@@ -6,7 +6,7 @@ export class Controls {
   aimY = -1;
   aimFromPointer = false;
   move = { x: 0, y: 0 };
-  actions = { sword: false, shot: false, dash: false, summon: false, trap: false, volley: false, command: false, mark: false, ice: false, slash: false };
+  actions = { sword: false, shot: false, dash: false, summon: false, trap: false, volley: false, command: false, mark: false, ice: false, slash: false, shieldBash: false, fury: false };
   enabled = false;
   classId: ClassId = DEFAULT_CLASS;
   private chargeSources = new Set<string>();
@@ -19,6 +19,7 @@ export class Controls {
   // Click and Space charge while held and fire on release, so a quick tap stays the normal ability.
   primary() {
     if (!this.enabled) return;
+    if (this.classId === 'guardian') this.guardSources.clear();
     this.chargeSources.add('mouse');
   }
   releasePrimary() {
@@ -49,7 +50,13 @@ export class Controls {
   >();
   constructor() {
     document.querySelector('#touch-ice')!.addEventListener('pointerdown', e => { e.preventDefault(); this.tertiary(); });
-    document.querySelector('#game')!.addEventListener('mousedown', e => { if ((e as MouseEvent).button === 1) e.preventDefault(); });
+    document.querySelector('#game')!.addEventListener('mousedown', e => {
+      const mouse = e as MouseEvent;
+      if (mouse.button === 1) mouse.preventDefault();
+      // Browsers keep the right button in the pressed bitmask while the player
+      // clicks left. Capture the actual DOM button so attacking can lower guard.
+      if (mouse.button === 0) this.primary();
+    });
     document.querySelector('#game')!.addEventListener('auxclick', e => { if ((e as MouseEvent).button === 1) e.preventDefault(); });
     window.addEventListener('keydown', (e) => {
       if (!this.enabled || (e.target as HTMLElement)?.matches('input')) return;
@@ -64,6 +71,10 @@ export class Controls {
       // Warrior: Q travelling slash; E held full counter.
       if (e.code === 'KeyQ' && !e.repeat && this.classId === 'vanguard') this.actions.slash = true;
       if (e.code === 'KeyE' && this.classId === 'vanguard') this.counterSources.add('key');
+      if (!e.repeat && this.classId === 'guardian') {
+        if (e.code === 'KeyQ') this.actions.shieldBash = true;
+        if (e.code === 'KeyE') this.actions.fury = true;
+      }
       if (!e.repeat && this.classId === 'archer') {
         if (e.code === 'KeyQ') this.actions.trap = true;
         if (e.code === 'KeyE') {
@@ -72,7 +83,10 @@ export class Controls {
           this.chargeSources.clear();
         }
       }
-      if (e.code === 'Space' && !e.repeat) this.pressSpecial('key');
+      if (e.code === 'Space' && !e.repeat) {
+        if (this.classId === 'guardian') this.actions.dash = true;
+        else this.pressSpecial('key');
+      }
     });
     window.addEventListener('keyup', (e) => {
       this.keys.delete(e.code);
@@ -80,6 +94,9 @@ export class Controls {
       if (e.code === 'KeyE') this.counterSources.delete('key');
     });
     window.addEventListener('pointerup', e => { if (e.button === 2) this.secondary(false); if(e.button === 0) this.releasePrimary(); });
+    // Pointer Events only emit `pointerup` for the last mouse button. `mouseup`
+    // still identifies a left release while right remains held for guard.
+    window.addEventListener('mouseup', e => { if (e.button === 2) this.secondary(false); if (e.button === 0) this.releasePrimary(); });
     window.addEventListener('pointercancel', () => this.clear());
     window.addEventListener('blur', () => this.clear());
     document.addEventListener('visibilitychange', () => {
@@ -123,18 +140,21 @@ export class Controls {
         const stats = CLASSES[this.classId];
         if (!this.enabled) return;
         const id = `touch-${e.pointerId}`;
-        if (action !== 'sword') {
+        if (action === 'dash' && this.classId === 'guardian') {
+          this.actions.dash = true;
+        } else if (action !== 'sword') {
           if (!stats[action]) return;
           button.setPointerCapture(e.pointerId);
           this.pressSpecial(id);
         } else if (stats.melee && !stats.ranged) {
+          if (this.classId === 'guardian') this.guardSources.clear();
           button.setPointerCapture(e.pointerId);
           this.chargeSources.add(id);
         } else if (stats.melee) this.actions.sword = true;
       });
       button.addEventListener('pointerup', (e) => {
         const id = `touch-${e.pointerId}`;
-        if (action !== 'sword') this.releaseSpecial(id);
+        if (action !== 'sword' && !(action === 'dash' && this.classId === 'guardian')) this.releaseSpecial(id);
         else if (this.chargeSources.delete(id) && this.enabled) this.actions.sword = true;
       });
       button.addEventListener('pointercancel', (e) => {
@@ -142,7 +162,14 @@ export class Controls {
         this.chargeSources.delete(`touch-${e.pointerId}`);
       });
     }
-    for (const action of ['trap','volley'] as const) document.querySelector(`#touch-${action}`)!.addEventListener('pointerdown', e => { e.preventDefault(); if(this.enabled && this.classId === 'archer') this.actions[action] = true; });
+    for (const action of ['trap','volley'] as const)
+      document.querySelector(`#touch-${action}`)!.addEventListener('pointerdown', e => {
+        e.preventDefault();
+        if (!this.enabled) return;
+        if (this.classId === 'archer') this.actions[action] = true;
+        if (this.classId === 'guardian')
+          this.actions[action === 'trap' ? 'shieldBash' : 'fury'] = true;
+      });
     const guard = document.querySelector<HTMLElement>('#touch-guard')!;
     guard.addEventListener('pointerdown', e => {
       if (!this.enabled || (!CLASSES[this.classId].shield && this.classId !== 'mage')) return;
@@ -181,7 +208,7 @@ export class Controls {
       (this.keys.has('KeyW') || this.keys.has('ArrowUp') ? 1 : 0);
     const n = Math.max(1, Math.hypot(x, y));
     const result = { seq, x: x / n, y: y / n, angle: this.angle, ...this.actions, charge: this.chargeSources.size > 0, special: this.specialSources.size > 0, guard: this.guardSources.size > 0, counter: this.counterSources.size > 0, aimX: this.aimX, aimY: this.aimY };
-    this.actions = { sword: false, shot: false, dash: false, summon: false, trap: false, volley: false, command: false, mark: false, ice: false, slash: false };
+    this.actions = { sword: false, shot: false, dash: false, summon: false, trap: false, volley: false, command: false, mark: false, ice: false, slash: false, shieldBash: false, fury: false };
     return result;
   }
   clear() {
@@ -191,7 +218,7 @@ export class Controls {
     this.chargeSources.clear();
     this.specialSources.clear();
     this.move = { x: 0, y: 0 };
-    this.actions = { sword: false, shot: false, dash: false, summon: false, trap: false, volley: false, command: false, mark: false, ice: false, slash: false };
+    this.actions = { sword: false, shot: false, dash: false, summon: false, trap: false, volley: false, command: false, mark: false, ice: false, slash: false, shieldBash: false, fury: false };
     this.sticks.clear();
     document.querySelectorAll<HTMLElement>('.stick').forEach((el) => {
       el.style.setProperty('--dx', '0px');

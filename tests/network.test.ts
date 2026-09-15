@@ -51,11 +51,25 @@ describe('servidor con clientes Colyseus reales', () => {
   it.each([['archer','guardian'],['archer','vanguard'],['guardian','vanguard'],['necromancer','vanguard']] as [ClassId,ClassId][])('sincroniza clases %s vs %s y rechaza armas no autorizadas',async(first,second)=>{
     const {a,b,host}=await pair(first,second);await until(()=>states.get(a.sessionId)?.players.length===2);
     expect(states.get(b.sessionId)?.players.map(p=>p.classId)).toEqual([first,second]);host.game.state.phase='playing';
-    a.send('input',{...idleInput(1),guard:true});b.send('input',{...idleInput(1),shot:true,dash:true,summon:true});await sleep(120);
+    a.send('input',{...idleInput(1),guard:true,shieldBash:true,fury:true});b.send('input',{...idleInput(1),shot:true,dash:true,summon:true});await sleep(120);
     expect(host.game.state.arrows).toHaveLength(0);expect(host.game.state.zombies).toHaveLength(0);
-    // The warrior dashes with Space; the other second classes cannot.
-    if(second!=='vanguard')expect(host.game.state.players[1].dashCd).toBe(0);
+    // Warrior and knight have their own Space dash; necromancer cannot use it.
+    if(second!=='vanguard'&&second!=='guardian')expect(host.game.state.players[1].dashCd).toBe(0);
+    if(first!=='guardian'){expect(host.game.state.players[0].shieldBashCd).toBe(0);expect(host.game.state.players[0].furyCd).toBe(0);}
     if(first==='archer'||first==='necromancer')expect(host.game.state.players[0].guarding).toBe(false);
+    await a.leave();await b.leave();
+  });
+  it('sincroniza furia y golpe de escudo del caballero sin repetir pulsos antiguos',async()=>{
+    const {a,b,host}=await pair('guardian','archer');host.game.state.phase='playing';
+    a.send('input',{...idleInput(1),fury:true});
+    await until(()=>host.game.state.players[0].furyCd>0);
+    await until(()=>(states.get(a.sessionId)?.players.find(p=>p.id===a.sessionId)?.furyLeft??0)>0);
+    expect(host.game.state.players[0].furyLeft).toBeGreaterThan(4.5);
+    a.send('input',{...idleInput(2),shieldBash:true});
+    await until(()=>host.game.state.players[0].shieldBashCd>0);
+    await sleep(350);
+    expect(host.game.state.players[0].shieldBashCd).toBeGreaterThan(5);
+    expect(host.game.state.players[0].shieldBashLeft).toBe(0);
     await a.leave();await b.leave();
   });
   it('valida selección, anula listo y bloquea cambios en partida',async()=>{

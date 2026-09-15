@@ -94,16 +94,17 @@ function showClassControls(id:ClassId) {
   const stats=CLASSES[id],ranged=stats.ranged,guardian=id==='guardian',mage=id==='mage';
   $('touch-ice').hidden=!mage;$('cd-ice').hidden=!mage;
   const projectile=mage?'Hechizo':'Flecha',melee=mage?'Báculo':'Daga';
-  for (const idPart of ['touch-trap','touch-volley','cd-trap','cd-volley']) $(idPart).hidden = id !== 'archer';
+  for (const idPart of ['touch-trap','touch-volley']) $(idPart).hidden = id !== 'archer' && id !== 'guardian';
+  for (const idPart of ['cd-trap','cd-volley']) $(idPart).hidden = id !== 'archer';
   $('touch-dash').hidden=!stats.dash;$('touch-guard').hidden=!stats.shield;
   $('touch-summon').hidden=!stats.summon;$('touch-sword').hidden=!stats.melee;$('cd-summon').hidden=!stats.summon;$('cd-sword').hidden=!stats.melee;
   $('touch-sword').textContent=ranged?(mage?'✦':'†'):'⚔';
   $('touch-sword').setAttribute('aria-label',ranged?melee:id==='vanguard'?'Espada pesada':'Espada');
   $('stick-aim').setAttribute('aria-label',ranged?`Apuntar y soltar ${mage?'el hechizo':'para disparar'}`:'Apuntar');
   $('cd-shot').hidden=!ranged;$('cd-dash').hidden=!stats.dash;$('cd-guard').hidden=!stats.shield;
-  $('control-guide').innerHTML=`<span><kbd>W A S D</kbd> Mover</span><span><kbd>CLIC</kbd> ${ranged?projectile:'Espada'}</span>${id!=='vanguard'?`<span><kbd>CLIC DER.</kbd> ${ranged?melee:'Mantener escudo'}</span>`:''}${stats.dash?'<span><kbd>ESPACIO</kbd> Esquivar</span>':''}<span class="mobile-help">${ranged?`Mové a la izquierda. Apuntá y soltá a la derecha para lanzar ${mage?'magia':'una flecha'}. Botones de ${melee.toLowerCase()} y dash.`:guardian?'Mové y apuntá con las palancas. Golpeá con espada o mantené pulsado el escudo.':'Mové y apuntá con las palancas. El botón de espada prepara un golpe pesado.'}</span>`;
+  $('control-guide').innerHTML=`<span><kbd>W A S D</kbd> Mover</span><span><kbd>CLIC</kbd> ${ranged?projectile:'Espada'}</span>${id!=='vanguard'?`<span><kbd>CLIC DER.</kbd> ${ranged?melee:'Mantener escudo'}</span>`:''}${stats.dash?`<span><kbd>ESPACIO</kbd> ${guardian?'Embestida':'Esquivar'}</span>`:''}<span class="mobile-help">${ranged?`Mové a la izquierda. Apuntá y soltá a la derecha para lanzar ${mage?'magia':'una flecha'}. Botones de ${melee.toLowerCase()} y dash.`:guardian?'Mové y apuntá con las palancas. Golpeá con espada, mantené el escudo o usá Q, E y embestida.':'Mové y apuntá con las palancas. El botón de espada prepara un golpe pesado.'}</span>`;
   if(id==='archer') $('control-guide').innerHTML += '<span><kbd>MANTENER CLIC</kbd> Cargar flecha · 0,8 s · +30 % daño y velocidad</span><span class="mobile-help">Mantené la palanca de apuntado para cargar; soltala para disparar.</span>';
-  if(id==='archer') $('control-guide').innerHTML += '<span><kbd>Q</kbd> Trampa · inmóvil 0,5 s</span><span><kbd>E</kbd> Triple flecha · 5 s</span><span><kbd>CARGANDO + E</kbd> Triple al 33 %</span><span><kbd>SALTO CARGADO</kbd> Soltá el tiro o E en pleno salto (tiro cargado: flecha de viento que rompe escudos; ambos: triple de viento)</span>';
+  if(id==='archer') $('control-guide').innerHTML += '<span><kbd>Q</kbd> Trampa · inmóvil 0,5 s</span><span><kbd>E</kbd> Triple flecha · 5 s</span><span><kbd>CARGANDO + E</kbd> Triple al 33 %</span><span><kbd>SALTO CARGADO</kbd> Soltá el tiro o E en pleno salto (tiro cargado: viento que atraviesa guardia y rompe escudo mágico; ambos: triple de viento)</span>';
   if(stats.summon)$('control-guide').innerHTML='<span><kbd>W A S D</kbd> Mover</span><span><kbd>CLIC</kbd> Fuego</span><span><kbd>ESPACIO</kbd> Invocar zombies</span><span class="mobile-help">Mové a la izquierda. Apuntá y soltá a la derecha para lanzar fuego. Espacio o el botón ☠ invocan dos zombies; hasta 2 invocaciones activas a la vez.</span>';
   $('touch-guard').setAttribute('aria-label', mage ? 'Lanzar escudo mágico' : 'Mantener escudo');
   if (mage) {
@@ -112,10 +113,20 @@ function showClassControls(id:ClassId) {
     $('control-guide').innerHTML='<span><kbd>W A S D</kbd> Mover</span><span><kbd>CLIC</kbd> Bola de fuego</span><span><kbd>CLIC DER.</kbd> Escudo mágico</span><span><kbd>ESPACIO</kbd> Esquivar</span><span class="mobile-help">El escudo absorbe 2 golpes. Al romperse, esperá 5 s y volvé a lanzarlo con clic derecho o el botón ⛨. Apuntá y soltá para lanzar fuego.</span>';
     $('control-guide').insertAdjacentHTML('beforeend','<span><kbd>CLIC CENTRAL</kbd> Hielo · inmoviliza 1 s · recarga 0,5 s</span><span class="mobile-help">Tocá ❄ para lanzar hielo hacia donde apuntás.</span>');
   }
-  if (id !== 'archer') $('control-guide').innerHTML += '<span><kbd>MANTENER CLIC</kbd> Cargar · más daño y alcance al soltar</span>';
-  if (stats.dash) $('control-guide').innerHTML += '<span><kbd>MANTENER ESPACIO</kbd> Dash más largo</span>';
+  if (id !== 'archer') $('control-guide').innerHTML += guardian?'<span><kbd>MANTENER CLIC · 1,5 s</kbd> Espada hasta 2× daño y mayor alcance</span>':'<span><kbd>MANTENER CLIC</kbd> Cargar · más daño y alcance al soltar</span>';
+  if (stats.dash && !guardian) $('control-guide').innerHTML += '<span><kbd>MANTENER ESPACIO</kbd> Dash más largo</span>';
+  if (guardian) $('control-guide').innerHTML += '<span><kbd>Q</kbd> Golpe de escudo · aturde 1,5 s</span><span><kbd>E</kbd> Furia · espada +40 % durante 5 s</span>';
   if (id === 'vanguard') $('control-guide').innerHTML += '<span><kbd>Q</kbd> Tajo que viaja y corta a todos en su camino</span><span><kbd>E</kbd> Contraataque: devuelve proyectiles · mantené 1 s: el doble de rápido y fuerte</span>';
   if (stats.summon) $('control-guide').innerHTML += '<span><kbd>MANTENER ESPACIO</kbd> Zombie mago · aura llena: mandala bajo el mouse que resucita a un rival caído</span><span><kbd>ESPACIO</kbd> Si cae un zombie del círculo rojo: vuelve como zombie con espada que sube de nivel al matar</span><span><kbd>E</kbd> Zombies: círculo rojo y mouse, o automáticos</span><span><kbd>⌘/CTRL E</kbd> Pasar al zombie bajo el cursor entre el círculo rojo y el mouse</span>';
+  if (guardian) {
+    $('touch-trap').textContent='Q'; $('touch-trap').setAttribute('aria-label','Golpe de escudo');
+    $('touch-volley').textContent='E'; $('touch-volley').setAttribute('aria-label','Activar furia');
+    $('touch-dash').setAttribute('aria-label','Embestida');
+  } else {
+    $('touch-trap').setAttribute('aria-label','Colocar trampa');
+    $('touch-volley').setAttribute('aria-label','Disparo triple');
+    $('touch-dash').setAttribute('aria-label','Dash');
+  }
 }
 showClassControls(selectedClass);
 function entryMode() {
@@ -395,17 +406,18 @@ function render(s: Snapshot) {
     $('room-picker').hidden=!overlay;
     $('stage').dataset.class=me.classId;
     $('stage').dataset.guarding=String(me.guarding);
+    $('stage').dataset.fury=String(me.furyLeft>0);
     $('stage').dataset.magicShield=String(me.magicShieldHits);
     $('stage').dataset.frozen=String(me.frozenLeft>0);
     $('cd-ice').textContent=`❄ ${me.iceCd>0?me.iceCd.toFixed(1)+'s':'Listo'}`;
-    $('stage').dataset.dashing=String(me.dashInvulnerable);
+    $('stage').dataset.dashing=String(me.dashInvulnerable || (me.classId==='guardian' && me.dashLeft>0));
     $('health').textContent=`♥ ${me.hp}/${me.maxHp}`;
     $('health').setAttribute('aria-label',`Vida: ${me.hp} de ${me.maxHp}`);
     $('lives').textContent=`☠ ${me.deaths}`;
     $('lives').setAttribute('aria-label',`Muertes: ${me.deaths}; reapariciones ilimitadas`);
     $('stealth-state').textContent = me.bushId ? (me.revealLeft > 0 ? `◉ Revelado ${me.revealLeft.toFixed(1)}s` : '◌ Oculto') : '';
     $('stealth-state').className = me.bushId && me.revealLeft <= 0 ? 'hidden-state' : 'revealed-state';
-    $('cd-guard').textContent=me.guarding?`⛨ Cubriendo ${me.guardLeft.toFixed(1)}s`:`⛨ ${me.guardCd>0?me.guardCd.toFixed(1)+'s':'Listo'}`;
+    $('cd-guard').textContent=me.guarding?`⛨ Guardia continua`:`⛨ ${me.guardCd>0?me.guardCd.toFixed(1)+'s':'Lista'}`;
     if(me.classId==='mage') $('cd-guard').textContent=me.magicShieldHits>0?`⛨ ${me.magicShieldHits}/2 golpes`:`⛨ ${me.magicShieldCd>0?me.magicShieldCd.toFixed(1)+'s':'Listo · clic derecho'}`;
     $('cd-sword').textContent = `⚔ ${me.swordCd > 0 ? me.swordCd.toFixed(1) + 's' : 'Lista'}`;
     $('stage').dataset.charge = String(me.shotCharge);
@@ -414,13 +426,13 @@ function render(s: Snapshot) {
     if(me.classId==='archer' && me.shotCharge > 0) $('cd-shot').textContent = me.shotCharge>=RULES.chargeTime-1e-8 ? '➶ Cargada · +30 %' : `➶ Cargando ${Math.round(me.shotCharge/RULES.chargeTime*100)}%`;
     if(me.classId!=='archer' && me.shotCharge > 0) $(CLASSES[me.classId].ranged ? 'cd-shot' : 'cd-sword').textContent = `⚡ Cargando ${Math.round(chargePower(me.shotCharge)*100)} %`;
     $('cd-dash').textContent = `➟ ${me.dashCd > 0 ? me.dashCd.toFixed(1) + 's' : 'Listo'}`;
-    if(me.specialCharge > 0 && CLASSES[me.classId].dash) $('cd-dash').textContent = `➟ Cargando ${Math.round(chargePower(me.specialCharge)*100)} %`;
+    if(me.specialCharge > 0 && CLASSES[me.classId].dash && me.classId!=='guardian') $('cd-dash').textContent = `➟ Cargando ${Math.round(chargePower(me.specialCharge)*100)} %`;
     $('stage').dataset.trapLeft = String(me.trapLeft);
     $('stage').dataset.traps = String(s.traps.filter(t=>t.owner===me.id).length);
     $('cd-trap').textContent = me.trapLeft > 0 ? `Q Preparando ${me.trapLeft.toFixed(1)}s` : `Q Trampa · ${me.trapCd>0?me.trapCd.toFixed(1)+'s':'Lista'}`;
     $('cd-volley').textContent = `E Triple · ${me.volleyCd>0?me.volleyCd.toFixed(1)+'s':'Listo'}`;
-    $('touch-trap').textContent = me.trapLeft>0?me.trapLeft.toFixed(1):me.trapCd>0?Math.ceil(me.trapCd)+'s':'Q';
-    $('touch-volley').textContent = me.volleyCd>0?Math.ceil(me.volleyCd)+'s':'E';
+    $('touch-trap').textContent = me.classId==='guardian'?(me.shieldBashLeft>0?'Q':me.shieldBashCd>0?Math.ceil(me.shieldBashCd)+'s':'Q'):(me.trapLeft>0?me.trapLeft.toFixed(1):me.trapCd>0?Math.ceil(me.trapCd)+'s':'Q');
+    $('touch-volley').textContent = me.classId==='guardian'?(me.furyLeft>0?me.furyLeft.toFixed(1):me.furyCd>0?Math.ceil(me.furyCd)+'s':'E'):(me.volleyCd>0?Math.ceil(me.volleyCd)+'s':'E');
     $('cd-summon').textContent = `☠ ${me.activeExecutions}/${RULES.zombieExecutions} · ${me.activeExecutions >= RULES.zombieExecutions ? 'Llenas' : me.summonCd > 0 ? me.summonCd.toFixed(1) + 's' : 'Listo'}`;
     if(me.specialCharge > 0 && CLASSES[me.classId].summon) $('cd-summon').textContent = me.specialCharge >= RULES.overchargeTime ? `☠ Aura ${Math.round(Math.min(1, me.specialCharge / RULES.raiseCharge) * 100)} % · resucitar` : '☠ Cargando · zombie con gorro';
   }

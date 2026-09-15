@@ -6,9 +6,9 @@ Fecha: 14 de septiembre de 2026. Entorno: Windows, Node 24.19.0, Chromium de Pla
 | ----------------------------------------- | ------------------------------------------ |
 | Compilación de shared, servidor y cliente | Correcta                                   |
 | TypeScript estricto en los tres paquetes  | Sin errores                                |
-| Pruebas unitarias de reglas y habilidades | 134 aprobadas                              |
-| Integración con clientes Colyseus reales  | 19 aprobadas                               |
-| Flujos de navegador ejecutados            | 6 aprobados                                |
+| Pruebas unitarias de reglas y habilidades | 162 aprobadas                              |
+| Integración con clientes Colyseus reales  | 20 aprobadas                               |
+| Flujos de navegador ejecutados            | 22 aprobados                               |
 | Auditoría de dependencias                 | Sin vulnerabilidades reportadas al validar |
 
 ## Casos comprobados
@@ -21,10 +21,14 @@ Fecha: 14 de septiembre de 2026. Entorno: Windows, Node 24.19.0, Chromium de Pla
 - Victoria por tres capturas, resultado por tiempo, empate, pausa de captura y revancha por acuerdo.
 - Normalización y validación de entradas, bloqueo de coordenadas y daño enviados por cliente, secuencias antiguas y limitación del movimiento ante ráfagas de mensajes.
 - Espada con preparación y recarga, bloqueo combinado de ataques, flechas que impactan y desaparecen, paredes, dash, daño, protección y reaparición.
+- Caballero ofensivo: espada de 180° contra varios objetivos, carga parcial/completa, daño multiplicado por furia, guardia continua y movimiento al 45 %.
+- Guardia frontal repetida contra ataques normales e hielo; viento y trampas atraviesan sin bajarla. Ataques traseros y golpe de escudo orientado también fueron comprobados.
+- Embestida autoritativa de 190 unidades contra jugadores y zombies, un impacto por objetivo, fuego aliado bloqueado, paredes y vulnerabilidad durante el recorrido.
+- Golpe de escudo con daño, empujón, aturdimiento y bloqueo por otra guardia; furia con duración, recarga, cancelación y revelación en arbustos.
 - Inicio real de dos clientes, salas llenas, apodos inválidos y rechazo de orígenes HTTP no permitidos.
 - Resultado idéntico en ambos clientes, reserva y reconexión de sesión con 150 ms de latencia simulada, pausa del reloj, abandono inmediato y expiración de los 15 segundos de reserva.
 - Navegadores reales validaron la selección de mapa, práctica local, creación 2v2, listado público, cuatro jugadores en Encrucijada y marcadores por facción.
-- Chromium móvil emulado a 844 × 390: dos toques simultáneos, apuntado y disparo al soltar, cancelación de movimiento, botones de espada/dash y aviso al cambiar a vertical.
+- Chromium móvil emulado a 844 × 390: tres toques simultáneos, apuntado, guardia sostenida, cancelación, botones Q/E/espada/embestida y aviso al cambiar a vertical.
 - Capturas de inicio, sala, victoria y móvil revisadas visualmente. Sin errores JavaScript de página en las pruebas de navegador.
 
 ## Límites de la validación

@@ -60,7 +60,7 @@ describe('combos del arquero', () => {
     expect(arrow.angle).toBeCloseTo(0);
     expect(a.windDash).toBe(0);
     run(d, 14, {}, { guard: true, angle: Math.PI });
-    expect(g.guarding).toBe(false);
+    expect(g.guarding).toBe(true);
     expect(g.hp).toBeCloseTo(CLASSES.guardian.hp - WIND);
     expect(v.hp).toBeCloseTo(Math.max(0, CLASSES.vanguard.hp - WIND));
     // It pierces everything in its path, zombies included.

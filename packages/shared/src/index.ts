@@ -84,17 +84,17 @@ export const CLASSES = {
   guardian: {
     name: 'Caballero',
     label: 'ESPADA Y ESCUDO',
-    description: 'Protegé tu bandera. Respondé de cerca.',
+    description: 'Guardia continua, embestida, golpe de escudo y furia.',
     hp: 3,
     speed: 180,
     meleeDamage: 1,
-    meleeRange: 55,
-    meleeArc: Math.PI * 0.72,
-    windup: 0.12,
-    meleeCooldown: 0.6,
+    meleeRange: 60,
+    meleeArc: Math.PI,
+    windup: 0.1,
+    meleeCooldown: 0.4,
     ranged: false,
     shield: true,
-    dash: false,
+    dash: true,
     melee: true,
     summon: false,
   },
@@ -158,10 +158,23 @@ export const RULES = {
   magicShieldCooldown: 5,
   iceCooldown: 0.5,
   freezeDuration: 1,
-  guardCooldown: 1.5,
+  guardCooldown: 1,
   guardRecovery: 0.15,
-  guardSpeed: 0.25,
+  guardSpeed: 0.45,
   guardArc: (Math.PI * 2) / 3,
+  guardianDashDuration: 190 / 650,
+  guardianDashSpeed: 650,
+  guardianDashCooldown: 3,
+  guardianDashDamage: 1,
+  shieldBashRange: 48,
+  shieldBashArc: Math.PI / 2,
+  shieldBashDamage: 0.5,
+  shieldBashStun: 1.5,
+  shieldBashWindup: 0.12,
+  shieldBashCooldown: 6,
+  furyDuration: 5,
+  furyCooldown: 15,
+  furyDamage: 1.4,
   slashCooldown: 5,
   slashSpeed: 420,
   slashLife: 0.65,
@@ -313,6 +326,10 @@ export interface Input {
   trap: boolean;
   volley: boolean;
   special: boolean;
+  /** Q by the knight: short shield strike. */
+  shieldBash: boolean;
+  /** E by the knight: five seconds of stronger sword attacks. */
+  fury: boolean;
   /** Q by the warrior: travelling slash. */
   slash: boolean;
   /** E held by the warrior: full counter. */
@@ -341,6 +358,8 @@ export const idleInput = (seq = 0, angle = 0): Input => ({
   trap: false,
   volley: false,
   special: false,
+  shieldBash: false,
+  fury: false,
   slash: false,
   counter: false,
   command: false,
@@ -382,6 +401,8 @@ export function sanitizeInput(raw: unknown): Input | null {
     trap: r.trap === true,
     volley: r.volley === true,
     special: r.special === true,
+    shieldBash: r.shieldBash === true,
+    fury: r.fury === true,
     slash: r.slash === true,
     counter: r.counter === true,
     command: r.command === true,
@@ -435,10 +456,19 @@ export interface Player extends Vec {
   trapLeft: number;
   volleyCd: number;
   stunLeft: number;
+  /** Floor traps stun through knight guard without lowering the held shield. */
+  guardStunExempt: boolean;
   /** Seconds left of a fully charged archer dash: shot or volley released now become the dash combo. */
   windDash: number;
   /** Warrior's travelling slash cooldown (Q). */
   slashCd: number;
+  /** Knight's shield strike preparation and cooldown. */
+  shieldBashLeft: number;
+  shieldBashCd: number;
+  shieldBashAngle: number;
+  /** Knight's damage aura and its cooldown. */
+  furyLeft: number;
+  furyCd: number;
   /** Warrior's full counter (E): seconds it stays up, seconds held (charge), cooldown, E still held. */
   counterLeft: number;
   counterCharge: number;
@@ -480,7 +510,7 @@ export interface Arrow extends Vec {
   power?: number;
   damageScale?: number;
   element?: 'fire' | 'ice';
-  /** Wind arrow: pierces every target once and breaks shields. */
+  /** Wind arrow: pierces every target once, crosses knight guard and breaks magic shields. */
   wind?: boolean;
   /** Rivals and zombies this arrow already went through. */
   hits?: string[];
@@ -555,6 +585,9 @@ export interface GameEvent extends Vec {
     | 'mandala'
     | 'slash'
     | 'counter'
+    | 'dash'
+    | 'bash'
+    | 'fury'
     | 'levelup';
   team: Team;
   angle?: number;
@@ -865,6 +898,10 @@ export function movePlayer(
     wind: false,
     angle: 0,
     raised: false,
+    bash: false,
+    fury: false,
+    dashStarted: false,
+    dashing: false,
   };
   if (p.hp <= 0) return result;
   const stats = CLASSES[p.classId];
@@ -889,8 +926,12 @@ export function movePlayer(
     'windDash',
     'slashCd',
     'counterCd',
+    'shieldBashCd',
+    'furyCd',
   ] as const)
     p[key] = Math.max(0, p[key] - dt);
+  p.furyLeft = Math.max(0, p.furyLeft - dt);
+  if (p.furyLeft <= 1e-8) p.furyLeft = 0;
   if (p.stunLeft > 0) {
     p.stunLeft = Math.max(0, p.stunLeft - dt);
     p.shotCharge = 0;
@@ -899,7 +940,9 @@ export function movePlayer(
     p.windup = 0;
     p.dashLeft = 0;
     p.dashInvulnerable = false;
-    lowerGuard(p);
+    p.shieldBashLeft = 0;
+    if (!p.guardStunExempt || !input.guard) lowerGuard(p);
+    if (p.stunLeft <= 1e-8) p.guardStunExempt = false;
     return result;
   }
   p.angle = input.angle;
@@ -942,7 +985,11 @@ export function movePlayer(
     p.invuln = 0;
     return result;
   }
-  if (p.guarding && (!input.guard || p.guardLeft <= 1e-8)) lowerGuard(p);
+  if (
+    p.guarding &&
+    (!input.guard || input.sword || input.shieldBash || input.dash || (p.classId !== 'guardian' && p.guardLeft <= 1e-8))
+  )
+    lowerGuard(p);
   if (
     stats.shield &&
     input.guard &&
@@ -967,6 +1014,42 @@ export function movePlayer(
     p.magicShieldCd = 0;
   }
   p.guardHeld = input.guard;
+  if (
+    p.classId === 'guardian' &&
+    input.fury &&
+    p.furyCd <= 0 &&
+    p.shieldBashLeft <= 0 &&
+    p.dashLeft <= 0 &&
+    !wasWinding &&
+    p.attackLock <= 0
+  ) {
+    p.furyLeft = RULES.furyDuration;
+    p.furyCd = RULES.furyCooldown;
+    p.invuln = 0;
+    result.fury = true;
+  }
+  if (p.shieldBashLeft > 0) {
+    p.shieldBashLeft = Math.max(0, p.shieldBashLeft - dt);
+    if (p.shieldBashLeft <= 1e-8) result.bash = true;
+    return result;
+  }
+  if (
+    p.classId === 'guardian' &&
+    input.shieldBash &&
+    p.shieldBashCd <= 0 &&
+    p.dashLeft <= 0 &&
+    !wasWinding &&
+    p.attackLock <= 0 &&
+    !result.fury
+  ) {
+    lowerGuard(p);
+    p.shieldBashLeft = RULES.shieldBashWindup;
+    p.shieldBashAngle = p.angle;
+    p.shieldBashCd = RULES.shieldBashCooldown;
+    p.shotCharge = 0;
+    p.invuln = 0;
+    return result;
+  }
   // Warrior's full counter (E): held it stays up and charges; released it lingers a moment, then cools
   // down. Holding past the maximum ends it too, and E must be released before the next one.
   if (p.classId === 'vanguard') {
@@ -989,7 +1072,9 @@ export function movePlayer(
     p.counterHeld = input.counter;
   }
   // Space charges while held; the release pulse (dash or summon) spends the charge.
-  const specialReady = (stats.dash && p.dashCd <= 0) || (stats.summon && p.summonCd <= 0);
+  const specialReady =
+    (stats.dash && p.classId !== 'guardian' && p.dashCd <= 0) ||
+    (stats.summon && p.summonCd <= 0);
   if (specialReady && input.special && !input.dash && !input.summon)
     p.specialCharge = Math.min(
       stats.summon ? RULES.raiseCharge : RULES.overchargeTime,
@@ -1002,17 +1087,24 @@ export function movePlayer(
     input.dash &&
     p.dashCd <= 0 &&
     !wasWinding &&
-    p.attackLock <= 0
+    p.attackLock <= 0 &&
+    !result.fury
   ) {
+    if (p.classId === 'guardian') lowerGuard(p);
     const mag = Math.hypot(input.x, input.y);
     p.dashX = mag > 0.05 ? input.x / mag : Math.cos(input.angle);
     p.dashY = mag > 0.05 ? input.y / mag : Math.sin(input.angle);
     // The heavy warrior's dash is shorter.
     p.dashLeft =
-      RULES.dashDuration *
-      (1 + 0.8 * chargePower(p.specialCharge)) *
-      (p.classId === 'vanguard' ? RULES.vanguardDash : 1);
-    p.dashCd = RULES.dashCooldown;
+      p.classId === 'guardian'
+        ? RULES.guardianDashDuration
+        : RULES.dashDuration *
+          (1 + 0.8 * chargePower(p.specialCharge)) *
+          (p.classId === 'vanguard' ? RULES.vanguardDash : 1);
+    p.dashCd =
+      p.classId === 'guardian' ? RULES.guardianDashCooldown : RULES.dashCooldown;
+    if (p.classId === 'guardian') p.shotCharge = 0;
+    result.dashStarted = true;
     // A fully charged archer dash opens the combo window for the rest of the jump (plus a grace).
     p.windDash =
       p.classId === 'archer' && p.specialCharge >= RULES.overchargeTime - 1e-8
@@ -1021,9 +1113,15 @@ export function movePlayer(
     p.specialCharge = 0;
   }
   const dashDt = Math.min(dt, p.dashLeft);
-  p.dashInvulnerable = dashDt > 1e-8;
+  p.dashInvulnerable = dashDt > 1e-8 && p.classId !== 'guardian';
+  result.dashing = dashDt > 1e-8;
   if (dashDt > 0)
-    translate(p, p.dashX * RULES.dashSpeed * dashDt, p.dashY * RULES.dashSpeed * dashDt, walls);
+    translate(
+      p,
+      p.dashX * (p.classId === 'guardian' ? RULES.guardianDashSpeed : RULES.dashSpeed) * dashDt,
+      p.dashY * (p.classId === 'guardian' ? RULES.guardianDashSpeed : RULES.dashSpeed) * dashDt,
+      walls,
+    );
   p.dashLeft = Math.max(0, p.dashLeft - dt);
   const speed =
     stats.speed *
@@ -1049,8 +1147,10 @@ export function movePlayer(
   const canCharge =
     !p.guarding &&
     (!p.dashInvulnerable || dashCombo) &&
+    (p.classId !== 'guardian' || p.dashLeft <= 0) &&
     !wasWinding &&
     p.attackLock <= 0 &&
+    !result.fury &&
     (stats.ranged ? p.shotCd <= 0 : stats.melee && p.swordCd <= 0);
   if (canCharge && input.charge && !input.shot && !input.sword && !input.volley)
     p.shotCharge = Math.min(
@@ -1062,8 +1162,10 @@ export function movePlayer(
     !p.guarding &&
     p.guardRecovery <= 0 &&
     (!p.dashInvulnerable || dashCombo) &&
+    (p.classId !== 'guardian' || p.dashLeft <= 0) &&
     p.attackLock <= 0 &&
-    !wasWinding
+    !wasWinding &&
+    !result.fury
   ) {
     if (input.volley && p.classId === 'archer' && p.volleyCd <= 0) {
       p.invuln = 0;
@@ -1125,7 +1227,8 @@ export function movePlayer(
     p.specialCharge = 0;
   }
   if (input.shot || input.sword || input.volley) p.shotCharge = 0;
-  if (p.guarding) p.guardLeft = Math.max(0, p.guardLeft - dt);
+  if (p.guarding && p.classId !== 'guardian')
+    p.guardLeft = Math.max(0, p.guardLeft - dt);
   return result;
 }
 export function newPlayer(
@@ -1176,8 +1279,14 @@ export function newPlayer(
     trapLeft: 0,
     volleyCd: 0,
     stunLeft: 0,
+    guardStunExempt: false,
     windDash: 0,
     slashCd: 0,
+    shieldBashLeft: 0,
+    shieldBashCd: 0,
+    shieldBashAngle: 0,
+    furyLeft: 0,
+    furyCd: 0,
     counterLeft: 0,
     counterCharge: 0,
     counterCd: 0,
@@ -1249,6 +1358,8 @@ export class Duel {
   private volleyHits = new Map<string, number>();
   /** Necromancers mid-cast and the thrall they are raising. */
   private raising = new Map<string, { classId: ClassId; name: string }>();
+  /** Enemy ids already struck by each knight's current offensive dash. */
+  private guardianDashHits = new Map<string, Set<string>>();
   constructor(mapId: MapId = DEFAULT_MAP, mode: GameMode = DEFAULT_MODE) {
     this.state.mapId = mapId;
     this.state.mode = mode;
@@ -1436,6 +1547,7 @@ export class Duel {
     }
     s.traps = [];
     this.paths.clear();
+    this.guardianDashHits.clear();
     s.flags = s.bases
       .filter((b) => s.players.some((p) => p.team === b.team && !p.eliminated))
       .map(newFlag);
@@ -1521,8 +1633,8 @@ export class Duel {
     if (target.guarding && Math.abs(difference) <= RULES.guardArc / 2 + 1e-8) {
       this.event('block', target, target.team, target.angle, target.classId);
       if (!options.pierce) return false;
-      lowerGuard(target);
-      target.guardCd = RULES.guardCooldown;
+      // Wind can pierce the knight's shield, but never tears down the held guard.
+      if (target.classId !== 'guardian') lowerGuard(target);
     }
     target.revealLeft = 1.5;
     if (options.freeze) {
@@ -1550,6 +1662,8 @@ export class Duel {
       });
       target.respawnLeft = RULES.respawn;
       target.raiseCast = 0;
+      target.furyLeft = 0;
+      target.shieldBashLeft = 0;
       this.raising.delete(target.id);
       target.windup = 0;
       target.dashLeft = 0;
@@ -1564,6 +1678,7 @@ export class Duel {
   private freeze(p: Player) {
     if (p.hp <= 0) return;
     p.stunLeft = Math.max(p.stunLeft, RULES.freeze);
+    p.guardStunExempt = false;
     p.frozenLeft = RULES.freeze;
     p.windup = 0;
     p.shotCharge = 0;
@@ -2200,6 +2315,8 @@ export class Duel {
     }
     const swings: Player[] = [];
     const placements: Player[] = [];
+    const bashers: Player[] = [];
+    const guardianDashers: Player[] = [];
     // First advance every player's defenses, movement and attack preparation.
     // Only then resolve impacts, so the order of joining never defeats a guard.
     for (const p of s.players) {
@@ -2229,9 +2346,21 @@ export class Duel {
         action.volley ||
         action.ice ||
         action.summon ||
-        action.raised
+        action.raised ||
+        action.bash ||
+        action.fury ||
+        action.dashStarted
       )
         p.revealLeft = 1.5;
+      if (action.fury) this.event('fury', p, p.team, p.angle, p.classId);
+      if (action.dashStarted && p.classId === 'guardian') {
+        this.guardianDashHits.set(p.id, new Set());
+        this.event('dash', p, p.team, p.angle, p.classId);
+      }
+      if (action.dashing && p.classId === 'guardian') guardianDashers.push(p);
+      else if (p.classId === 'guardian' && p.dashLeft <= 0)
+        this.guardianDashHits.delete(p.id);
+      if (action.bash) bashers.push(p);
       if (action.swing) swings.push(p);
       if (action.trap) placements.push(p);
       if (action.shoot || action.volley || action.ice || action.slash) {
@@ -2269,13 +2398,83 @@ export class Duel {
       if (action.raised) this.finishRaise(p);
       if (action.summon) this.summon(p, action.special);
     }
+    for (const p of guardianDashers) {
+      const struck = this.guardianDashHits.get(p.id) ?? new Set<string>();
+      this.guardianDashHits.set(p.id, struck);
+      for (const q of s.players) {
+        if (
+          q.team === p.team ||
+          q.hp <= 0 ||
+          struck.has(q.id) ||
+          distance(p, q) > RULES.radius * 2 + 4
+        )
+          continue;
+        struck.add(q.id);
+        if (this.damage(q, p, Math.atan2(q.y - p.y, q.x - p.x), RULES.guardianDashDamage))
+          this.event('dash', q, p.team, p.angle, p.classId, 1);
+      }
+      for (const z of s.zombies) {
+        if (
+          z.team === p.team ||
+          z.hp <= 0 ||
+          struck.has(z.id) ||
+          distance(p, z) > RULES.radius + RULES.zombieRadius + 4
+        )
+          continue;
+        struck.add(z.id);
+        this.damageZombie(z, p.team, RULES.guardianDashDamage);
+        this.event('dash', z, p.team, p.angle, p.classId, 1);
+      }
+    }
+    for (const p of bashers) {
+      this.event('bash', p, p.team, p.shieldBashAngle, p.classId);
+      const candidates = [
+        ...s.players
+          .filter((q) => q.team !== p.team && q.hp > 0)
+          .map((q) => ({ kind: 'player' as const, entity: q })),
+        ...s.zombies
+          .filter((z) => z.team !== p.team && z.hp > 0)
+          .map((z) => ({ kind: 'zombie' as const, entity: z })),
+      ]
+        .filter(({ entity }) => {
+          const angle = Math.atan2(entity.y - p.y, entity.x - p.x);
+          const diff = wrapAngle(angle - p.shieldBashAngle);
+          return (
+            distance(p, entity) <= RULES.shieldBashRange &&
+            Math.abs(diff) <= RULES.shieldBashArc / 2 &&
+            lineClear(p, entity, this.map.walls)
+          );
+        })
+        .sort((a, b) => distance(p, a.entity) - distance(p, b.entity));
+      const hit = candidates[0];
+      if (!hit) continue;
+      const angle = Math.atan2(hit.entity.y - p.y, hit.entity.x - p.x);
+      if (hit.kind === 'player') {
+        if (this.damage(hit.entity, p, angle, RULES.shieldBashDamage)) {
+          hit.entity.stunLeft = RULES.shieldBashStun;
+          hit.entity.guardStunExempt = false;
+          hit.entity.windup = 0;
+          hit.entity.shotCharge = 0;
+          hit.entity.specialCharge = 0;
+          hit.entity.dashLeft = 0;
+          hit.entity.dashInvulnerable = false;
+          lowerGuard(hit.entity);
+        }
+      } else {
+        this.damageZombie(hit.entity, p.team, RULES.shieldBashDamage);
+        hit.entity.frozenLeft = Math.max(hit.entity.frozenLeft, RULES.shieldBashStun);
+      }
+    }
     const hits: { target: Player; source: Player; angle: number; amount: number }[] = [];
     for (const p of swings) {
       const stats = CLASSES[p.classId];
       const power = p.swingPower,
         range = stats.meleeRange * (1 + 0.3 * power),
         arc = stats.meleeArc * (1 + 0.2 * power),
-        amount = stats.meleeDamage * (1 + power * ((MELEE_OVERCHARGE[p.classId] ?? 1) - 1));
+        amount =
+          stats.meleeDamage *
+          (1 + power * ((MELEE_OVERCHARGE[p.classId] ?? 1) - 1)) *
+          (p.classId === 'guardian' && p.furyLeft > 0 ? RULES.furyDamage : 1);
       p.swingPower = 0;
       this.event('sword', p, p.team, p.swingAngle, p.classId, power);
       for (const q of s.players) {
@@ -2435,11 +2634,12 @@ export class Duel {
       this.damage(target, owner, target.angle, RULES.trapDamage);
       if (target.hp > 0) {
         target.stunLeft = RULES.trapStun;
+        target.guardStunExempt = target.classId === 'guardian';
         target.windup = 0;
         target.shotCharge = 0;
         target.trapLeft = 0;
         target.dashLeft = 0;
-        lowerGuard(target);
+        if (target.classId !== 'guardian') lowerGuard(target);
       }
       return false;
     });

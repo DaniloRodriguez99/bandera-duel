@@ -79,18 +79,21 @@ export function abilitySlots(classId: ClassId): AbilitySlot[] {
     slots.push({
       id: 'dash',
       key: 'ESPACIO',
-      name: 'Esquivar',
+      name: classId === 'guardian' ? 'Embestida' : 'Esquivar',
       icon: '➟',
       cooldown: (p) => p.dashCd,
-      max: RULES.dashCooldown,
-      tiers: [
-        { label: 'Toque · esquivar', active: (p) => tapped(p.specialCharge) },
-        {
-          label: 'Mantener · dash largo',
-          active: (p) => p.specialCharge >= RULES.overchargeTap,
-          state: (p) => (p.specialCharge > 0 ? percent(chargePower(p.specialCharge)) : null),
-        },
-      ],
+      max: classId === 'guardian' ? RULES.guardianDashCooldown : RULES.dashCooldown,
+      tiers:
+        classId === 'guardian'
+          ? [{ label: '190 u · 1 daño · sin invulnerabilidad', active: (p) => p.dashLeft > 0 }]
+          : [
+              { label: 'Toque · esquivar', active: (p) => tapped(p.specialCharge) },
+              {
+                label: 'Mantener · dash largo',
+                active: (p) => p.specialCharge >= RULES.overchargeTap,
+                state: (p) => (p.specialCharge > 0 ? percent(chargePower(p.specialCharge)) : null),
+              },
+            ],
     });
   if (stats.summon)
     slots.push(
@@ -205,12 +208,42 @@ export function abilitySlots(classId: ClassId): AbilitySlot[] {
     slots.push({
       id: 'guard',
       key: 'CLIC DER.',
-      name: 'Escudo',
+      name: 'Guardia continua',
       icon: '⛨',
       cooldown: (p) => p.guardCd,
       max: RULES.guardCooldown,
-      detail: (p) => (p.guarding ? 'Cubriendo' : null),
+      detail: (p) => (p.guarding ? 'Bloqueando · 45 % velocidad' : null),
+      tiers: [{ label: 'Mantener · bloqueo frontal de 120°', active: (p) => p.guarding }],
     });
+  if (classId === 'guardian')
+    slots.push(
+      {
+        id: 'shield-bash',
+        key: 'Q',
+        name: 'Golpe de escudo',
+        icon: '◈',
+        cooldown: (p) => p.shieldBashCd,
+        max: RULES.shieldBashCooldown,
+        detail: (p) => (p.shieldBashLeft > 0 ? 'Golpeando' : null),
+        tiers: [{ label: '0,5 daño · empujón · aturde 1,5 s', active: (p) => p.shieldBashLeft > 0 }],
+      },
+      {
+        id: 'fury',
+        key: 'E',
+        name: 'Furia',
+        icon: '✹',
+        cooldown: (p) => p.furyCd,
+        max: RULES.furyCooldown,
+        detail: (p) => (p.furyLeft > 0 ? `${p.furyLeft.toFixed(1)}s activa` : null),
+        tiers: [
+          {
+            label: '5 s · espada +40 % daño',
+            active: (p) => p.furyLeft > 0,
+            state: (p) => (p.furyLeft > 0 ? `${p.furyLeft.toFixed(1)}s` : null),
+          },
+        ],
+      },
+    );
   if (classId === 'vanguard')
     slots.push({
       id: 'slash',

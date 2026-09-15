@@ -30,8 +30,8 @@ describe('armas y permisos',()=>{
     step(d,p,{},Math.ceil(CLASSES[id].windup/RULES.tick)+1);expect(q.hp).toBe(5-CLASSES[id].meleeDamage);
     const fresh=setup(id,'vanguard');fresh.q.x=fresh.p.x+CLASSES[id].meleeRange+1;step(fresh.d,fresh.p,{sword:true});step(fresh.d,fresh.p,{},12);expect(fresh.q.hp).toBe(5);
   });
-  it.each(['guardian'] as ClassId[])('%s rechaza flechas y dash',id=>{
-    const {d,p}=setup(id);const x=p.x;step(d,p,{shot:true,dash:true});expect(d.state.arrows).toHaveLength(0);expect(p.x).toBe(x);expect(p.dashCd).toBe(0);
+  it.each(['guardian'] as ClassId[])('%s rechaza flechas y usa embestida',id=>{
+    const {d,p}=setup(id);const x=p.x;step(d,p,{shot:true,dash:true,x:1});expect(d.state.arrows).toHaveLength(0);expect(p.x).toBeGreaterThan(x);expect(p.dashCd).toBeGreaterThan(0);
   });
   it('vanguard rechaza flechas pero esquiva con espacio',()=>{
     const {d,p}=setup('vanguard');step(d,p,{shot:true,dash:true});expect(d.state.arrows).toHaveLength(0);expect(p.dashCd).toBeGreaterThan(0);
@@ -77,12 +77,13 @@ describe('escudo',()=>{
     const {d,p,q}=setup();q.x=520;d.step(new Map([[p.id,input({guard:true})],[q.id,input({shot:true,angle:Math.PI})]]));q.x=350;
     step(d,p,{guard:true},10);expect(p.hp).toBe(3);expect(d.state.arrows).toHaveLength(0);expect(d.state.events.some(e=>e.kind==='block')).toBe(true);
   });
-  it('camina al 25%, puede girar, y combina penalización de bandera',()=>{const {d,p}=setup();Object.assign(d.state.flags[1],{status:'carried',carrier:p.id});const x=p.x;step(d,p,{guard:true,x:1,angle:1});expect(p.x-x).toBeCloseTo(180*.25*.85/30);expect(p.angle).toBe(1);});
-  it('agota duración, recarga y exige soltar antes de reactivar',()=>{
-    const {d,p}=setup();step(d,p,{guard:true},36);expect(p.guarding).toBe(true);step(d,p,{guard:true});expect(p.guarding).toBe(false);expect(p.guardCd).toBeCloseTo(1.5);
-    step(d,p,{guard:true},50);expect(p.guarding).toBe(false);step(d,p);step(d,p,{guard:true});expect(p.guarding).toBe(true);
+  it('camina al 45%, puede girar, y combina penalización de bandera',()=>{const {d,p}=setup();Object.assign(d.state.flags[1],{status:'carried',carrier:p.id});const x=p.x;step(d,p,{guard:true,x:1,angle:1});expect(p.x-x).toBeCloseTo(180*.45*.85/30);expect(p.angle).toBe(1);});
+  it('mantiene la guardia indefinidamente y solo recarga al soltar',()=>{
+    const {d,p}=setup();step(d,p,{guard:true},Math.ceil(8/RULES.tick));expect(p.guarding).toBe(true);expect(p.guardCd).toBe(0);
+    step(d,p);expect(p.guarding).toBe(false);expect(p.guardCd).toBeCloseTo(1);
+    step(d,p,{guard:true},31);expect(p.guarding).toBe(false);step(d,p);step(d,p,{guard:true});expect(p.guarding).toBe(true);
   });
-  it('liberar inicia recarga y recuperación sin ataques encolados',()=>{const {d,p}=setup();step(d,p,{guard:true,sword:true});expect(p.windup).toBe(0);step(d,p,{sword:true});expect(p.guarding).toBe(false);expect(p.guardCd).toBeCloseTo(1.5);expect(p.windup).toBe(0);step(d,p,{},5);expect(p.windup).toBe(0);step(d,p,{sword:true});expect(p.windup).toBeGreaterThan(0);});
+  it('liberar inicia recarga y recuperación sin ataques encolados',()=>{const {d,p}=setup();step(d,p,{guard:true,sword:true});expect(p.windup).toBe(0);step(d,p,{sword:true});expect(p.guarding).toBe(false);expect(p.guardCd).toBeCloseTo(1);expect(p.windup).toBe(0);step(d,p,{},5);expect(p.windup).toBe(0);step(d,p,{sword:true});expect(p.windup).toBeGreaterThan(0);});
   it('no permite escudo durante preparación del golpe',()=>{const {d,p}=setup();step(d,p,{sword:true});step(d,p,{guard:true});expect(p.guarding).toBe(false);});
   it.each([false,true])('activar escudo en el tick del impacto es independiente del orden: %s',reverse=>{
     const {d,p,q}=setup('guardian','vanguard');q.x=445;q.windup=.01;q.swingAngle=Math.PI;if(reverse)d.state.players.reverse();step(d,p,{guard:true});expect(p.hp).toBe(3);

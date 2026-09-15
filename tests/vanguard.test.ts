@@ -32,7 +32,7 @@ function clash(d: Duel, count: number, warrior: Partial<Input> = {}, archer: Par
 describe('guerrero', () => {
   it('esquiva con espacio con un dash más corto y camina más lento que antes', () => {
     expect(CLASSES.vanguard.dash).toBe(true);
-    expect(CLASSES.guardian.dash).toBe(false);
+    expect(CLASSES.guardian.dash).toBe(true);
     expect(CLASSES.vanguard.speed).toBeLessThan(155);
     expect(CLASSES.vanguard.speed).toBeGreaterThan(RULES.zombieSpeed);
     const { d, w } = setup();

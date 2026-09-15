@@ -99,8 +99,10 @@ export class Arena extends Phaser.Scene {
     });
     this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
       if (p.wasTouch || !this.controls.enabled) return;
-      if (p.middleButtonDown()) this.controls.tertiary();
-      else if (p.rightButtonDown()) this.controls.secondary(true);
+      // Use the button that triggered this event. `rightButtonDown()` also stays true
+      // while a left click is pressed during guard and would swallow that attack.
+      if (p.button === 1) this.controls.tertiary();
+      else if (p.button === 2) this.controls.secondary(true);
       else this.controls.primary();
     });
     const preview = layout(['blue', 'red'], this.currentMapId, 'duel');
@@ -422,6 +424,34 @@ export class Arena extends Phaser.Scene {
       flash.arc(e.x, e.y - 4, 30, (e.angle ?? 0) - 1.2, (e.angle ?? 0) + 1.2);
       flash.strokePath();
       this.fade(flash, {}, 260);
+    } else if (e.kind === 'dash') {
+      const angle = e.angle ?? 0;
+      const trail = this.add
+        .rectangle(e.x - Math.cos(angle) * 20, e.y - Math.sin(angle) * 20, 58, 14, 0x541923, 0.52)
+        .setRotation(angle)
+        .setDepth(8);
+      this.fade(trail, { scaleX: 1.9, scaleY: 0.25 }, 300);
+      this.fade(this.add.circle(e.x, e.y, 11).setStrokeStyle(3, 0xc26a58, 0.85).setDepth(16), { scale: 2.5 }, 260);
+      if (e.power) this.cameras.main.shake(90, 0.0025);
+    } else if (e.kind === 'bash') {
+      const flash = this.add.graphics().setDepth(16);
+      flash.lineStyle(7, 0xe1c37a, 0.9);
+      flash.beginPath();
+      flash.arc(e.x, e.y, RULES.shieldBashRange, (e.angle ?? 0) - RULES.shieldBashArc / 2, (e.angle ?? 0) + RULES.shieldBashArc / 2);
+      flash.strokePath();
+      this.fade(flash, { scaleX: 1.12, scaleY: 1.12 }, 220);
+      this.fade(this.add.circle(e.x, e.y, 9, 0xffe5a0, 0.65).setDepth(17), { scale: 2.2 }, 190);
+    } else if (e.kind === 'fury') {
+      this.fade(this.add.circle(e.x, e.y - 3, 17, 0x621522, 0.42).setDepth(9), { scale: 2.8 }, 520);
+      this.fade(this.add.circle(e.x, e.y - 3, 18).setStrokeStyle(4, 0xc83d43, 0.85).setDepth(16), { scale: 3.2 }, 620);
+      for (let i = 0; i < 8; i++) {
+        const angle = (i * Math.PI) / 4;
+        this.fade(
+          this.add.circle(e.x + Math.cos(angle) * 10, e.y + Math.sin(angle) * 10, 3, 0x9f2634, 0.8).setDepth(16),
+          { x: e.x + Math.cos(angle) * 42, y: e.y + Math.sin(angle) * 42 - 8 },
+          500,
+        );
+      }
     } else if (e.kind === 'wind') {
       this.fade(this.add.ellipse(e.x, e.y + 6, 30, 12).setStrokeStyle(2, 0xd8fbff, 0.9).setDepth(16), { scale: 3.2 }, 420);
       for (const side of [-1, 1]) {
@@ -752,6 +782,13 @@ export class Arena extends Phaser.Scene {
             w.arc(0, 0, 31, -RULES.guardArc / 2, RULES.guardArc / 2);
             w.strokePath();
           }
+          if (p.shieldBashLeft > 0) {
+            const progress = 1 - p.shieldBashLeft / RULES.shieldBashWindup;
+            w.lineStyle(3, 0xffdfa0, 0.9);
+            w.beginPath();
+            w.arc(0, 0, 32 + progress * 12, -RULES.shieldBashArc / 2, RULES.shieldBashArc / 2);
+            w.strokePath();
+          }
         }
       }
     }
@@ -768,6 +805,24 @@ export class Arena extends Phaser.Scene {
       v.hp.fillStyle(0x78cfff,.10);v.hp.fillCircle(v.x,v.y-3,25);
       v.hp.lineStyle(2,0x9deaff,.8);v.hp.strokeCircle(v.x,v.y-3,25);
       if(p.magicShieldHits===2){v.hp.lineStyle(1,0xe6faff,.55);v.hp.strokeCircle(v.x,v.y-3,29);}
+    }
+    if (p.hp > 0 && p.classId === 'guardian' && p.furyLeft > 0) {
+      const pulse = (Math.sin(time * 0.012) + 1) / 2;
+      v.hp.fillStyle(0x52101d, 0.12 + pulse * 0.08);
+      v.hp.fillCircle(v.x, v.y - 3, 25 + pulse * 4);
+      v.hp.lineStyle(2, 0xa82334, 0.65 + pulse * 0.25);
+      v.hp.strokeCircle(v.x, v.y - 3, 27 + pulse * 5);
+      for (let i = 0; i < 5; i++) {
+        const angle = time * 0.0025 + (i * Math.PI * 2) / 5;
+        const radius = 18 + ((time * 0.025 + i * 9) % 13);
+        v.hp.fillStyle(i % 2 ? 0x61111f : 0xb52c36, 0.55);
+        v.hp.fillCircle(v.x + Math.cos(angle) * radius, v.y - 5 + Math.sin(angle) * radius * 0.65, 1.5 + pulse);
+      }
+    }
+    if (p.hp > 0 && p.classId === 'guardian' && p.dashLeft > 0) {
+      v.hp.fillStyle(0x3a1019, 0.22);
+      for (let i = 1; i <= 3; i++)
+        v.hp.fillEllipse(v.x - p.dashX * i * 11, v.y - p.dashY * i * 11, 21 - i * 3, 8 - i);
     }
     if (p.hp > 0 && p.counterLeft > 0) {
       // Warrior's full counter: a spinning golden ward; once charged it spins faster and burns orange.
