@@ -223,13 +223,22 @@ export const RULES = {
   hatSpawnEvery: 5,
   hatHealEvery: 2,
   hatHeal: 0.5,
-  hatCastTime: 0.6,
-  hatCastCooldown: 1.4,
+  hatCastTime: 0.5,
+  hatCastCooldown: 1,
   hatCastRange: 200,
   hatSpread: (Math.PI * 6) / 180,
   spellDamage: 0.5,
   freeze: 1.2,
   explosionRadius: 45,
+  iceConeRange: 160,
+  iceConeArc: (Math.PI * 60) / 180,
+  hatFireSpeed: 260,
+  hatFireLife: 1,
+  hatFireRadius: 18,
+  gustEvery: 0.35,
+  gustDamage: 0.25,
+  gustRange: 170,
+  gustSpeed: 520,
   zombieExecutions: 2,
   zombieAimRadius: 110,
   zombieFlankRadius: 34,
@@ -490,6 +499,10 @@ export interface Arrow extends Vec {
   slash?: boolean;
   /** Sent back by a warrior's counter: 1 normal, 2 charged (double speed and damage). */
   reflected?: number;
+  /** Zombie mage fireball: area fire that passes through everyone in its path. */
+  blast?: boolean;
+  /** Zombie mage's short wind gust between spells. */
+  gust?: boolean;
   id: number;
   owner: string;
   team: Team;
@@ -503,6 +516,34 @@ export interface Trap extends Vec {
   team: Team;
   armLeft: number;
   life: number;
+}
+/** Skills a revived player uses (cooldown keys), plus the combo and riposte windows. */
+export type ThrallSkill =
+  | 'charged'
+  | 'volley'
+  | 'trap'
+  | 'dash'
+  | 'wind'
+  | 'ice'
+  | 'combo'
+  | 'shield'
+  | 'summon'
+  | 'hat'
+  | 'raise'
+  | 'guard'
+  | 'riposte'
+  | 'slash'
+  | 'counter';
+/** A thrall's skill in progress: a charge, a dash or a raise (with the grave it raises). */
+export interface ThrallAction {
+  skill: ThrallSkill;
+  left: number;
+  total: number;
+  angle: number;
+  x?: number;
+  y?: number;
+  classId?: ClassId;
+  name?: string;
 }
 export interface Zombie extends Vec {
   id: string;
@@ -533,6 +574,17 @@ export interface Zombie extends Vec {
   revealLeft: number;
   /** Sword zombie level, 1 to 3: one level per kill. */
   level: number;
+  /** Zombie mage: the spell it casts next (alternates ice and fire). */
+  spell: 'ice' | 'fire';
+  gustCd: number;
+  /** Revived player: per-skill cooldowns, the skill in progress and its defensive stances. */
+  skillCd: Partial<Record<ThrallSkill, number>>;
+  action: ThrallAction | null;
+  shieldHits: number;
+  guardLeft: number;
+  counterLeft: number;
+  /** Thrall that summoned or raised this zombie; its own caps count by it. */
+  summoner?: string;
 }
 export interface GameEvent extends Vec {
   id: number;
@@ -555,7 +607,8 @@ export interface GameEvent extends Vec {
     | 'mandala'
     | 'slash'
     | 'counter'
-    | 'levelup';
+    | 'levelup'
+    | 'icecone';
   team: Team;
   angle?: number;
   classId?: ClassId;
@@ -690,6 +743,16 @@ export function chargePower(seconds: number) {
     0,
     Math.min(1, (seconds - RULES.overchargeTap) / (RULES.overchargeTime - RULES.overchargeTap)),
   );
+}
+/** Speed and hit radius of a projectile, covering the zombie mage's fireball and gusts and countered shots. */
+export function arrowMotion(a: Arrow) {
+  const stats = projectileStats(a.classId, a.charged, a.power);
+  const speed = a.blast ? RULES.hatFireSpeed : a.gust ? RULES.gustSpeed : stats.speed;
+  return {
+    stats,
+    speed: speed * (a.reflected === 2 ? RULES.counterBoost : 1),
+    radius: a.blast ? RULES.hatFireRadius : stats.radius,
+  };
 }
 export function projectileStats(classId: ClassId, charged = false, power = 0) {
   if (classId === 'vanguard')
@@ -1586,7 +1649,22 @@ export class Duel {
         this.damageZombie(z, a.team, amount * 0.5);
     this.event('explosion', a, a.team, a.angle, a.classId, a.power);
   }
-  damageZombie(z: Zombie, team: Team, amount = 1) {
+  damageZombie(z: Zombie, team: Team, amount = 1, angle?: number) {
+    // A revived mage's magic shield absorbs hits; a revived knight's raised guard blocks from the front.
+    if (z.shieldHits > 0 && amount > 0) {
+      z.shieldHits--;
+      if (z.shieldHits === 0) z.skillCd.shield = RULES.magicShieldCooldown;
+      this.event('block', z, z.team, angle, z.classId);
+      return;
+    }
+    if (z.guardLeft > 0 && angle !== undefined) {
+      const relative = angle + Math.PI - z.angle;
+      if (Math.abs(Math.atan2(Math.sin(relative), Math.cos(relative))) <= RULES.guardArc / 2 + 1e-8) {
+        z.skillCd.riposte = 0.8;
+        this.event('block', z, z.team, z.angle, z.classId);
+        return;
+      }
+    }
     z.hp = Math.max(0, z.hp - amount);
     this.event('hit', z, team);
     if (z.hp === 0) this.event('death', z, z.team);
@@ -1623,6 +1701,13 @@ export class Duel {
       revealLeft: 0,
       role: 'guard',
       level: 1,
+      spell: 'ice',
+      gustCd: 0,
+      skillCd: {},
+      action: null,
+      shieldHits: 0,
+      guardLeft: 0,
+      counterLeft: 0,
       ...extra,
     };
   }
@@ -1632,7 +1717,7 @@ export class Duel {
     const ahead = { x: p.x + Math.cos(p.angle) * 26, y: p.y + Math.sin(p.angle) * 26 };
     if (charge >= RULES.overchargeTap) {
       if (charge >= RULES.raiseCharge - 1e-9 && this.raise(p, ahead)) return;
-      if (s.zombies.some((z) => z.owner === p.id && z.kind === 'hat')) {
+      if (s.zombies.some((z) => z.owner === p.id && z.kind === 'hat' && !z.summoner)) {
         p.summonCd = 0;
         return;
       }
@@ -1698,7 +1783,7 @@ export class Duel {
   private raise(p: Player, ahead: Vec) {
     const s = this.state;
     // One thrall at a time; the necromancer's other zombies may stay alive.
-    if (this.raising.has(p.id) || s.zombies.some((z) => z.owner === p.id && z.kind === 'thrall'))
+    if (this.raising.has(p.id) || s.zombies.some((z) => z.owner === p.id && z.kind === 'thrall' && !z.summoner))
       return false;
     // The raising mandala opens under the cursor, kept inside the white raise circle.
     const aim = p.aimX >= 0 ? { x: p.aimX, y: p.aimY } : ahead;
@@ -1741,6 +1826,7 @@ export class Duel {
         classId: bound.classId,
         name: bound.name,
         role: 'cursor',
+        shieldHits: bound.classId === 'mage' ? RULES.magicShieldHits : 0,
         // Claws out of the mandala before it can move or strike.
         rise: RULES.thrallRise,
         bushId: null,
@@ -1749,6 +1835,361 @@ export class Duel {
     );
     p.thrallAlive = true;
     this.event('raise', at, p.team, p.angle, bound.classId);
+  }
+  /** A projectile fired by a zombie and credited to its necromancer; `side` spreads a volley. */
+  private zombieShot(
+    z: Zombie,
+    owner: Player,
+    shot: Partial<Arrow> & { classId: ClassId },
+    angle = z.angle,
+    side = 0,
+  ) {
+    this.state.arrows.push({
+      id: ++this.arrowId,
+      owner: owner.id,
+      team: z.team,
+      x: z.x - Math.sin(angle) * side * RULES.volleyGap,
+      y: z.y + Math.cos(angle) * side * RULES.volleyGap,
+      angle: angle + side * RULES.volleyAngle,
+      life: projectileStats(shot.classId, shot.charged, shot.power).life,
+      ...shot,
+    });
+  }
+  /** Zombie mage's icy breeze: a cone that damages and freezes everyone inside it at once. */
+  private iceCone(z: Zombie, owner: Player) {
+    const s = this.state;
+    const inside = (q: Vec, body: number) => {
+      const d = distance(z, q);
+      if (d > RULES.iceConeRange + body) return false;
+      const diff = Math.atan2(q.y - z.y, q.x - z.x) - z.angle;
+      return (
+        (d <= body || Math.abs(Math.atan2(Math.sin(diff), Math.cos(diff))) <= RULES.iceConeArc / 2) &&
+        lineClear(z, q, this.map.walls)
+      );
+    };
+    for (const p of s.players)
+      if (p.team !== z.team && p.hp > 0 && inside(p, RULES.radius) && this.damage(p, owner, z.angle, RULES.spellDamage))
+        this.freeze(p);
+    for (const q of s.zombies)
+      if (q.team !== z.team && q.hp > 0 && inside(q, RULES.zombieRadius)) {
+        this.damageZombie(q, z.team, RULES.spellDamage, z.angle);
+        q.frozenLeft = RULES.freeze;
+        this.event('freeze', q, q.team);
+      }
+  }
+  /** A rival projectile about to reach this zombie: within 120 px and flying straight at it. */
+  private incomingShot(z: Zombie) {
+    return this.state.arrows.find((a) => {
+      if (a.team === z.team || a.hits?.includes(z.id)) return false;
+      const dx = z.x - a.x,
+        dy = z.y - a.y;
+      if (Math.hypot(dx, dy) > 120) return false;
+      const along = dx * Math.cos(a.angle) + dy * Math.sin(a.angle);
+      const aside = Math.abs(-dx * Math.sin(a.angle) + dy * Math.cos(a.angle));
+      return along > 0 && aside < RULES.zombieRadius + 8;
+    });
+  }
+  /**
+   * A revived player fights with its class skills and chains them into combos. Returns true while a
+   * skill keeps it busy this tick, so it neither walks nor makes a basic attack.
+   */
+  private thrallSkills(z: Zombie, target: Vec | undefined, owner: Player, minions: Zombie[], dt: number) {
+    for (const key of Object.keys(z.skillCd) as ThrallSkill[])
+      z.skillCd[key] = Math.max(0, (z.skillCd[key] ?? 0) - dt);
+    z.guardLeft = Math.max(0, z.guardLeft - dt);
+    z.counterLeft = Math.max(0, z.counterLeft - dt);
+    const ready = (skill: ThrallSkill) => !z.skillCd[skill];
+    const classId = z.classId ?? 'guardian';
+    if (classId === 'mage' && z.shieldHits === 0 && ready('shield')) z.shieldHits = RULES.magicShieldHits;
+    if (classId === 'necromancer' && !z.action) this.thrallSummons(z, owner, minions);
+    if (z.action) return this.stepThrallAction(z, target, owner, minions, dt);
+    // Defensive reactions first: a knight raises its guard, a warrior counters an incoming shot.
+    const incoming = classId === 'guardian' || classId === 'vanguard' ? this.incomingShot(z) : undefined;
+    if (incoming && classId === 'guardian' && ready('guard')) {
+      z.skillCd.guard = RULES.guardCooldown + RULES.guardDuration;
+      z.guardLeft = RULES.guardDuration;
+      z.angle = incoming.angle + Math.PI;
+      return true;
+    }
+    if (incoming && classId === 'vanguard' && ready('counter')) {
+      z.skillCd.counter = RULES.counterCooldown;
+      z.counterLeft = RULES.counterWindow * 2;
+    }
+    if (!target) return false;
+    const gap = distance(z, target);
+    const clear = lineClear(z, target, this.map.walls);
+    const aim = Math.atan2(target.y - z.y, target.x - z.x);
+    const melee = CLASSES[classId].meleeRange;
+    const start = (skill: ThrallSkill, left: number, angle = aim) => {
+      z.action = { skill, left, total: left, angle };
+      z.angle = angle;
+      z.revealLeft = 1.5;
+      return true;
+    };
+    switch (classId) {
+      case 'archer':
+        if (gap < 90 && ready('trap')) {
+          z.skillCd.trap = RULES.trapCooldown;
+          this.placeTrap(owner, z);
+        }
+        // Too close: a charged dash away, loosing a wind arrow mid-jump.
+        if (gap < 70 && ready('dash')) {
+          z.skillCd.dash = RULES.dashCooldown;
+          return start('dash', RULES.dashDuration * 1.8, aim + Math.PI);
+        }
+        if (!clear || gap > 300) return false;
+        if (ready('volley')) {
+          z.skillCd.volley = RULES.volleyCooldown;
+          z.angle = aim;
+          this.thrallVolley(z, owner, aim, false);
+          return true;
+        }
+        if (ready('charged') && gap > 120) {
+          z.skillCd.charged = 3;
+          return start('charged', RULES.chargeTime);
+        }
+        return false;
+      case 'mage':
+        if (gap < 70 && ready('dash')) {
+          z.skillCd.dash = RULES.dashCooldown;
+          return start('dash', RULES.dashDuration * 1.5, aim + Math.PI);
+        }
+        if (!clear || gap > 300) return false;
+        if (ready('ice')) {
+          z.skillCd.ice = RULES.iceCooldown * 4;
+          z.skillCd.combo = 1.2;
+          z.angle = aim;
+          this.zombieShot(z, owner, { classId: 'mage', ice: true }, aim);
+          this.event('shot', z, z.team, aim, 'mage');
+          return true;
+        }
+        // Combo: right after the ice bolt the big fireball charges for the frozen target.
+        if (ready('charged') && (z.skillCd.combo ?? 0) > 0) {
+          z.skillCd.charged = 4;
+          return start('charged', RULES.overchargeTime * 0.7);
+        }
+        return false;
+      case 'necromancer':
+        if (clear && gap <= 300 && gap > 80 && ready('charged')) {
+          z.skillCd.charged = 4;
+          return start('charged', RULES.overchargeTime * 0.7);
+        }
+        return false;
+      case 'guardian':
+        // Combo: a block is answered with a quick charged swing; otherwise a charged swing now and then.
+        if (clear && gap <= melee * 1.3 && (z.skillCd.riposte ?? 0) > 0) {
+          z.skillCd.riposte = 0;
+          z.skillCd.charged = 2.5;
+          return start('charged', 0.35);
+        }
+        if (clear && gap <= melee && ready('charged')) {
+          z.skillCd.charged = 3.5;
+          return start('charged', RULES.overchargeTime * 0.55);
+        }
+        return false;
+      default:
+        // Warrior: dash in to close the gap, travelling slash from mid range, charged heavy swing up close.
+        if (clear && gap > 150 && gap < 320 && ready('dash')) {
+          z.skillCd.dash = RULES.dashCooldown * 1.5;
+          return start('dash', RULES.dashDuration * RULES.vanguardDash * 1.6);
+        }
+        if (clear && gap >= 90 && gap <= 270 && ready('slash')) {
+          z.skillCd.slash = RULES.slashCooldown;
+          z.angle = aim;
+          this.zombieShot(z, owner, { classId: 'vanguard', slash: true, hits: [] }, aim);
+          this.event('slash', z, z.team, aim, 'vanguard');
+          return true;
+        }
+        if (clear && gap <= melee && ready('charged')) {
+          z.skillCd.charged = 4;
+          return start('charged', RULES.overchargeTime * 0.55);
+        }
+        return false;
+    }
+  }
+  /** Advances a thrall's charge, dash or raise; the skill goes off when it completes. */
+  private stepThrallAction(z: Zombie, target: Vec | undefined, owner: Player, minions: Zombie[], dt: number) {
+    const action = z.action!;
+    action.left = Math.max(0, action.left - dt);
+    if (action.skill === 'dash') {
+      translate(z, Math.cos(action.angle) * RULES.dashSpeed * dt, Math.sin(action.angle) * RULES.dashSpeed * dt, this.map.walls);
+      // Archer combo: mid-jump it looses a wind arrow at its rival (a wind volley at point blank).
+      if (
+        z.classId === 'archer' &&
+        target &&
+        !z.skillCd.wind &&
+        action.left <= action.total / 2 &&
+        lineClear(z, target, this.map.walls)
+      ) {
+        const aim = Math.atan2(target.y - z.y, target.x - z.x);
+        z.skillCd.wind = 6;
+        if (distance(z, target) < 90) this.thrallVolley(z, owner, aim, true);
+        else {
+          const speed = projectileStats('archer', true).speed;
+          this.zombieShot(
+            z,
+            owner,
+            { classId: 'archer', charged: true, wind: true, hits: [], damageScale: RULES.windScale, life: (RULES.width * 1.1) / speed },
+            aim,
+          );
+          this.event('wind', z, z.team, aim, 'archer');
+        }
+      }
+      if (action.left <= 1e-8) z.action = null;
+      return true;
+    }
+    if (action.skill === 'raise') {
+      if (action.left > 1e-8) return true;
+      z.action = null;
+      const classId = action.classId ?? 'guardian';
+      const hp = CLASSES[classId].hp;
+      const at = { x: action.x ?? z.x, y: action.y ?? z.y };
+      minions.push(
+        this.newZombie(owner, at, z, {
+          kind: 'thrall',
+          bonus: true,
+          hp,
+          maxHp: hp,
+          life: 9999,
+          classId,
+          name: action.name,
+          role: z.role,
+          rise: RULES.thrallRise,
+          summoner: z.id,
+          shieldHits: classId === 'mage' ? RULES.magicShieldHits : 0,
+        }),
+      );
+      this.event('raise', at, z.team, z.angle, classId);
+      return true;
+    }
+    if (target) action.angle = z.angle = Math.atan2(target.y - z.y, target.x - z.x);
+    if (action.left > 1e-8) return true;
+    z.action = null;
+    const classId = z.classId ?? 'guardian';
+    if (CLASSES[classId].ranged) {
+      this.zombieShot(z, owner, classId === 'archer' ? { classId, charged: true } : { classId, power: 1 }, action.angle);
+      this.event('shot', z, z.team, action.angle, classId, classId === 'archer' ? 0 : 1);
+    } else this.thrallSwing(z, owner, action.angle, MELEE_OVERCHARGE[classId] ?? 1.5);
+    return true;
+  }
+  /** A revived melee player's charged swing: wider and harder than its basic hit. */
+  private thrallSwing(z: Zombie, owner: Player, angle: number, scale: number) {
+    const s = this.state,
+      stats = CLASSES[z.classId ?? 'guardian'];
+    const range = stats.meleeRange * 1.3,
+      arc = stats.meleeArc * 1.2,
+      amount = stats.meleeDamage * scale;
+    const within = (q: Vec) => {
+      const diff = Math.atan2(q.y - z.y, q.x - z.x) - angle;
+      return (
+        distance(z, q) <= range &&
+        Math.abs(Math.atan2(Math.sin(diff), Math.cos(diff))) <= arc / 2 &&
+        lineClear(z, q, this.map.walls)
+      );
+    };
+    for (const p of s.players) if (p.team !== z.team && p.hp > 0 && within(p)) this.damage(p, owner, angle, amount);
+    for (const q of s.zombies)
+      if (q.team !== z.team && q.hp > 0 && within(q)) this.damageZombie(q, z.team, amount, angle);
+    this.event('sword', z, z.team, angle, z.classId, 1);
+  }
+  /** A revived archer's triple shot; with `wind`, the three wind arrows of its jump combo. */
+  private thrallVolley(z: Zombie, owner: Player, angle: number, wind: boolean) {
+    const volley = ++this.volleyId;
+    for (const side of [-1, 0, 1])
+      this.zombieShot(
+        z,
+        owner,
+        {
+          classId: 'archer',
+          volley,
+          hits: [],
+          ...(wind ? { charged: true, wind: true, damageScale: RULES.windVolleyScale } : {}),
+        },
+        angle,
+        side,
+      );
+    this.event(wind ? 'wind' : 'shot', z, z.team, angle, 'archer');
+  }
+  /** A trap laid by a revived archer, owned by its necromancer (same cap as the player's own traps). */
+  private placeTrap(owner: Player, at: Vec) {
+    const s = this.state;
+    const owned = s.traps.filter((t) => t.owner === owner.id);
+    if (owned.length >= RULES.trapMax) s.traps = s.traps.filter((t) => t.id !== owned[0].id);
+    s.traps.push({
+      id: ++this.trapId,
+      owner: owner.id,
+      team: owner.team,
+      x: at.x,
+      y: at.y,
+      armLeft: RULES.trapArm,
+      life: RULES.trapLife,
+    });
+  }
+  /**
+   * A revived necromancer does what a necromancer does: raises a nearby grave (unless it was raised by
+   * another thrall), keeps a zombie mage, and summons brutes every 5 s — with its own caps.
+   */
+  private thrallSummons(z: Zombie, owner: Player, minions: Zombie[]) {
+    const s = this.state;
+    const mine = [...s.zombies, ...minions].filter((q) => q.summoner === z.id && q.hp > 0);
+    if (!z.summoner && !z.skillCd.raise && !mine.some((q) => q.kind === 'thrall')) {
+      const grave = s.graves
+        .filter((g) => g.team !== z.team && distance(z, g) <= RULES.raiseRange)
+        .sort((a, b) => distance(z, a) - distance(z, b))[0];
+      if (grave) {
+        s.graves = s.graves.filter((g) => g !== grave);
+        z.skillCd.raise = RULES.thrallCooldown;
+        const angle = Math.atan2(grave.y - z.y, grave.x - z.x);
+        z.action = {
+          skill: 'raise',
+          left: RULES.raiseCast,
+          total: RULES.raiseCast,
+          angle,
+          x: grave.x,
+          y: grave.y,
+          classId: grave.classId,
+          name: grave.name,
+        };
+        this.event('mandala', grave, z.team, angle, grave.classId);
+        return;
+      }
+    }
+    const ahead = { x: z.x + Math.cos(z.angle) * 26, y: z.y + Math.sin(z.angle) * 26 };
+    if (!z.skillCd.hat && !mine.some((q) => q.kind === 'hat')) {
+      z.skillCd.hat = RULES.summonCooldown;
+      minions.push(
+        this.newZombie(owner, ahead, z, {
+          kind: 'hat',
+          bonus: true,
+          role: z.role,
+          hp: RULES.hatHp,
+          maxHp: RULES.hatHp,
+          life: RULES.hatLife,
+          summoner: z.id,
+        }),
+      );
+      this.event('summon', z, z.team, z.angle, 'necromancer', 1);
+      return;
+    }
+    const executions = new Set(mine.filter((q) => q.kind === 'brute').map((q) => q.execution)).size;
+    if (!z.skillCd.summon && executions < RULES.zombieExecutions) {
+      z.skillCd.summon = RULES.summonCooldown;
+      const execution = ++this.executionId;
+      [-1, 1].forEach((side, i) => {
+        const angle = z.angle + side * 0.75 * Math.PI;
+        const at = { x: z.x + Math.cos(angle) * RULES.zombieFlankRadius, y: z.y + Math.sin(angle) * RULES.zombieFlankRadius };
+        minions.push(
+          this.newZombie(owner, at, z, {
+            execution,
+            bonus: true,
+            role: z.role,
+            summoner: z.id,
+            rise: RULES.zombieRise + i * 0.15,
+          }),
+        );
+      });
+      this.event('summon', z, z.team, z.angle, 'necromancer');
+    }
   }
   /** A sword zombie that kills levels up (up to 3): more damage and life, faster swings, then cleave. */
   private levelUp(z: Zombie) {
@@ -1769,48 +2210,37 @@ export class Duel {
     if (a.volley !== undefined && !this.volleyHits.has(key))
       this.volleyHits.set(key, this.state.tick);
   }
+  /** Zombie mage: the icy breeze or the fireball, then the other one next time. Thrall: its class shot. */
   private castSpell(z: Zombie, owner: Player) {
-    const s = this.state;
-    // The hat zombie casts with both arms; ice leads so a landed hit freezes before the fire.
-    const shots: { classId: ClassId; offset: number; scale: number; element?: 'fire' | 'ice' }[] =
-      z.kind === 'hat'
-        ? [
-            {
-              classId: 'necromancer',
-              offset: RULES.hatSpread,
-              scale: RULES.spellDamage,
-              element: 'ice',
-            },
-            {
-              classId: 'necromancer',
-              offset: -RULES.hatSpread,
-              scale: RULES.spellDamage,
-              element: 'fire',
-            },
-          ]
-        : [{ classId: z.classId ?? 'archer', offset: 0, scale: 1 }];
-    for (const shot of shots)
-      s.arrows.push({
-        id: ++this.arrowId,
-        owner: owner.id,
-        team: z.team,
-        classId: shot.classId,
-        x: z.x,
-        y: z.y,
-        angle: z.angle + shot.offset,
-        life: projectileStats(shot.classId).life,
-        damageScale: shot.scale,
-        element: shot.element,
-      });
-    z.castCd =
-      z.kind === 'hat' ? RULES.hatCastCooldown : projectileStats(z.classId ?? 'archer').cooldown;
-    this.event('shot', z, z.team, z.angle, shots[0].classId);
+    if (z.kind === 'hat') {
+      if (z.spell === 'ice') {
+        this.iceCone(z, owner);
+        this.event('icecone', z, z.team, z.angle, 'necromancer', 0);
+      } else {
+        this.zombieShot(z, owner, {
+          classId: 'necromancer',
+          element: 'fire',
+          blast: true,
+          hits: [],
+          damageScale: RULES.spellDamage,
+          life: RULES.hatFireLife,
+        });
+        this.event('shot', z, z.team, z.angle, 'necromancer', 1);
+      }
+      z.spell = z.spell === 'ice' ? 'fire' : 'ice';
+      z.castCd = RULES.hatCastCooldown;
+      return;
+    }
+    const classId = z.classId ?? 'archer';
+    this.zombieShot(z, owner, { classId });
+    z.castCd = projectileStats(classId).cooldown;
+    this.event('shot', z, z.team, z.angle, classId);
   }
   /** Distinct live summon executions; zombies without an execution never use a slot. */
   activeExecutions(owner: string) {
     return new Set(
       this.state.zombies
-        .filter((z) => z.owner === owner && z.hp > 0 && z.execution !== null)
+        .filter((z) => z.owner === owner && z.hp > 0 && z.execution !== null && !z.summoner)
         .map((z) => z.execution),
     ).size;
   }
@@ -1983,6 +2413,7 @@ export class Duel {
       const walkDt = Math.max(0, dt - (z.frozenLeft ?? 0));
       z.attackCd = Math.max(0, z.attackCd - dt);
       z.castCd = Math.max(0, z.castCd - dt);
+      z.gustCd = Math.max(0, z.gustCd - dt);
       z.retarget -= dt;
       z.revealLeft = Math.max(0, z.revealLeft - dt);
       z.bushId = pointBush(this.map, z);
@@ -2035,6 +2466,7 @@ export class Duel {
         z.cast = 0;
         continue;
       }
+      if (z.kind === 'thrall' && owner && this.thrallSkills(z, target, owner, minions, dt)) continue;
       const ranged =
         z.kind === 'hat' || (z.kind === 'thrall' && !!z.classId && CLASSES[z.classId].ranged);
       if (ranged) {
@@ -2044,10 +2476,12 @@ export class Duel {
           continue;
         }
         const gap = target ? distance(z, target) : Infinity;
-        const range = z.kind === 'hat' ? RULES.hatCastRange : 260;
+        // The icy breeze is a close-range cone; the fireball and a revived player's shots reach farther.
+        const range =
+          z.kind === 'hat' ? (z.spell === 'ice' ? RULES.iceConeRange * 0.85 : RULES.hatCastRange) : 260;
         if (
           target &&
-          gap >= 50 &&
+          gap >= (z.kind === 'hat' ? 0 : 50) &&
           gap <= range &&
           z.castCd <= 0 &&
           lineClear(z, target, this.map.walls)
@@ -2055,8 +2489,26 @@ export class Duel {
           z.angle = Math.atan2(target.y - z.y, target.x - z.x);
           z.cast = z.kind === 'hat' ? RULES.hatCastTime : 0.25;
           z.revealLeft = 1.5;
-          this.event('cast', z, z.team, z.angle, z.classId ?? 'necromancer');
+          this.event('cast', z, z.team, z.angle, z.classId ?? 'necromancer', z.kind === 'hat' && z.spell === 'fire' ? 1 : 0);
           continue;
+        }
+        if (
+          z.kind === 'hat' &&
+          owner &&
+          target &&
+          gap <= RULES.gustRange &&
+          z.gustCd <= 0 &&
+          lineClear(z, target, this.map.walls)
+        ) {
+          // Between spells the mage keeps up the pressure with short wind gusts.
+          z.angle = Math.atan2(target.y - z.y, target.x - z.x);
+          z.gustCd = RULES.gustEvery;
+          this.zombieShot(z, owner, {
+            classId: 'necromancer',
+            gust: true,
+            damageScale: RULES.gustDamage / RULES.fireDamage,
+            life: RULES.gustRange / RULES.gustSpeed,
+          });
         }
         const leader = owner && owner.hp > 0 ? owner : undefined;
         const goal = target
@@ -2091,7 +2543,7 @@ export class Duel {
             for (const q of players)
               if (this.damage(q, owner, Math.atan2(q.y - z.y, q.x - z.x), amount) && q.hp <= 0) kills++;
           for (const q of zombies) {
-            this.damageZombie(q, z.team, amount);
+            this.damageZombie(q, z.team, amount, Math.atan2(q.y - z.y, q.x - z.x));
             if (q.hp <= 0) kills++;
           }
           if (melee || sword) this.event('sword', z, z.team, angle, z.classId ?? 'guardian');
@@ -2155,12 +2607,12 @@ export class Duel {
           );
       }
     for (const z of s.zombies)
-      if (z.kind === 'thrall' && z.hp <= 0) {
+      if (z.kind === 'thrall' && z.hp <= 0 && !z.summoner) {
         const owner = s.players.find((p) => p.id === z.owner);
         if (owner) owner.thrallCd = RULES.thrallCooldown;
       }
     for (const z of s.zombies) {
-      if (z.hp > 0 || z.role !== 'guard' || z.execution === null) continue;
+      if (z.hp > 0 || z.role !== 'guard' || z.execution === null || z.summoner) continue;
       if (z.kind !== 'brute' && z.kind !== 'sword') continue;
       const owner = s.players.find((p) => p.id === z.owner);
       if (!owner) continue;
@@ -2173,8 +2625,8 @@ export class Duel {
     for (const id of this.paths.keys())
       if (!s.zombies.some((z) => z.id === id)) this.paths.delete(id);
     for (const p of s.players) {
-      p.hatAlive = s.zombies.some((z) => z.owner === p.id && z.kind === 'hat');
-      p.thrallAlive = s.zombies.some((z) => z.owner === p.id && z.kind === 'thrall');
+      p.hatAlive = s.zombies.some((z) => z.owner === p.id && z.kind === 'hat' && !z.summoner);
+      p.thrallAlive = s.zombies.some((z) => z.owner === p.id && z.kind === 'thrall' && !z.summoner);
     }
     for (const key of this.packBearings.keys())
       if (!this.packSeen.has(key)) this.packBearings.delete(key);
@@ -2314,8 +2766,7 @@ export class Duel {
       a.life = Math.max(0, a.life - dt);
       let owner = s.players.find((p) => p.id === a.owner);
       if (!owner) return false;
-      const stats = projectileStats(a.classId, a.charged, a.power);
-      const speed = stats.speed * (a.reflected === 2 ? RULES.counterBoost : 1);
+      const { stats, speed, radius } = arrowMotion(a);
       let amount = stats.damage * (a.damageScale ?? 1);
       const steps = Math.max(1, Math.ceil((speed * travelTime) / 5));
       for (let i = 0; i < steps; i++) {
@@ -2329,7 +2780,7 @@ export class Duel {
           (p) =>
             p.team !== a.team &&
             p.hp > 0 &&
-            distance(p, a) < RULES.radius + stats.radius &&
+            distance(p, a) < RULES.radius + radius &&
             !a.hits?.includes(p.id),
         );
         if (target && target.counterLeft > 0) {
@@ -2350,8 +2801,8 @@ export class Duel {
           this.event('counter', target, target.team, a.angle, target.classId, boosted ? 1 : 0);
           continue;
         }
-        if (target && a.slash) {
-          // The travelling slash cuts through every rival in its path, once each.
+        if (target && (a.slash || a.blast)) {
+          // The travelling slash and the zombie mage's fireball go through every rival in their path, once each.
           a.hits!.push(target.id);
           this.damage(target, owner, a.angle, amount);
           continue;
@@ -2379,15 +2830,31 @@ export class Duel {
           (z) =>
             z.team !== a.team &&
             z.hp > 0 &&
-            distance(z, a) < RULES.zombieRadius + stats.radius &&
+            distance(z, a) < RULES.zombieRadius + radius &&
             !a.hits?.includes(z.id),
         );
+        if (zombie && zombie.counterLeft > 0) {
+          // A revived warrior's counter sends the shot back as its necromancer's.
+          const master = s.players.find((p) => p.id === zombie.owner);
+          if (master) {
+            owner = master;
+            a.owner = master.id;
+            a.team = zombie.team;
+            a.angle += Math.PI;
+            a.reflected = 1;
+            a.life = stats.life;
+            if (a.hits) a.hits = [];
+            a.volley = undefined;
+            this.event('counter', zombie, zombie.team, a.angle, zombie.classId, 0);
+            continue;
+          }
+        }
         if (zombie && this.volleyPasses(a, zombie.id)) continue;
         if (zombie) {
           this.markVolley(a, zombie.id);
           if (a.ice) zombie.frozenLeft = RULES.freezeDuration;
-          else this.damageZombie(zombie, a.team, amount);
-          if (a.wind || a.slash) {
+          else this.damageZombie(zombie, a.team, amount, a.angle);
+          if (a.wind || a.slash || a.blast) {
             a.hits!.push(zombie.id);
             continue;
           }
