@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { Duel, CLASSES, RULES, idleInput, projectileStats, type Input } from '@bandera/shared';
 const input = (options: Partial<Input> = {}): Input => ({ ...idleInput(), ...options });
 function setup() {
-  const d = new Duel();
+  const d = new Duel('courtyard', 'ffa3');
   const a = d.add('a', 'A', 'archer'),
     g = d.add('b', 'B', 'guardian'),
     v = d.add('c', 'C', 'vanguard');

@@ -6,20 +6,24 @@ Fecha: 14 de septiembre de 2026. Entorno: Windows, Node 24.19.0, Chromium de Pla
 | ----------------------------------------- | ------------------------------------------ |
 | Compilación de shared, servidor y cliente | Correcta                                   |
 | TypeScript estricto en los tres paquetes  | Sin errores                                |
-| Pruebas de reglas                         | 17 aprobadas                               |
-| Integración con clientes Colyseus reales  | 6 aprobadas                                |
-| Pruebas de navegador                      | 3 aprobadas                                |
+| Pruebas unitarias de reglas y habilidades | 134 aprobadas                              |
+| Integración con clientes Colyseus reales  | 19 aprobadas                               |
+| Flujos de navegador ejecutados            | 6 aprobados                                |
 | Auditoría de dependencias                 | Sin vulnerabilidades reportadas al validar |
 
 ## Casos comprobados
 
 - Recogida, caída, devolución propia y automática, bloqueo de recogida y capturas con ambas banderas robadas.
+- Los cuatro mapas, geometría transitable, bases fuera de paredes, selección en práctica y metadatos de salas públicas.
+- Cupos de duelo, 2v2 y todos contra todos; equipos equilibrados, cambio de equipo, fuego aliado bloqueado, reapariciones ilimitadas y victoria por abandono de una facción.
+- Sigilo en arbustos por grupo, distancia y línea de visión; visión compartida de aliados, revelación y portadores visibles.
+- Snapshots filtrados por cliente: enemigos ocultos sin coordenadas, trampas y eventos localizados ocultos, y perspectiva de espectador fija durante la ronda.
 - Victoria por tres capturas, resultado por tiempo, empate, pausa de captura y revancha por acuerdo.
 - Normalización y validación de entradas, bloqueo de coordenadas y daño enviados por cliente, secuencias antiguas y limitación del movimiento ante ráfagas de mensajes.
 - Espada con preparación y recarga, bloqueo combinado de ataques, flechas que impactan y desaparecen, paredes, dash, daño, protección y reaparición.
 - Inicio real de dos clientes, salas llenas, apodos inválidos y rechazo de orígenes HTTP no permitidos.
 - Resultado idéntico en ambos clientes, reserva y reconexión de sesión con 150 ms de latencia simulada, pausa del reloj, abandono inmediato y expiración de los 15 segundos de reserva.
-- Dos navegadores recorren tres capturas por teclado, ven el resultado, aceptan revancha y recuperan una sesión tras recargar.
+- Navegadores reales validaron la selección de mapa, práctica local, creación 2v2, listado público, cuatro jugadores en Encrucijada y marcadores por facción.
 - Chromium móvil emulado a 844 × 390: dos toques simultáneos, apuntado y disparo al soltar, cancelación de movimiento, botones de espada/dash y aviso al cambiar a vertical.
 - Capturas de inicio, sala, victoria y móvil revisadas visualmente. Sin errores JavaScript de página en las pruebas de navegador.
 

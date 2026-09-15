@@ -13,7 +13,7 @@ test('práctica sin servidor: disparar, reiniciar y volver al inicio',async({pag
   // Move into bow range and shoot along the open central lane.
   await page.keyboard.down('KeyD');await page.waitForTimeout(900);await page.keyboard.up('KeyD');
   const box=(await page.locator('canvas').boundingBox())!;
-  await page.mouse.click(box.x+650/960*box.width,box.y+270/540*box.height);
+  await page.mouse.click(box.x+760/960*box.width,box.y+270/540*box.height);
   await expect(page.locator('#practice-toolbar')).toHaveAttribute('data-dummy-hp','2');
   await page.locator('#practice-reset').click();
   await expect(page.locator('#practice-toolbar')).toHaveAttribute('data-dummy-hp','3');

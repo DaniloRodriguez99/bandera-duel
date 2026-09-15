@@ -15,7 +15,7 @@ import {
 } from '@bandera/shared';
 const input = (options: Partial<Input> = {}): Input => ({ ...idleInput(), ...options });
 function setup(classes: ClassId[]) {
-  const d = new Duel();
+  const d = new Duel('courtyard', classes.length > 3 ? 'ffa4' : classes.length > 2 ? 'ffa3' : 'duel');
   const players = classes.map((classId, i) => d.add(String(i), `P${i}`, classId));
   // Automatic zombies: these tests cover the abilities, not the guard circle or the cursor.
   for (const p of players) p.zombieAuto = true;

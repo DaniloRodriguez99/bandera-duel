@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { Client, type Room } from '@colyseus/sdk';
-import { RULES, chargePower, CLASSES, TEAMS, TEAM_NAMES, TEAM_ICONS, validName, type Snapshot, type ClassId, type Team } from '@bandera/shared';
+import { RULES, chargePower, CLASSES, TEAMS, TEAM_NAMES, TEAM_ICONS, MAPS, MODE_INFO, validName, type Snapshot, type ClassId, type Team, type MapId, type GameMode } from '@bandera/shared';
 import { Arena } from './scene.js';
 import {
   muted,
@@ -23,16 +23,16 @@ function hudTeam(team: Team, right = false) {
 document.querySelector('#app')!.innerHTML = `
 <header class="topbar"><a class="brand" href="/" aria-label="Bandera Duel, inicio"><span class="brand-mark">⚑</span><span>BANDERA<span class="brand-thin"> DUEL</span><small>LA GLORIA NO SE HEREDA. SE ROBA.</small></span></a><div class="header-right"><span class="edition">PRIMERA EDICIÓN <b>01</b></span><button id="mute" class="icon-btn" aria-label="Silenciar sonido"></button></div></header>
 <main>
-<section id="intro" class="intro"><div class="hero-copy"><div class="eyebrow"><i></i> DUELO ONLINE · HASTA 4 JUGADORES</div><h1>Tu rival tiene<br>algo <em>tuyo.</em></h1><p>Entrá al castillo. Robá su bandera.<br>Volvé con la gloria antes de que te alcancen.</p><div class="facts"><span><b>04</b> rivales</span><span><b>03</b> minutos</span><span><b>01</b> vencedor</span></div></div>
-<div class="entry-card"><div class="card-top"><span class="tiny">EL DESAFÍO EMPIEZA ACÁ</span><span class="swords">⚔</span></div><h2 id="entry-title">Prepará tu estandarte.</h2><p id="entry-description">Elegí tu guerrero, prepará una sala e invitá a tu rival.</p><form id="entry-form"><div class="player-setup"><div class="setup-heading"><span>01</span><h3>Tu guerrero</h3></div><label for="name">TU APODO</label><input id="name" name="name" placeholder="Caballero sin nombre" maxlength="16" autocomplete="nickname" required><fieldset id="entry-class-picker" class="class-picker"><legend>ELEGÍ TU GUERRERO</legend><div id="entry-classes" class="class-grid"></div></fieldset></div><div class="room-setup"><div class="setup-heading"><span>02</span><h3>Tu próximo duelo</h3></div><fieldset id="room-options"><legend>TU SALA</legend><label for="room-title">TÍTULO</label><input id="room-title" maxlength="48" value="Duelo medieval"><label for="visibility">VISIBILIDAD</label><select id="visibility"><option value="private">Privada · solo por enlace</option><option value="public">Pública · aparece en el listado</option></select><label class="check-option"><input id="allow-spectators" type="checkbox" checked> Permitir espectadores (máximo 5)</label></fieldset><label for="room-password">CONTRASEÑA (OPCIONAL)</label><input id="room-password" type="password" maxlength="64" autocomplete="off" placeholder="Sin contraseña"><label id="spectator-choice" hidden><input id="spectator" type="checkbox"> Entrar como espectador</label></div><div class="entry-actions"><button id="enter" class="primary" type="submit">Crear un duelo <span>↗</span></button><button id="practice-start" class="secondary" type="button">Probar contra un rival inmóvil</button><span class="entry-note">Práctica local, sin sala.</span></div></form><div id="status" class="status" role="status" aria-live="polite">Sin cuentas. Sin descargas. Solo el duelo.</div><button id="new-instead" class="text-btn" hidden>Crear otra sala</button></div></section>
+<section id="intro" class="intro"><div class="hero-copy"><div class="eyebrow"><i></i> DUELO ONLINE · HASTA 4 JUGADORES</div><h1>Tu rival tiene<br>algo <em>tuyo.</em></h1><p>Entrá al castillo. Robá su bandera.<br>Volvé con la gloria antes de que te alcancen.</p><div class="facts"><span><b>04</b> jugadores</span><span><b>03</b> minutos</span><span><b>01</b> vencedor</span></div></div>
+<div class="entry-card"><div class="card-top"><span class="tiny">EL DESAFÍO EMPIEZA ACÁ</span><span class="swords">⚔</span></div><h2 id="entry-title">Prepará tu estandarte.</h2><p id="entry-description">Elegí tu guerrero, prepará una sala e invitá a tu rival.</p><form id="entry-form"><div class="player-setup"><div class="setup-heading"><span>01</span><h3>Tu guerrero</h3></div><label for="name">TU APODO</label><input id="name" name="name" placeholder="Caballero sin nombre" maxlength="16" autocomplete="nickname" required><fieldset id="entry-class-picker" class="class-picker"><legend>ELEGÍ TU GUERRERO</legend><div id="entry-classes" class="class-grid"></div></fieldset></div><div class="room-setup"><div class="setup-heading"><span>02</span><h3>Tu próxima partida</h3></div><fieldset id="room-options"><legend>TU SALA</legend><label for="room-title">TÍTULO</label><input id="room-title" maxlength="48" value="Duelo medieval"><label for="visibility">VISIBILIDAD</label><select id="visibility"><option value="private">Privada · solo por enlace</option><option value="public">Pública · aparece en el listado</option></select><div class="option-row"><label>FORMATO<select id="game-mode"><option value="duel">Duelo · 1v1</option><option value="teams">Equipos · 2v2</option><option value="ffa3">Todos contra todos · 3</option><option value="ffa4">Todos contra todos · 4</option></select></label><label>MAPA<select id="map-select"><option value="courtyard">Patio del Rey</option><option value="forest">Bosque de Emboscadas</option><option value="ruins">Ruinas del Bastión</option><option value="crossroads">Encrucijada</option></select></label></div><div id="map-preview" class="map-preview"></div><label class="check-option"><input id="allow-spectators" type="checkbox" checked> Permitir espectadores (máximo 5)</label></fieldset><label for="room-password">CONTRASEÑA (OPCIONAL)</label><input id="room-password" type="password" maxlength="64" autocomplete="off" placeholder="Sin contraseña"><label id="spectator-choice" hidden><input id="spectator" type="checkbox"> Entrar como espectador</label><label id="perspective-choice" hidden>PERSPECTIVA<select id="spectator-perspective"><option value="blue">Azul</option><option value="red">Carmesí</option><option value="green">Jade</option><option value="violet">Violeta</option></select></label></div><div class="entry-actions"><button id="enter" class="primary" type="submit">Crear un duelo <span>↗</span></button><button id="practice-start" class="secondary" type="button">Probar contra un rival inmóvil</button><span class="entry-note">Práctica local, sin sala.</span></div></form><div id="status" class="status" role="status" aria-live="polite">Sin cuentas. Sin descargas. Solo el duelo.</div><button id="new-instead" class="text-btn" hidden>Crear otra sala</button></div></section>
 <section id="room-browser" class="room-browser"><div class="browser-heading"><div><span class="tiny">BUSCÁ TU PRÓXIMO RIVAL</span><h2>Salas públicas</h2></div><button id="refresh-rooms" class="secondary">↻ Actualizar salas</button></div><p id="rooms-status" role="status"></p><h3 class="room-group-title">● Combates en vivo</h3><p id="live-empty">No hay combates públicos en curso.</p><div id="live-rooms-list"></div><h3 class="room-group-title">Salas para jugar y próximas rondas</h3><div id="rooms-list"></div></section><section class="arena-section"><div class="arena-heading"><div><span class="live-dot"></span><span id="arena-label">EL PATIO DEL REY</span><span class="map-label">ARENA 01</span></div><span id="connection-label">ACERO · ARCO · MAGIA</span></div>
 <div id="practice-toolbar" hidden><span>PRÁCTICA · RIVAL INMÓVIL</span><button id="practice-reset" class="secondary">Reiniciar práctica</button><button id="practice-exit" class="secondary">Volver al inicio</button></div><div id="hud" class="hud" hidden>${hudTeam('blue')}${hudTeam('green')}<div class="clock"><span id="timer">3:00</span><small>PRIMERO A 3</small></div>${hudTeam('violet', true)}${hudTeam('red', true)}</div>
-<div id="stage" class="stage"><span id="spectator-count" hidden aria-live="polite"></span><div id="game"></div><div id="abilities" class="abilities" hidden aria-label="Habilidades"></div><div class="preview-tag" id="preview-tag">HASTA CUATRO ESTANDARTES. UNA SOLA GLORIA.</div>
-<div id="overlay" class="overlay" hidden><div class="overlay-card"><span id="overlay-kicker" class="tiny">SALA</span><h2 id="overlay-title">Esperando a tu rival</h2><p id="overlay-description"></p><p id="room-heading"></p><div id="roster" class="roster"></div><fieldset id="room-picker" class="class-picker compact"><legend>TU CLASE · PODÉS CAMBIAR ANTES DE JUGAR</legend><div id="room-classes" class="class-grid"></div></fieldset><p id="selection-status" role="status" hidden></p><div id="invitation"><label for="invite">LINK DE INVITACIÓN</label><div class="invite-row"><input id="invite" readonly aria-label="Link de invitación"><button id="copy" class="secondary">Copiar</button></div></div><button id="ready" class="primary">Estoy listo <span>⚔</span></button><button id="leave" class="text-btn">Salir de la sala</button></div></div>
+<div id="stage" class="stage"><span id="spectator-count" hidden aria-live="polite"></span><label id="room-perspective-choice" hidden>PERSPECTIVA<select id="room-perspective"></select></label><div id="game"></div><div id="abilities" class="abilities" hidden aria-label="Habilidades"></div><div class="preview-tag" id="preview-tag">HASTA CUATRO ESTANDARTES. UNA SOLA GLORIA.</div>
+<div id="overlay" class="overlay" hidden><div class="overlay-card"><span id="overlay-kicker" class="tiny">SALA</span><h2 id="overlay-title">Esperando jugadores</h2><p id="overlay-description"></p><p id="room-heading"></p><div id="roster" class="roster"></div><label id="team-choice" hidden>TU EQUIPO<select id="team-select"><option value="blue">Azul</option><option value="red">Carmesí</option></select></label><fieldset id="room-picker" class="class-picker compact"><legend>TU CLASE · PODÉS CAMBIAR ANTES DE JUGAR</legend><div id="room-classes" class="class-grid"></div></fieldset><p id="selection-status" role="status" hidden></p><div id="invitation"><label for="invite">LINK DE INVITACIÓN</label><div class="invite-row"><input id="invite" readonly aria-label="Link de invitación"><button id="copy" class="secondary">Copiar</button></div></div><button id="ready" class="primary">Estoy listo <span>⚔</span></button><button id="leave" class="text-btn">Salir de la sala</button></div></div>
 <div id="announcement" class="announcement" hidden aria-live="polite"></div>
 <div id="touch-controls"><div id="stick-move" class="stick" aria-label="Mover"><span></span><small>MOVER</small></div><div class="touch-right"><button id="touch-trap" class="touch-action" aria-label="Colocar trampa" hidden>Q</button><button id="touch-volley" class="touch-action" aria-label="Disparo triple" hidden>E</button><button id="touch-sword" class="touch-action" aria-label="Espada">⚔</button><button id="touch-guard" class="touch-action" aria-label="Mantener escudo" hidden>⛨</button><button id="touch-summon" class="touch-action" aria-label="Invocar zombies" hidden>☠</button><button id="touch-dash" class="touch-action" aria-label="Dash">➟</button><div id="stick-aim" class="stick" aria-label="Apuntar y soltar para disparar"><span></span><small>APUNTAR</small></div></div></div></div>
-<div class="arena-bottom"><span id="arena-hint">Robá la bandera rival y traela a tu base. La tuya debe estar en casa.</span><div id="cooldowns" hidden><span id="health" aria-label="Vida"></span><span id="lives" aria-label="Muertes"></span><span id="cd-sword"></span><span id="cd-shot"></span><span id="cd-dash"></span><span id="cd-guard" hidden></span><span id="cd-trap" hidden></span><span id="cd-volley" hidden></span><span id="cd-summon" hidden></span></div><span class="corner-detail">◆ &nbsp; ✚ &nbsp; ▲ &nbsp; ●</span></div></section>
-<section id="guide" class="guide"><article><span class="step">01 / ROBÁ</span><h3>Entrá en terreno rival.</h3><p>Tocá su bandera para llevarla. Podés pelear mientras la transportás.</p></article><article><span class="step">02 / RESISTÍ</span><h3>Un golpe cambia todo.</h3><p>Si te hieren, soltás la bandera. Recuperá la tuya con solo tocarla.</p></article><article><span class="step">03 / VOLVÉ</span><h3>Tu base. Tu victoria.</h3><p>Capturá con tu bandera en casa. Tres capturas deciden el duelo. Con cinco muertes quedás afuera.</p></article></section>
+<div class="arena-bottom"><span id="arena-hint">Robá la bandera rival y traela a tu base. La tuya debe estar en casa.</span><div id="cooldowns" hidden><span id="health" aria-label="Vida"></span><span id="lives" aria-label="Muertes"></span><span id="stealth-state"></span><span id="cd-sword"></span><span id="cd-shot"></span><span id="cd-dash"></span><span id="cd-guard" hidden></span><span id="cd-trap" hidden></span><span id="cd-volley" hidden></span><span id="cd-summon" hidden></span></div><span class="corner-detail">◆ &nbsp; ✚ &nbsp; ▲ &nbsp; ●</span></div></section>
+<section id="guide" class="guide"><article><span class="step">01 / ROBÁ</span><h3>Entrá en terreno rival.</h3><p>Tocá su bandera para llevarla. Podés pelear mientras la transportás.</p></article><article><span class="step">02 / RESISTÍ</span><h3>Un golpe cambia todo.</h3><p>Si te hieren, soltás la bandera. Recuperá la tuya con solo tocarla.</p></article><article><span class="step">03 / VOLVÉ</span><h3>Tu base. Tu victoria.</h3><p>Capturá con tu bandera en casa. Tres capturas deciden la partida; las reapariciones son ilimitadas.</p></article></section>
 <div id="control-guide" class="control-guide"></div>
 </main><footer><span>BANDERA DUEL <b> / </b> HECHO PARA LA REVANCHA.</span><span>HASTA 4 · V0.1</span></footer><div id="rotate"><span>↻</span><h2>Giralo para el duelo.</h2><p>La arena se juega con el celular horizontal.</p></div>`;
 
@@ -65,6 +65,20 @@ const endpoint =
 const client = new Client(endpoint);
 const nameInput = $<HTMLInputElement>('name');
 nameInput.value = localStorage.getItem('bandera-name') || '';
+let selectedMap = (localStorage.getItem('bandera-map') as MapId) || 'courtyard';
+if (!MAPS[selectedMap]) selectedMap = 'courtyard';
+$<HTMLSelectElement>('map-select').value = selectedMap;
+function updateMapPreview() {
+  const map = MAPS[selectedMap];
+  $('map-preview').className = `map-preview ${selectedMap}`;
+  $('map-preview').innerHTML = `<strong>${map.name}</strong><span>${map.description}</span><small>${map.bushes.length ? `${map.bushes.length} zonas de arbustos · sigilo activo` : 'Arena abierta · sin arbustos'}</small>`;
+}
+$<HTMLSelectElement>('map-select').onchange = (event) => {
+  selectedMap = (event.target as HTMLSelectElement).value as MapId;
+  localStorage.setItem('bandera-map', selectedMap);
+  updateMapPreview();
+};
+updateMapPreview();
 let selectedClass = savedClass();
 mountClasses($('entry-classes'), selectedClass, (id) => {
   selectedClass = id;
@@ -119,6 +133,7 @@ entryMode();
 $<HTMLInputElement>('spectator').onchange = () => {
   const watching = $<HTMLInputElement>('spectator').checked;
   $('entry-class-picker').hidden = watching;
+  $('perspective-choice').hidden = !watching;
   $('enter').textContent = watching ? 'Observar partida ↗' : 'Entrar al duelo ↗';
 };
 function muteLabel() {
@@ -184,7 +199,11 @@ function bind(joined: Room) {
     $('entry-title').textContent = info.title;
     $('invite').setAttribute('aria-label', `Invitación a ${info.title}`);
     $('room-heading').textContent =
-      `${info.title} · ${info.visibility === 'public' ? 'Pública' : 'Privada'}`;
+      `${info.title} · ${info.visibility === 'public' ? 'Pública' : 'Privada'} · ${info.modeName} · ${info.mapName}`;
+    const perspective = $<HTMLSelectElement>('room-perspective');
+    const value = perspective.value;
+    perspective.replaceChildren(...info.teams.map((team) => new Option(`${TEAM_ICONS[team]} ${TEAM_NAMES[team]}`, team)));
+    if (info.teams.includes(value as Team)) perspective.value = value;
   });
   room.onMessage('snapshot', (s: Snapshot) => {
     current = s;
@@ -254,6 +273,7 @@ $('entry-form').onsubmit = async (e) => {
           name,
           classId: selectedClass,
           spectator: $<HTMLInputElement>('spectator').checked,
+          perspective: $<HTMLSelectElement>('spectator-perspective').value,
           password: $<HTMLInputElement>('room-password').value,
         })
       : await client.create('duel', {
@@ -263,6 +283,8 @@ $('entry-form').onsubmit = async (e) => {
           visibility: $<HTMLSelectElement>('visibility').value,
           password: $<HTMLInputElement>('room-password').value,
           allowSpectators: $<HTMLInputElement>('allow-spectators').checked,
+          mapId: selectedMap,
+          mode: $<HTMLSelectElement>('game-mode').value,
         });
     $<HTMLInputElement>('room-password').value = '';
     bind(joined);
@@ -287,6 +309,7 @@ $('new-instead').onclick = () => {
   $('room-options').hidden = false;
   $<HTMLInputElement>('room-password').value = '';
   $('spectator-choice').hidden = true;
+  $('perspective-choice').hidden = true;
   $<HTMLInputElement>('spectator').checked = false;
   $('entry-class-picker').hidden = false;
   history.replaceState(null, '', location.pathname);
@@ -311,6 +334,10 @@ $('ready').onclick = () => {
   unlockAudio();
   room?.send('ready');
 };
+$<HTMLSelectElement>('team-select').onchange = (event) =>
+  room?.send('selectTeam', (event.target as HTMLSelectElement).value);
+$<HTMLSelectElement>('room-perspective').onchange = (event) =>
+  room?.send('perspective', (event.target as HTMLSelectElement).value);
 $('leave').onclick = () => {
   sessionStorage.removeItem('bandera-token');
   const previous = room;
@@ -321,6 +348,7 @@ $('leave').onclick = () => {
 function render(s: Snapshot) {
   if (!room && !practice) return;
   const me = s.players.find((p) => p.id === (practice ? PRACTICE_PLAYER : room!.sessionId));
+  const participants = s.participants?.length ? s.participants : s.players;
   setMusicMode(
     s.paused
       ? 'menu'
@@ -337,7 +365,7 @@ function render(s: Snapshot) {
   for (const team of TEAMS) {
     $(`team-${team}`).hidden = !s.bases.some((b) => b.team === team);
     $(`score-${team}`).textContent = String(s.score[team]);
-    $(`flag-${team}`).textContent = s.players.find((p) => p.team === team)?.eliminated ? 'Eliminado' : '';
+    $(`flag-${team}`).textContent = participants.some((p) => p.team === team) ? '' : 'Fuera';
   }
   const seconds = Math.ceil(s.timeLeft);
   $('timer').textContent = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
@@ -349,8 +377,8 @@ function render(s: Snapshot) {
           ? '¡Robada!'
           : `En el suelo · ${Math.ceil(flag.returnLeft)} s`;
   $('arena-label').textContent = me
-    ? `JUGÁS PARA ${TEAM_ICONS[me.team]} ${TEAM_NAMES[me.team]}`
-    : 'ESPECTADOR · VISTA DEL DUELO';
+    ? `${MAPS[s.mapId].name.toUpperCase()} · JUGÁS PARA ${TEAM_ICONS[me.team]} ${TEAM_NAMES[me.team]}`
+    : `${MAPS[s.mapId].name.toUpperCase()} · ESPECTADOR ${s.perspective ? `· ${TEAM_ICONS[s.perspective]} ${TEAM_NAMES[s.perspective]}` : ''}`;
   $('stage').dataset.phase = s.phase;
   const overlay = s.phase === 'lobby' || s.phase === 'finished';
   $('overlay').hidden = !overlay;
@@ -373,8 +401,10 @@ function render(s: Snapshot) {
     $('stage').dataset.dashing=String(me.dashInvulnerable);
     $('health').textContent=`♥ ${me.hp}/${me.maxHp}`;
     $('health').setAttribute('aria-label',`Vida: ${me.hp} de ${me.maxHp}`);
-    $('lives').textContent=`☠ ${me.deaths}/${RULES.maxDeaths}`;
-    $('lives').setAttribute('aria-label',`Muertes: ${me.deaths} de ${RULES.maxDeaths}`);
+    $('lives').textContent=`☠ ${me.deaths}`;
+    $('lives').setAttribute('aria-label',`Muertes: ${me.deaths}; reapariciones ilimitadas`);
+    $('stealth-state').textContent = me.bushId ? (me.revealLeft > 0 ? `◉ Revelado ${me.revealLeft.toFixed(1)}s` : '◌ Oculto') : '';
+    $('stealth-state').className = me.bushId && me.revealLeft <= 0 ? 'hidden-state' : 'revealed-state';
     $('cd-guard').textContent=me.guarding?`⛨ Cubriendo ${me.guardLeft.toFixed(1)}s`:`⛨ ${me.guardCd>0?me.guardCd.toFixed(1)+'s':'Listo'}`;
     if(me.classId==='mage') $('cd-guard').textContent=me.magicShieldHits>0?`⛨ ${me.magicShieldHits}/2 golpes`:`⛨ ${me.magicShieldCd>0?me.magicShieldCd.toFixed(1)+'s':'Listo · clic derecho'}`;
     $('cd-sword').textContent = `⚔ ${me.swordCd > 0 ? me.swordCd.toFixed(1) + 's' : 'Lista'}`;
@@ -403,19 +433,19 @@ function render(s: Snapshot) {
       : 'Robá la bandera rival. Recuperá la tuya. Volvé a casa.';
   if (overlay) {
     $('overlay-kicker').textContent =
-      s.phase === 'finished' ? 'EL DUELO TERMINÓ' : `SALA · ${s.players.length}/${RULES.maxPlayers}`;
+      s.phase === 'finished' ? 'LA PARTIDA TERMINÓ' : `SALA · ${participants.length}/${s.maxPlayers}`;
     $('overlay-title').textContent =
       s.phase === 'finished'
         ? s.winner === 'draw'
           ? 'Un duelo a la altura.'
           : s.winner === me?.team
             ? 'La gloria es tuya.'
-            : s.players.length > 2
-              ? `Esta vez, ganó ${s.players.find((p) => p.team === s.winner)?.name ?? 'otro rival'}.`
+            : participants.length > 2
+              ? `Esta vez, ganó ${participants.find((p) => p.team === s.winner)?.name ?? TEAM_NAMES[s.winner as Team]}.`
               : 'Esta vez, ganó tu rival.'
-        : s.players.length < 2
-          ? 'Falta tu rival.'
-          : 'El duelo está servido.';
+        : participants.length < s.maxPlayers
+          ? `Faltan ${s.maxPlayers - participants.length} jugadores.`
+          : 'La partida está lista.';
     $('overlay-description').textContent =
       s.phase === 'finished'
         ? s.reason === 'abandono'
@@ -423,19 +453,16 @@ function render(s: Snapshot) {
           : s.reason === 'eliminación'
             ? 'Quedó un solo guerrero en pie. ¿Otra ronda?'
             : `${s.bases.map((b) => s.score[b.team]).join(' — ')}. ¿Otra ronda?`
-        : `Compartí el link: hasta ${RULES.maxPlayers} jugadores. Cuando todos estén listos, empieza la batalla.`;
+        : `${MODE_INFO[s.mode].name} en ${MAPS[s.mapId].name}. Compartí el link; empieza cuando estén los ${s.maxPlayers} jugadores y todos estén listos.`;
     const roster = $('roster');
     roster.replaceChildren();
-    for (const team of TEAMS) {
-      const p = s.players.find((p) => p.team === team),
-        row = document.createElement('div');
-      row.className = `roster-player ${team}`;
+    for (const p of participants) {
+      const row = document.createElement('div');
+      row.className = `roster-player ${p.team}`;
       const title = document.createElement('span');
-      title.textContent = `${TEAM_ICONS[team]} ${p?.name || 'Esperando rival…'}${p?' · '+CLASSES[p.classId].name:''}`;
+      title.textContent = `${TEAM_ICONS[p.team]} ${p.name} · ${CLASSES[p.classId].name}`;
       const state = document.createElement('small');
-      state.textContent = !p
-        ? 'ASIENTO LIBRE'
-        : !p.connected
+      state.textContent = !p.connected
           ? 'DESCONECTADO'
           : p.ready
             ? 'LISTO ✓'
@@ -443,9 +470,24 @@ function render(s: Snapshot) {
       row.append(title, state);
       roster.append(row);
     }
+    for (let i = participants.length; i < s.maxPlayers; i++) {
+      const row = document.createElement('div');
+      row.className = 'roster-player empty';
+      row.innerHTML = '<span>⚔ Esperando jugador…</span><small>ASIENTO LIBRE</small>';
+      roster.append(row);
+    }
+    const teamChoice = $('team-choice');
+    teamChoice.hidden = !me || s.mode !== 'teams';
+    if (me) $<HTMLSelectElement>('team-select').value = me.team;
+    $('room-perspective-choice').hidden = !!me;
+    if (!me && s.perspective) {
+      const perspective = $<HTMLSelectElement>('room-perspective');
+      perspective.value = s.perspective;
+      perspective.disabled = !['lobby', 'finished'].includes(s.phase) && participants.some((p) => p.team === s.perspective);
+    }
     $('invitation').hidden = false;
     $('ready').hidden = !me || (s.phase === 'finished' && s.players.some((p) => !p.connected));
-    $<HTMLButtonElement>('ready').disabled = s.paused || s.players.length < 2;
+    $<HTMLButtonElement>('ready').disabled = s.paused || participants.length !== s.maxPlayers;
     $('ready').textContent = me?.ready
       ? 'Listo ✓ · Esperando rivales'
       : s.phase === 'finished'
@@ -469,9 +511,9 @@ function render(s: Snapshot) {
     }
   }
   if (practice) {
-    $('arena-label').textContent = 'PRÁCTICA LOCAL';
+    $('arena-label').textContent = `PRÁCTICA LOCAL · ${MAPS[s.mapId].name.toUpperCase()}`;
     $('stage').dataset.role = 'practice';
-    $('practice-toolbar').dataset.dummyHp = String(s.players[1].hp);
+    $('practice-toolbar').dataset.dummyHp = String(s.players.find((p) => p.id === 'practice-dummy')?.hp ?? 0);
     $('room-picker').hidden = true;
     $('invitation').hidden = true;
     $('ready').hidden = true;
@@ -528,6 +570,12 @@ interface RoomInfo {
   timeLeft: number;
   paused: boolean;
   names: string[];
+  teams: Team[];
+  mapId: MapId;
+  mapName: string;
+  mode: GameMode;
+  modeName: string;
+  maxPlayers: number;
 }
 let refreshingRooms = false;
 async function refreshRooms() {
@@ -561,13 +609,13 @@ async function refreshRooms() {
       const title = document.createElement('h3');
       title.textContent = info.title;
       const details = document.createElement('p');
-      details.textContent = `${info.players}/${RULES.maxPlayers} jugadores · ${info.spectators}/5 espectadores · ${info.phase === 'lobby' ? 'Esperando jugadores' : info.phase === 'finished' ? 'Resultado' : 'En combate'}${info.passwordRequired ? ' · Con contraseña' : ''}`;
+      details.textContent = `${info.modeName} · ${info.mapName} · ${info.players}/${info.maxPlayers} jugadores · ${info.spectators}/5 espectadores · ${info.phase === 'lobby' ? 'Esperando jugadores' : info.phase === 'finished' ? 'Resultado' : 'En combate'}${info.passwordRequired ? ' · Con contraseña' : ''}`;
       card.append(title, details);
       if (live) {
         const score = document.createElement('p');
         score.className = 'live-score';
         const seconds = Math.ceil(info.timeLeft);
-        score.textContent = `${info.names.join(' vs ')} · ${TEAMS.slice(0, info.names.length).map((team) => info.score[team]).join(' — ')} · ${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+        score.textContent = `${info.names.join(' vs ')} · ${[...new Set(info.teams)].map((team) => `${TEAM_ICONS[team]} ${info.score[team]}`).join(' — ')} · ${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
         card.append(score);
       }
       const choose = (spectator: boolean) => {
@@ -577,6 +625,8 @@ async function refreshRooms() {
         $('entry-title').textContent = info.title;
         $<HTMLInputElement>('spectator').checked = spectator;
         $('spectator').dispatchEvent(new Event('change'));
+        if (spectator && info.teams.length)
+          $<HTMLSelectElement>('spectator-perspective').value = info.teams[0];
         $<HTMLInputElement>('room-password').value = '';
         $('entry-description').textContent = info.passwordRequired
           ? 'Ingresá el apodo y la contraseña de la sala.'
@@ -597,7 +647,7 @@ async function refreshRooms() {
           : 'Jugar';
         button.disabled = spectator
           ? !info.allowSpectators || info.spectators >= 5
-          : info.phase !== 'lobby' || info.playerSlots >= RULES.maxPlayers;
+          : info.phase !== 'lobby' || info.playerSlots >= info.maxPlayers;
         button.onclick = () => choose(spectator);
         card.append(button);
       }
@@ -619,7 +669,7 @@ setInterval(() => {
 function startPractice() {
   if (room || busy || !arena.controls) return;
   unlockAudio();
-  practice = new Practice(selectedClass, validName(nameInput.value) || 'Vos');
+  practice = new Practice(selectedClass, validName(nameInput.value) || 'Vos', selectedMap);
   arena.reset();
   arena.send = () => {};
   arena.localStep = (input) => {
@@ -656,7 +706,7 @@ $('practice-exit').onclick = () => {
   $('stage').dataset.role = 'preview';
   $('arena-label').textContent = 'EL PATIO DEL REY';
   $('connection-label').textContent = 'ACERO · ARCO · MAGIA';
-  const preview = new Practice(selectedClass);
+  const preview = new Practice(selectedClass, 'Vos', selectedMap);
   preview.duel.state.phase = 'lobby';
   arena.receive(structuredClone(preview.duel.state), '');
   $('intro').scrollIntoView({ block: 'start' });

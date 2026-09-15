@@ -4,7 +4,6 @@ import {
   RULES,
   HOMES,
   CORNER_HOMES,
-  CORNER_SPAWNS,
   TEAMS,
   WALLS,
   idleInput,
@@ -232,7 +231,7 @@ describe('combate y geometría', () => {
 });
 describe('todos contra todos', () => {
   function group(n: number) {
-    const d = new Duel();
+    const d = new Duel('courtyard', n === 2 ? 'duel' : n === 3 ? 'ffa3' : 'ffa4');
     for (let i = 0; i < n; i++) d.add(String(i), `P${i}`);
     return d;
   }
@@ -240,7 +239,7 @@ describe('todos contra todos', () => {
     const d = group(4);
     expect(d.state.players.map((p) => p.team)).toEqual(TEAMS);
     expect(d.state.bases.map((b) => b.home)).toEqual(TEAMS.map((t) => CORNER_HOMES[t]));
-    expect(d.state.players.map((p) => ({ x: p.x, y: p.y }))).toEqual(TEAMS.map((t) => CORNER_SPAWNS[t]));
+    expect(d.state.players.map((p) => ({ x: p.x, y: p.y }))).toEqual(d.state.bases.map((b) => b.spawn));
     expect(d.state.flags).toHaveLength(4);
     expect(() => d.add('x', 'X')).toThrow('Sala llena');
     expect(group(2).state.bases.map((b) => b.home)).toEqual([HOMES.blue, HOMES.red]);
@@ -273,40 +272,31 @@ describe('todos contra todos', () => {
     expect(d.state.score.green).toBe(1);
     expect(d.state.phase).toBe('capture');
   });
-  it('la quinta muerte elimina: no reaparece, suelta la bandera y retira la propia', () => {
+  it('mantiene reapariciones ilimitadas después de cinco muertes', () => {
     const d = group(3),
-      [a, b, c] = d.state.players;
+      [a, b] = d.state.players;
     d.state.phase = 'playing';
-    for (let death = 1; death < RULES.maxDeaths; death++) {
+    for (let death = 1; death <= RULES.maxDeaths + 1; death++) {
       a.invuln = 0;
       d.damage(a, b, 0, 99);
       expect(a.deaths).toBe(death);
       steps(d, 91);
       expect(a.hp).toBe(3);
     }
-    Object.assign(d.state.flags[1], { status: 'carried', carrier: a.id });
-    Object.assign(d.state.flags[0], { status: 'carried', carrier: c.id });
-    a.invuln = 0;
-    d.damage(a, b, 0, 99);
-    expect(a.eliminated).toBe(true);
-    expect(d.state.flags.find((f) => f.team === 'red')?.status).toBe('dropped');
-    expect(d.state.flags.some((f) => f.team === 'blue')).toBe(false);
-    steps(d, 120);
-    expect(a.hp).toBe(0);
+    expect(a.eliminated).toBe(false);
+    expect(d.state.flags.some((f) => f.team === a.team)).toBe(true);
     expect(d.state.phase).toBe('playing');
   });
-  it('el último en pie gana por eliminación y la revancha reinicia las vidas', () => {
+  it('el último equipo con participantes gana por abandono', () => {
     const d = group(3),
       [a, b] = d.state.players;
     d.state.phase = 'playing';
-    d.eliminate(a);
+    d.abandon(a.id);
     expect(d.state.phase).toBe('playing');
-    d.eliminate(b);
-    expect(d.state).toMatchObject({ phase: 'finished', winner: 'green', reason: 'eliminación' });
-    for (const p of d.state.players) d.ready(p.id);
-    expect(d.state.phase).toBe('countdown');
-    expect(d.state.players.every((p) => !p.eliminated && p.deaths === 0 && p.hp > 0)).toBe(true);
-    expect(d.state.flags).toHaveLength(3);
+    d.abandon(b.id);
+    expect(d.state).toMatchObject({ phase: 'finished', winner: 'green', reason: 'abandono' });
+    expect(d.state.players).toHaveLength(1);
+    expect(d.state.flags).toHaveLength(1);
   });
   it('por tiempo gana el mayor marcador y hay empate entre líderes', () => {
     const d = group(4);

@@ -8,7 +8,9 @@ import {
   validName,
   validClass,
   DEFAULT_CLASS,
+  DEFAULT_MAP,DEFAULT_MODE,MAPS,MODE_INFO,validMap,validMode,playerVisibleTo,zombieVisibleTo,pointBush,lineClear,
   type ClassId,
+  type Team,type Snapshot,type MapId,type GameMode,
   type Input,
 } from '@bandera/shared';
 
@@ -23,38 +25,45 @@ export class DuelRoom extends Room {
   private passwordKey = randomBytes(32);
   private passwordHash?: Buffer;
   private watching = new Set<string>();
+  private perspectives=new Map<string,Team>();
   publicInfo() {
     return { roomId: this.roomId, title: this.title, visibility: this.visibility,
       passwordRequired: !!this.passwordHash, allowSpectators: this.allowSpectators,
       spectators: this.watching.size, maxSpectators: 5,
       players: this.game.state.players.filter(p => p.connected).length,
       playerSlots: this.game.state.players.length, phase: this.game.state.phase,
+      mapId:this.game.state.mapId,mapName:MAPS[this.game.state.mapId].name,mode:this.game.state.mode,modeName:MODE_INFO[this.game.state.mode].name,maxPlayers:this.game.state.maxPlayers,
       score: {...this.game.state.score}, timeLeft: this.game.state.timeLeft, paused: this.game.state.paused,
-      names: this.game.state.players.map(p => p.name) };
+      names: this.game.state.players.map(p => p.name),teams:this.game.state.players.map(p=>p.team) };
   }
   private publishInfo() { this.broadcast('roomInfo', this.publicInfo()); }
+  private viewFor(client:Client):Snapshot{const source=this.game.state,own=source.players.find(p=>p.id===client.sessionId),perspective=own?.team??this.perspectives.get(client.sessionId)??source.players[0]?.team??'blue';const hidden=source.players.filter(p=>!playerVisibleTo(source,p,perspective)),visibleIds=new Set(source.players.filter(p=>playerVisibleTo(source,p,perspective)).map(p=>p.id)),view=structuredClone(source);view.perspective=perspective;view.participants=source.players.map(({id,name,team,classId,ready,connected,deaths})=>({id,name,team,classId,ready,connected,deaths}));view.players=view.players.filter(p=>visibleIds.has(p.id));view.zombies=view.zombies.filter(z=>zombieVisibleTo(source,z,perspective));for(const z of view.zombies)if(z.target&&!visibleIds.has(z.target))z.target=null;const detected=(where:{x:number;y:number},team:Team)=>{if(team===perspective)return true;const bush=pointBush(MAPS[source.mapId],where);if(!bush)return true;return source.players.some(p=>p.team===perspective&&p.hp>0&&p.bushId===bush&&Math.hypot(p.x-where.x,p.y-where.y)<=90&&lineClear(p,where,MAPS[source.mapId].walls));};view.traps=view.traps.filter(t=>detected(t,t.team));view.graves=view.graves.filter(g=>detected(g,g.team));view.events=view.events.filter(e=>!hidden.some(p=>Math.hypot(e.x-p.x,e.y-p.y)<25));return view;}
+  private sendSnapshots(){for(const client of this.clients)client.send('snapshot',this.viewFor(client));}
   onDispose() { listedRooms.delete(this.roomId); }
 
   private spectators = new Set<string>();
   maxMessagesPerSecond = 65;
-  game = new Duel();
+  game!:Duel;
   private queues = new Map<string, Input[]>();
   private last = new Map<string, Input>();
   private seen = new Map<string, number>();
   private receivedAt = new Map<string, number>();
   private drops = new Map<string, number>();
-  onCreate(options: { title?: unknown; visibility?: unknown; password?: unknown; allowSpectators?: unknown } = {}) {
+  onCreate(options: { title?: unknown; visibility?: unknown; password?: unknown; allowSpectators?: unknown;mapId?:unknown;mode?:unknown } = {}) {
     if (options.title !== undefined && (typeof options.title !== 'string' || !options.title.trim() || options.title.trim().length > 48 || /[\x00-\x1f<>]/.test(options.title)))
       throw new ServerError(400, 'El título debe tener entre 1 y 48 caracteres, sin etiquetas.');
     if (options.visibility !== undefined && !['public', 'private'].includes(options.visibility as string))
       throw new ServerError(400, 'Visibilidad desconocida.');
     if (options.allowSpectators !== undefined && typeof options.allowSpectators !== 'boolean')
       throw new ServerError(400, 'Opción de espectadores inválida.');
+    if(options.mapId!==undefined&&!validMap(options.mapId))throw new ServerError(400,'Mapa desconocido.');
+    if(options.mode!==undefined&&!validMode(options.mode))throw new ServerError(400,'Formato desconocido.');
     if (options.password !== undefined && (typeof options.password !== 'string' || options.password.length > 64))
       throw new ServerError(400, 'La contraseña admite hasta 64 caracteres.');
     this.title = typeof options.title === 'string' ? options.title.trim() : 'Duelo medieval';
     this.visibility = options.visibility === 'public' ? 'public' : 'private';
     this.allowSpectators = options.allowSpectators !== false;
+    this.game=new Duel((options.mapId as MapId)??DEFAULT_MAP,(options.mode as GameMode)??DEFAULT_MODE);
     if (options.password) this.passwordHash = createHmac('sha256', this.passwordKey).update(options.password as string).digest();
     this.roomId = randomBytes(16).toString('hex');
     void this.setPrivate(true); // Discovery uses our password-free public DTO only.
@@ -76,9 +85,11 @@ export class DuelRoom extends Room {
         client.send('selectionError', 'No se puede elegir esa clase ahora.');
         return;
       }
-      this.broadcast('snapshot', this.game.state);
+      this.sendSnapshots();
     });
-    this.onMessage('sync', (client) => { client.send('snapshot', this.game.state); client.send('roomInfo', this.publicInfo()); });
+    this.onMessage('selectTeam',(client,team)=>{if(!this.game.selectTeam(client.sessionId,team as Team))client.send('selectionError','No se puede elegir ese equipo.');this.sendSnapshots();});
+    this.onMessage('perspective',(client,team)=>{if(!this.spectators.has(client.sessionId)||!this.game.state.players.some(p=>p.team===team))return;const current=this.perspectives.get(client.sessionId),exists=this.game.state.players.some(p=>p.team===current);if(!['lobby','finished'].includes(this.game.state.phase)&&exists)return;this.perspectives.set(client.sessionId,team as Team);this.sendSnapshots();});
+    this.onMessage('sync', (client) => { client.send('snapshot', this.viewFor(client)); client.send('roomInfo', this.publicInfo()); });
     this.onMessage('ping', (client, stamp) => {
       if (typeof stamp === 'number' && Number.isFinite(stamp)) client.send('pong', stamp);
     });
@@ -107,7 +118,7 @@ export class DuelRoom extends Room {
       }
       const phase = s.phase;
       this.game.step(inputs);
-      if (s.tick % 2 === 0) this.broadcast('snapshot', s);
+      if (s.tick % 2 === 0) this.sendSnapshots();
       if (phase !== 'finished' && s.phase === 'finished')
         console.info(
           JSON.stringify({
@@ -136,18 +147,19 @@ export class DuelRoom extends Room {
       if (this.spectators.size >= 5) throw new ServerError(409, 'No quedan lugares para espectadores.');
       return true;
     }
-    if (this.game.state.players.length >= RULES.maxPlayers) throw new ServerError(409, `Los ${RULES.maxPlayers} lugares están ocupados. Podés entrar como espectador.`);
+    if (this.game.state.players.length >= this.game.state.maxPlayers) throw new ServerError(409, `Los ${this.game.state.maxPlayers} lugares están ocupados. Podés entrar como espectador.`);
     if (this.game.state.phase !== 'lobby') throw new ServerError(409, 'Esta partida ya empezó.');
     return true;
   }
-  onJoin(client: Client, options: { name: string; classId?: ClassId; spectator?: boolean }) {
+  onJoin(client: Client, options: { name: string; classId?: ClassId; spectator?: boolean;perspective?:unknown }) {
     if (options.spectator === true) {
       if (!this.allowSpectators) throw new ServerError(403, 'Esta sala no admite espectadores.');
       if (this.spectators.size >= 5) throw new ServerError(409, 'No quedan lugares para espectadores.');
       this.spectators.add(client.sessionId);
       this.watching.add(client.sessionId);
+      const requested=options.perspective;this.perspectives.set(client.sessionId,this.game.state.players.some(p=>p.team===requested)?requested as Team:this.game.state.players[0]?.team??'blue');
     } else this.game.add(client.sessionId, validName(options.name)!, options.classId ?? DEFAULT_CLASS);
-    this.broadcast('snapshot', this.game.state);
+    this.sendSnapshots();
     this.publishInfo();
     console.info(
       JSON.stringify({ event: 'join', room: this.roomId, players: this.game.state.players.length }),
@@ -164,7 +176,7 @@ export class DuelRoom extends Room {
     p.connected = false;
     this.drops.set(p.id, Date.now() + RULES.reconnectSeconds * 1000);
     this.game.state.paused = true;
-    this.broadcast('snapshot', this.game.state);
+    this.sendSnapshots();
     this.allowReconnection(client, RULES.reconnectSeconds).catch(() => {});
   }
   onReconnect(client: Client) {
@@ -176,10 +188,11 @@ export class DuelRoom extends Room {
     this.game.state.paused = this.drops.size > 0;
     this.queues.set(client.sessionId, []);
     this.last.delete(client.sessionId);
-    this.broadcast('snapshot', this.game.state);
+    this.sendSnapshots();
   }
   onLeave(client: Client) {
     this.spectators.delete(client.sessionId);
+    this.perspectives.delete(client.sessionId);
     this.watching.delete(client.sessionId);
     this.publishInfo();
     const s = this.game.state,
@@ -193,10 +206,10 @@ export class DuelRoom extends Room {
     if (s.phase === 'lobby' || s.phase === 'finished') this.game.remove(client.sessionId);
     else {
       p.connected = false;
-      this.game.eliminate(p, 'abandono');
+      this.game.abandon(p.id);
     }
     s.paused = this.drops.size > 0;
-    this.broadcast('snapshot', s);
+    this.sendSnapshots();
     console.info(JSON.stringify({ event: 'leave', room: this.roomId }));
   }
 }

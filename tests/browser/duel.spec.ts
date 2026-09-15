@@ -1,8 +1,10 @@
 import { test, expect, type Page } from '@playwright/test';
-async function create(page: Page, name: string, classId = 'guardian') {
+async function create(page: Page, name: string, classId = 'guardian', mode = 'duel', map = 'courtyard') {
   await page.goto('/');
   await page.locator('#name').fill(name);
   await page.locator(`#entry-classes [data-class="${classId}"]`).click();
+  await page.locator('#game-mode').selectOption(mode);
+  await page.locator('#map-select').selectOption(map);
   await page.locator('#enter').click();
   await expect(page.locator('#overlay')).toBeVisible();
   return page.url();
@@ -121,7 +123,7 @@ test('muestra errores de sala y permite empezar otra', async ({ page }) => {
 test('cuatro jugadores: asientos, esquinas y marcadores', async ({ page, browser }, info) => {
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
-  const url = await create(page, 'Uno');
+  const url = await create(page, 'Uno', 'guardian', 'ffa4', 'crossroads');
   const contexts = await Promise.all([0, 1, 2].map(() => browser.newContext()));
   const rivals = await Promise.all(contexts.map((c) => c.newPage()));
   for (const [i, rival] of rivals.entries()) {
@@ -135,7 +137,7 @@ test('cuatro jugadores: asientos, esquinas y marcadores', async ({ page, browser
   for (const team of ['blue', 'red', 'green', 'violet'])
     await expect(page.locator(`#score-${team}`)).toBeVisible();
   await expect(rivals[2].locator('#arena-label')).toContainText('VIOLETA');
-  await expect(page.locator('#lives')).toHaveText('☠ 0/5');
+  await expect(page.locator('#lives')).toHaveText('☠ 0');
   await page.screenshot({ path: info.outputPath('cuatro.png') });
   expect(errors).toEqual([]);
   await Promise.all(contexts.map((c) => c.close()));

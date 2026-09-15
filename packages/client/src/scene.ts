@@ -4,7 +4,7 @@ import {
   CLASSES,
   CLASS_IDS,
   DEFAULT_CLASS,
-  WALLS,
+  MAPS,
   TEAMS,
   TEAM_NAMES,
   TEAM_ICONS,
@@ -21,6 +21,7 @@ import {
   type Base,
   type Zombie,
   type Input,
+  type MapId,
 } from '@bandera/shared';
 import { Controls } from './input.js';
 import { sound } from './audio.js';
@@ -74,11 +75,13 @@ export class Arena extends Phaser.Scene {
   private lastEvent = 0;
   private phase = '';
   private receivedAt = 0;
+  private currentMapId: MapId = 'courtyard';
+  private mapObjects: Phaser.GameObjects.GameObject[] = [];
   constructor() {
     super('arena');
   }
   create() {
-    this.drawMap();
+    this.drawMap(this.currentMapId);
     this.bases = this.add.graphics().setDepth(1);
     this.makeTextures();
     this.flags = this.add.graphics().setDepth(5);
@@ -100,7 +103,7 @@ export class Arena extends Phaser.Scene {
       else if (p.rightButtonDown()) this.controls.secondary(true);
       else this.controls.primary();
     });
-    const preview = layout(['blue', 'red']);
+    const preview = layout(['blue', 'red'], this.currentMapId, 'duel');
     this.drawBases(preview);
     this.paintFlags(
       preview.map(
@@ -173,9 +176,15 @@ export class Arena extends Phaser.Scene {
         .setDepth(1);
     });
   }
-  private drawMap() {
+  private drawMap(mapId: MapId) {
+    this.currentMapId = mapId;
+    this.mapObjects.forEach((object) => object.destroy());
+    this.mapObjects = [];
+    const map = MAPS[mapId];
     const g = this.add.graphics();
-    g.fillStyle(0x18272c);
+    this.mapObjects.push(g);
+    const ground = map.theme === 'forest' ? 0x193329 : map.theme === 'ruins' ? 0x292d30 : map.theme === 'crossroads' ? 0x283537 : 0x18272c;
+    g.fillStyle(ground);
     g.fillRect(0, 0, 960, 540);
     for (let y = 20; y < 520; y += 20)
       for (let x = 20; x < 940; x += 20) {
@@ -229,7 +238,18 @@ export class Arena extends Phaser.Scene {
       g.fillStyle(0x1f2e31);
       g.fillRect(x, y + h - 6, w, 6);
     };
-    for (const w of WALLS) wall(w.x, w.y, w.w, w.h);
+    for (const bush of map.bushes) {
+      g.fillStyle(0x1a472c, 0.68);
+      g.fillRoundedRect(bush.x, bush.y, bush.w, bush.h, 13);
+      g.lineStyle(2, 0x57945c, 0.38);
+      g.strokeRoundedRect(bush.x, bush.y, bush.w, bush.h, 13);
+      for (let y = bush.y + 8; y < bush.y + bush.h; y += 14)
+        for (let x = bush.x + 9; x < bush.x + bush.w; x += 18) {
+          g.fillStyle((x + y) % 4 ? 0x2f7042 : 0x4d8950, 0.5);
+          g.fillCircle(x, y, 6);
+        }
+    }
+    for (const w of map.walls) wall(w.x, w.y, w.w, w.h);
     wall(0, 0, 960, 20);
     wall(0, 520, 960, 20);
     wall(0, 20, 20, 500);
@@ -249,11 +269,16 @@ export class Arena extends Phaser.Scene {
       g.fillStyle(0xffe0a0);
       g.fillRect(x - 1, y - 11, 3, 9);
       const glow = this.add.circle(x, y - 4, 19, 0xffb35c, 0.07);
+      this.mapObjects.push(glow);
       this.tweens.add({ targets: glow, alpha: 0.35, duration: 850 + x, yoyo: true, repeat: -1 });
     }
   }
   receive(snapshot: Snapshot, id: string) {
     if (!this.controls) return;
+    if (snapshot.mapId !== this.currentMapId) {
+      this.drawMap(snapshot.mapId);
+      this.layoutKey = '';
+    }
     const was = this.snapshot,
       first = !was;
     this.snapshot = snapshot;
@@ -283,6 +308,8 @@ export class Arena extends Phaser.Scene {
             this.predicted,
             input,
             snapshot.flags.some((f) => f.carrier === id),
+            RULES.tick,
+            MAPS[snapshot.mapId].walls,
           );
     }
     this.phase = snapshot.phase;
@@ -949,6 +976,8 @@ export class Arena extends Phaser.Scene {
             this.predicted,
             input,
             s.flags.some((f) => f.carrier === this.localId),
+            RULES.tick,
+            MAPS[s.mapId].walls,
           );
       }
     }
@@ -1024,7 +1053,7 @@ export class Arena extends Phaser.Scene {
         x: a.x + Math.cos(a.angle) * projectileStats(a.classId, a.charged, a.power).speed * (a.reflected === 2 ? RULES.counterBoost : 1) * age,
         y: a.y + Math.sin(a.angle) * projectileStats(a.classId, a.charged, a.power).speed * (a.reflected === 2 ? RULES.counterBoost : 1) * age,
       };
-      const p = lineClear(a, next) ? next : a;
+      const p = lineClear(a, next, MAPS[s.mapId].walls) ? next : a;
       const grow = 1 + (a.power ?? 0);
       if (a.reflected) {
         // Countered projectile: a golden halo, bigger when the counter was charged.

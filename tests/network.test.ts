@@ -1,9 +1,11 @@
 import { afterAll, beforeAll, describe, it, expect } from 'vitest';
 import { Client, type Room as ClientRoom } from '@colyseus/sdk';
+import { WebSocket } from 'ws';
 import { matchMaker } from '@colyseus/core';
 import { createServer } from '../packages/server/src/app.js';
 import type { DuelRoom } from '../packages/server/src/room.js';
 import { HOMES, RULES, idleInput, type Snapshot, type ClassId } from '@bandera/shared';
+(globalThis as typeof globalThis & { WebSocket: typeof WebSocket }).WebSocket = WebSocket;
 const server = createServer();
 const sdk = new Client('ws://127.0.0.1:2568');
 const sessions: ClientRoom[] = [];
@@ -26,8 +28,8 @@ async function track(p: Promise<ClientRoom>) {
   await until(() => states.has(r.sessionId));
   return r;
 }
-async function pair(first:ClassId='guardian',second:ClassId='guardian') {
-  const a = await track(sdk.create('duel', { name: 'Azul',classId:first })),
+async function pair(first:ClassId='guardian',second:ClassId='guardian', options:Record<string,unknown>={}) {
+  const a = await track(sdk.create('duel', { name: 'Azul',classId:first,...options })),
     b = await track(sdk.joinById(a.roomId, { name: 'Rojo',classId:second }));
   const host = matchMaker.getLocalRoomById(a.roomId) as DuelRoom;
   return { a, b, host };
@@ -75,7 +77,7 @@ describe('servidor con clientes Colyseus reales', () => {
         .status,
     ).toBe(403);
     await expect(sdk.create('duel', { name: '<script>' })).rejects.toThrow();
-    const { a, b, host } = await pair();
+    const { a, b, host } = await pair('guardian','guardian',{mode:'ffa4'});
     expect(a.roomId).toMatch(/^[a-f0-9]{32}$/);
     expect(host.maxClients).toBe(RULES.maxPlayers + 5);
     const c = await track(sdk.joinById(a.roomId, { name: 'Tercero' })),
@@ -153,16 +155,66 @@ describe('servidor con clientes Colyseus reales', () => {
     expect(states.get(a.sessionId)?.winner).toBe('blue');
   });
   it('con tres jugadores un abandono elimina sin terminar; el último en pie gana', async () => {
-    const { a, b, host } = await pair();
+    const { a, b, host } = await pair('guardian','guardian',{mode:'ffa3'});
     const c = await track(sdk.joinById(a.roomId, { name: 'Verde' }));
     await until(() => host.game.state.players.length === 3);
     host.game.state.phase = 'playing';
     await c.leave();
-    await until(() => host.game.state.players[2].eliminated);
+    await until(() => host.game.state.players.length===2);
     expect(host.game.state.phase).toBe('playing');
     await b.leave();
     await until(() => states.get(a.sessionId)?.phase === 'finished');
     expect(states.get(a.sessionId)).toMatchObject({ winner: 'blue', reason: 'abandono' });
+  });
+  it('filtra enemigos, trampas y eventos ocultos según la perspectiva',async()=>{
+    const {a,b,host}=await pair('guardian','archer',{mapId:'forest'});
+    const blue=host.game.state.players.find(p=>p.id===a.sessionId)!;
+    const red=host.game.state.players.find(p=>p.id===b.sessionId)!;
+    host.game.state.phase='playing';
+    Object.assign(blue,{x:180,y:420,bushId:'f3'});
+    Object.assign(red,{x:220,y:110,bushId:'f1',revealLeft:0});
+    host.game.state.traps.push({id:99,owner:red.id,team:red.team,x:230,y:110,armLeft:0,life:10});
+    host.game.event('hurt',red,red.team);
+    await until(()=>states.get(a.sessionId)?.participants.length===2&&!states.get(a.sessionId)?.players.some(p=>p.id===red.id));
+    const hidden=states.get(a.sessionId)!;
+    expect(hidden.participants.find(p=>p.id===red.id)).not.toHaveProperty('x');
+    expect(hidden.traps.some(t=>t.id===99)).toBe(false);
+    expect(hidden.events.some(e=>Math.hypot(e.x-red.x,e.y-red.y)<25)).toBe(false);
+    expect(states.get(b.sessionId)?.players.some(p=>p.id===red.id)).toBe(true);
+    Object.assign(blue,{x:180,y:110,bushId:'f1'});
+    await until(()=>!!states.get(a.sessionId)?.players.some(p=>p.id===red.id));
+    expect(states.get(a.sessionId)?.traps.some(t=>t.id===99)).toBe(true);
+    await a.leave();await b.leave();
+  });
+  it('fija la perspectiva del espectador durante la ronda y permite cambiarla en resultados',async()=>{
+    const {a,b,host}=await pair('guardian','archer',{mapId:'forest'});
+    const blue=host.game.state.players.find(p=>p.id===a.sessionId)!;
+    const red=host.game.state.players.find(p=>p.id===b.sessionId)!;
+    Object.assign(blue,{x:180,y:420,bushId:'f3'});
+    Object.assign(red,{x:220,y:110,bushId:'f1',revealLeft:0});
+    host.game.state.phase='playing';
+    const viewer=await track(sdk.joinById(a.roomId,{name:'Vista',spectator:true,perspective:'blue'}));
+    await until(()=>states.get(viewer.sessionId)?.perspective==='blue');
+    expect(states.get(viewer.sessionId)?.players.some(p=>p.id===red.id)).toBe(false);
+    viewer.send('perspective','red');await sleep(120);
+    expect(states.get(viewer.sessionId)?.perspective).toBe('blue');
+    host.game.finish('blue','tiempo');viewer.send('perspective','red');
+    await until(()=>states.get(viewer.sessionId)?.perspective==='red');
+    expect(states.get(viewer.sessionId)?.players.some(p=>p.id===red.id)).toBe(true);
+    await viewer.leave();await a.leave();await b.leave();
+  });
+  it('en 2v2 el compañero continúa y la bandera desaparece al abandonar toda la facción',async()=>{
+    const {a,b,host}=await pair('guardian','guardian',{mode:'teams'});
+    const c=await track(sdk.joinById(a.roomId,{name:'Azul 2'}));
+    const d=await track(sdk.joinById(a.roomId,{name:'Rojo 2'}));
+    host.game.state.phase='playing';
+    await c.leave();await until(()=>host.game.state.players.length===3);
+    expect(host.game.state.phase).toBe('playing');
+    expect(host.game.state.flags.some(f=>f.team==='blue')).toBe(true);
+    await a.leave();await until(()=>states.get(b.sessionId)?.phase==='finished');
+    expect(states.get(b.sessionId)).toMatchObject({winner:'red',reason:'abandono'});
+    expect(host.game.state.flags.some(f=>f.team==='blue')).toBe(false);
+    await b.leave();await d.leave();
   });
   it('reserva 15s y finaliza por abandono cuando no reconecta', async () => {
     const { a, b, host } = await pair();
@@ -207,7 +259,7 @@ it('listado público, contraseña para ambos roles y espectadores desactivados',
   const hidden = await track(sdk.create('duel',{name:'Privado',title:'Secreta'}));
   const listed = await (await fetch('http://127.0.0.1:2568/rooms')).json();
   expect(listed.some((r:any)=>r.roomId===hidden.roomId)).toBe(false);
-  expect(listed.find((r:any)=>r.roomId===a.roomId)).toMatchObject({title:'Torneo',passwordRequired:true,allowSpectators:false});
+  expect(listed.find((r:any)=>r.roomId===a.roomId)).toMatchObject({title:'Torneo',passwordRequired:true,allowSpectators:false,mapId:'courtyard',mode:'duel',maxPlayers:2});
   expect(JSON.stringify(listed)).not.toContain('clave');
   await expect(sdk.joinById(a.roomId,{name:'Intruso'})).rejects.toThrow('Contraseña');
   await expect(sdk.joinById(a.roomId,{name:'Miron',spectator:true,password:'clave'})).rejects.toThrow('no admite');

@@ -15,7 +15,7 @@ import {
 } from '@bandera/shared';
 const input = (options: Partial<Input> = {}): Input => ({ ...idleInput(), ...options });
 function setup(classes: ClassId[] = ['necromancer', 'guardian']) {
-  const d = new Duel();
+  const d = new Duel('courtyard', classes.length > 3 ? 'ffa4' : classes.length > 2 ? 'ffa3' : 'duel');
   const players = classes.map((classId, i) => d.add(String(i), `P${i}`, classId));
   d.state.phase = 'playing';
   return { d, players };

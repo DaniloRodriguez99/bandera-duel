@@ -1,6 +1,6 @@
 # Bandera Duel
 
-Juego web de captura de bandera **todos contra todos, de 2 a 4 jugadores**, con espada, arco, magia y dash. Partidas de tres minutos, salas privadas por link, controles para PC y celular y servidor autoritativo. Un mapa, hasta cuatro jugadores con base y bandera propias, sin cuentas ni base de datos.
+Juego web de captura de bandera para **duelos 1v1, equipos 2v2 o todos contra todos de 3–4 jugadores**, con espada, arco, magia y dash. Partidas de tres minutos, salas públicas o privadas por link, cuatro mapas, controles para PC y celular y servidor autoritativo. No requiere cuentas ni base de datos.
 
 ## Requisitos e inicio
 
@@ -49,10 +49,19 @@ El arquero dispara flechas y usa una daga. El mago lanza bolas de fuego con clic
 - Tocar tu bandera caída la devuelve inmediatamente; abandonada vuelve a los 10 s.
 - El arquero, el mago y el caballero tienen tres puntos de vida; el guerrero tiene cinco. Espada, flecha y hechizo hacen daño según su clase.
 - Reaparición a los 3 s, con 1 s de protección, cancelada al atacar o recoger bandera.
-- Con 2 jugadores las bases quedan a izquierda y derecha; con 3 o 4, cada color (◆ Azul, ✚ Carmesí, ▲ Jade, ● Violeta) ocupa una esquina. Podés robar la bandera de cualquier rival.
-- Cada jugador tiene **5 muertes**: a la quinta queda eliminado, suelta la bandera que llevaba y la suya sale del juego. Si queda uno solo en pie, gana por eliminación.
+- En duelo las bases quedan a izquierda y derecha. En 2v2, los compañeros comparten base, bandera y marcador, tienen apariciones separadas y no pueden dañarse. En todos contra todos cada color (◆ Azul, ✚ Carmesí, ▲ Jade, ● Violeta) ocupa una esquina.
+- Las reapariciones son ilimitadas; las muertes quedan como estadística. Si una facción pierde a todos sus participantes por abandono, su bandera sale del juego. La última facción restante gana.
 - Cada captura reinicia la arena y pausa el reloj 2 s. Tres capturas ganan; a los 3 minutos gana el mayor marcador, o se declara empate.
-- Todos deben aceptar la revancha. Una desconexión pausa y reserva el asiento 15 s; si no vuelve, queda eliminado por abandono. Salir expresamente abandona inmediatamente; la partida sigue mientras queden al menos dos jugadores.
+- El formato exige el cupo completo y que todos estén listos. Todos deben aceptar la revancha. Una desconexión pausa y reserva el asiento 15 s; si no vuelve, abandona. En 2v2 su compañero puede continuar.
+
+### Mapas y arbustos
+
+- **Patio del Rey:** arena abierta, sin arbustos, adecuada para aprender y comparar clases.
+- **Bosque de Emboscadas:** claro central y cuatro zonas de arbustos en las rutas laterales.
+- **Ruinas del Bastión:** tres corredores conectados y dos zonas de arbustos interiores.
+- **Encrucijada:** plaza abierta, obstáculos simétricos y arbustos pequeños en accesos diagonales.
+
+Dentro de un arbusto, un enemigo no recibe la posición ni el estado espacial del personaje. Puede detectarlo si entra en el mismo grupo, se acerca a 90 unidades y tiene línea de visión. Los aliados comparten visión; llevar una bandera impide ocultarse. Atacar o recibir daño revela durante 1,5 s. Proyectiles siguen visibles y las trampas ocultas solo se envían a su dueño o a una facción que detecte esa zona.
 
 ## Organización y red
 
@@ -62,11 +71,11 @@ El arquero dispara flechas y usa una daga. El mago lanza bolas de fuego con clic
 
 El servidor simula a **30 Hz** y emite snapshots a **15 Hz**. Usa mensajes explícitos de Colyseus para sincronizar el pequeño estado completo del duelo, sin Schema ni almacenamiento. Cada cliente tiene una cola limitada: se procesa como máximo una entrada por tick; el tiempo y las coordenadas del cliente no gobiernan la simulación. Entradas antiguas, no finitas o fuera de rango se rechazan. Tras 250 ms sin inputs se detiene el movimiento residual.
 
-Mensajes cliente → servidor: `input` (`seq`, `x`, `y`, `angle`, `sword`, `shot`, `dash`), `ready`, `sync` y `ping`. Mensajes servidor → cliente: `snapshot` y `pong`. `Snapshot`, `Input`, `Player`, `Flag` y las reglas son tipos exportados por el paquete compartido.
+Mensajes cliente → servidor: `input`, `ready`, `selectClass`, `selectTeam`, `perspective`, `sync` y `ping`. Mensajes servidor → cliente: `snapshot`, `roomInfo`, `selectionError` y `pong`. `Snapshot` contiene una lista pública de participantes separada de las entidades visibles; los enemigos ocultos se eliminan por cliente en el servidor.
 
 El navegador predice su movimiento y lo reconcilia con el último `ack`; interpola al rival y suaviza las flechas. Golpes, vida y capturas siempre se resuelven en el servidor. Esta v1 no incorpora rollback ni compensación histórica de impactos: una latencia alta todavía afecta al combate.
 
-Cada color es un equipo de un solo jugador. `layout()` del paquete compartido decide bases, banderas y apariciones según la cantidad de jugadores (duelo o esquinas).
+`MapDefinition` y `layout()` del paquete compartido deciden paredes, arbustos, bases, banderas y apariciones según el mapa y formato. El cliente y el servidor usan la misma geometría.
 
 ## Verificación
 
@@ -78,7 +87,7 @@ npx playwright install chromium
 npm run test:browser
 ```
 
-`npm test` cubre reglas e integración con dos clientes Colyseus reales, incluyendo 150 ms de latencia simulada, reconexión y expiración de los 15 s de reserva. Usa el puerto **2568**.
+`npm test` cubre reglas, habilidades, cuatro mapas, 2v2, todos contra todos y filtrado de sigilo, además de integración con clientes Colyseus reales, 150 ms de latencia simulada, reconexión y expiración de la reserva. Usa el puerto **2568**.
 
 `npm run test:browser` requiere el servidor compilado (`npm run build`) y levanta servidor y Vite si no están activos. Usa Chromium y verifica tres capturas por teclado, resultado en dos navegadores, revancha, recarga con reconexión, errores de sala y multitouch móvil mediante CDP. Capturas y trazas quedan en `test-results/` y no se versionan.
 
@@ -124,16 +133,16 @@ Después de publicar, comprobá `/health`, una invitación entre PC y móvil, un
 Ver `VALIDATION.md` para los resultados comprobados y las limitaciones de validación. El repositorio se entrega inicializado, sin remoto ni publicación. Las dependencias quedan fijadas en `package-lock.json`.
 
 ## Espectadores
-Al abrir una invitación, marcá **Entrar como espectador** e ingresá un apodo. Hay dos lugares de jugador y hasta 5 de espectador por sala. Se puede observar una partida iniciada y seguir la revancha. Los espectadores no controlan personajes ni marcan listo; su desconexión no pausa la partida y pueden reconectar durante 15 segundos.
+Al abrir una invitación, marcá **Entrar como espectador**, elegí una perspectiva e ingresá un apodo. Hay de 2 a 4 lugares de jugador según el formato y hasta 5 de espectador por sala. La perspectiva queda fija durante la ronda y usa la visión de esa facción; puede cambiarse en la sala o en resultados. Los espectadores no controlan personajes ni marcan listo, y su desconexión no pausa la partida.
 
 
 
 ## Salas públicas y privadas
-Al crear una sala podés elegir un título (1–48 caracteres), visibilidad pública o privada, contraseña opcional (hasta 64 caracteres) y permitir o desactivar espectadores. La lista pública se actualiza cada 2 segundos y permite jugar u observar. Las salas privadas solo se comparten por enlace. La contraseña se exige a jugadores y espectadores y nunca se incluye en el enlace ni en el listado. El contador muestra espectadores conectados en tiempo real; se reserva su cupo 15 segundos al reconectar. GET /rooms devuelve únicamente datos públicos de salas públicas; las salas desaparecen al eliminarse del servidor.
+Al crear una sala podés elegir título, mapa, formato, visibilidad pública o privada, contraseña opcional y permitir o desactivar espectadores. La lista pública se actualiza cada 2 segundos, muestra mapa, formato, cupo y partidas en curso. Las salas privadas solo se comparten por enlace. La contraseña se exige a jugadores y espectadores y nunca se incluye en el enlace ni en el listado. El contador muestra espectadores conectados en tiempo real. `GET /rooms` devuelve únicamente datos públicos.
 
 
 ## Práctica local
-En la pantalla inicial, elegí una clase y pulsá **Probar contra un rival inmóvil**. No requiere apodo, sala ni servidor. El rival recibe daño y reaparece, pero no se mueve ni ataca. Podés probar armas, movilidad y banderas con las reglas habituales. Usá **Reiniciar práctica** para restablecer la partida o **Volver al inicio** para elegir otra clase o jugar online.
+En la pantalla inicial, elegí una clase y uno de los cuatro mapas, y pulsá **Probar contra un rival inmóvil**. No requiere apodo, sala ni servidor. El rival recibe daño y reaparece, pero no se mueve ni ataca. Podés probar armas, movilidad, arbustos y banderas con las reglas habituales.
 
 
 ### Combates en vivo
