@@ -10,6 +10,7 @@ import {
   TEAM_ICONS,
   layout,
   projectileStats,
+  arrowMotion,
   chargePower,
   distance,
   movePlayer,
@@ -388,6 +389,8 @@ export class Arena extends Phaser.Scene {
       const radius = RULES.explosionRadius * (0.6 + 0.4 * (e.power ?? 1));
       this.fade(this.add.circle(e.x, e.y, 10, 0xff7a2f, 0.6).setDepth(16), { scale: radius / 10 }, 380);
       this.fade(this.add.circle(e.x, e.y, 8).setStrokeStyle(3, 0xffe08a, 0.95).setDepth(16), { scale: 6 }, 460);
+    } else if (e.kind === 'icecone') {
+      this.iceBreeze(e.x, e.y, e.angle ?? 0);
     } else if (e.kind === 'freeze') {
       this.fade(this.add.star(e.x, e.y - 6, 6, 4, 13, 0xbff4ff, 0.85).setDepth(16), { scale: 1.9, angle: 45 }, 520);
     } else if (e.kind === 'heal') {
@@ -471,6 +474,122 @@ export class Arena extends Phaser.Scene {
       g.fillTriangle(px, py + 3, px + 3, py, px - 3, py);
     }
   }
+  /** Warrior's full counter ward: spinning golden arcs; charged it spins faster and burns orange. */
+  private drawCounterWard(
+    g: Phaser.GameObjects.Graphics,
+    x: number,
+    y: number,
+    charged: boolean,
+    progress: number,
+    now: number,
+  ) {
+    g.lineStyle(2, charged ? 0xff9a3c : 0xffd36b, 0.9);
+    for (let i = 0; i < 6; i++) {
+      const from = now * (charged ? 0.012 : 0.006) + (i * Math.PI) / 3;
+      g.beginPath();
+      g.arc(x, y - 3, 24, from, from + 0.6);
+      g.strokePath();
+    }
+    if (charged) {
+      g.lineStyle(1, 0xffe7b1, 0.75);
+      g.strokeCircle(x, y - 3, 29 + Math.sin(now * 0.02) * 2);
+    } else {
+      g.lineStyle(2, 0xfff3c4, 0.6);
+      g.beginPath();
+      g.arc(x, y - 3, 29, -Math.PI / 2, -Math.PI / 2 + progress * Math.PI * 2);
+      g.strokePath();
+    }
+  }
+  /** A fighting thrall's skills: charge rune, dash streaks, raised guard, counter ward and magic shield. */
+  private drawThrallSkills(g: Phaser.GameObjects.Graphics, z: Zombie, x: number, y: number, time: number) {
+    const action = z.action;
+    if (action && action.skill !== 'dash') {
+      const progress = 1 - action.left / Math.max(1e-6, action.total);
+      const color =
+        action.skill === 'raise' ? 0x7dffb0 : CLASSES[z.classId ?? 'guardian'].ranged ? 0xff8a3c : GOLD;
+      g.lineStyle(2, color, 0.5 + progress * 0.4);
+      g.strokeEllipse(x, y + 8, 30 + progress * 18, 12 + progress * 7);
+      g.lineStyle(3, color, 0.9);
+      g.beginPath();
+      g.arc(x, y - 4, 20, -Math.PI / 2, -Math.PI / 2 + progress * Math.PI * 2);
+      g.strokePath();
+    }
+    if (action?.skill === 'dash') {
+      const dx = Math.cos(action.angle),
+        dy = Math.sin(action.angle);
+      g.lineStyle(2, 0xd8fbff, 0.55);
+      for (const offset of [-6, 0, 6])
+        g.lineBetween(x - dy * offset, y + dx * offset, x - dy * offset - dx * 26, y + dx * offset - dy * 26);
+    }
+    if (z.guardLeft > 0) {
+      g.lineStyle(3, 0xeac787, 0.9);
+      g.beginPath();
+      g.arc(x, y - 3, 20, z.angle - RULES.guardArc / 2, z.angle + RULES.guardArc / 2);
+      g.strokePath();
+    }
+    if (z.counterLeft > 0) this.drawCounterWard(g, x, y, false, 1, time);
+    if (z.shieldHits > 0) {
+      g.fillStyle(0x78cfff, 0.1);
+      g.fillCircle(x, y - 3, 23);
+      g.lineStyle(2, 0x9deaff, 0.75);
+      g.strokeCircle(x, y - 3, 23);
+    }
+  }
+  /** Zombie mage's ice spell: an expanding cone of freezing wind with white streaks and drifting shards. */
+  private iceBreeze(x: number, y: number, angle: number) {
+    const g = this.add.graphics().setDepth(15);
+    const half = RULES.iceConeArc / 2;
+    const shards = Array.from({ length: 16 }, () => ({
+      spread: (Math.random() - 0.5) * RULES.iceConeArc,
+      speed: 0.7 + Math.random() * 0.5,
+      size: 1.5 + Math.random() * 2,
+    }));
+    const clock = { t: 0 };
+    this.tweens.add({
+      targets: clock,
+      t: 1,
+      duration: 460,
+      onUpdate: () => {
+        const t = clock.t,
+          reach = RULES.iceConeRange * (0.35 + 0.65 * t),
+          fade = 1 - Math.max(0, t - 0.6) / 0.4;
+        g.clear();
+        g.fillStyle(0x9fe0ff, 0.24 * fade);
+        g.beginPath();
+        g.slice(x, y, reach, angle - half, angle + half, false);
+        g.fillPath();
+        g.fillStyle(0xe6f8ff, 0.2 * fade);
+        g.beginPath();
+        g.slice(x, y, reach * 0.6, angle - half * 0.7, angle + half * 0.7, false);
+        g.fillPath();
+        g.lineStyle(2, 0xe6f8ff, 0.75 * fade);
+        g.beginPath();
+        g.arc(x, y, reach, angle - half, angle + half);
+        g.strokePath();
+        for (let i = -2; i <= 2; i++) {
+          const a = angle + (i / 2) * half * 0.8,
+            sway = Math.sin(t * 14 + i) * 0.06;
+          g.lineStyle(1, 0xffffff, 0.55 * fade);
+          g.lineBetween(
+            x + Math.cos(a + sway) * reach * 0.25,
+            y + Math.sin(a + sway) * reach * 0.25,
+            x + Math.cos(a) * reach * 0.95,
+            y + Math.sin(a) * reach * 0.95,
+          );
+        }
+        for (const shard of shards) {
+          const r = reach * Math.min(1, t * shard.speed * 1.4),
+            a = angle + shard.spread,
+            px = x + Math.cos(a) * r,
+            py = y + Math.sin(a) * r;
+          g.fillStyle(0xf4fdff, 0.9 * fade);
+          g.fillTriangle(px, py - shard.size, px + shard.size, py, px, py + shard.size);
+          g.fillTriangle(px, py - shard.size, px - shard.size, py, px, py + shard.size);
+        }
+      },
+      onComplete: () => g.destroy(),
+    });
+  }
   /** Warrior's travelling slash: a bright crescent with fading after-images, thinning out as it ends. */
   private drawSlash(p: { x: number; y: number }, angle: number, life: number) {
     const g = this.arrows,
@@ -526,21 +645,30 @@ export class Arena extends Phaser.Scene {
     );
   }
   /** Original raising mandala on the ground: counter-rotating rune squares, orbiting petals, glowing core. */
-  private drawMandala(g: Phaser.GameObjects.Graphics, x: number, y: number, radius: number, time: number, alpha: number) {
+  private drawMandala(
+    g: Phaser.GameObjects.Graphics,
+    x: number,
+    y: number,
+    radius: number,
+    time: number,
+    alpha: number,
+    color = 0x7dffb0,
+    light = 0xe8fff0,
+  ) {
     const flat = 0.45,
       spin = time * 0.0015;
     const at = (angle: number, r: number) => ({ x: x + Math.cos(angle) * r, y: y + Math.sin(angle) * r * flat });
-    g.fillStyle(0x7dffb0, alpha * 0.2);
+    g.fillStyle(color, alpha * 0.2);
     g.fillEllipse(x, y, radius * 0.9, radius * 0.9 * flat);
-    g.lineStyle(2, 0x7dffb0, alpha);
+    g.lineStyle(2, color, alpha);
     g.strokeEllipse(x, y, radius * 2, radius * 2 * flat);
-    g.lineStyle(1, 0xe8fff0, alpha * 0.8);
+    g.lineStyle(1, light, alpha * 0.8);
     g.strokeEllipse(x, y, radius * 1.35, radius * 1.35 * flat);
     for (const [turn, dir] of [
       [0, 1],
       [Math.PI / 4, -1],
     ]) {
-      g.lineStyle(1, 0x7dffb0, alpha * 0.9);
+      g.lineStyle(1, color, alpha * 0.9);
       g.strokePoints(
         [0, 1, 2, 3].map((i) => at(spin * dir + turn + (i * Math.PI) / 2, radius * 0.95)),
         true,
@@ -548,7 +676,7 @@ export class Arena extends Phaser.Scene {
     }
     for (let i = 0; i < 8; i++) {
       const petal = at(-spin * 1.5 + (i * Math.PI) / 4, radius * 0.68);
-      g.fillStyle(0xbfffd6, alpha * 0.85);
+      g.fillStyle(light, alpha * 0.85);
       g.fillCircle(petal.x, petal.y, 1.8);
     }
   }
@@ -769,27 +897,15 @@ export class Arena extends Phaser.Scene {
       v.hp.lineStyle(2,0x9deaff,.8);v.hp.strokeCircle(v.x,v.y-3,25);
       if(p.magicShieldHits===2){v.hp.lineStyle(1,0xe6faff,.55);v.hp.strokeCircle(v.x,v.y-3,29);}
     }
-    if (p.hp > 0 && p.counterLeft > 0) {
-      // Warrior's full counter: a spinning golden ward; once charged it spins faster and burns orange.
-      const charged = p.counterCharge >= RULES.counterChargeTime - 1e-8;
-      const now = this.time.now;
-      v.hp.lineStyle(2, charged ? 0xff9a3c : 0xffd36b, 0.9);
-      for (let i = 0; i < 6; i++) {
-        const from = now * (charged ? 0.012 : 0.006) + (i * Math.PI) / 3;
-        v.hp.beginPath();
-        v.hp.arc(v.x, v.y - 3, 24, from, from + 0.6);
-        v.hp.strokePath();
-      }
-      if (charged) {
-        v.hp.lineStyle(1, 0xffe7b1, 0.75);
-        v.hp.strokeCircle(v.x, v.y - 3, 29 + Math.sin(now * 0.02) * 2);
-      } else {
-        v.hp.lineStyle(2, 0xfff3c4, 0.6);
-        v.hp.beginPath();
-        v.hp.arc(v.x, v.y - 3, 29, -Math.PI / 2, -Math.PI / 2 + Math.min(1, p.counterCharge / RULES.counterChargeTime) * Math.PI * 2);
-        v.hp.strokePath();
-      }
-    }
+    if (p.hp > 0 && p.counterLeft > 0)
+      this.drawCounterWard(
+        v.hp,
+        v.x,
+        v.y,
+        p.counterCharge >= RULES.counterChargeTime - 1e-8,
+        Math.min(1, p.counterCharge / RULES.counterChargeTime),
+        this.time.now,
+      );
     if (p.hp > 0) {
       const left=v.x-(p.maxHp*8-2)/2;
       for (let i=0;i<p.maxHp;i++) {
@@ -935,7 +1051,23 @@ export class Arena extends Phaser.Scene {
       v.fx.strokeRoundedRect(v.x - 14, v.y - 26, 28, 36, 5);
     }
     if (z.kind === 'sword') this.drawZombieSword(v.fx, z, v.x, v.y, time);
+    if (z.kind === 'thrall') this.drawThrallSkills(v.fx, z, v.x, v.y, time);
     if (z.kind !== 'hat') return;
+    if (z.cast > 0) {
+      // Casting: a mandala under the mage in the color of the spell on its way.
+      const progress = 1 - z.cast / RULES.hatCastTime;
+      const ice = z.spell === 'ice';
+      this.drawMandala(
+        v.aura,
+        v.x,
+        v.y + 9,
+        20 + progress * 16,
+        time,
+        0.4 + progress * 0.55,
+        ice ? 0x7fd4ff : 0xff6a2c,
+        ice ? 0xe6f8ff : 0xffd0a0,
+      );
+    }
     v.fx.fillStyle(0x2b0f3a, 0.3 + Math.sin(time * 0.005) * 0.1);
     v.fx.fillEllipse(v.x, v.y + 9, 46, 16);
     const until = 1 - Math.max(0, z.spawnLeft) / RULES.hatSpawnEvery;
@@ -984,7 +1116,8 @@ export class Arena extends Phaser.Scene {
     g.lineStyle(1, 0x6b4a30, 1);
     g.lineBetween(foot.x, foot.y, top.x, top.y);
     const pulse = 0.6 + Math.sin(time * 0.01) * 0.4;
-    g.fillStyle(cast > 0 || recoil > 0 ? 0xff8a3c : 0xb06cff, 0.25 + cast * 0.35);
+    const ice = z.spell === 'ice';
+    g.fillStyle(cast > 0 ? (ice ? 0x7fd4ff : 0xff8a3c) : recoil > 0 ? 0xd8fbff : 0xb06cff, 0.25 + cast * 0.35);
     g.fillCircle(top.x, top.y - 2, 5 + pulse * 2 + cast * 8);
     g.fillStyle(0xd6cfb3);
     g.fillCircle(top.x, top.y - 2, 3.5);
@@ -992,11 +1125,12 @@ export class Arena extends Phaser.Scene {
     g.fillRect(top.x - 2, top.y - 3, 1, 1);
     g.fillRect(top.x + 1, top.y - 3, 1, 1);
     if (cast > 0) {
-      g.fillStyle(0xffd36b, 0.95);
+      // The staff and the casting hand glow with the spell being cast.
+      g.fillStyle(ice ? 0xbff0ff : 0xffd36b, 0.95);
       g.fillCircle(top.x, top.y - 2, 2 + cast * 4);
-      g.fillStyle(0x9fe8ff, 0.35);
+      g.fillStyle(ice ? 0x9fe8ff : 0xff8a3c, 0.35);
       g.fillCircle(offHand.x, offHand.y, 3 + cast * 6);
-      g.fillStyle(0xe8fbff, 0.95);
+      g.fillStyle(ice ? 0xe8fbff : 0xffe7b1, 0.95);
       g.fillCircle(offHand.x, offHand.y, 1.5 + cast * 3);
     }
     for (const [shoulder, hand] of [
@@ -1120,8 +1254,8 @@ export class Arena extends Phaser.Scene {
     for (const a of s.arrows) {
       const age = s.paused ? 0 : Math.min((performance.now() - this.receivedAt) / 1000, 1 / 15);
       const next = {
-        x: a.x + Math.cos(a.angle) * projectileStats(a.classId, a.charged, a.power).speed * (a.reflected === 2 ? RULES.counterBoost : 1) * age,
-        y: a.y + Math.sin(a.angle) * projectileStats(a.classId, a.charged, a.power).speed * (a.reflected === 2 ? RULES.counterBoost : 1) * age,
+        x: a.x + Math.cos(a.angle) * arrowMotion(a).speed * age,
+        y: a.y + Math.sin(a.angle) * arrowMotion(a).speed * age,
       };
       const p = lineClear(a, next, MAPS[s.mapId].walls) ? next : a;
       const grow = 1 + (a.power ?? 0);
@@ -1129,6 +1263,19 @@ export class Arena extends Phaser.Scene {
         // Countered projectile: a golden halo, bigger when the counter was charged.
         this.arrows.fillStyle(0xffd36b, 0.18 + 0.1 * a.reflected);
         this.arrows.fillCircle(p.x, p.y, 7 + 5 * a.reflected);
+      }
+      if (a.blast) {
+        // Zombie mage fireball: a rolling area of fire with a scorched ring on the ground.
+        this.arrows.fillStyle(0xff4a1a, 0.12);
+        this.arrows.fillCircle(p.x, p.y + 4, RULES.hatFireRadius + 4);
+        this.arrows.lineStyle(2, 0xff8a3c, 0.35);
+        this.arrows.strokeCircle(p.x, p.y + 4, RULES.hatFireRadius);
+        this.drawBlaze(p, a.angle, 0.6, time, 0xff6a1f);
+        continue;
+      }
+      if (a.gust) {
+        this.drawWind(p, a.angle, time, true);
+        continue;
       }
       if (a.slash) {
         this.drawSlash(p, a.angle, a.life);

@@ -179,6 +179,17 @@ Sobre cada tarjeta crece su árbol: qué hace un toque, qué hace mantener y (en
 - **E** activa o desactiva el modo **automático**: sin círculos, todos atacan solos al rival cercano y, si no hay ninguno, te acompañan.
 - Invocar no espera ni bloquea al fuego: se puede lanzar fuego e invocar a la vez. Resucitar castea **0,5 s** con el nigromante quieto; recién entonces se abre el mandala y se levanta el esclavo.
 
+### Zombie mago y esclavos
+- **Zombie mago:** alterna hechizos, **hielo → fuego → hielo…**. Antes de cada uno castea 0,5 s con un mandala debajo del color del hechizo (azul el hielo, naranja el fuego). Después de lanzar no puede castear otro durante 1 s y mientras tanto dispara **ráfagas de viento** cortas (0,25 de daño y un pequeño empujón).
+  - **Hielo:** una brisa helada en cono (160 px, 60°) que daña (0,5) y congela a todos los que alcanza.
+  - **Fuego:** una bola de fuego en área que avanza y quema una vez a cada uno que atraviesa, hasta chocar con un muro.
+- **Esclavos:** pelean con las habilidades de su clase y las combinan.
+  - **Arquero:** triple, flecha cargada; si se le acercan pone una trampa y salta hacia atrás disparando una flecha de viento (o una triple de viento a quemarropa).
+  - **Mago:** bola de hielo y enseguida la gran bola de fuego cargada sobre el congelado; escudo mágico de 2 golpes que se recarga; dash para alejarse.
+  - **Nigromante:** hace todo lo que hace un nigromante: fuego cargado, zombie mago, 2 zombies cada 5 s y resucita tumbas cercanas (con sus propios topes; un esclavo resucitado por otro esclavo no puede resucitar).
+  - **Caballero:** levanta el escudo ante un proyectil y responde con un golpe cargado.
+  - **Guerrero:** contraataca proyectiles, se acerca con dash, lanza el tajo viajero y golpea cargado de cerca.
+
 ### Guerrero
 - **Espacio:** dash, más corto que el del arquero y el mago (mantener para uno más largo). Camina un poco más lento que antes (145).
 - **Q · tajo viajero:** lanza una media luna que avanza unos 270 px, atraviesa y corta a todos los rivales y zombies en su camino (1,5 de daño a cada uno), hasta chocar con un muro. Recarga de 5 s. Los escudos lo bloquean.
