@@ -1106,8 +1106,8 @@ select:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
   .in-room #touch-controls.active {
     z-index: 30;
     padding:
-      58px max(12px, env(safe-area-inset-right))
-      max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+      58px max(26px, calc(env(safe-area-inset-right) + 16px))
+      max(18px, calc(env(safe-area-inset-bottom) + 8px)) max(12px, env(safe-area-inset-left));
   }
   .in-room .stick {
     width: clamp(88px, 25dvh, 108px);
@@ -1122,8 +1122,8 @@ select:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
     align-items: flex-end;
     justify-content: flex-start;
     align-content: flex-end;
-    gap: 7px;
-    width: min(35dvw, 190px);
+    gap: 8px;
+    width: min(40dvw, 230px);
     pointer-events: none;
   }
   .touch-ability {
@@ -1132,8 +1132,8 @@ select:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
     --cd: 0;
     --charge: 0;
     position: relative;
-    width: clamp(46px, 12dvh, 54px);
-    height: clamp(46px, 12dvh, 54px);
+    width: clamp(52px, 14dvh, 62px);
+    height: clamp(52px, 14dvh, 62px);
     flex: 0 0 auto;
     display: grid;
     place-items: center;
@@ -1150,8 +1150,8 @@ select:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
     box-shadow: inset 0 0 8px #000b, 0 2px 9px #0008;
   }
   .touch-ability.primary {
-    width: clamp(58px, 15dvh, 68px);
-    height: clamp(58px, 15dvh, 68px);
+    width: clamp(68px, 18dvh, 82px);
+    height: clamp(68px, 18dvh, 82px);
     border-width: 2px;
     opacity: .82;
   }
@@ -1203,10 +1203,10 @@ select:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
   }
   .touch-ability-thumb {
     position: absolute;
-    left: calc(50% - 5px);
-    top: calc(50% - 5px);
-    width: 10px;
-    height: 10px;
+    left: calc(50% - 6px);
+    top: calc(50% - 6px);
+    width: 12px;
+    height: 12px;
     border: 1px solid #e8ffff;
     border-radius: 50%;
     background: #6fe7f1d9;

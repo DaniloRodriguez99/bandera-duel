@@ -244,9 +244,9 @@ export class Controls {
     if (magnitude > 12) gesture.dragged = true;
     gesture.cancelled = gesture.dragged && magnitude < 10;
     gesture.element.dataset.cancel = String(gesture.cancelled);
-    const scale = Math.min(1, magnitude / 34);
-    const thumbX = magnitude > 0 ? (dx / magnitude) * scale * 19 : 0;
-    const thumbY = magnitude > 0 ? (dy / magnitude) * scale * 19 : 0;
+    const scale = Math.min(1, magnitude / 46);
+    const thumbX = magnitude > 0 ? (dx / magnitude) * scale * 25 : 0;
+    const thumbY = magnitude > 0 ? (dy / magnitude) * scale * 25 : 0;
     gesture.element.style.setProperty('--aim-x', `${thumbX}px`);
     gesture.element.style.setProperty('--aim-y', `${thumbY}px`);
     if (gesture.slot.directional && magnitude > 7) {
