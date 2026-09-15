@@ -172,7 +172,8 @@ export const RULES = {
   zombieRange: 24,
   zombieWindup: 0.35,
   zombieCooldown: 1,
-  zombieLife: 20,
+  // Zombies stay until they are killed (or the arena resets).
+  zombieLife: 9999,
   zombieAggro: 280,
   zombieRetarget: 0.4,
   overchargeTap: 0.22,
@@ -184,7 +185,12 @@ export const RULES = {
   raiseCast: 0.5,
   thrallCooldown: 20,
   hatHp: 5,
-  hatLife: 30,
+  hatLife: 9999,
+  hatMinionMax: 3,
+  swordZombieHp: 3,
+  swordZombieDamage: 1.5,
+  swordZombieLevelMax: 3,
+  fallenMax: 4,
   hatSpawnEvery: 5,
   hatHealEvery: 2,
   hatHeal: 0.5,
@@ -395,6 +401,8 @@ export interface Player extends Vec {
   counterCharge: number;
   counterCd: number;
   counterHeld: boolean;
+  /** Guard zombies killed in the red circle, waiting to come back as sword zombies. */
+  fallenGuards: number;
   activeTraps: number;
   specialCharge: number;
   swingPower: number;
@@ -460,7 +468,7 @@ export interface Zombie extends Vec {
   life: number;
   target: string | null;
   retarget: number;
-  kind: 'brute' | 'hat' | 'thrall';
+  kind: 'brute' | 'hat' | 'thrall' | 'sword';
   bonus: boolean;
   maxHp: number;
   cast: number;
@@ -474,6 +482,8 @@ export interface Zombie extends Vec {
   execution: number | null;
   slot: number;
   rise: number;
+  /** Sword zombie level, 1 to 3: one level per kill. */
+  level: number;
 }
 export interface GameEvent extends Vec {
   id: number;
@@ -494,7 +504,8 @@ export interface GameEvent extends Vec {
     | 'explosion'
     | 'wind'
     | 'mandala'
-    | 'counter';
+    | 'counter'
+    | 'levelup';
   team: Team;
   angle?: number;
   classId?: ClassId;
@@ -502,6 +513,17 @@ export interface GameEvent extends Vec {
 }
 /** Zombies from the charged summon (hat, its minions, thrall) never use the normal cap. */
 export const countsTowardLimit = (z: Zombie) => !z.bonus;
+/** Sword zombie by level: harder hits, more life and faster swings; level 3 cleaves everyone in reach. */
+export function swordZombieStats(level: number) {
+  const up = Math.max(0, Math.min(RULES.swordZombieLevelMax, level) - 1);
+  return {
+    damage: RULES.swordZombieDamage + up * 0.5,
+    hp: RULES.swordZombieHp + up,
+    cooldown: RULES.zombieCooldown * (1 - 0.15 * up),
+    pace: 1 + 0.08 * up,
+    cleave: up >= 2,
+  };
+}
 /** Where a rival fell: a necromancer can raise it until it crumbles, even after they respawn. */
 export interface Grave extends Vec {
   classId: ClassId;
@@ -938,7 +960,10 @@ export function movePlayer(p: Player, input: Input, carrying: boolean, dt = RULE
     stats.summon &&
     p.summonCd <= 0 &&
     // A charged summon (hat zombie or thrall) never takes an execution slot.
-    (p.activeExecutions < RULES.zombieExecutions || p.specialCharge >= RULES.overchargeTap)
+    // A fallen guard's sword zombie reuses that guard's slot too.
+    (p.activeExecutions < RULES.zombieExecutions ||
+      p.specialCharge >= RULES.overchargeTap ||
+      p.fallenGuards > 0)
   ) {
     p.invuln = 0;
     p.summonCd = RULES.summonCooldown;
@@ -1003,6 +1028,7 @@ export function newPlayer(
     counterCharge: 0,
     counterCd: 0,
     counterHeld: false,
+    fallenGuards: 0,
     activeTraps: 0,
     specialCharge: 0,
     swingPower: 0,
@@ -1062,6 +1088,8 @@ export class Duel {
   private volleyHits = new Map<string, number>();
   /** Necromancers mid-cast and the thrall they are raising. */
   private raising = new Map<string, { classId: ClassId; name: string }>();
+  /** Executions of guard zombies killed in the red circle, per necromancer, oldest first. */
+  private fallen = new Map<string, number[]>();
   add(id: string, name: string, classId: ClassId = DEFAULT_CLASS) {
     const s = this.state;
     const team = TEAMS.find((t) => !s.players.some((p) => p.team === t));
@@ -1098,6 +1126,7 @@ export class Duel {
       eliminated: p.eliminated,
       thrall: p.thrall,
       thrallCd: p.thrallCd,
+      fallenGuards: p.fallenGuards,
       invuln,
     });
   }
@@ -1157,7 +1186,11 @@ export class Duel {
     s.zombies = [];
     s.graves = [];
     this.raising.clear();
-    for (const p of s.players) p.raiseCast = 0;
+    this.fallen.clear();
+    for (const p of s.players) {
+      p.raiseCast = 0;
+      p.fallenGuards = 0;
+    }
     s.traps = [];
     this.paths.clear();
     s.flags = s.bases
@@ -1336,6 +1369,7 @@ export class Duel {
       slot: id % 4,
       rise: 0,
       role: 'guard',
+      level: 1,
       ...extra,
     };
   }
@@ -1361,6 +1395,27 @@ export class Duel {
       );
       p.hatAlive = true;
       this.event('summon', p, p.team, p.angle, p.classId, 1);
+      return;
+    }
+    // A guard that fell in the red circle comes back as a sword zombie, in its execution's place.
+    const fallen = this.fallen.get(p.id);
+    if (fallen?.length) {
+      const execution = fallen.shift()!;
+      p.fallenGuards = fallen.length;
+      const taken = new Set(s.zombies.filter((z) => z.owner === p.id).map((z) => z.slot));
+      const hp = swordZombieStats(1).hp;
+      s.zombies.push(
+        this.newZombie(p, ahead, p, {
+          kind: 'sword',
+          execution,
+          hp,
+          maxHp: hp,
+          slot: [0, 1, 2, 3].find((slot) => !taken.has(slot)) ?? 0,
+          rise: RULES.zombieRise,
+        }),
+      );
+      p.activeExecutions = this.activeExecutions(p.id);
+      this.event('summon', p, p.team, p.angle, p.classId);
       return;
     }
     if (this.activeExecutions(p.id) >= RULES.zombieExecutions) return;
@@ -1432,6 +1487,14 @@ export class Duel {
     );
     p.thrallAlive = true;
     this.event('raise', at, p.team, p.angle, bound.classId);
+  }
+  /** A sword zombie that kills levels up (up to 3): more damage and life, faster swings, then cleave. */
+  private levelUp(z: Zombie) {
+    if (z.level >= RULES.swordZombieLevelMax) return;
+    z.level++;
+    z.maxHp = swordZombieStats(z.level).hp;
+    z.hp = z.maxHp;
+    this.event('levelup', z, z.team, z.angle, undefined, z.level);
   }
   /** A plain volley arrow flies past a target its sibling already struck, on to the next rival in line. */
   private volleyPasses(a: Arrow, id: string) {
@@ -1645,7 +1708,7 @@ export class Duel {
       const target: Vec | undefined = player ?? zombie;
       if (!target) z.target = null;
       const owner = s.players.find((p) => p.id === z.owner);
-      const pace = z.kind === 'thrall' ? 1.1 : 1;
+      const pace = z.kind === 'thrall' ? 1.1 : z.kind === 'sword' ? swordZombieStats(z.level).pace : 1;
       const mode = this.zombieMode(z, owner);
       if (z.rise > 0) {
         z.rise = Math.max(0, z.rise - dt);
@@ -1665,8 +1728,14 @@ export class Duel {
           z.spawnLeft = RULES.hatSpawnEvery;
           const behind = { x: z.x - Math.cos(z.angle) * 24, y: z.y - Math.sin(z.angle) * 24 };
           // The hat zombie's minions skip the summon limit and are the ones that follow the cursor.
-          minions.push(this.newZombie(owner, behind, z, { bonus: true, role: 'cursor' }));
-          this.event('summon', z, z.team, z.angle, 'necromancer');
+          // Zombies no longer expire, so a hat keeps only a few minions alive at once.
+          const alive =
+            minions.length +
+            s.zombies.filter((q) => q.owner === z.owner && q.hp > 0 && q.bonus && q.kind === 'brute').length;
+          if (alive < RULES.hatMinionMax) {
+            minions.push(this.newZombie(owner, behind, z, { bonus: true, role: 'cursor' }));
+            this.event('summon', z, z.team, z.angle, 'necromancer');
+          }
         }
       }
       if (z.frozenLeft > 0) {
@@ -1705,17 +1774,30 @@ export class Duel {
         continue;
       }
       const melee = z.kind === 'thrall' && z.classId ? CLASSES[z.classId] : undefined;
-      const reach = melee ? melee.meleeRange : RULES.zombieRange;
+      const sword = z.kind === 'sword' ? swordZombieStats(z.level) : undefined;
+      const reach = melee ? melee.meleeRange : sword ? RULES.zombieRange + 6 : RULES.zombieRange;
       if (z.windup > 0) {
         z.windup = Math.max(0, z.windup - dt);
         if (z.windup > 0) continue;
-        z.attackCd = melee ? melee.meleeCooldown : RULES.zombieCooldown;
+        z.attackCd = melee ? melee.meleeCooldown : sword ? sword.cooldown : RULES.zombieCooldown;
         if (target && distance(z, target) <= reach + 8 && lineClear(z, target)) {
           const angle = Math.atan2(target.y - z.y, target.x - z.x);
-          const amount = melee ? melee.meleeDamage : RULES.zombieDamage;
-          if (player && owner) this.damage(player, owner, angle, amount);
-          else if (zombie) this.damageZombie(zombie, z.team, amount);
-          if (melee) this.event('sword', z, z.team, angle, z.classId);
+          const amount = melee ? melee.meleeDamage : sword ? sword.damage : RULES.zombieDamage;
+          // A level 3 sword zombie cleaves every rival within reach; the rest strike only their target.
+          const inReach = (q: Vec & { team: Team; hp: number }) =>
+            q.team !== z.team && q.hp > 0 && distance(z, q) <= reach + 8 && lineClear(z, q);
+          const players = sword?.cleave ? s.players.filter(inReach) : player ? [player] : [];
+          const zombies = sword?.cleave ? s.zombies.filter(inReach) : zombie ? [zombie] : [];
+          let kills = 0;
+          if (owner)
+            for (const q of players)
+              if (this.damage(q, owner, Math.atan2(q.y - z.y, q.x - z.x), amount) && q.hp <= 0) kills++;
+          for (const q of zombies) {
+            this.damageZombie(q, z.team, amount);
+            if (q.hp <= 0) kills++;
+          }
+          if (melee || sword) this.event('sword', z, z.team, angle, z.classId ?? 'guardian');
+          if (sword) for (let i = 0; i < kills; i++) this.levelUp(z);
         }
         continue;
       }
@@ -1762,6 +1844,16 @@ export class Duel {
         const owner = s.players.find((p) => p.id === z.owner);
         if (owner) owner.thrallCd = RULES.thrallCooldown;
       }
+    for (const z of s.zombies) {
+      if (z.hp > 0 || z.role !== 'guard' || z.execution === null) continue;
+      if (z.kind !== 'brute' && z.kind !== 'sword') continue;
+      const owner = s.players.find((p) => p.id === z.owner);
+      if (!owner) continue;
+      const queue = this.fallen.get(owner.id) ?? [];
+      if (queue.length < RULES.fallenMax) queue.push(z.execution);
+      this.fallen.set(owner.id, queue);
+      owner.fallenGuards = queue.length;
+    }
     s.zombies = s.zombies.filter((z) => z.hp > 0 && z.life > 0);
     for (const id of this.paths.keys())
       if (!s.zombies.some((z) => z.id === id)) this.paths.delete(id);

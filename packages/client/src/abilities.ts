@@ -104,8 +104,13 @@ export function abilitySlots(classId: ClassId): AbilitySlot[] {
         tiers: [
           {
             label: 'Toque · 2 zombies',
-            active: (p) => tapped(p.specialCharge),
+            active: (p) => tapped(p.specialCharge) && p.fallenGuards === 0,
             state: (p) => `${p.activeExecutions}/${RULES.zombieExecutions}`,
+          },
+          {
+            label: 'Cayó uno del círculo rojo · zombie con espada',
+            active: (p) => p.fallenGuards > 0,
+            state: (p) => (p.fallenGuards > 0 ? `×${p.fallenGuards}` : null),
           },
           {
             label: 'Mantener · zombie mago',

@@ -165,6 +165,8 @@ Sobre cada tarjeta crece su árbol: qué hace un toque, qué hace mantener y (en
 - El **zombie mago**, sus **lacayos** y el **esclavo** siguen el **mouse** (círculo violeta): van a esa zona repartiéndose alrededor y, si el mouse queda cerca de un rival, lo rodean y lo atacan.
 - Cuando muere un rival queda su **tumba** durante 10 s. Con el aura llena aparece una circunferencia blanca que titila con el alcance (200 px); al soltar, se abre un **mandala bajo el mouse** dentro de ese alcance y ahí se levanta el caído de la tumba más cercana como lacayo hasta que lo maten, aunque el jugador ya haya reaparecido y aunque tenga otros zombies vivos (máximo 1 esclavo).
 - **⌘E / Ctrl+E** pasa al zombie más cercano al cursor del círculo rojo al mouse, o al revés.
+- Los zombies ya **no desaparecen con el tiempo**: duran hasta que los matan (o hasta que la arena se reinicia tras una captura). El zombie mago mantiene como máximo 3 lacayos vivos.
+- **Zombie con espada:** si te matan un zombie del círculo rojo, el próximo Espacio lo trae de vuelta como zombie con espada (ocupa el mismo lugar, aunque las invocaciones estén llenas). Pega 1,5 y tiene 3 de vida. Cada vez que mata a alguien **sube de nivel** (hasta 3): nivel 2, +0,5 de daño, +1 de vida y ataca más rápido; nivel 3, otra mejora igual y además **golpea a todos** los rivales a su alcance.
 - **E** activa o desactiva el modo **automático**: sin círculos, todos atacan solos al rival cercano y, si no hay ninguno, te acompañan.
 - Invocar no espera ni bloquea al fuego: se puede lanzar fuego e invocar a la vez. Resucitar castea **0,5 s** con el nigromante quieto; recién entonces se abre el mandala y se levanta el esclavo.
 

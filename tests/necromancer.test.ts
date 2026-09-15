@@ -10,8 +10,10 @@ import {
   pathCells,
   blocked,
   distance,
+  swordZombieStats,
   type ClassId,
   type Input,
+  type Player,
 } from '@bandera/shared';
 const input = (options: Partial<Input> = {}): Input => ({ ...idleInput(), ...options });
 function setup(classes: ClassId[] = ['necromancer', 'guardian']) {
@@ -23,6 +25,17 @@ function setup(classes: ClassId[] = ['necromancer', 'guardian']) {
 function run(d: Duel, count: number, inputs: Record<string, Partial<Input>> = {}) {
   for (let i = 0; i < count; i++)
     d.step(new Map(Object.entries(inputs).map(([id, options]) => [id, input(options)])));
+}
+/** Summons two guards, lets both fall, then brings back the first as a sword zombie that finished rising. */
+function summonSword(d: Duel) {
+  run(d, 1, { 0: { summon: true } });
+  run(d, Math.ceil(RULES.summonCooldown / RULES.tick) + 1);
+  for (const z of d.state.zombies) z.hp = 0;
+  run(d, 1);
+  run(d, 1, { 0: { summon: true } });
+  const sword = d.state.zombies.find((z) => z.kind === 'sword')!;
+  run(d, Math.ceil(RULES.zombieRise / RULES.tick) + 1);
+  return sword;
 }
 describe('nigromante', () => {
   it('lanza fuego con velocidad, vida y recarga propias', () => {
@@ -101,7 +114,8 @@ describe('nigromante', () => {
     run(d, Math.ceil(RULES.summonCooldown / RULES.tick));
     run(d, 1, { 0: { summon: true } });
     const first = d.state.zombies[0].execution;
-    for (const z of d.state.zombies.filter((z) => z.execution === first)) d.damageZombie(z, g.team, 99);
+    // The execution ends without its zombies falling in combat (fallen guards would return with swords).
+    for (const z of d.state.zombies.filter((z) => z.execution === first)) z.life = 0;
     run(d, 1);
     expect(n.activeExecutions).toBe(1);
     run(d, Math.ceil(RULES.summonCooldown / RULES.tick));
@@ -251,6 +265,81 @@ describe('nigromante', () => {
     run(d, 1, { 0: { shot: true, summon: true } });
     expect(d.state.arrows).toHaveLength(1);
     expect(d.state.zombies).toHaveLength(2);
+  });
+  it('los zombies ya no desaparecen con el tiempo y el zombie mago mantiene como máximo 3 lacayos', () => {
+    const { d, players: [n, g] } = setup();
+    Object.assign(n, { x: 200, y: 270, angle: 0 });
+    Object.assign(g, { x: 880, y: 500 });
+    run(d, 1, { 0: { summon: true } });
+    run(d, Math.ceil(30 / RULES.tick));
+    expect(d.state.zombies.filter((z) => z.execution !== null)).toHaveLength(2);
+    const hat = setup();
+    Object.assign(hat.players[0], { x: 200, y: 270, angle: 0 });
+    Object.assign(hat.players[1], { x: 880, y: 500 });
+    run(hat.d, Math.ceil(0.6 / RULES.tick), { 0: { special: true } });
+    run(hat.d, 1, { 0: { summon: true } });
+    run(hat.d, Math.ceil(30 / RULES.tick));
+    expect(hat.d.state.zombies.filter((z) => z.kind === 'hat')).toHaveLength(1);
+    expect(hat.d.state.zombies.filter((z) => z.kind === 'brute' && z.bonus)).toHaveLength(RULES.hatMinionMax);
+  });
+  it('si cae un zombie del círculo rojo, espacio invoca en su lugar un zombie con espada que pega más', () => {
+    const { d, players: [n, g] } = setup();
+    Object.assign(n, { x: 200, y: 270, angle: 0 });
+    Object.assign(g, { x: 880, y: 500 });
+    run(d, 1, { 0: { summon: true } });
+    run(d, Math.ceil(RULES.summonCooldown / RULES.tick) + 1);
+    const [first] = d.state.zombies;
+    first.hp = 0;
+    run(d, 1);
+    expect(n.fallenGuards).toBe(1);
+    run(d, 1, { 0: { summon: true } });
+    const sword = d.state.zombies.find((z) => z.kind === 'sword')!;
+    expect(sword).toMatchObject({ level: 1, role: 'guard', execution: first.execution, hp: RULES.swordZombieHp });
+    expect(n.fallenGuards).toBe(0);
+    expect(d.state.zombies).toHaveLength(2);
+    expect(n.activeExecutions).toBe(1);
+    expect(swordZombieStats(1).damage).toBeGreaterThan(RULES.zombieDamage);
+  });
+  it('con las invocaciones llenas, un caído igual deja invocar al zombie con espada', () => {
+    const { d, players: [n, g] } = setup();
+    Object.assign(n, { x: 200, y: 270, angle: 0 });
+    Object.assign(g, { x: 880, y: 500 });
+    run(d, 1, { 0: { summon: true } });
+    Object.assign(n, { summonCd: 0, attackLock: 0 });
+    run(d, 1, { 0: { summon: true } });
+    expect(n.activeExecutions).toBe(2);
+    d.state.zombies[0].hp = 0;
+    run(d, 1);
+    n.summonCd = 0;
+    run(d, 1, { 0: { summon: true } });
+    expect(d.state.zombies.filter((z) => z.kind === 'sword')).toHaveLength(1);
+    expect(d.state.zombies).toHaveLength(4);
+  });
+  it('el zombie con espada sube de nivel al matar: más daño y vida', () => {
+    const { d, players: [n, a] } = setup(['necromancer', 'archer']);
+    Object.assign(n, { x: 200, y: 270, angle: 0 });
+    Object.assign(a, { x: 880, y: 500 });
+    const sword = summonSword(d);
+    Object.assign(a, { x: sword.x + 20, y: sword.y, hp: 1, invuln: 0 });
+    for (let i = 0; i < 90 && a.hp > 0; i++) run(d, 1);
+    expect(a.hp).toBe(0);
+    expect(sword.level).toBe(2);
+    expect(sword).toMatchObject({ maxHp: swordZombieStats(2).hp, hp: swordZombieStats(2).hp });
+    expect(swordZombieStats(2).damage).toBeGreaterThan(swordZombieStats(1).damage);
+    expect(d.state.events.some((e) => e.kind === 'levelup')).toBe(true);
+  });
+  it('en nivel 3 el zombie con espada golpea a todos los rivales a su alcance', () => {
+    const { d, players: [n, g, v] } = setup(['necromancer', 'guardian', 'vanguard']);
+    Object.assign(n, { x: 200, y: 270, angle: 0 });
+    Object.assign(g, { x: 880, y: 500 });
+    Object.assign(v, { x: 880, y: 100 });
+    const sword = summonSword(d);
+    Object.assign(sword, { level: 3, attackCd: 0, retarget: 0 });
+    Object.assign(g, { x: sword.x + 18, y: sword.y, invuln: 0 });
+    Object.assign(v, { x: sword.x - 18, y: sword.y, invuln: 0 });
+    for (let i = 0; i < 60 && (g.hp === CLASSES.guardian.hp || v.hp === CLASSES.vanguard.hp); i++) run(d, 1);
+    expect(g.hp).toBeCloseTo(CLASSES.guardian.hp - swordZombieStats(3).damage);
+    expect(v.hp).toBeCloseTo(CLASSES.vanguard.hp - swordZombieStats(3).damage);
   });
   it('valida el punto apuntado', () => {
     expect(sanitizeInput({ ...idleInput(), command: true, mark: 'x' })).toMatchObject({ command: true, mark: false });
