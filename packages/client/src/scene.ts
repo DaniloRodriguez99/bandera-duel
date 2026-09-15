@@ -1827,25 +1827,11 @@ export class Arena extends Phaser.Scene {
     const camera = this.cameras.main;
     const width = Math.max(1, camera.width);
     const height = Math.max(1, camera.height);
-    const coarse =
-      window.matchMedia('(pointer: coarse)').matches && window.innerWidth > window.innerHeight;
-    const playing =
-      !!this.predicted &&
-      !!this.snapshot &&
-      ['countdown', 'playing', 'capture'].includes(this.snapshot.phase);
-    const follow = coarse && playing;
-    const zoom = follow
-      ? Math.max(width / RULES.width, height / RULES.height)
-      : Math.min(width / RULES.width, height / RULES.height);
-    const viewWidth = width / zoom;
-    const viewHeight = height / zoom;
-    const targetX = follow
-      ? Phaser.Math.Clamp(this.predicted!.x, viewWidth / 2, RULES.width - viewWidth / 2)
-      : RULES.width / 2;
-    const targetY = follow
-      ? Phaser.Math.Clamp(this.predicted!.y, viewHeight / 2, RULES.height - viewHeight / 2)
-      : RULES.height / 2;
-    const key = `${width}x${height}:${follow}`;
+    // Always contain the complete 16:9 arena. Cover zoom made wide phones crop routes and flags.
+    const zoom = Math.min(width / RULES.width, height / RULES.height);
+    const targetX = RULES.width / 2;
+    const targetY = RULES.height / 2;
+    const key = `${width}x${height}:contain`;
     const snap = key !== this.cameraKey;
     this.cameraKey = key;
     camera.setZoom(zoom).setRoundPixels(true);

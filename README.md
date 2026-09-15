@@ -162,7 +162,7 @@ Si usás previews de Vercel, agregá cada origen permitido a `ALLOWED_ORIGINS`, 
 
 - Render Free se duerme tras 15 minutos sin tráfico, puede tardar alrededor de un minuto en despertar y puede reiniciarse. Las salas viven en memoria y se pierden al reiniciar. También aplica cuotas de uso y transferencia: gratis no significa ilimitado. Si querés evitar cobros por excedentes, revisá la configuración de pago y límites de la cuenta. [Render Free](https://render.com/docs/free).
 - Vercel Hobby está orientado a uso personal no comercial. [Condiciones del plan](https://vercel.com/docs/plans/hobby).
-- No hay cuentas, estadísticas persistentes, ranking, bots, chat ni matchmaking público. La protección inicial valida el juego y limita mensajes por conexión; no sustituye controles de abuso a escala pública.
+- No hay cuentas, estadísticas persistentes, ranking, bots ni matchmaking público. El chat es temporal y vive únicamente en memoria mientras existe la sala. La protección inicial valida el juego y limita mensajes por conexión; no sustituye controles de abuso a escala pública.
 - El arte y sonido del juego son originales. Las tipografías Barlow Condensed y DM Sans se cargan desde Google Fonts, con fuentes locales de respaldo si ese servicio no está disponible.
 - Las pruebas de móvil son emuladas en Chromium. No se verificó un teléfono físico ni Safari/iOS; esa comprobación queda pendiente antes de considerar un lanzamiento público.
 
@@ -244,3 +244,8 @@ Mientras se mantiene o apunta una habilidad aparece una guía blueprint local: c
   - **Tiro cargado al máximo:** **flecha de viento** penetrante que cruza la arena, atraviesa a cada rival una vez, atraviesa la guardia continua sin bajarla, rompe el escudo mágico y hace el doble que la flecha cargada.
   - **E:** triple (al 33 % si venía cargando el clic).
   - **Dash + E:** 3 flechas de viento potenciadas y penetrantes que se abren de a poco. Pensado para saltar a la cara del rival: a quemarropa entran las 3 y suman el 120 % de la flecha de viento (40 % cada una); más lejos se reparten entre varios.
+### Chat y cierre de salas
+
+El botón flotante abre el chat para jugadores y espectadores y marca los mensajes sin leer. Conserva hasta 50 mensajes durante la vida de la sala. Solo se puede escribir cuando hay al menos dos jugadores conectados; los espectadores no cuentan para habilitarlo ni mantienen viva la sala.
+
+Una reserva de reconexión de jugador conserva la sala durante 15 segundos. Cuando el último jugador abandona definitivamente, la sala avisa a los espectadores y se cierra. También se cierra tras 2 minutos sin movimiento, apuntado, habilidades, cambios de sala o mensajes humanos. El chat queda visible en modo lectura durante el aviso de cierre.

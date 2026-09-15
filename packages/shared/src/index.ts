@@ -116,6 +116,29 @@ export const CLASSES = {
     summon: false,
   },
 } as const;
+export type ChatRole = 'player' | 'spectator';
+export type RoomClosingReason = 'empty' | 'inactive';
+export interface ChatMessage {
+  id: number;
+  senderId: string;
+  name: string;
+  role: ChatRole;
+  text: string;
+  sentAt: number;
+}
+export interface ChatStatus {
+  enabled: boolean;
+  connectedPlayers: number;
+  closing: boolean;
+}
+export interface ChatHistory extends ChatStatus {
+  messages: ChatMessage[];
+}
+export function sanitizeChatText(value: unknown): string | null {
+  if (typeof value !== 'string' || /[\x00-\x1f\x7f]/.test(value)) return null;
+  const text = value.trim().replace(/[ \t]+/g, ' ');
+  return text && text.length <= 240 ? text : null;
+}
 export interface Vec {
   x: number;
   y: number;
@@ -202,6 +225,11 @@ export const RULES = {
   countdown: 3,
   capturePause: 2,
   reconnectSeconds: 15,
+  chatMaxLength: 240,
+  chatHistoryLimit: 50,
+  chatRateLimit: 5,
+  chatRateWindowSeconds: 10,
+  roomInactivitySeconds: 120,
   maxPlayers: 4,
   maxDeaths: 5,
   fireSpeed: 380,

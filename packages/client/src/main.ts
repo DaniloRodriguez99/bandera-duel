@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { Client, type Room } from '@colyseus/sdk';
-import { RULES, chargePower, CLASSES, TEAMS, TEAM_NAMES, TEAM_ICONS, MAPS, MODE_INFO, validName, type Snapshot, type ClassId, type Team, type MapId, type GameMode } from '@bandera/shared';
+import { RULES, chargePower, CLASSES, TEAMS, TEAM_NAMES, TEAM_ICONS, MAPS, MODE_INFO, validName, type Snapshot, type ClassId, type Team, type MapId, type GameMode, type ChatMessage, type ChatHistory, type ChatStatus, type RoomClosingReason } from '@bandera/shared';
 import { Arena } from './scene.js';
 import {
   muted,
@@ -29,6 +29,8 @@ document.querySelector('#app')!.innerHTML = `
 <section id="room-browser" class="room-browser"><div class="browser-heading"><div><span class="tiny">BUSCÁ TU PRÓXIMO RIVAL</span><h2>Salas públicas</h2></div><button id="refresh-rooms" class="secondary">↻ Actualizar salas</button></div><p id="rooms-status" role="status"></p><h3 class="room-group-title">● Combates en vivo</h3><p id="live-empty">No hay combates públicos en curso.</p><div id="live-rooms-list"></div><h3 class="room-group-title">Salas para jugar y próximas rondas</h3><div id="rooms-list"></div></section><section class="arena-section"><div class="arena-heading"><div><span class="live-dot"></span><span id="arena-label">EL PATIO DEL REY</span><span class="map-label">ARENA 01</span></div><span id="connection-label">ACERO · ARCO · MAGIA</span></div>
 <div id="practice-toolbar" hidden><span>PRÁCTICA · RIVAL INMÓVIL</span><button id="practice-reset" class="secondary">Reiniciar</button><button id="practice-exit" class="secondary">Salir</button></div><div id="hud" class="hud" hidden>${hudTeam('blue')}${hudTeam('green')}<div class="clock"><span id="timer">3:00</span><small>PRIMERO A 3</small></div>${hudTeam('violet', true)}${hudTeam('red', true)}<span id="spectator-count" hidden aria-live="polite"></span><div id="mobile-player-status" hidden><b id="mobile-health"></b><span id="mobile-state"></span></div></div>
 <div id="stage" class="stage"><label id="room-perspective-choice" hidden>PERSPECTIVA<select id="room-perspective"></select></label><div id="game"></div><div id="abilities" class="abilities" hidden aria-label="Habilidades"></div><div class="preview-tag" id="preview-tag">HASTA CUATRO ESTANDARTES. UNA SOLA GLORIA.</div>
+<button id="chat-toggle" class="chat-toggle" type="button" hidden aria-expanded="false" aria-controls="chat-panel"><span aria-hidden="true">◈</span><span class="chat-label">CHAT</span><b id="chat-unread" hidden></b></button>
+<aside id="chat-panel" class="chat-panel" hidden aria-label="Chat de sala"><header><div><span>CHAT DE SALA</span><small id="chat-players"></small></div><button id="chat-close" type="button" aria-label="Cerrar chat">×</button></header><ol id="chat-messages" role="log" aria-live="polite"></ol><p id="chat-status" role="status"></p><form id="chat-form"><input id="chat-input" maxlength="240" autocomplete="off" placeholder="Escribí un mensaje…" aria-label="Mensaje"><button id="chat-send" type="submit">Enviar</button></form></aside>
 <div id="overlay" class="overlay" hidden><div class="overlay-card"><span id="overlay-kicker" class="tiny">SALA</span><h2 id="overlay-title">Esperando jugadores</h2><p id="overlay-description"></p><p id="room-heading"></p><div id="roster" class="roster"></div><label id="team-choice" hidden>TU EQUIPO<select id="team-select"><option value="blue">Azul</option><option value="red">Carmesí</option></select></label><fieldset id="room-picker" class="class-picker compact"><legend>TU CLASE · PODÉS CAMBIAR ANTES DE JUGAR</legend><div id="room-classes" class="class-grid"></div></fieldset><p id="selection-status" role="status" hidden></p><div id="invitation"><label for="invite">LINK DE INVITACIÓN</label><div class="invite-row"><input id="invite" readonly aria-label="Link de invitación"><button id="copy" class="secondary">Copiar</button></div></div><button id="ready" class="primary">Estoy listo <span>⚔</span></button><button id="leave" class="text-btn">Salir de la sala</button></div></div>
 <div id="announcement" class="announcement" hidden aria-live="polite"></div>
 <div id="touch-controls"><div id="stick-move" class="stick" aria-label="Mover"><span></span><small>MOVER</small></div><div id="touch-actions" class="touch-actions" aria-label="Habilidades táctiles"></div></div></div>
@@ -202,12 +204,66 @@ async function warmup() {
   }
   throw Error('El servidor no responde. Probá de nuevo en unos segundos.');
 }
+let chatOpen = false;
+let chatUnread = 0;
+let chatClosedReason: RoomClosingReason | undefined;
+let chatEnabled = false;
+function updateUnread() {
+  const badge = $('chat-unread');
+  badge.hidden = chatUnread === 0;
+  badge.textContent = chatUnread > 99 ? '99+' : String(chatUnread);
+}
+function setChatOpen(open: boolean) {
+  chatOpen = open;
+  $('chat-panel').hidden = !open;
+  $('chat-toggle').setAttribute('aria-expanded', String(open));
+  if (open) {
+    chatUnread = 0; updateUnread();
+    $('chat-messages').scrollTop = $('chat-messages').scrollHeight;
+  }
+}
+function resetChat() {
+  chatClosedReason = undefined; chatEnabled = false; chatUnread = 0;
+  $('chat-messages').replaceChildren(); updateUnread(); setChatOpen(false);
+  $('chat-toggle').hidden = true;
+}
+function renderChatStatus(status: ChatStatus) {
+  chatEnabled = status.enabled && !chatClosedReason;
+  $<HTMLInputElement>('chat-input').disabled = !chatEnabled;
+  $<HTMLButtonElement>('chat-send').disabled = !chatEnabled;
+  $('chat-players').textContent = `${status.connectedPlayers} jugador${status.connectedPlayers === 1 ? '' : 'es'} conectado${status.connectedPlayers === 1 ? '' : 's'}`;
+  $('chat-status').textContent = chatClosedReason
+    ? chatClosedReason === 'inactive' ? 'La sala se cerró por inactividad. El chat quedó en modo lectura.' : 'La sala se cerró porque no quedan jugadores. El chat quedó en modo lectura.'
+    : chatEnabled ? '' : 'El chat se habilita cuando haya al menos 2 jugadores';
+}
+function appendChat(message: ChatMessage, ownSession: string) {
+  const item = document.createElement('li');
+  item.className = message.senderId === ownSession ? 'chat-own' : message.role === 'spectator' ? 'chat-spectator' : '';
+  const head = document.createElement('div'), name = document.createElement('strong'), role = document.createElement('small'), time = document.createElement('time'), body = document.createElement('p');
+  name.textContent = message.name; role.textContent = message.role === 'spectator' ? 'ESPECTADOR' : 'JUGADOR';
+  time.dateTime = new Date(message.sentAt).toISOString(); time.textContent = new Intl.DateTimeFormat('es', { hour: '2-digit', minute: '2-digit' }).format(message.sentAt);
+  body.textContent = message.text; head.append(name, role, time); item.append(head, body); $('chat-messages').append(item);
+  while ($('chat-messages').children.length > RULES.chatHistoryLimit) $('chat-messages').firstElementChild?.remove();
+  if (chatOpen) $('chat-messages').scrollTop = $('chat-messages').scrollHeight;
+  else if (message.senderId !== ownSession) { chatUnread++; updateUnread(); }
+}
+$('chat-toggle').onclick = () => setChatOpen(!chatOpen);
+$('chat-close').onclick = () => setChatOpen(false);
+$<HTMLInputElement>('chat-input').onfocus = () => { arena.controls.clear(); };
+$('chat-form').onsubmit = (event) => {
+  event.preventDefault();
+  const input = $<HTMLInputElement>('chat-input'), text = input.value;
+  if (!room || !online || !chatEnabled || !text.trim()) return;
+  room.send('chat', text); input.value = '';
+};
 function bind(joined: Room) {
   joined.reconnection.minUptime = 0;
   joined.reconnection.minDelay = 300;
   joined.reconnection.maxDelay = 2000;
   joined.reconnection.maxRetries = 12;
   room = joined;
+  resetChat();
+  $('chat-toggle').hidden = false;
   online = true;
   current = undefined;
   arena.reset();
@@ -238,6 +294,17 @@ function bind(joined: Room) {
     arena.receive(s, joined.sessionId);
     render(s);
   });
+  room.onMessage('chatHistory', (history: ChatHistory) => {
+    $('chat-messages').replaceChildren();
+    for (const message of history.messages) appendChat(message, joined.sessionId);
+    chatUnread = 0; updateUnread(); renderChatStatus(history);
+  });
+  room.onMessage('chatMessage', (message: ChatMessage) => appendChat(message, joined.sessionId));
+  room.onMessage('chatStatus', (status: ChatStatus) => renderChatStatus(status));
+  room.onMessage('chatError', (message: string) => { $('chat-status').textContent = message; });
+  room.onMessage('roomClosing', ({ reason }: { reason: RoomClosingReason }) => {
+    chatClosedReason = reason; renderChatStatus({ enabled: false, connectedPlayers: 0, closing: true });
+  });
   room.onMessage('selectionError', (message: string) => {
     $('selection-status').hidden = false;
     $('selection-status').textContent = message;
@@ -265,8 +332,11 @@ function bind(joined: Room) {
       arena.controls.clear();
       $('overlay').hidden = false;
       $('overlay-title').textContent = 'La sala terminó';
-      $('overlay-description').textContent =
-        'Se perdió la conexión o el servidor se reinició. Podés crear otro duelo.';
+      $('overlay-description').textContent = chatClosedReason === 'inactive'
+        ? 'La sala se cerró después de 2 minutos sin actividad.'
+        : chatClosedReason === 'empty'
+          ? 'La sala se cerró porque ya no quedan jugadores.'
+          : 'Se perdió la conexión o el servidor se reinició. Podés crear otro duelo.';
       $('ready').hidden = true;
       $('invitation').hidden = true;
       $('announcement').hidden = true;
@@ -702,6 +772,7 @@ setInterval(() => {
 }, 2000);
 
 function startPractice() {
+  resetChat();
   if (room || busy || !arena.controls) return;
   unlockAudio();
   practice = new Practice(selectedClass, validName(nameInput.value) || 'Vos', selectedMap);
@@ -734,6 +805,7 @@ $('practice-exit').onclick = () => {
   arena.reset();
   arena.send = () => {};
   document.body.classList.remove('in-room', 'practicing');
+  resetChat();
   for (const id of ['practice-toolbar', 'hud', 'overlay', 'cooldowns', 'announcement'])
     $(id).hidden = true;
   for (const id of ['intro', 'room-browser', 'guide', 'preview-tag', 'leave']) $(id).hidden = false;
