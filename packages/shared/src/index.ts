@@ -152,6 +152,9 @@ export const RULES = {
   shotCooldown: 0.9,
   arrowSpeed: 560,
   arrowLife: 1.2,
+  archerShotCooldown: 0.7,
+  archerArrowSpeed: 650,
+  archerArrowRange: 672,
   arrowDamage: 1,
   guardDuration: 1.2,
   magicShieldHits: 2,
@@ -797,23 +800,15 @@ export function projectileStats(classId: ClassId, charged = false, power = 0) {
       radius: RULES.slashRadius,
       cooldown: RULES.slashCooldown,
     };
-  if (classId === 'archer' && charged)
+  if (classId === 'archer') {
+    const boost = charged ? RULES.chargeMultiplier : 1 + (RULES.chargeMultiplier - 1) * power;
+    const speed = RULES.archerArrowSpeed * boost;
     return {
-      speed: RULES.arrowSpeed * RULES.chargeMultiplier,
-      life: RULES.arrowLife / RULES.chargeMultiplier,
-      damage: RULES.arrowDamage * RULES.chargeMultiplier,
-      radius: 3,
-      cooldown: RULES.shotCooldown,
-    };
-  if (classId === 'archer' && power > 0) {
-    // Part of the archer's charge (the volley released mid-charge carries a third of it).
-    const boost = 1 + (RULES.chargeMultiplier - 1) * power;
-    return {
-      speed: RULES.arrowSpeed * boost,
-      life: RULES.arrowLife / boost,
+      speed,
+      life: RULES.archerArrowRange / speed,
       damage: RULES.arrowDamage * boost,
       radius: 3,
-      cooldown: RULES.shotCooldown,
+      cooldown: RULES.archerShotCooldown,
     };
   }
   const base =

@@ -13,7 +13,7 @@ const icon = (name: string) => `/assets/skills/${name}.png`;
 const seconds = (value: number) => `${String(value).replace('.', ',')} s`;
 const CLASS_SKILLS: Record<ClassId, SkillPreview[]> = {
   archer: [
-    { name: 'Flecha del cazador', icon: icon('archer-arrow'), description: 'Tensá el arco para aumentar el daño y la velocidad del proyectil.', damage: `${RULES.arrowDamage}–${RULES.arrowDamage * RULES.chargeMultiplier}`, cooldown: seconds(RULES.shotCooldown) },
+    { name: 'Flecha del cazador', icon: icon('archer-arrow'), description: 'Tensá el arco para aumentar el daño y la velocidad del proyectil.', damage: `${RULES.arrowDamage}–${RULES.arrowDamage * RULES.chargeMultiplier}`, cooldown: seconds(RULES.archerShotCooldown) },
     { name: 'Paso del viento', icon: icon('archer-wind'), description: 'Una ráfaga evasiva que puede cargarse para recorrer más distancia.', damage: '0', cooldown: seconds(RULES.dashCooldown) },
     { name: 'Daga veloz', icon: icon('guardian-slash'), description: 'Corte corto y rápido para castigar enemigos demasiado cercanos.', damage: String(CLASSES.archer.meleeDamage).replace('.', ','), cooldown: seconds(CLASSES.archer.meleeCooldown) },
     { name: 'Cepo del bosque', icon: icon('archer-trap'), description: `Trampa oculta que hiere e inmoviliza durante ${seconds(RULES.trapStun)}.`, damage: String(RULES.trapDamage).replace('.', ','), cooldown: seconds(RULES.trapCooldown) },

@@ -25,6 +25,7 @@ import {
   type MapId,
 } from '@bandera/shared';
 import { Controls } from './input.js';
+import { blueprintSpec, clipRay } from './targeting.js';
 import { sound } from './audio.js';
 import {
   CLASS_ART,
@@ -101,6 +102,7 @@ export class Arena extends Phaser.Scene {
   private receivedAt = 0;
   private currentMapId: MapId = 'courtyard';
   private mapObjects: Phaser.GameObjects.GameObject[] = [];
+  private cameraKey = '';
   constructor() {
     super('arena');
   }
@@ -116,9 +118,9 @@ export class Arena extends Phaser.Scene {
     this.input.mouse?.disableContextMenu();
     this.input.on('pointermove', (p: Phaser.Input.Pointer) => {
       if (p.wasTouch || !this.predicted) return;
-      this.controls.angle = Math.atan2(p.y - this.predicted.y, p.x - this.predicted.x);
-      this.controls.aimX = Math.max(0, Math.min(RULES.width, p.x));
-      this.controls.aimY = Math.max(0, Math.min(RULES.height, p.y));
+      this.controls.angle = Math.atan2(p.worldY - this.predicted.y, p.worldX - this.predicted.x);
+      this.controls.aimX = Math.max(0, Math.min(RULES.width, p.worldX));
+      this.controls.aimY = Math.max(0, Math.min(RULES.height, p.worldY));
       this.controls.aimFromPointer = true;
     });
     this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
@@ -1469,6 +1471,7 @@ export class Arena extends Phaser.Scene {
   update(time: number, delta: number) {
     if (!this.controls || !this.snapshot) return;
     let s = this.snapshot;
+    this.updateCamera(delta);
     this.accumulator += Math.min(delta, 100);
     if (this.predicted && !this.controls.aimFromPointer) {
       // Touch aiming has no cursor: project the aim direction into the arena instead.
@@ -1713,14 +1716,19 @@ export class Arena extends Phaser.Scene {
     if (this.controls.enabled && this.predicted) {
       const p = this.predicted,
         a = this.controls.angle;
-      this.aim.lineStyle(1, GOLD, 0.6);
-      this.aim.lineBetween(
-        p.x + Math.cos(a) * 22,
-        p.y + Math.sin(a) * 22,
-        p.x + Math.cos(a) * 45,
-        p.y + Math.sin(a) * 45,
-      );
-      this.aim.strokeCircle(p.x + Math.cos(a) * 48, p.y + Math.sin(a) * 48, 3);
+      const targeting = this.controls.targetingAbility;
+      if (targeting) this.drawBlueprint(p, targeting, a, time);
+      else {
+        this.aim.lineStyle(1, GOLD, 0.6);
+        this.aim.lineBetween(
+          p.x + Math.cos(a) * 22,
+          p.y + Math.sin(a) * 22,
+          p.x + Math.cos(a) * 45,
+          p.y + Math.sin(a) * 45,
+        );
+        this.aim.strokeCircle(p.x + Math.cos(a) * 48, p.y + Math.sin(a) * 48, 3);
+      }
+      this.drawObjectiveIndicators(p);
       if (CLASSES[p.classId].summon && p.specialCharge >= RULES.overchargeTime) {
         // White twinkling perimeter: how far away the raising mandala can open.
         const twinkle = 0.5 + Math.sin(time * 0.025) * 0.5;
@@ -1806,4 +1814,174 @@ export class Arena extends Phaser.Scene {
       }
     }
   }
+
+  private updateCamera(delta: number) {
+    const camera = this.cameras.main;
+    const width = Math.max(1, camera.width);
+    const height = Math.max(1, camera.height);
+    const coarse =
+      window.matchMedia('(pointer: coarse)').matches && window.innerWidth > window.innerHeight;
+    const playing =
+      !!this.predicted &&
+      !!this.snapshot &&
+      ['countdown', 'playing', 'capture'].includes(this.snapshot.phase);
+    const follow = coarse && playing;
+    const zoom = follow
+      ? Math.max(width / RULES.width, height / RULES.height)
+      : Math.min(width / RULES.width, height / RULES.height);
+    const viewWidth = width / zoom;
+    const viewHeight = height / zoom;
+    const targetX = follow
+      ? Phaser.Math.Clamp(this.predicted!.x, viewWidth / 2, RULES.width - viewWidth / 2)
+      : RULES.width / 2;
+    const targetY = follow
+      ? Phaser.Math.Clamp(this.predicted!.y, viewHeight / 2, RULES.height - viewHeight / 2)
+      : RULES.height / 2;
+    const key = `${width}x${height}:${follow}`;
+    const snap = key !== this.cameraKey;
+    this.cameraKey = key;
+    camera.setZoom(zoom).setRoundPixels(true);
+    const blend = snap ? 1 : 1 - Math.exp(-delta / 95);
+    camera.centerOn(
+      Phaser.Math.Linear(camera.midPoint.x, targetX, blend),
+      Phaser.Math.Linear(camera.midPoint.y, targetY, blend),
+    );
+  }
+
+  private drawBlueprint(p: Player, abilityId: string, angle: number, time: number) {
+    const spec = blueprintSpec(p, abilityId);
+    if (!spec) return;
+    const walls = MAPS[this.currentMapId].walls;
+    const pulse = 0.72 + Math.sin(time * 0.012) * 0.12;
+    const charge =
+      abilityId === 'shot' || abilityId === 'sword'
+        ? p.shotCharge / (p.classId === 'archer' ? RULES.chargeTime : RULES.overchargeTime)
+        : abilityId === 'dash' || abilityId === 'summon'
+          ? p.specialCharge / RULES.overchargeTime
+          : abilityId === 'counter'
+            ? p.counterCharge / RULES.counterChargeTime
+            : 0;
+    const ray = (offset = 0, radius = Math.max(1, spec.radius)) => ({
+      angle: angle + offset,
+      length: clipRay(p, angle + offset, spec.range, walls, radius),
+    });
+    const center = ray();
+    const invalid = !spec.origin && center.length < spec.range - 3;
+    const color = invalid ? 0xff6c68 : charge >= 1 ? 0x62e6ff : 0x79dce8;
+    const bright = invalid ? 0xffb0a8 : 0xd9fbff;
+    const alpha = Math.min(0.34, 0.14 + Math.max(0, charge) * 0.12) * pulse;
+    const corridor = (bearing: number, length: number, radius: number) => {
+      const nx = -Math.sin(bearing) * radius;
+      const ny = Math.cos(bearing) * radius;
+      const ex = p.x + Math.cos(bearing) * length;
+      const ey = p.y + Math.sin(bearing) * length;
+      this.aim.fillStyle(color, alpha);
+      this.aim.fillPoints(
+        [
+          { x: p.x + nx, y: p.y + ny },
+          { x: ex + nx, y: ey + ny },
+          { x: ex - nx, y: ey - ny },
+          { x: p.x - nx, y: p.y - ny },
+        ],
+        true,
+      );
+      this.aim.lineStyle(1.2, bright, 0.68);
+      this.aim.lineBetween(p.x, p.y, ex, ey);
+      for (let distance = 60; distance < length; distance += 60) {
+        const x = p.x + Math.cos(bearing) * distance;
+        const y = p.y + Math.sin(bearing) * distance;
+        this.aim.lineStyle(1, bright, 0.26);
+        this.aim.lineBetween(
+          x - Math.sin(bearing) * 5,
+          y + Math.cos(bearing) * 5,
+          x + Math.sin(bearing) * 5,
+          y - Math.cos(bearing) * 5,
+        );
+      }
+      this.aim.lineStyle(1.5, bright, 0.75);
+      this.aim.strokeCircle(ex, ey, Math.max(3, radius));
+    };
+    if (spec.kind === 'line' || spec.kind === 'dash')
+      corridor(angle, center.length, Math.max(4, spec.radius));
+    else if (spec.kind === 'triple')
+      for (const offset of spec.offsets ?? [0]) {
+        const branch = ray(offset);
+        corridor(branch.angle, branch.length, Math.max(3, spec.radius));
+      }
+    else if (spec.kind === 'cone' || spec.kind === 'defense') {
+      const arc = spec.arc ?? Math.PI / 2;
+      const samples = 12;
+      const points: { x: number; y: number }[] = [{ x: p.x, y: p.y }];
+      for (let index = 0; index <= samples; index++) {
+        const bearing = angle - arc / 2 + (arc * index) / samples;
+        const length = clipRay(p, bearing, spec.range, walls, 1);
+        points.push({
+          x: p.x + Math.cos(bearing) * length,
+          y: p.y + Math.sin(bearing) * length,
+        });
+      }
+      this.aim.fillStyle(color, spec.kind === 'defense' ? alpha * 0.65 : alpha);
+      this.aim.fillPoints(points, true);
+      this.aim.lineStyle(1.4, bright, 0.7);
+      this.aim.strokePoints(points, true);
+      for (let index = 2; index < points.length - 1; index += 3)
+        this.aim.lineBetween(p.x, p.y, points[index].x, points[index].y);
+    } else if (spec.kind === 'circle') {
+      this.aim.fillStyle(color, alpha * 0.8);
+      this.aim.fillCircle(p.x, p.y, spec.radius);
+      this.aim.lineStyle(1.4, bright, 0.72);
+      this.aim.strokeCircle(p.x, p.y, spec.radius);
+      this.aim.lineStyle(1, bright, 0.2);
+      this.aim.strokeCircle(p.x, p.y, spec.radius * 0.6);
+    } else if (spec.kind === 'placement') {
+      const pointerDistance = this.controls.aimFromPointer
+        ? Math.min(spec.range, Math.hypot(this.controls.aimX - p.x, this.controls.aimY - p.y))
+        : spec.range;
+      const length = clipRay(
+        p,
+        angle,
+        pointerDistance,
+        walls,
+        Math.max(1, spec.radius * 0.15),
+      );
+      const x = p.x + Math.cos(angle) * length;
+      const y = p.y + Math.sin(angle) * length;
+      const valid = length >= pointerDistance - 3;
+      const placementColor = valid ? color : 0xff6c68;
+      this.aim.lineStyle(1, placementColor, 0.55);
+      this.aim.lineBetween(p.x, p.y, x, y);
+      this.aim.fillStyle(placementColor, alpha);
+      this.aim.fillCircle(x, y, spec.radius);
+      this.aim.lineStyle(1.5, valid ? bright : 0xffc0b8, 0.8);
+      this.aim.strokeCircle(x, y, spec.radius);
+      this.aim.lineStyle(1, valid ? bright : 0xffc0b8, 0.3);
+      this.aim.lineBetween(x - spec.radius, y, x + spec.radius, y);
+      this.aim.lineBetween(x, y - spec.radius, x, y + spec.radius);
+    }
+  }
+
+  private drawObjectiveIndicators(p: Player) {
+    if (!window.matchMedia('(pointer: coarse)').matches) return;
+    const view = this.cameras.main.worldView;
+    const margin = 22 / this.cameras.main.zoom;
+    for (const flag of this.snapshot?.flags ?? []) {
+      if (Phaser.Geom.Rectangle.Contains(view, flag.x, flag.y)) continue;
+      const x = Phaser.Math.Clamp(flag.x, view.left + margin, view.right - margin);
+      const y = Phaser.Math.Clamp(flag.y, view.top + margin, view.bottom - margin);
+      const bearing = Math.atan2(flag.y - p.y, flag.x - p.x);
+      const size = 8 / this.cameras.main.zoom;
+      this.aim.fillStyle(COLORS[flag.team], 0.9);
+      this.aim.fillTriangle(
+        x + Math.cos(bearing) * size,
+        y + Math.sin(bearing) * size,
+        x + Math.cos(bearing + 2.45) * size,
+        y + Math.sin(bearing + 2.45) * size,
+        x + Math.cos(bearing - 2.45) * size,
+        y + Math.sin(bearing - 2.45) * size,
+      );
+      this.aim.lineStyle(1, 0xffffff, 0.6);
+      this.aim.strokeCircle(x, y, size * 1.35);
+    }
+  }
+
 }

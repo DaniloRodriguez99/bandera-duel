@@ -1024,3 +1024,225 @@ select:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
 
 /* Room format and map selection. */
 .option-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:15px}.option-row label{display:grid;gap:7px}.option-row select,#team-select,#room-perspective,#spectator-perspective{width:100%;min-height:42px;padding:10px 12px;color:#e8e1d1;background:#142127;border:1px solid #425050;border-radius:3px}.map-preview{position:relative;height:168px;margin:12px 0;overflow:hidden;border:1px solid #536052;background:#1e302a}.map-mini{position:absolute;inset:0;width:100%;height:100%;display:block}.preview-floor{fill:#263a32}.map-preview.forest .preview-floor{fill:#213a2d}.map-preview.ruins .preview-floor{fill:#393a32}.map-preview.crossroads .preview-floor{fill:#30392e}.preview-grid{fill:none;stroke:#90a18a;stroke-width:1;opacity:.09}.preview-axis{fill:none;stroke:#d5c59c;stroke-width:22;opacity:.1}.preview-wall rect{fill:#747b73;stroke:#adb0a5;stroke-width:4}.preview-wall path{fill:none;stroke:#414944;stroke-width:3;opacity:.8}.preview-bush rect,.preview-bush circle{fill:#3c6b45;stroke:#75a05b;stroke-width:3;opacity:.88}.preview-center{fill:none;stroke:#dbc789;stroke-width:4;stroke-dasharray:8 9;opacity:.26}.preview-base circle{fill:currentColor;fill-opacity:.1;stroke:currentColor;stroke-width:4}.preview-base circle+circle{fill:none;stroke-width:2;stroke-dasharray:5 5}.preview-base path{fill:currentColor;stroke:currentColor;stroke-width:5;stroke-linejoin:round}.preview-base.blue{color:#65bcea}.preview-base.red{color:#ef7469}.preview-base.green{color:#78cd7d}.preview-base.violet{color:#b68ae8}.preview-frame{fill:none;stroke:#a6b09f;stroke-width:8;opacity:.45}.map-copy{position:absolute;z-index:2;left:0;right:0;bottom:0;display:grid;gap:2px;padding:30px 13px 10px;background:linear-gradient(transparent,#07100fd9 42%,#07100ff2);text-shadow:0 2px 3px #000}.map-copy strong{font-family:'Barlow Condensed',Impact,sans-serif;font-size:17px;color:#f0e6c7}.map-copy>span{font-size:10px;color:#e1e4db}.map-copy small{font-size:8px;line-height:1.35;color:#b9c9bd;letter-spacing:.3px}#team-choice,#room-perspective-choice,#perspective-choice{display:grid;gap:6px;margin:8px 0;color:var(--gold);font-size:9px;letter-spacing:1px}#team-choice[hidden],#room-perspective-choice[hidden],#perspective-choice[hidden]{display:none}#stage>#room-perspective-choice{position:absolute;top:34px;right:8px;z-index:40;width:150px;padding:6px;background:#14251ee8}#stage>#room-perspective-choice select{min-height:32px;padding:5px 7px;font-size:10px}#stealth-state:empty{display:none}#stealth-state{padding:4px 8px;border:1px solid currentColor;font-size:9px;letter-spacing:1px;white-space:nowrap}#stealth-state.hidden-state{color:#9fdcae;background:#213d2fe8}#stealth-state.revealed-state{color:#e4a376;background:#482c25e8}.roster-player.empty{opacity:.5;color:#b2b8ad}@media(max-width:560px){.option-row{grid-template-columns:1fr}.map-preview{height:150px}}
+
+
+/* Mobile combat surface: the arena owns the visual viewport and the HUD floats above it. */
+.touch-actions { display: none; }
+#mobile-player-status { display: none; }
+@media (pointer: coarse) and (orientation: landscape) {
+  body.in-room { overflow: hidden; overscroll-behavior: none; }
+  .in-room .arena-section {
+    position: fixed;
+    inset: 0;
+    z-index: 20;
+    width: 100dvw;
+    height: 100dvh;
+    max-width: none;
+    margin: 0;
+    border: 0;
+    background: #071116;
+  }
+  .in-room .stage,
+  .practicing .stage {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    aspect-ratio: auto;
+  }
+  .in-room .hud {
+    position: absolute;
+    z-index: 32;
+    top: max(4px, env(safe-area-inset-top));
+    left: max(8px, env(safe-area-inset-left));
+    right: max(8px, env(safe-area-inset-right));
+    width: auto;
+    height: 38px;
+    min-height: 0;
+    padding: 3px 9px;
+    border: 1px solid #a7dce52b;
+    border-radius: 9px;
+    background: linear-gradient(90deg, #07151de0, #10262bd0, #07151de0);
+    box-shadow: 0 3px 12px #0007;
+    pointer-events: none;
+  }
+  .in-room .hud .team { gap: 4px; min-width: 0; }
+  .in-room .hud .team span,
+  .in-room .hud .team small,
+  .in-room .clock small { display: none; }
+  .in-room .hud .team b { font-size: 22px; line-height: 1; }
+  .in-room .clock > span { font-size: 20px; line-height: 1; }
+  #mobile-player-status {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    position: absolute;
+    left: 50%;
+    top: 100%;
+    transform: translate(-50%, 3px);
+    min-height: 21px;
+    padding: 2px 8px;
+    border-radius: 0 0 7px 7px;
+    background: #07151ddd;
+    color: #e9d7aa;
+    font-size: 9px;
+    letter-spacing: .5px;
+    white-space: nowrap;
+  }
+  #mobile-player-status[hidden] { display: none; }
+  #mobile-health { color: #ffd0b0; font-size: 10px; }
+  #mobile-state:empty { display: none; }
+  #spectator-count {
+    position: static;
+    transform: none;
+    margin-left: 5px;
+    padding: 2px 5px;
+    border: 0;
+    border-radius: 4px;
+    background: #24383cc7;
+    font-size: 8px;
+  }
+  .in-room #abilities { display: none !important; }
+  .in-room #touch-controls.active {
+    z-index: 30;
+    padding:
+      58px max(12px, env(safe-area-inset-right))
+      max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+  }
+  .in-room .stick {
+    width: clamp(88px, 25dvh, 108px);
+    height: clamp(88px, 25dvh, 108px);
+    opacity: .72;
+    background: #0b202880;
+    backdrop-filter: blur(2px);
+  }
+  .touch-actions {
+    display: flex;
+    flex-flow: row-reverse wrap-reverse;
+    align-items: flex-end;
+    justify-content: flex-start;
+    align-content: flex-end;
+    gap: 7px;
+    width: min(35dvw, 190px);
+    pointer-events: none;
+  }
+  .touch-ability {
+    --aim-x: 0px;
+    --aim-y: 0px;
+    --cd: 0;
+    --charge: 0;
+    position: relative;
+    width: clamp(46px, 12dvh, 54px);
+    height: clamp(46px, 12dvh, 54px);
+    flex: 0 0 auto;
+    display: grid;
+    place-items: center;
+    padding: 4px;
+    overflow: visible;
+    pointer-events: auto;
+    touch-action: none;
+    user-select: none;
+    border: 1px solid #bfeef17d;
+    border-radius: 50%;
+    background: conic-gradient(#02090cce calc(var(--cd) * 1turn), #13323aad 0);
+    color: #e9fbff;
+    opacity: .68;
+    box-shadow: inset 0 0 8px #000b, 0 2px 9px #0008;
+  }
+  .touch-ability.primary {
+    width: clamp(58px, 15dvh, 68px);
+    height: clamp(58px, 15dvh, 68px);
+    border-width: 2px;
+    opacity: .82;
+  }
+  .touch-ability::after {
+    content: '';
+    position: absolute;
+    inset: -4px;
+    border: 2px solid #67e4f3;
+    border-radius: 50%;
+    opacity: calc(var(--charge) * .85);
+    box-shadow: 0 0 calc(4px + var(--charge) * 10px) #5ce7ff99;
+    pointer-events: none;
+  }
+  .touch-ability img {
+    width: 72%;
+    height: 72%;
+    border-radius: 50%;
+    object-fit: cover;
+    image-rendering: pixelated;
+    pointer-events: none;
+    opacity: .92;
+  }
+  .touch-ability small {
+    position: absolute;
+    left: 50%;
+    bottom: -10px;
+    transform: translateX(-50%);
+    max-width: 72px;
+    overflow: hidden;
+    color: #d7eeec;
+    font-size: 6px;
+    line-height: 1;
+    letter-spacing: .2px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-shadow: 0 1px 3px #000;
+    pointer-events: none;
+  }
+  .touch-ability-status {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    color: #fff;
+    font-size: 10px;
+    text-shadow: 0 1px 4px #000, 0 0 3px #000;
+    pointer-events: none;
+  }
+  .touch-ability-thumb {
+    position: absolute;
+    left: calc(50% - 5px);
+    top: calc(50% - 5px);
+    width: 10px;
+    height: 10px;
+    border: 1px solid #e8ffff;
+    border-radius: 50%;
+    background: #6fe7f1d9;
+    opacity: 0;
+    transform: translate(var(--aim-x), var(--aim-y));
+    pointer-events: none;
+  }
+  .touch-ability[data-aiming=true] {
+    opacity: .96;
+    border-color: #d8fbff;
+    box-shadow: 0 0 15px #5ce7ff77, inset 0 0 8px #0009;
+  }
+  .touch-ability[data-aiming=true] .touch-ability-thumb { opacity: 1; }
+  .touch-ability[data-cancel=true] { border-color: #ff8378; background: #4d1719d9; }
+  .touch-ability[data-cancel=true] .touch-ability-thumb { background: #ff8378; }
+  .touch-ability[data-ready=false] { filter: saturate(.55); }
+  .touch-ability[data-active=true] {
+    opacity: 1;
+    border-color: #f2c875;
+    box-shadow: 0 0 13px #eac78788;
+  }
+  .stage[data-class=guardian] [data-touch-ability=guard][data-active=true] { background: #8b744dde; color: #172226; }
+  .stage[data-fury=true] [data-touch-ability=fury] { background: #631b26e8; box-shadow: 0 0 15px #d4384677; }
+  .stage[data-class=necromancer] [data-touch-ability=summon] { box-shadow: 0 0 11px #a070e066; }
+  #practice-toolbar {
+    position: absolute;
+    z-index: 34;
+    top: max(48px, calc(env(safe-area-inset-top) + 44px));
+    right: max(8px, env(safe-area-inset-right));
+    min-height: 0;
+    width: auto;
+    padding: 3px 5px;
+    border-radius: 6px;
+    background: #0b1d22c7;
+  }
+  #practice-toolbar > span { display: none; }
+  #practice-toolbar button { min-height: 27px; padding: 4px 7px; font-size: 8px; }
+  #stage > #room-perspective-choice { top: 50px; }
+}

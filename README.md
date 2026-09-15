@@ -32,18 +32,18 @@ El mago también lanza un proyectil de hielo con clic central (presionar la rued
 
 La banda sonora es original y sintetizada: melodía medieval en el menú, ritmo de aventura durante el duelo, más intensidad en los últimos 30 segundos y un cierre musical al terminar. Comienza tras la primera interacción y se pausa al ocultar la pestaña. El control «Música» ajusta su volumen sin cambiar los efectos; el botón de sonido silencia todo. Ambas preferencias se guardan en el navegador.
 
-| Acción            | PC             | Celular horizontal                 |
-| ----------------- | -------------- | ---------------------------------- |
-| Mover             | WASD o flechas | Palanca izquierda                  |
-| Apuntar           | Mouse          | Palanca derecha                    |
-| Espada            | Clic izquierdo | Botón ⚔                            |
-| Distancia         | Clic izquierdo | Apuntar y soltar palanca derecha   |
-| Acción secundaria | Clic derecho   | Botón de daga, escudo o invocación |
-| Dash              | Espacio        | Botón ➟                            |
-| Habilidad Q       | Q              | Botón Q                            |
-| Habilidad E       | E              | Botón E                            |
+| Acción            | PC             | Celular horizontal                                      |
+| ----------------- | -------------- | ------------------------------------------------------- |
+| Mover             | WASD o flechas | Palanca izquierda                                       |
+| Apuntar           | Mouse          | Arrastrar desde el botón de la habilidad                 |
+| Ataque normal     | Clic izquierdo | Botón principal de la clase                              |
+| Acción secundaria | Clic derecho   | Botón de daga, escudo, guardia o invocación              |
+| Dash              | Espacio        | Botón de dash; arrastrar muestra y elige el recorrido    |
+| Habilidad Q/E     | Q / E          | Botones propios con ícono, carga y recarga               |
 
-El arquero dispara flechas y usa una daga. El mago lanza bolas de fuego con clic izquierdo y comienza con un escudo mágico que absorbe dos golpes desde cualquier dirección, sin perder vida ni soltar la bandera. Al romperse, hay que esperar 5 segundos y hacer un nuevo clic derecho (o tocar ⛨) para recuperarlo; no se repone automáticamente ni permite recargar una carga restante. Reaparecer o reiniciar la arena restaura las dos cargas. Ambos pueden usar dash. El nigromante lanza fuego (clic izquierdo o palanca derecha) e invoca dos zombies con espacio, clic derecho o el botón ☠ (recarga de 5 s). Cada invocación es una ejecución de 2 zombies y puede haber como máximo 2 ejecuciones activas a la vez (4 zombies); una tercera no se inicia hasta que terminen los 2 zombies de alguna. Los zombies emergen del suelo escalonados, son más lentos que cualquier clase, persiguen al rival más cercano al cursor del nigromante (o el más cercano a ellos), no hacen fila: los que van tras el mismo objetivo se reparten a su alrededor (en pinza de a dos o en círculo de a más), cada uno se acerca por su lado y recién desde su lugar se lanza al ataque; sin rival cerca del cursor ocupan puestos separados alrededor de esa zona, y toman caminos distintos alrededor de los muros; duran 20 s y cualquier ataque los destruye. Sus golpes cuentan como daño del nigromante: sueltan banderas y suman muertes. La espada usa la última dirección apuntada. El dash usa el movimiento actual o el apuntado si estás quieto. El botón de sonido está en la cabecera; su elección se conserva en el dispositivo. El audio comienza después de una interacción del usuario.
+En celular, tocar y soltar un botón usa la dirección actual. Arrastrarlo permite apuntar como con una pequeña palanca; si el dedo vuelve al centro después de haber arrastrado, soltar cancela sin gastar la habilidad. Movimiento, carga y defensa admiten varios dedos simultáneos. La arena usa todo el viewport horizontal y, cuando su proporción no permite ver el mapa completo, la cámara sigue al jugador y muestra indicadores para las banderas fuera de pantalla.
+
+El arquero dispara flechas y usa una daga. El mago lanza bolas de fuego con clic izquierdo y comienza con un escudo mágico que absorbe dos golpes desde cualquier dirección, sin perder vida ni soltar la bandera. Al romperse, hay que esperar 5 segundos y hacer un nuevo clic derecho (o tocar ⛨) para recuperarlo; no se repone automáticamente ni permite recargar una carga restante. Reaparecer o reiniciar la arena restaura las dos cargas. Ambos pueden usar dash. El nigromante lanza fuego (clic izquierdo o botón principal táctil) e invoca dos zombies con espacio, clic derecho o el botón ☠ (recarga de 5 s). Cada invocación es una ejecución de 2 zombies y puede haber como máximo 2 ejecuciones activas a la vez (4 zombies); una tercera no se inicia hasta que terminen los 2 zombies de alguna. Los zombies emergen del suelo escalonados, son más lentos que cualquier clase, persiguen al rival más cercano al cursor del nigromante (o el más cercano a ellos), no hacen fila: los que van tras el mismo objetivo se reparten a su alrededor (en pinza de a dos o en círculo de a más), cada uno se acerca por su lado y recién desde su lugar se lanza al ataque; sin rival cerca del cursor ocupan puestos separados alrededor de esa zona, y toman caminos distintos alrededor de los muros; duran 20 s y cualquier ataque los destruye. Sus golpes cuentan como daño del nigromante: sueltan banderas y suman muertes. La espada usa la última dirección apuntada. El dash usa el movimiento actual o el apuntado si estás quieto. El botón de sonido está en la cabecera; su elección se conserva en el dispositivo. El audio comienza después de una interacción del usuario.
 
 - Robá la bandera enemiga al tocarla y volvé al círculo de tu base. **Tu bandera debe estar en casa para anotar.**
 - Llevarla reduce 15 % la velocidad normal; permite atacar y hacer dash.
@@ -195,7 +195,7 @@ Las salas públicas en cuenta regresiva, combate o pausa de captura aparecen en 
 
 ### Flecha cargada del arquero
 
-Mantener clic izquierdo durante 0,8 s carga el arco; soltar dispara. En móvil, mantener y soltar la palanca de apuntado. La carga completa vuelve naranja la flecha, aumenta daño a 1,3 y velocidad a 728 unidades/s (+30 %), conservando alcance máximo y recarga. Soltar antes dispara una flecha normal. La carga se valida en la simulación; perder foco cancela sin disparar. Dash, trampa, daga y triple descartan la carga.
+Mantener clic izquierdo durante 0,8 s carga el arco; soltar dispara. En móvil, mantener el botón de flecha, arrastrarlo para orientar y soltarlo para disparar. La carga completa vuelve naranja la flecha, aumenta daño a 1,3 y velocidad a 845 unidades/s (+30 %), conservando el alcance máximo. La flecha normal viaja a 650 unidades/s y su recarga es de 0,7 s. Soltar antes dispara una flecha normal. La carga se valida en la simulación; perder foco cancela sin disparar. Dash, trampa, daga y triple descartan la carga.
 
 ### Sobrecarga
 
@@ -207,8 +207,9 @@ Mantener clic o Espacio carga la habilidad y soltar la ejecuta; un toque rápido
 
 ### Panel de habilidades
 
-Durante la partida, abajo a la izquierda del escenario aparece una tarjeta por habilidad con su ícono, su tecla (CLIC, ESPACIO y, según la clase, CLIC DER., Q o E) y un velo circular con los segundos de recarga restantes; la tarjeta se ilumina cuando está lista. En pantallas táctiles el panel se ubica arriba a la izquierda para no tapar la palanca de movimiento. En el nigromante, Espacio invoca zombies.
-Sobre cada tarjeta crece su árbol: qué hace un toque, qué hace mantener y (en el nigromante) el aura llena, con el estado de cada rama (ejecuciones activas, zombie mago vivo, recarga del esclavo, porcentaje de carga). La rama que se dispararía al soltar se ilumina mientras se carga. En táctil el árbol se oculta para no tapar el escenario.
+En PC, abajo a la izquierda aparece una tarjeta por habilidad con su ícono, tecla, carga y recarga. En celular esas tarjetas se sustituyen por los botones interactivos de cada clase: el ataque normal es el más grande y los botones muestran su recarga y porcentaje de carga sin duplicar paneles sobre la arena.
+
+Mientras se mantiene o apunta una habilidad aparece una guía blueprint local: corredores para proyectiles y dashes, conos para ataques cuerpo a cuerpo, círculos para trampas y defensas y las tres trayectorias del disparo triple. La guía se recorta al encontrar paredes, se vuelve rojiza si el recorrido está bloqueado y nunca usa enemigos ocultos para anticipar impactos. Solo la ve quien apunta; el servidor sigue resolviendo el resultado definitivo.
 
 ### Control de zombies (nigromante)
 

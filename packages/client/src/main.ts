@@ -12,6 +12,7 @@ import {
 } from './audio.js';
 import { savedClass, saveClass, mountClasses, updateClasses } from './classes.js';
 import { updateAbilities } from './abilities.js';
+import { mountTouchAbilities, updateTouchAbilities } from './mobile-controls.js';
 import './style.css';
 import { Practice, PRACTICE_PLAYER } from './practice.js';
 
@@ -26,11 +27,11 @@ document.querySelector('#app')!.innerHTML = `
 <section id="intro" class="intro"><div class="hero-copy"><div class="eyebrow"><i></i> DUELO ONLINE · HASTA 4 JUGADORES</div><h1>Tu rival tiene<br>algo <em>tuyo.</em></h1><p>Entrá al castillo. Robá su bandera.<br>Volvé con la gloria antes de que te alcancen.</p><div class="facts"><span><b>04</b> jugadores</span><span><b>03</b> minutos</span><span><b>01</b> vencedor</span></div></div>
 <div class="entry-card"><div class="card-top"><span class="tiny">EL DESAFÍO EMPIEZA ACÁ</span><span class="swords">⚔</span></div><h2 id="entry-title">Prepará tu estandarte.</h2><p id="entry-description">Elegí tu guerrero, prepará una sala e invitá a tu rival.</p><form id="entry-form"><div class="player-setup"><div class="setup-heading"><span>01</span><h3>Tu guerrero</h3></div><label for="name">TU APODO</label><input id="name" name="name" placeholder="Caballero sin nombre" maxlength="16" autocomplete="nickname" required><fieldset id="entry-class-picker" class="class-picker"><legend>ELEGÍ TU GUERRERO</legend><div id="entry-classes" class="class-grid"></div></fieldset></div><div class="room-setup"><div class="setup-heading"><span>02</span><h3>Tu próxima partida</h3></div><fieldset id="room-options"><legend>TU SALA</legend><label for="room-title">TÍTULO</label><input id="room-title" maxlength="48" value="Duelo medieval"><label for="visibility">VISIBILIDAD</label><select id="visibility"><option value="private">Privada · solo por enlace</option><option value="public">Pública · aparece en el listado</option></select><div class="option-row"><label>FORMATO<select id="game-mode"><option value="duel">Duelo · 1v1</option><option value="teams">Equipos · 2v2</option><option value="ffa3">Todos contra todos · 3</option><option value="ffa4">Todos contra todos · 4</option></select></label><label>MAPA<select id="map-select"><option value="courtyard">Patio del Rey</option><option value="forest">Bosque de Emboscadas</option><option value="ruins">Ruinas del Bastión</option><option value="crossroads">Encrucijada</option></select></label></div><div id="map-preview" class="map-preview"></div><label class="check-option"><input id="allow-spectators" type="checkbox" checked> Permitir espectadores (máximo 5)</label></fieldset><label for="room-password">CONTRASEÑA (OPCIONAL)</label><input id="room-password" type="password" maxlength="64" autocomplete="off" placeholder="Sin contraseña"><label id="spectator-choice" hidden><input id="spectator" type="checkbox"> Entrar como espectador</label><label id="perspective-choice" hidden>PERSPECTIVA<select id="spectator-perspective"><option value="blue">Azul</option><option value="red">Carmesí</option><option value="green">Jade</option><option value="violet">Violeta</option></select></label></div><div class="entry-actions"><button id="enter" class="primary" type="submit">Crear un duelo <span>↗</span></button><button id="practice-start" class="secondary" type="button">Probar contra un rival inmóvil</button><span class="entry-note">Práctica local, sin sala.</span></div></form><div id="status" class="status" role="status" aria-live="polite">Sin cuentas. Sin descargas. Solo el duelo.</div><button id="new-instead" class="text-btn" hidden>Crear otra sala</button></div></section>
 <section id="room-browser" class="room-browser"><div class="browser-heading"><div><span class="tiny">BUSCÁ TU PRÓXIMO RIVAL</span><h2>Salas públicas</h2></div><button id="refresh-rooms" class="secondary">↻ Actualizar salas</button></div><p id="rooms-status" role="status"></p><h3 class="room-group-title">● Combates en vivo</h3><p id="live-empty">No hay combates públicos en curso.</p><div id="live-rooms-list"></div><h3 class="room-group-title">Salas para jugar y próximas rondas</h3><div id="rooms-list"></div></section><section class="arena-section"><div class="arena-heading"><div><span class="live-dot"></span><span id="arena-label">EL PATIO DEL REY</span><span class="map-label">ARENA 01</span></div><span id="connection-label">ACERO · ARCO · MAGIA</span></div>
-<div id="practice-toolbar" hidden><span>PRÁCTICA · RIVAL INMÓVIL</span><button id="practice-reset" class="secondary">Reiniciar práctica</button><button id="practice-exit" class="secondary">Volver al inicio</button></div><div id="hud" class="hud" hidden>${hudTeam('blue')}${hudTeam('green')}<div class="clock"><span id="timer">3:00</span><small>PRIMERO A 3</small></div>${hudTeam('violet', true)}${hudTeam('red', true)}</div>
-<div id="stage" class="stage"><span id="spectator-count" hidden aria-live="polite"></span><label id="room-perspective-choice" hidden>PERSPECTIVA<select id="room-perspective"></select></label><div id="game"></div><div id="abilities" class="abilities" hidden aria-label="Habilidades"></div><div class="preview-tag" id="preview-tag">HASTA CUATRO ESTANDARTES. UNA SOLA GLORIA.</div>
+<div id="practice-toolbar" hidden><span>PRÁCTICA · RIVAL INMÓVIL</span><button id="practice-reset" class="secondary">Reiniciar</button><button id="practice-exit" class="secondary">Salir</button></div><div id="hud" class="hud" hidden>${hudTeam('blue')}${hudTeam('green')}<div class="clock"><span id="timer">3:00</span><small>PRIMERO A 3</small></div>${hudTeam('violet', true)}${hudTeam('red', true)}<span id="spectator-count" hidden aria-live="polite"></span><div id="mobile-player-status" hidden><b id="mobile-health"></b><span id="mobile-state"></span></div></div>
+<div id="stage" class="stage"><label id="room-perspective-choice" hidden>PERSPECTIVA<select id="room-perspective"></select></label><div id="game"></div><div id="abilities" class="abilities" hidden aria-label="Habilidades"></div><div class="preview-tag" id="preview-tag">HASTA CUATRO ESTANDARTES. UNA SOLA GLORIA.</div>
 <div id="overlay" class="overlay" hidden><div class="overlay-card"><span id="overlay-kicker" class="tiny">SALA</span><h2 id="overlay-title">Esperando jugadores</h2><p id="overlay-description"></p><p id="room-heading"></p><div id="roster" class="roster"></div><label id="team-choice" hidden>TU EQUIPO<select id="team-select"><option value="blue">Azul</option><option value="red">Carmesí</option></select></label><fieldset id="room-picker" class="class-picker compact"><legend>TU CLASE · PODÉS CAMBIAR ANTES DE JUGAR</legend><div id="room-classes" class="class-grid"></div></fieldset><p id="selection-status" role="status" hidden></p><div id="invitation"><label for="invite">LINK DE INVITACIÓN</label><div class="invite-row"><input id="invite" readonly aria-label="Link de invitación"><button id="copy" class="secondary">Copiar</button></div></div><button id="ready" class="primary">Estoy listo <span>⚔</span></button><button id="leave" class="text-btn">Salir de la sala</button></div></div>
 <div id="announcement" class="announcement" hidden aria-live="polite"></div>
-<div id="touch-controls"><div id="stick-move" class="stick" aria-label="Mover"><span></span><small>MOVER</small></div><div class="touch-right"><button id="touch-trap" class="touch-action" aria-label="Colocar trampa" hidden>Q</button><button id="touch-volley" class="touch-action" aria-label="Disparo triple" hidden>E</button><button id="touch-sword" class="touch-action" aria-label="Espada">⚔</button><button id="touch-guard" class="touch-action" aria-label="Mantener escudo" hidden>⛨</button><button id="touch-summon" class="touch-action" aria-label="Invocar zombies" hidden>☠</button><button id="touch-dash" class="touch-action" aria-label="Dash">➟</button><div id="stick-aim" class="stick" aria-label="Apuntar y soltar para disparar"><span></span><small>APUNTAR</small></div></div></div></div>
+<div id="touch-controls"><div id="stick-move" class="stick" aria-label="Mover"><span></span><small>MOVER</small></div><div id="touch-actions" class="touch-actions" aria-label="Habilidades táctiles"></div></div></div>
 <div class="arena-bottom"><span id="arena-hint">Robá la bandera rival y traela a tu base. La tuya debe estar en casa.</span><div id="cooldowns" hidden><span id="health" aria-label="Vida"></span><span id="lives" aria-label="Muertes"></span><span id="stealth-state"></span><span id="cd-sword"></span><span id="cd-shot"></span><span id="cd-dash"></span><span id="cd-guard" hidden></span><span id="cd-trap" hidden></span><span id="cd-volley" hidden></span><span id="cd-summon" hidden></span></div><span class="corner-detail">◆ &nbsp; ✚ &nbsp; ▲ &nbsp; ●</span></div></section>
 <section id="guide" class="guide"><article><span class="step">01 / ROBÁ</span><h3>Entrá en terreno rival.</h3><p>Tocá su bandera para llevarla. Podés pelear mientras la transportás.</p></article><article><span class="step">02 / RESISTÍ</span><h3>Un golpe cambia todo.</h3><p>Si te hieren, soltás la bandera. Recuperá la tuya con solo tocarla.</p></article><article><span class="step">03 / VOLVÉ</span><h3>Tu base. Tu victoria.</h3><p>Capturá con tu bandera en casa. Tres capturas deciden la partida; las reapariciones son ilimitadas.</p></article></section>
 <div id="control-guide" class="control-guide"></div>
@@ -38,7 +39,6 @@ document.querySelector('#app')!.innerHTML = `
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const arena = new Arena();
-$('touch-guard').insertAdjacentHTML('afterend','<button id="touch-ice" class="touch-action" aria-label="Lanzar hielo" hidden>❄</button>');
 $('cooldowns').insertAdjacentHTML('beforeend','<span id="cd-ice" hidden></span>');
 new Phaser.Game({
   type: Phaser.AUTO,
@@ -48,7 +48,7 @@ new Phaser.Game({
   pixelArt: true,
   antialias: false,
   backgroundColor: '#23362f',
-  scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
+  scale: { mode: Phaser.Scale.RESIZE, autoCenter: Phaser.Scale.CENTER_BOTH },
   scene: arena,
   banner: false,
   input: { activePointers: 5 },
@@ -110,45 +110,40 @@ mountClasses($('entry-classes'), selectedClass, (id) => {
 });
 mountClasses($('room-classes'), selectedClass, (id) => room?.send('selectClass', id));
 let displayedClass: ClassId | undefined;
-function showClassControls(id:ClassId) {
-  if(displayedClass===id)return;
-  displayedClass=id;
-  const stats=CLASSES[id],ranged=stats.ranged,guardian=id==='guardian',mage=id==='mage';
-  $('touch-ice').hidden=!mage;$('cd-ice').hidden=!mage;
-  const projectile=mage?'Hechizo':'Flecha',melee=mage?'Báculo':'Daga';
-  for (const idPart of ['touch-trap','touch-volley']) $(idPart).hidden = id !== 'archer' && id !== 'guardian';
-  for (const idPart of ['cd-trap','cd-volley']) $(idPart).hidden = id !== 'archer';
-  $('touch-dash').hidden=!stats.dash;$('touch-guard').hidden=!stats.shield;
-  $('touch-summon').hidden=!stats.summon;$('touch-sword').hidden=!stats.melee;$('cd-summon').hidden=!stats.summon;$('cd-sword').hidden=!stats.melee;
-  $('touch-sword').textContent=ranged?(mage?'✦':'†'):'⚔';
-  $('touch-sword').setAttribute('aria-label',ranged?melee:id==='vanguard'?'Espada pesada':'Espada');
-  $('stick-aim').setAttribute('aria-label',ranged?`Apuntar y soltar ${mage?'el hechizo':'para disparar'}`:'Apuntar');
-  $('cd-shot').hidden=!ranged;$('cd-dash').hidden=!stats.dash;$('cd-guard').hidden=!stats.shield;
-  $('control-guide').innerHTML=`<span><kbd>W A S D</kbd> Mover</span><span><kbd>CLIC</kbd> ${ranged?projectile:'Espada'}</span>${id!=='vanguard'?`<span><kbd>CLIC DER.</kbd> ${ranged?melee:'Mantener escudo'}</span>`:''}${stats.dash?`<span><kbd>ESPACIO</kbd> ${guardian?'Embestida':'Esquivar'}</span>`:''}<span class="mobile-help">${ranged?`Mové a la izquierda. Apuntá y soltá a la derecha para lanzar ${mage?'magia':'una flecha'}. Botones de ${melee.toLowerCase()} y dash.`:guardian?'Mové y apuntá con las palancas. Golpeá con espada, mantené el escudo o usá Q, E y embestida.':'Mové y apuntá con las palancas. El botón de espada prepara un golpe pesado.'}</span>`;
-  if(id==='archer') $('control-guide').innerHTML += '<span><kbd>MANTENER CLIC</kbd> Cargar flecha · 0,8 s · +30 % daño y velocidad</span><span class="mobile-help">Mantené la palanca de apuntado para cargar; soltala para disparar.</span>';
-  if(id==='archer') $('control-guide').innerHTML += '<span><kbd>Q</kbd> Trampa · inmóvil 0,5 s</span><span><kbd>E</kbd> Triple flecha · 5 s</span><span><kbd>CARGANDO + E</kbd> Triple al 33 %</span><span><kbd>SALTO CARGADO</kbd> Soltá el tiro o E en pleno salto (tiro cargado: viento que atraviesa guardia y rompe escudo mágico; ambos: triple de viento)</span>';
-  if(stats.summon)$('control-guide').innerHTML='<span><kbd>W A S D</kbd> Mover</span><span><kbd>CLIC</kbd> Fuego</span><span><kbd>ESPACIO</kbd> Invocar zombies</span><span class="mobile-help">Mové a la izquierda. Apuntá y soltá a la derecha para lanzar fuego. Espacio o el botón ☠ invocan dos zombies; hasta 2 invocaciones activas a la vez.</span>';
-  $('touch-guard').setAttribute('aria-label', mage ? 'Lanzar escudo mágico' : 'Mantener escudo');
-  if (mage) {
-    $('touch-guard').hidden = false; $('cd-guard').hidden = false;
-    $('stick-aim').setAttribute('aria-label','Apuntar y soltar para lanzar bola de fuego');
-    $('control-guide').innerHTML='<span><kbd>W A S D</kbd> Mover</span><span><kbd>CLIC</kbd> Bola de fuego</span><span><kbd>CLIC DER.</kbd> Escudo mágico</span><span><kbd>ESPACIO</kbd> Esquivar</span><span class="mobile-help">El escudo absorbe 2 golpes. Al romperse, esperá 5 s y volvé a lanzarlo con clic derecho o el botón ⛨. Apuntá y soltá para lanzar fuego.</span>';
-    $('control-guide').insertAdjacentHTML('beforeend','<span><kbd>CLIC CENTRAL</kbd> Hielo · inmoviliza 1 s · recarga 0,5 s</span><span class="mobile-help">Tocá ❄ para lanzar hielo hacia donde apuntás.</span>');
-  }
-  if (id !== 'archer') $('control-guide').innerHTML += guardian?'<span><kbd>MANTENER CLIC · 1,5 s</kbd> Espada hasta 2× daño y mayor alcance</span>':'<span><kbd>MANTENER CLIC</kbd> Cargar · más daño y alcance al soltar</span>';
-  if (stats.dash && !guardian) $('control-guide').innerHTML += '<span><kbd>MANTENER ESPACIO</kbd> Dash más largo</span>';
-  if (guardian) $('control-guide').innerHTML += '<span><kbd>Q</kbd> Golpe de escudo · aturde 1,5 s</span><span><kbd>E</kbd> Furia · espada +40 % durante 5 s</span>';
-  if (id === 'vanguard') $('control-guide').innerHTML += '<span><kbd>Q</kbd> Tajo que viaja y corta a todos en su camino</span><span><kbd>E</kbd> Contraataque: devuelve proyectiles · mantené 1 s: el doble de rápido y fuerte</span>';
-  if (stats.summon) $('control-guide').innerHTML += '<span><kbd>MANTENER ESPACIO</kbd> Zombie mago · aura llena: mandala bajo el mouse que resucita a un rival caído</span><span><kbd>ESPACIO</kbd> Si cae un zombie del círculo rojo: vuelve como zombie con espada que sube de nivel al matar</span><span><kbd>E</kbd> Zombies: círculo rojo y mouse, o automáticos</span><span><kbd>⌘/CTRL E</kbd> Pasar al zombie bajo el cursor entre el círculo rojo y el mouse</span>';
-  if (guardian) {
-    $('touch-trap').textContent='Q'; $('touch-trap').setAttribute('aria-label','Golpe de escudo');
-    $('touch-volley').textContent='E'; $('touch-volley').setAttribute('aria-label','Activar furia');
-    $('touch-dash').setAttribute('aria-label','Embestida');
-  } else {
-    $('touch-trap').setAttribute('aria-label','Colocar trampa');
-    $('touch-volley').setAttribute('aria-label','Disparo triple');
-    $('touch-dash').setAttribute('aria-label','Dash');
-  }
+function showClassControls(id: ClassId) {
+  if (displayedClass === id) return;
+  displayedClass = id;
+  const stats = CLASSES[id];
+  const ranged = stats.ranged;
+  const guardian = id === 'guardian';
+  const mage = id === 'mage';
+  mountTouchAbilities($('touch-actions'), id);
+  $('cd-ice').hidden = !mage;
+  $('cd-shot').hidden = !ranged;
+  $('cd-dash').hidden = !stats.dash;
+  $('cd-guard').hidden = !stats.shield && !mage;
+  $('cd-trap').hidden = id !== 'archer';
+  $('cd-volley').hidden = id !== 'archer';
+  $('cd-summon').hidden = !stats.summon;
+  $('cd-sword').hidden = !stats.melee;
+  const projectile = mage ? 'Bola de fuego' : id === 'necromancer' ? 'Fuego' : 'Flecha';
+  const melee = mage ? 'Báculo' : 'Daga';
+  const secondary = stats.summon ? 'Invocar zombies' : ranged ? melee : 'Mantener escudo';
+  $('control-guide').innerHTML = `<span><kbd>W A S D</kbd> Mover</span><span><kbd>CLIC</kbd> ${ranged ? projectile : 'Espada'}</span>${id !== 'vanguard' ? `<span><kbd>CLIC DER.</kbd> ${secondary}</span>` : ''}${stats.dash ? `<span><kbd>ESPACIO</kbd> ${guardian ? 'Embestida' : 'Esquivar'}</span>` : ''}<span class="mobile-help">Mové con la palanca izquierda. Tocá una habilidad para usar la dirección actual, o arrastrá su botón para apuntar. Volvé al centro antes de soltar para cancelar.</span>`;
+  if (id === 'archer')
+    $('control-guide').innerHTML += '<span><kbd>MANTENER CLIC</kbd> Cargar flecha · 0,8 s</span><span><kbd>Q</kbd> Trampa</span><span><kbd>E</kbd> Triple</span>';
+  if (mage)
+    $('control-guide').innerHTML += '<span><kbd>CLIC CENTRAL</kbd> Hielo</span><span><kbd>CLIC DER.</kbd> Escudo mágico</span>';
+  if (stats.summon)
+    $('control-guide').innerHTML += '<span><kbd>ESPACIO</kbd> Invocar zombies</span><span><kbd>E</kbd> Mando</span><span><kbd>CTRL E</kbd> Marcar</span>';
+  if (!ranged)
+    $('control-guide').innerHTML += '<span><kbd>MANTENER CLIC</kbd> Cargar golpe</span>';
+  if (stats.dash && !guardian)
+    $('control-guide').innerHTML += '<span><kbd>MANTENER ESPACIO</kbd> Dash más largo</span>';
+  if (guardian)
+    $('control-guide').innerHTML += '<span><kbd>Q</kbd> Golpe de escudo</span><span><kbd>E</kbd> Furia</span>';
+  if (id === 'vanguard')
+    $('control-guide').innerHTML += '<span><kbd>Q</kbd> Tajo viajero</span><span><kbd>E</kbd> Contraataque</span>';
 }
 showClassControls(selectedClass);
 function entryMode() {
@@ -424,6 +419,7 @@ function render(s: Snapshot) {
   if (me) {
     selectedClass=me.classId;saveClass(me.classId);showClassControls(me.classId);
     updateAbilities($('abilities'), me);
+    updateTouchAbilities($('touch-actions'), me);
     updateClasses($('room-classes'),me.classId,!overlay||s.paused);
     $('room-picker').hidden=!overlay;
     $('stage').dataset.class=me.classId;
@@ -435,6 +431,10 @@ function render(s: Snapshot) {
     $('stage').dataset.dashing=String(me.dashInvulnerable || (me.classId==='guardian' && me.dashLeft>0));
     $('health').textContent=`♥ ${me.hp}/${me.maxHp}`;
     $('health').setAttribute('aria-label',`Vida: ${me.hp} de ${me.maxHp}`);
+    $('mobile-player-status').hidden = false;
+    $('mobile-health').textContent = `♥ ${me.hp}/${me.maxHp}`;
+    const carrying = s.flags.some((flag) => flag.carrier === me.id);
+    $('mobile-state').textContent = carrying ? '⚑ BANDERA' : me.stunLeft > 0 ? `ATURDIDO ${me.stunLeft.toFixed(1)}s` : me.bushId ? (me.revealLeft > 0 ? 'REVELADO' : 'OCULTO') : me.guarding ? 'GUARDIA' : me.furyLeft > 0 ? `FURIA ${me.furyLeft.toFixed(1)}s` : '';
     $('lives').textContent=`☠ ${me.deaths}`;
     $('lives').setAttribute('aria-label',`Muertes: ${me.deaths}; reapariciones ilimitadas`);
     $('stealth-state').textContent = me.bushId ? (me.revealLeft > 0 ? `◉ Revelado ${me.revealLeft.toFixed(1)}s` : '◌ Oculto') : '';
@@ -453,10 +453,11 @@ function render(s: Snapshot) {
     $('stage').dataset.traps = String(s.traps.filter(t=>t.owner===me.id).length);
     $('cd-trap').textContent = me.trapLeft > 0 ? `Q Preparando ${me.trapLeft.toFixed(1)}s` : `Q Trampa · ${me.trapCd>0?me.trapCd.toFixed(1)+'s':'Lista'}`;
     $('cd-volley').textContent = `E Triple · ${me.volleyCd>0?me.volleyCd.toFixed(1)+'s':'Listo'}`;
-    $('touch-trap').textContent = me.classId==='guardian'?(me.shieldBashLeft>0?'Q':me.shieldBashCd>0?Math.ceil(me.shieldBashCd)+'s':'Q'):(me.trapLeft>0?me.trapLeft.toFixed(1):me.trapCd>0?Math.ceil(me.trapCd)+'s':'Q');
-    $('touch-volley').textContent = me.classId==='guardian'?(me.furyLeft>0?me.furyLeft.toFixed(1):me.furyCd>0?Math.ceil(me.furyCd)+'s':'E'):(me.volleyCd>0?Math.ceil(me.volleyCd)+'s':'E');
+
     $('cd-summon').textContent = `☠ ${me.activeExecutions}/${RULES.zombieExecutions} · ${me.activeExecutions >= RULES.zombieExecutions ? 'Llenas' : me.summonCd > 0 ? me.summonCd.toFixed(1) + 's' : 'Listo'}`;
     if(me.specialCharge > 0 && CLASSES[me.classId].summon) $('cd-summon').textContent = me.specialCharge >= RULES.overchargeTime ? `☠ Aura ${Math.round(Math.min(1, me.specialCharge / RULES.raiseCharge) * 100)} % · resucitar` : '☠ Cargando · zombie con gorro';
+  } else {
+    $('mobile-player-status').hidden = true;
   }
   $('arena-hint').textContent = s.flags.some((f) => f.carrier === me?.id)
     ? '¡Tenés la bandera! Volvé a tu base.'
