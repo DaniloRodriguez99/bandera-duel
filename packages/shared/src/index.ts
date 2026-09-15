@@ -1514,7 +1514,7 @@ export function movePlayer(
       p.shotCd = projectileSkillStats(result.skillId, p.classId).cooldown;
       p.attackLock = RULES.attackLock;
       result.charged = fullArcherCharge;
-      result.wind = dashCombo && fullArcherCharge;
+      result.wind = fullArcherCharge;
       result.angle = p.angle;
       if (dashCombo) p.windDash = 0;
       result.power = result.skillId === 'archer.arrow' ? 0 : chargePower(p.shotCharge);
