@@ -399,6 +399,19 @@ export class Arena extends Phaser.Scene {
     } else if (e.kind === 'raise') {
       this.fade(this.add.rectangle(e.x, e.y - 40, 22, 96, 0x7dffb0, 0.4).setDepth(16), { scaleX: 0 }, 760);
       this.fade(this.add.ellipse(e.x, e.y + 8, 30, 12).setStrokeStyle(2, 0x7dffb0, 0.9).setDepth(4), { scale: 3 }, 760);
+    } else if (e.kind === 'levelup') {
+      this.fade(this.add.circle(e.x, e.y - 4, 12).setStrokeStyle(3, 0xffd36b, 0.95).setDepth(16), { scale: 3 }, 520);
+      const text = this.add
+        .text(e.x, e.y - 40, `NV ${e.power ?? 2}`, {
+          fontFamily: 'monospace',
+          fontSize: '12px',
+          color: '#ffd36b',
+          stroke: '#2a1a06',
+          strokeThickness: 3,
+        })
+        .setOrigin(0.5)
+        .setDepth(17);
+      this.fade(text, { y: e.y - 62 }, 900);
     } else if (e.kind === 'counter') {
       this.fade(this.add.star(e.x, e.y - 4, 8, 6, 20, e.power ? 0xff9a3c : 0xffd36b, 0.9).setDepth(16), { scale: 2, angle: 60 }, 380);
     } else if (e.kind === 'wind') {
@@ -419,6 +432,35 @@ export class Arena extends Phaser.Scene {
       this.fade(this.add.circle(e.x, e.y, 6).setStrokeStyle(3, 0xffe08a, 0.9).setDepth(16), { scale: 5 + power * 3 }, 380);
     } else if (e.kind === 'summon' && e.power) {
       this.fade(this.add.ellipse(e.x, e.y + 8, 36, 14).setStrokeStyle(3, 0xb06cff, 0.9).setDepth(4), { scale: 3.4 }, 700);
+    }
+  }
+  /** Sword zombie: a notched blade raised and swung on windup, gold level pips, a glow once it cleaves. */
+  private drawZombieSword(g: Phaser.GameObjects.Graphics, z: Zombie, x: number, y: number, time: number) {
+    const facing = Math.cos(z.angle) < 0 ? -1 : 1;
+    const swing = z.windup > 0 ? 1 - z.windup / RULES.zombieWindup : 0;
+    const lift = z.windup > 0 ? -1.9 + swing * 2.6 : -0.9 + Math.sin(time * 0.006 + z.slot) * 0.12;
+    const angle = facing > 0 ? lift : Math.PI - lift;
+    const hand = { x: x + facing * 9, y: y - 4 };
+    const length = 20 + z.level * 2;
+    const dx = Math.cos(angle),
+      dy = Math.sin(angle);
+    const tip = { x: hand.x + dx * length, y: hand.y + dy * length };
+    if (z.level >= RULES.swordZombieLevelMax) {
+      g.lineStyle(7, 0xffc86b, 0.25 + Math.sin(time * 0.01) * 0.1);
+      g.lineBetween(hand.x, hand.y, tip.x, tip.y);
+    }
+    g.lineStyle(3, 0x3a3f44, 1);
+    g.lineBetween(hand.x, hand.y, tip.x, tip.y);
+    g.lineStyle(1, 0xd7dde0, 1);
+    g.lineBetween(hand.x + dx * 4, hand.y + dy * 4, tip.x, tip.y);
+    g.lineStyle(2, 0x8a6a3c, 1);
+    g.lineBetween(hand.x + dx * 4 - dy * 4, hand.y + dy * 4 + dx * 4, hand.x + dx * 4 + dy * 4, hand.y + dy * 4 - dx * 4);
+    for (let i = 0; i < z.level; i++) {
+      const px = x - (z.level - 1) * 4 + i * 8,
+        py = y - 31;
+      g.fillStyle(0xffd36b, 1);
+      g.fillTriangle(px, py - 3, px + 3, py, px - 3, py);
+      g.fillTriangle(px, py + 3, px + 3, py, px - 3, py);
     }
   }
   /** Wind arrow: a pale shaft wrapped in spiralling gusts and a streaming trail. */
@@ -865,6 +907,7 @@ export class Arena extends Phaser.Scene {
       v.fx.lineStyle(1, 0xe8fbff, 0.8);
       v.fx.strokeRoundedRect(v.x - 14, v.y - 26, 28, 36, 5);
     }
+    if (z.kind === 'sword') this.drawZombieSword(v.fx, z, v.x, v.y, time);
     if (z.kind !== 'hat') return;
     v.fx.fillStyle(0x2b0f3a, 0.3 + Math.sin(time * 0.005) * 0.1);
     v.fx.fillEllipse(v.x, v.y + 9, 46, 16);
