@@ -53,8 +53,8 @@ describe('servidor con clientes Colyseus reales', () => {
     expect(states.get(b.sessionId)?.players.map(p=>p.classId)).toEqual([first,second]);host.game.state.phase='playing';
     a.send('input',{...idleInput(1),guard:true});b.send('input',{...idleInput(1),shot:true,dash:true,summon:true});await sleep(120);
     expect(host.game.state.arrows).toHaveLength(0);expect(host.game.state.zombies).toHaveLength(0);
-    // The knight dashes with Space now; the other second classes still cannot.
-    if(second!=='guardian')expect(host.game.state.players[1].dashCd).toBe(0);
+    // The warrior dashes with Space; the other second classes cannot.
+    if(second!=='vanguard')expect(host.game.state.players[1].dashCd).toBe(0);
     if(first==='archer'||first==='necromancer')expect(host.game.state.players[0].guarding).toBe(false);
     await a.leave();await b.leave();
   });

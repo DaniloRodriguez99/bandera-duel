@@ -414,6 +414,14 @@ export class Arena extends Phaser.Scene {
       this.fade(text, { y: e.y - 62 }, 900);
     } else if (e.kind === 'counter') {
       this.fade(this.add.star(e.x, e.y - 4, 8, 6, 20, e.power ? 0xff9a3c : 0xffd36b, 0.9).setDepth(16), { scale: 2, angle: 60 }, 380);
+    } else if (e.kind === 'slash') {
+      // The warrior's slash leaves the blade as a white crescent.
+      const flash = this.add.graphics().setDepth(16);
+      flash.lineStyle(4, 0xfff3d6, 0.9);
+      flash.beginPath();
+      flash.arc(e.x, e.y - 4, 30, (e.angle ?? 0) - 1.2, (e.angle ?? 0) + 1.2);
+      flash.strokePath();
+      this.fade(flash, {}, 260);
     } else if (e.kind === 'wind') {
       this.fade(this.add.ellipse(e.x, e.y + 6, 30, 12).setStrokeStyle(2, 0xd8fbff, 0.9).setDepth(16), { scale: 3.2 }, 420);
       for (const side of [-1, 1]) {
@@ -461,6 +469,25 @@ export class Arena extends Phaser.Scene {
       g.fillStyle(0xffd36b, 1);
       g.fillTriangle(px, py - 3, px + 3, py, px - 3, py);
       g.fillTriangle(px, py + 3, px + 3, py, px - 3, py);
+    }
+  }
+  /** Warrior's travelling slash: a bright crescent with fading after-images, thinning out as it ends. */
+  private drawSlash(p: { x: number; y: number }, angle: number, life: number) {
+    const g = this.arrows,
+      fade = Math.min(1, life / 0.2),
+      dx = Math.cos(angle),
+      dy = Math.sin(angle),
+      radius = RULES.slashRadius;
+    g.lineStyle(10, 0xffe3a3, 0.18 * fade);
+    g.beginPath();
+    g.arc(p.x - dx * radius, p.y - dy * radius, radius, angle - 1, angle + 1);
+    g.strokePath();
+    for (let i = 2; i >= 0; i--) {
+      const back = i * 9;
+      g.lineStyle(i ? 3 : 5, i ? 0xd9d2bd : 0xfff8e6, (i ? 0.25 : 0.95) * fade);
+      g.beginPath();
+      g.arc(p.x - dx * (radius + back), p.y - dy * (radius + back), radius, angle - 1.15, angle + 1.15);
+      g.strokePath();
     }
   }
   /** Wind arrow: a pale shaft wrapped in spiralling gusts and a streaming trail. */
@@ -743,7 +770,7 @@ export class Arena extends Phaser.Scene {
       if(p.magicShieldHits===2){v.hp.lineStyle(1,0xe6faff,.55);v.hp.strokeCircle(v.x,v.y-3,29);}
     }
     if (p.hp > 0 && p.counterLeft > 0) {
-      // Knight's full counter: a spinning golden ward; once charged it spins faster and burns orange.
+      // Warrior's full counter: a spinning golden ward; once charged it spins faster and burns orange.
       const charged = p.counterCharge >= RULES.counterChargeTime - 1e-8;
       const now = this.time.now;
       v.hp.lineStyle(2, charged ? 0xff9a3c : 0xffd36b, 0.9);
@@ -1102,6 +1129,10 @@ export class Arena extends Phaser.Scene {
         // Countered projectile: a golden halo, bigger when the counter was charged.
         this.arrows.fillStyle(0xffd36b, 0.18 + 0.1 * a.reflected);
         this.arrows.fillCircle(p.x, p.y, 7 + 5 * a.reflected);
+      }
+      if (a.slash) {
+        this.drawSlash(p, a.angle, a.life);
+        continue;
       }
       if (a.wind) {
         this.drawWind(p, a.angle, time, a.volley !== undefined);

@@ -114,7 +114,7 @@ function showClassControls(id:ClassId) {
   }
   if (id !== 'archer') $('control-guide').innerHTML += '<span><kbd>MANTENER CLIC</kbd> Cargar · más daño y alcance al soltar</span>';
   if (stats.dash) $('control-guide').innerHTML += '<span><kbd>MANTENER ESPACIO</kbd> Dash más largo</span>';
-  if (guardian) $('control-guide').innerHTML += '<span><kbd>Q</kbd> Contraataque: devuelve proyectiles · mantené 1 s: el doble de rápido y fuerte</span>';
+  if (id === 'vanguard') $('control-guide').innerHTML += '<span><kbd>Q</kbd> Tajo que viaja y corta a todos en su camino</span><span><kbd>E</kbd> Contraataque: devuelve proyectiles · mantené 1 s: el doble de rápido y fuerte</span>';
   if (stats.summon) $('control-guide').innerHTML += '<span><kbd>MANTENER ESPACIO</kbd> Zombie mago · aura llena: mandala bajo el mouse que resucita a un rival caído</span><span><kbd>ESPACIO</kbd> Si cae un zombie del círculo rojo: vuelve como zombie con espada que sube de nivel al matar</span><span><kbd>E</kbd> Zombies: círculo rojo y mouse, o automáticos</span><span><kbd>⌘/CTRL E</kbd> Pasar al zombie bajo el cursor entre el círculo rojo y el mouse</span>';
 }
 showClassControls(selectedClass);
