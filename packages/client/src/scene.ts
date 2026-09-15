@@ -1476,9 +1476,10 @@ export class Arena extends Phaser.Scene {
     }
   }
   update(time: number, delta: number) {
-    if (!this.controls || !this.snapshot) return;
-    let s = this.snapshot;
+    if (!this.controls) return;
     this.updateCamera(delta);
+    if (!this.snapshot) return;
+    let s = this.snapshot;
     this.accumulator += Math.min(delta, 100);
     if (this.predicted && !this.controls.aimFromPointer) {
       // Touch aiming has no cursor: project the aim direction into the arena instead.
