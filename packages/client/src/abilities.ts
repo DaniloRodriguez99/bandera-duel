@@ -18,6 +18,8 @@ export interface AbilitySlot {
   tiers?: AbilityTier[];
 }
 
+const skillIcon = (name: string) => `/assets/skills/${name}.png`;
+
 const percent = (value: number) => `${Math.round(Math.min(1, value) * 100)} %`;
 const tapped = (charge: number) => charge > 0 && charge < RULES.overchargeTap;
 /** Shot charge full with a charged dash ready or in the air: the release becomes wind. */
@@ -30,7 +32,11 @@ export function abilitySlots(classId: ClassId): AbilitySlot[] {
   const slots: AbilitySlot[] = [];
   if (stats.ranged) {
     const [name, icon] =
-      classId === 'mage' ? ['Bola de fuego', '✦'] : classId === 'necromancer' ? ['Fuego', '✺'] : ['Flecha', '➶'];
+      classId === 'mage'
+        ? ['Bola de fuego', skillIcon('mage-fireball')]
+        : classId === 'necromancer'
+          ? ['Fuego', skillIcon('necromancer-fire')]
+          : ['Flecha', skillIcon('archer-arrow')];
     slots.push({
       id: 'shot',
       key: 'CLIC',
@@ -63,7 +69,7 @@ export function abilitySlots(classId: ClassId): AbilitySlot[] {
       id: 'sword',
       key: 'CLIC',
       name: classId === 'vanguard' ? 'Espada pesada' : 'Espada',
-      icon: '⚔',
+      icon: skillIcon(classId === 'vanguard' ? 'vanguard-sword' : 'guardian-slash'),
       cooldown: (p) => p.swordCd,
       max: stats.meleeCooldown,
       tiers: [
@@ -80,7 +86,15 @@ export function abilitySlots(classId: ClassId): AbilitySlot[] {
       id: 'dash',
       key: 'ESPACIO',
       name: classId === 'guardian' ? 'Embestida' : 'Esquivar',
-      icon: '➟',
+      icon: skillIcon(
+        classId === 'archer'
+          ? 'archer-wind'
+          : classId === 'mage'
+            ? 'mage-dash'
+            : classId === 'vanguard'
+              ? 'vanguard-dash'
+              : 'guardian-bash',
+      ),
       cooldown: (p) => p.dashCd,
       max: classId === 'guardian' ? RULES.guardianDashCooldown : RULES.dashCooldown,
       tiers:
@@ -101,7 +115,7 @@ export function abilitySlots(classId: ClassId): AbilitySlot[] {
         id: 'summon',
         key: 'ESPACIO',
         name: 'Invocar zombies',
-        icon: '☠',
+        icon: skillIcon('necromancer-summon'),
         cooldown: (p) => p.summonCd,
         max: RULES.summonCooldown,
         tiers: [
@@ -138,7 +152,7 @@ export function abilitySlots(classId: ClassId): AbilitySlot[] {
         id: 'command',
         key: 'E',
         name: 'Mando',
-        icon: '⚑',
+        icon: skillIcon('necromancer-mage'),
         cooldown: () => 0,
         max: 1,
         detail: (p) => (p.zombieAuto ? 'Auto' : 'Mando'),
@@ -152,7 +166,7 @@ export function abilitySlots(classId: ClassId): AbilitySlot[] {
         id: 'mark',
         key: '⌘ E',
         name: 'Marcar',
-        icon: 'E',
+        icon: skillIcon('necromancer-resurrection'),
         cooldown: () => 0,
         max: 1,
         tiers: [{ label: 'Sobre un zombie · cambia de círculo' }, { label: 'Rojo contigo ↔ violeta al mouse' }],
@@ -160,12 +174,12 @@ export function abilitySlots(classId: ClassId): AbilitySlot[] {
     );
   if (classId === 'archer')
     slots.push(
-      { id: 'dagger', key: 'CLIC DER.', name: 'Daga', icon: '†', cooldown: (p) => p.swordCd, max: stats.meleeCooldown },
+      { id: 'dagger', key: 'CLIC DER.', name: 'Daga', icon: skillIcon('archer-arrow'), cooldown: (p) => p.swordCd, max: stats.meleeCooldown },
       {
         id: 'trap',
         key: 'Q',
         name: 'Trampa',
-        icon: '⌖',
+        icon: skillIcon('archer-trap'),
         cooldown: (p) => p.trapCd,
         max: RULES.trapCooldown,
         detail: (p) => (p.trapLeft > 0 ? 'Preparando' : null),
@@ -174,7 +188,7 @@ export function abilitySlots(classId: ClassId): AbilitySlot[] {
         id: 'volley',
         key: 'E',
         name: 'Triple',
-        icon: '⋔',
+        icon: skillIcon('archer-volley'),
         cooldown: (p) => p.volleyCd,
         max: RULES.volleyCooldown,
         tiers: [
@@ -189,7 +203,7 @@ export function abilitySlots(classId: ClassId): AbilitySlot[] {
       id: 'magic-shield',
       key: 'CLIC DER.',
       name: 'Escudo mágico',
-      icon: '⛨',
+      icon: skillIcon('mage-shield'),
       cooldown: (p) => p.magicShieldCd,
       max: RULES.magicShieldCooldown,
       detail: (p) => (p.magicShieldHits > 0 ? `${p.magicShieldHits}/${RULES.magicShieldHits}` : null),
@@ -199,7 +213,7 @@ export function abilitySlots(classId: ClassId): AbilitySlot[] {
       id: 'ice',
       key: 'CLIC 3',
       name: 'Flecha de hielo',
-      icon: '❄',
+      icon: skillIcon('mage-ice'),
       cooldown: (p) => p.iceCd,
       max: RULES.iceCooldown,
       tiers: [{ label: 'Clic central · inmoviliza 1 s' }],
@@ -209,7 +223,7 @@ export function abilitySlots(classId: ClassId): AbilitySlot[] {
       id: 'guard',
       key: 'CLIC DER.',
       name: 'Guardia continua',
-      icon: '⛨',
+      icon: skillIcon('guardian-shield'),
       cooldown: (p) => p.guardCd,
       max: RULES.guardCooldown,
       detail: (p) => (p.guarding ? 'Bloqueando · 45 % velocidad' : null),
@@ -221,7 +235,7 @@ export function abilitySlots(classId: ClassId): AbilitySlot[] {
         id: 'shield-bash',
         key: 'Q',
         name: 'Golpe de escudo',
-        icon: '◈',
+        icon: skillIcon('guardian-bash'),
         cooldown: (p) => p.shieldBashCd,
         max: RULES.shieldBashCooldown,
         detail: (p) => (p.shieldBashLeft > 0 ? 'Golpeando' : null),
@@ -231,7 +245,7 @@ export function abilitySlots(classId: ClassId): AbilitySlot[] {
         id: 'fury',
         key: 'E',
         name: 'Furia',
-        icon: '✹',
+        icon: skillIcon('guardian-fury'),
         cooldown: (p) => p.furyCd,
         max: RULES.furyCooldown,
         detail: (p) => (p.furyLeft > 0 ? `${p.furyLeft.toFixed(1)}s activa` : null),
@@ -249,14 +263,14 @@ export function abilitySlots(classId: ClassId): AbilitySlot[] {
       id: 'slash',
       key: 'Q',
       name: 'Tajo viajero',
-      icon: '☽',
+      icon: skillIcon('vanguard-slash'),
       cooldown: (p) => p.slashCd,
       max: RULES.slashCooldown,
     }, {
       id: 'counter',
       key: 'E',
       name: 'Contraataque',
-      icon: '↺',
+      icon: skillIcon('vanguard-counter'),
       cooldown: (p) => p.counterCd,
       max: RULES.counterCooldown,
       detail: (p) => (p.counterLeft > 0 ? 'Activo' : null),
@@ -303,7 +317,10 @@ export function updateAbilities(root: HTMLElement, p: Player) {
         }
         const card = element('div', 'ability');
         card.dataset.ability = slot.id;
-        const icon = element('span', 'ability-icon', slot.icon);
+        const icon = document.createElement('img');
+        icon.className = 'ability-icon';
+        icon.src = slot.icon;
+        icon.alt = '';
         icon.setAttribute('aria-hidden', 'true');
         card.append(icon, element('span', 'ability-state'), element('kbd', '', slot.key), element('small', '', slot.name));
         branch.append(card);

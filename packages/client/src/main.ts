@@ -70,14 +70,36 @@ if (!MAPS[selectedMap]) selectedMap = 'courtyard';
 $<HTMLSelectElement>('map-select').value = selectedMap;
 function updateMapPreview() {
   const map = MAPS[selectedMap];
-  $('map-preview').className = `map-preview ${selectedMap}`;
-  $('map-preview').innerHTML = `<strong>${map.name}</strong><span>${map.description}</span><small>${map.bushes.length ? `${map.bushes.length} zonas de arbustos · sigilo activo` : 'Arena abierta · sin arbustos'}</small>`;
+  const mode = $<HTMLSelectElement>('game-mode').value as GameMode;
+  const teams: Team[] = mode === 'ffa4' ? ['blue', 'red', 'green', 'violet'] : mode === 'ffa3' ? ['blue', 'red', 'green'] : ['blue', 'red'];
+  const homes = mode.startsWith('ffa') ? map.cornerHomes : map.sideHomes;
+  const walls = map.walls
+    .map(
+      (wall) =>
+        `<g class="preview-wall"><rect x="${wall.x}" y="${wall.y}" width="${wall.w}" height="${wall.h}" rx="4"/><path d="M${wall.x + 5} ${wall.y + 8}h${Math.max(0, wall.w - 10)}M${wall.x + 5} ${wall.y + wall.h - 8}h${Math.max(0, wall.w - 10)}"/></g>`,
+    )
+    .join('');
+  const bushes = map.bushes
+    .map(
+      (bush) =>
+        `<g class="preview-bush"><rect x="${bush.x}" y="${bush.y}" width="${bush.w}" height="${bush.h}" rx="16"/><circle cx="${bush.x + bush.w * 0.28}" cy="${bush.y + bush.h * 0.45}" r="${Math.min(bush.h, bush.w) * 0.22}"/><circle cx="${bush.x + bush.w * 0.65}" cy="${bush.y + bush.h * 0.55}" r="${Math.min(bush.h, bush.w) * 0.26}"/></g>`,
+    )
+    .join('');
+  const bases = teams
+    .map((team) => {
+      const home = homes[team as keyof typeof homes];
+      return `<g class="preview-base ${team}" transform="translate(${home.x} ${home.y})"><circle r="34"/><circle r="22"/><path d="M0 18V-22M1-21l24 8-24 9z"/></g>`;
+    })
+    .join('');
+  $('map-preview').className = `map-preview ${map.theme}`;
+  $('map-preview').innerHTML = `<svg class="map-mini" viewBox="0 0 960 540" role="img" aria-label="Vista táctica de ${map.name}"><defs><pattern id="floor-${map.id}" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M40 0H0v40"/></pattern></defs><rect class="preview-floor" width="960" height="540"/><rect class="preview-grid" width="960" height="540" fill="url(#floor-${map.id})"/><path class="preview-axis" d="M480 0v540M0 270h960"/>${bushes}${walls}<circle class="preview-center" cx="480" cy="270" r="42"/>${bases}<rect class="preview-frame" x="5" y="5" width="950" height="530" rx="8"/></svg><span class="map-copy"><strong>${map.name}</strong><span>${map.description}</span><small>${map.bushes.length ? `${map.bushes.length} zonas de arbustos · sigilo activo` : 'Arena abierta · sin arbustos'} · ${map.walls.length} coberturas</small></span>`;
 }
 $<HTMLSelectElement>('map-select').onchange = (event) => {
   selectedMap = (event.target as HTMLSelectElement).value as MapId;
   localStorage.setItem('bandera-map', selectedMap);
   updateMapPreview();
 };
+$<HTMLSelectElement>('game-mode').addEventListener('change', updateMapPreview);
 updateMapPreview();
 let selectedClass = savedClass();
 mountClasses($('entry-classes'), selectedClass, (id) => {
