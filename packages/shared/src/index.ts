@@ -1213,6 +1213,8 @@ export function movePlayer(
   };
   if (p.hp <= 0) return result;
   const stats = CLASSES[p.classId];
+  const beforeX = p.x;
+  const beforeY = p.y;
   const wasWinding = p.windup > 0;
   const frozenDt = Math.min(dt, p.frozenLeft);
   p.frozenLeft = Math.max(0, p.frozenLeft - dt);
@@ -1455,7 +1457,8 @@ export function movePlayer(
   // During any dash the archer keeps charging and can release toward the cursor.
   // A full primary charge or any volley released in this window becomes wind.
   const dashCombo = p.classId === 'archer' && p.windDash > 0;
-  const movingVolley = p.classId === 'archer' && (dashCombo || input.x !== 0 || input.y !== 0);
+  const movingVolley =
+    p.classId === 'archer' && (dashCombo || Math.hypot(p.x - beforeX, p.y - beforeY) > 1e-6);
   const fullArcherCharge = p.classId === 'archer' && heldCharge >= RULES.chargeTime - 1e-8;
   const dashAttackWindow = movingVolley || p.classId === 'vanguard';
   const canCharge =

@@ -15,6 +15,13 @@ it('triple mientras se desplaza sale penetrante',()=>{
  expect(d.state.arrows).toHaveLength(3);
  expect(d.state.arrows.every(a=>a.wind&&a.hits&&a.volley!==undefined)).toBe(true);
 });
+it('triple mientras se desplaza en PvE sale penetrante',()=>{
+ const d=new Duel('courtyard','pve');d.add('a','A','archer');d.state.phase='playing';d.state.pve={objective:'elimination',wave:1,initialPartySize:1,pendingBudget:0,spawnedAll:true,enemiesRemaining:1,rewardLeft:0,chosen:[],completed:false,endless:false,bossActive:false,kills:{},damage:{}};
+ d.state.mobs.push({id:'m1',kind:'zombie',hp:10,maxHp:10,x:300,y:270,angle:0,speed:0,damage:1,attackCd:0,specialCd:0,windup:0,spawnLeft:0,frozenLeft:0,target:null,elite:false,boss:false,bushId:null,revealLeft:0});
+ d.step(new Map([['a',{...idleInput(),volley:true,x:1}]]));
+ expect(d.state.arrows).toHaveLength(3);
+ expect(d.state.arrows.every(a=>a.wind&&a.hits&&a.volley!==undefined)).toBe(true);
+});
 it.each(['guardian','vanguard','mage','necromancer'] as ClassId[])('%s no usa habilidades de arquero',id=>{
  const p=newPlayer('a','A','blue',id);expect(movePlayer(p,{...idleInput(),volley:true,trap:true},false)).toMatchObject({trap:false,volley:false});expect(p.trapLeft).toBe(0);
 });
