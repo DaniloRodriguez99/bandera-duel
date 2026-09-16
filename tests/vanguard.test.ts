@@ -83,7 +83,8 @@ describe('guerrero', () => {
     const { d, a } = duel();
     clash(d, ticks(RULES.counterChargeTime) + 1, { counter: true });
     clash(d, 1, { counter: true }, { shot: true });
-    clash(d, 11, { counter: true });
+    // The arrow is reflected around tick 7 and reaches the archer at tick 11: catch it mid-flight.
+    clash(d, 9, { counter: true });
     expect(d.state.arrows[0]).toMatchObject({ owner: 'w', reflected: 2, damageScale: RULES.counterBoost });
     clash(d, 15, { counter: true });
     expect(a.hp).toBe(CLASSES.archer.hp - RULES.counterBoost * RULES.arrowDamage);
