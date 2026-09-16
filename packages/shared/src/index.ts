@@ -706,6 +706,14 @@ export interface Player extends Vec {
   pve: import('./pve.js').PlayerUpgradeState;
   pveKills: number;
   pveDamage: number;
+  /**
+   * The RPG sheet, mirrored from the saved character so the simulation and the other players'
+   * views can read it cheaply. A duel player keeps `maxMana` at 0, and that zero is the guard
+   * that leaves the duel simulation byte for byte as it was.
+   */
+  level: number;
+  mana: number;
+  maxMana: number;
 }
 export interface Flag extends Vec {
   team: Team;
@@ -1681,6 +1689,9 @@ export function newPlayer(
     pve: emptyUpgrades(),
     pveKills: 0,
     pveDamage: 0,
+    level: 1,
+    mana: 0,
+    maxMana: 0,
   };
 }
 const newFlag = ({ team, home }: Base): Flag => ({
@@ -1853,6 +1864,10 @@ export class Duel {
       pve: p.pve,
       pveKills: p.pveKills,
       pveDamage: p.pveDamage,
+      // Progression must survive death. Anything missing from this list resets in silence.
+      level: p.level,
+      mana: p.mana,
+      maxMana: p.maxMana,
     });
     p.maxHp=CLASSES[p.classId].hp*(1+(p.pve?.maxHpBonus??0));p.hp=p.maxHp;
   }
