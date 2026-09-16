@@ -1,6 +1,15 @@
 import { Client, Room, ServerError } from '@colyseus/core';
 import { RULES, sanitizeInput, validClass, validName, type Input, type Player } from '@bandera/shared';
-import { World, newCharacter, type Character, type WorldSnapshot } from '@bandera/shared/world';
+import {
+  CAST_SLOTS,
+  World,
+  newCharacter,
+  validCreation,
+  type CastSlot,
+  type Character,
+  type WorldSnapshot,
+} from '@bandera/shared/world';
+import { rollDestiny } from '@bandera/shared/rpg/skills';
 import { DEFAULT_ZONE, ZONES, type ZoneId } from '@bandera/shared/rpg/zones';
 import { MemoryStore, StoreError, type AccountId, type CharacterStore } from './store/characters.js';
 
@@ -108,6 +117,32 @@ export class WorldRoom extends Room {
       if (this.worldOf(id)?.spendPoint(id, stat as never)) this.sendSheet(client, id);
     });
 
+    // A key pressed for a skill slot, aimed at a point of the world.
+    this.onMessage('cast', (client, message: unknown) => {
+      const id = this.characterOf.get(client.sessionId);
+      const m = message as { slot?: unknown; aimX?: unknown; aimY?: unknown } | null;
+      if (!id || !m || !CAST_SLOTS.includes(m.slot as CastSlot)) return;
+      const x = Number(m.aimX);
+      const y = Number(m.aimY);
+      if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+      this.worldOf(id)?.cast(id, m.slot as CastSlot, { x, y });
+    });
+
+    this.onMessage('learn', (client, message: unknown) => {
+      const id = this.characterOf.get(client.sessionId);
+      const m = message as { skillId?: unknown; nodeId?: unknown } | null;
+      if (!id || typeof m?.skillId !== 'string' || typeof m.nodeId !== 'string') return;
+      this.worldOf(id)?.learn(id, m.skillId, m.nodeId);
+    });
+
+    this.onMessage('slot', (client, message: unknown) => {
+      const id = this.characterOf.get(client.sessionId);
+      const m = message as { slot?: unknown; skillId?: unknown } | null;
+      if (!id || !CAST_SLOTS.includes(m?.slot as CastSlot)) return;
+      const skillId = typeof m!.skillId === 'string' ? m!.skillId : null;
+      this.worldOf(id)?.setSlot(id, m!.slot as CastSlot, skillId);
+    });
+
     // Colyseus closes the connection (code 4002) on any message type the room did not register.
     // The client pings every two seconds, and the shared bind() can send duel messages too, so
     // the world answers pings and quietly ignores anything else it does not know.
@@ -157,6 +192,8 @@ export class WorldRoom extends Room {
         open: refusal.open,
       });
     }
+    // What the System has to tell each character goes to that character alone.
+    for (const notice of world.notices.splice(0)) this.clientOf(notice.id)?.send('system', notice);
     // Experience, levels and spent points change the private sheet; without this the client kept
     // showing its old level until it happened to resync.
     for (const id of world.sheetChanged) {
@@ -228,7 +265,10 @@ export class WorldRoom extends Room {
     if (!character) {
       const classId = validClass(options.classId) ? options.classId : 'guardian';
       const name = validName(options.name) ?? 'Alguien';
-      character = newCharacter(chosen, auth.account, name, classId);
+      // The dice are thrown here, on the server: a fated skill cannot be rerolled from a browser.
+      const creation = validCreation(options.creation) ? options.creation : undefined;
+      const destiny = creation ? rollDestiny(Math.random) : undefined;
+      character = newCharacter(chosen, auth.account, name, classId, creation, destiny);
       await store.createCharacter(auth.account, character);
     }
     this.enter(client, character);

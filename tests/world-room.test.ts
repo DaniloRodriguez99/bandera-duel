@@ -29,6 +29,7 @@ interface Session {
   sheet: Character | null;
   entered: { characterId: string; zoneId: string } | null;
   refused: { to: string; minLevel: number; open: boolean } | null;
+  system: { kind: string; title: string; text: string; incantation?: string }[];
 }
 
 /** The zone worlds inside the room, for tests that need to move or level a character by hand. */
@@ -43,7 +44,8 @@ const zoneWorld = (roomId: string, zoneId: string) =>
 async function connect(options: Record<string, unknown>): Promise<Session> {
   const room = await sdk.joinOrCreate('world', options);
   sessions.push(room);
-  const session: Session = { room, snapshots: [], characters: null, sheet: null, entered: null, refused: null };
+  const session: Session = { room, snapshots: [], characters: null, sheet: null, entered: null, refused: null, system: [] };
+  room.onMessage('system', (m: Session['system'][number]) => session.system.push(m));
   room.onMessage('refused', (m: Session['refused']) => (session.refused = m));
   room.onMessage('snapshot', (s: Snapshot) => session.snapshots.push(s));
   room.onMessage('characters', (m: Session['characters']) => (session.characters = m));
@@ -194,6 +196,48 @@ describe('sala del mundo', () => {
     zoneWorld(s.room.roomId, 'umbral').grantXp('aprendiz-1', 500);
     await until(() => (s.sheet?.level ?? 1) > 1);
     expect(s.sheet!.unspent).toBeGreaterThan(0);
+  });
+
+  it('crear con chispas y arma tira el destino en el servidor y lo manda en la ficha', async () => {
+    const s = await connect({
+      account: 'Isekai', password: 'destino1', create: true,
+      characterId: 'isekai-1', name: 'Rudeus', classId: 'guardian',
+      creation: { sparks: { fuego: 2, agua: 1 }, weapon: 'baston' },
+    });
+    await until(() => s.sheet !== null);
+    expect(s.sheet!.weapon).toBe('baston');
+    expect(s.sheet!.classId).toBe('mage');
+    expect(s.sheet!.affinities.fuego!.points).toBeGreaterThanOrEqual(2);
+    expect(s.sheet!.destiny.skillId).toBeTruthy();
+    expect(s.sheet!.slots.e).toBe(s.sheet!.destiny.skillId);
+  });
+
+  it('una creación tramposa se ignora y el personaje nace común', async () => {
+    const s = await connect({
+      account: 'Tramposo', password: 'trampa12', create: true,
+      characterId: 'tramposo-1', name: 'Tramposo', classId: 'guardian',
+      creation: { sparks: { fuego: 9 }, weapon: 'baston' },
+    });
+    await until(() => s.sheet !== null);
+    expect(s.sheet!.affinities.fuego).toBeUndefined();
+    expect(s.sheet!.destiny.skillId).toBe('parada');
+  });
+
+  it('apretar una ranura lanza la habilidad y el Sistema le avisa solo a quien la lanzó', async () => {
+    const s = await connect({
+      account: 'Parador', password: 'parry123', create: true,
+      characterId: 'parador-1', name: 'Noor', classId: 'guardian',
+    });
+    const testigo = await connect({
+      account: 'Testigo', password: 'mirar123', create: true,
+      characterId: 'testigo-1', name: 'Testigo', classId: 'guardian',
+    });
+    await until(() => s.entered !== null && testigo.entered !== null);
+    s.room.send('cast', { slot: 'e', aimX: 900, aimY: 760 });
+    await until(() => s.system.some((n) => n.kind === 'callout'));
+    expect(s.system.find((n) => n.kind === 'callout')!.title).toBe('Parada');
+    await sleep(200);
+    expect(testigo.system.some((n) => n.kind === 'callout')).toBe(false);
   });
 
   it('la sala de duelo sigue funcionando igual al lado', async () => {
