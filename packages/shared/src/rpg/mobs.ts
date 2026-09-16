@@ -75,6 +75,21 @@ export const MOB_FAMILIES: Record<MobFamilyId, MobFamily> = {
     xp: 11,
     packs: true,
   },
+  ghoul: {
+    id: 'ghoul',
+    name: 'Ghoul',
+    hp: 3.5,
+    damage: 0.9,
+    speed: 115,
+    radius: 12,
+    range: 26,
+    cooldown: 1.1,
+    windup: 0.3,
+    aggro: 250,
+    leash: 560,
+    xp: 18,
+    packs: true,
+  },
   saqueador: {
     id: 'saqueador',
     name: 'Saqueador',
@@ -91,6 +106,20 @@ export const MOB_FAMILIES: Record<MobFamilyId, MobFamily> = {
     packs: false,
   },
 };
+
+/**
+ * Monsters are not static: they grow a level with every player they kill, and past thresholds
+ * they change form. A monster that has killed is more dangerous, and its stolen tree runs further.
+ */
+export const MOB_FORMS: Record<MobFamilyId, [string, string, string]> = {
+  lobezno: ['Lobezno', 'Lobo', 'Huargo'],
+  jabali: ['Jabalí', 'Jabalí Viejo', 'Colmillo de Hierro'],
+  arana: ['Araña', 'Tejedora', 'Reina Tejedora'],
+  saqueador: ['Saqueador', 'Bandido', 'Señor de la Ceniza'],
+  ghoul: ['Ghoul', 'Ghoul Voraz', 'Ghast'],
+};
+export const formName = (familyId: MobFamilyId, level: number) =>
+  MOB_FORMS[familyId][level >= 20 ? 2 : level >= 10 ? 1 : 0];
 
 /** Growth per level. Gentle enough that two levels of difference is a fight, not a wall. */
 const HP_PER_LEVEL = 0.38;

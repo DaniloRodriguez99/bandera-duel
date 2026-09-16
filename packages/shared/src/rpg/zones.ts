@@ -21,7 +21,7 @@ export type ZoneId =
   | 'aguja';
 
 /** Families of world monsters. The stats and skill kit of each one live in `mobs.ts`. */
-export type MobFamilyId = 'lobezno' | 'jabali' | 'arana' | 'saqueador';
+export type MobFamilyId = 'lobezno' | 'jabali' | 'arana' | 'saqueador' | 'ghoul';
 
 export interface Spawner {
   familyId: MobFamilyId;
@@ -219,6 +219,9 @@ export const ZONES: Partial<Record<ZoneId, ZoneDefinition>> = {
       { familyId: 'jabali', level: 11, at: { x: 1000, y: 1200 }, radius: 260, count: 4, respawnSeconds: 40 },
       { familyId: 'saqueador', level: 12, at: { x: 2200, y: 900 }, radius: 220, count: 4, respawnSeconds: 45 },
       { familyId: 'arana', level: 13, at: { x: 3000, y: 2000 }, radius: 200, count: 5, respawnSeconds: 40 },
+      // Ghouls wandered out of the swamp beyond the eastern portal. Stealing from one opens the
+      // hidden road that ends in the vampire.
+      { familyId: 'ghoul', level: 14, at: { x: 3650, y: 1900 }, radius: 200, count: 4, respawnSeconds: 45 },
       {
         familyId: 'saqueador',
         level: 14,
