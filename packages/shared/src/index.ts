@@ -944,17 +944,51 @@ export function zombieVisibleTo(state: Snapshot, target: Zombie, viewerTeam: Tea
       lineClear(v, target, map.walls),
   );
 }
+/** The rectangle an entity may move inside. */
+export interface Bounds {
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+}
+/** Walls plus the area that holds them. A zone carries its own; the arena maps share one. */
+export interface Terrain {
+  walls: Rect[];
+  bounds: Bounds;
+}
+export const ARENA_BOUNDS: Bounds = {
+  minX: 20,
+  minY: 20,
+  maxX: RULES.width - 20,
+  maxY: RULES.height - 20,
+};
+/**
+ * A bare wall list still means the fixed arena it has always meant, so every existing caller and
+ * test keeps its exact behaviour. Memoised per array so the geometry helpers can key caches on the
+ * resulting object instead of stringifying the walls on every call.
+ */
+const legacyTerrain = new WeakMap<Rect[], Terrain>();
+export function terrainOf(source: Rect[] | Terrain): Terrain {
+  if (!Array.isArray(source)) return source;
+  let terrain = legacyTerrain.get(source);
+  if (!terrain) {
+    terrain = { walls: source, bounds: ARENA_BOUNDS };
+    legacyTerrain.set(source, terrain);
+  }
+  return terrain;
+}
 export function blocked(
   x: number,
   y: number,
   radius = RULES.radius as number,
-  walls: Rect[] = WALLS,
+  source: Rect[] | Terrain = WALLS,
 ): boolean {
+  const { walls, bounds } = terrainOf(source);
   if (
-    x - radius < 20 ||
-    y - radius < 20 ||
-    x + radius > RULES.width - 20 ||
-    y + radius > RULES.height - 20
+    x - radius < bounds.minX ||
+    y - radius < bounds.minY ||
+    x + radius > bounds.maxX ||
+    y + radius > bounds.maxY
   )
     return true;
   return walls.some((w) => {
@@ -963,14 +997,14 @@ export function blocked(
     return dx * dx + dy * dy < radius * radius;
   });
 }
-export function translate(p: Vec, dx: number, dy: number, walls: Rect[] = WALLS) {
+export function translate(p: Vec, dx: number, dy: number, walls: Rect[] | Terrain = WALLS) {
   const steps = Math.max(1, Math.ceil(Math.hypot(dx, dy) / 6));
   for (let i = 0; i < steps; i++) {
     if (!blocked(p.x + dx / steps, p.y, RULES.radius, walls)) p.x += dx / steps;
     if (!blocked(p.x, p.y + dy / steps, RULES.radius, walls)) p.y += dy / steps;
   }
 }
-export function lineClear(a: Vec, b: Vec, walls: Rect[] = WALLS): boolean {
+export function lineClear(a: Vec, b: Vec, walls: Rect[] | Terrain = WALLS): boolean {
   const steps = Math.max(1, Math.ceil(distance(a, b) / 5));
   for (let i = 1; i <= steps; i++)
     if (blocked(a.x + ((b.x - a.x) * i) / steps, a.y + ((b.y - a.y) * i) / steps, 1, walls))
@@ -1062,7 +1096,7 @@ export function bodyClear(
   a: Vec,
   b: Vec,
   radius = RULES.zombieRadius - 1,
-  walls: Rect[] = WALLS,
+  walls: Rect[] | Terrain = WALLS,
 ): boolean {
   const steps = Math.max(1, Math.ceil(distance(a, b) / 5));
   for (let i = 1; i <= steps; i++)
@@ -1090,7 +1124,7 @@ const cellCenter = (i: number): Vec => ({
 const cellOf = (p: Vec) =>
   Math.min(ROWS - 1, Math.max(0, Math.floor(p.y / CELL))) * COLS +
   Math.min(COLS - 1, Math.max(0, Math.floor(p.x / CELL)));
-const walkableByMap = new Map<string, boolean[]>();
+const walkableByTerrain = new WeakMap<Terrain, boolean[]>();
 /** Breadth-first search on a 20 px grid; ends at the goal or at the closest reachable cell. */
 export const pathCells = (points: Vec[]) => new Set(points.map(cellOf));
 /** Cells in `avoid` (a sibling's route) are explored last, so a pack spreads across corridors. */
@@ -1098,16 +1132,17 @@ export function findPath(
   from: Vec,
   to: Vec,
   avoid?: ReadonlySet<number>,
-  walls: Rect[] = WALLS,
+  source: Rect[] | Terrain = WALLS,
 ): Vec[] {
-  const key = JSON.stringify(walls);
-  let open = walkableByMap.get(key);
+  // Keyed on the terrain object: stringifying the wall list ran on every single path request.
+  const terrain = terrainOf(source);
+  let open = walkableByTerrain.get(terrain);
   if (!open) {
     open = Array.from({ length: COLS * ROWS }, (_, i) => {
       const c = cellCenter(i);
-      return !blocked(c.x, c.y, RULES.zombieRadius, walls);
+      return !blocked(c.x, c.y, RULES.zombieRadius, terrain);
     });
-    walkableByMap.set(key, open);
+    walkableByTerrain.set(terrain, open);
   }
   const start = cellOf(from),
     goal = cellOf(to),
