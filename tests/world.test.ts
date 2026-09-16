@@ -89,6 +89,76 @@ describe('mundo', () => {
     expect(duelista.maxHp).toBe(CLASSES.guardian.hp);
   });
 
+  it('los campamentos pueblan la zona con los monstruos de su familia', () => {
+    const { world } = setup();
+    run(world, 2);
+    const salvajes = world.state.zombies.filter((z) => z.family);
+    expect(salvajes.length).toBeGreaterThan(0);
+    // Wild monsters answer to no player, which is what puts the brain in automatic mode.
+    expect(salvajes.every((z) => !world.state.players.some((p) => p.id === z.owner))).toBe(true);
+    expect(salvajes.every((z) => z.team === 'red' && z.faction === 'monster')).toBe(true);
+    // A camp fills up to its own count, no further.
+    const campamento = world.definition.spawners[0];
+    const suyos = world.state.zombies.filter((z) => z.owner === 'wild:umbral:0' && z.hp > 0);
+    expect(suyos.length).toBeLessThanOrEqual(campamento.count);
+  });
+
+  it('un lobezno y un jabalí no pelean igual', () => {
+    const { world } = setup();
+    run(world, 2);
+    const lobezno = world.state.zombies.find((z) => z.family === 'lobezno');
+    const jabali = world.state.zombies.find((z) => z.family === 'jabali');
+    expect(lobezno).toBeTruthy();
+    expect(jabali).toBeTruthy();
+    // The boar is the tougher one; if families were decorative these would be equal.
+    expect(jabali!.maxHp).toBeGreaterThan(lobezno!.maxHp);
+  });
+
+  it('matar un monstruo da experiencia y puede subir de nivel', () => {
+    const { world, character, p } = setup();
+    run(world, 2);
+    const presa = world.state.zombies.find((z) => z.family)!;
+    const xpAntes = character.xp;
+    const nivelAntes = character.level;
+    // The killer is credited by proximity, so stand on top of it.
+    Object.assign(p, { x: presa.x, y: presa.y });
+    world.damageZombie(presa, p.team, 999);
+    expect(presa.hp).toBeLessThanOrEqual(0);
+    expect(character.xp > xpAntes || character.level > nivelAntes).toBe(true);
+  });
+
+  it('el campamento arranca lleno y repuebla de a uno con el tiempo', () => {
+    const { world } = setup();
+    const campamento = world.definition.spawners[0];
+    const vivos = () => world.state.zombies.filter((z) => z.owner === 'wild:umbral:0' && z.hp > 0);
+    // A valley nobody has touched is already populated.
+    expect(vivos()).toHaveLength(campamento.count);
+    for (const z of vivos()) z.hp = 0;
+    run(world, 2);
+    // Nothing comes back before its timer: the camp stays cleared for a while.
+    expect(vivos()).toHaveLength(0);
+    run(world, ticks(campamento.respawnSeconds + 1));
+    expect(vivos()).toHaveLength(1);
+    run(world, ticks(campamento.respawnSeconds * campamento.count + 2));
+    expect(vivos()).toHaveLength(campamento.count);
+  });
+
+  it('la correa devuelve al campamento al que persiguió de más', () => {
+    const { world } = setup();
+    run(world, 2);
+    const campamento = world.definition.spawners[0];
+    const mob = world.state.zombies.find((z) => z.owner === 'wild:umbral:0')!;
+    const lejos = { x: campamento.at.x + 1500, y: campamento.at.y };
+    Object.assign(mob, lejos, { hp: 1 });
+    const antes = Math.hypot(mob.x - campamento.at.x, mob.y - campamento.at.y);
+    run(world, ticks(1));
+    const ahora = Math.hypot(mob.x - campamento.at.x, mob.y - campamento.at.y);
+    expect(ahora).toBeLessThan(antes);
+    // It heals on the way home, so a player cannot whittle it down by kiting it forever.
+    expect(mob.hp).toBeGreaterThan(1);
+    expect(mob.target).toBe(null);
+  });
+
   it('al salir guarda la posición y la zona para volver ahí', () => {
     const { world, character, p } = setup();
     run(world, ticks(2), { x: 1 });

@@ -3,8 +3,11 @@ import {
   DEFAULT_MAP,
   Duel,
   RULES,
+  distance,
   newPlayer,
   type ClassId,
+  type Team,
+  type Zombie,
   type Input,
   type MapDefinition,
   type Player,
@@ -14,7 +17,8 @@ import {
   type Vec,
   defaultCustomization,
 } from './index.js';
-import { DEFAULT_ZONE, zone, type ZoneDefinition, type ZoneId } from './rpg/zones.js';
+import { DEFAULT_ZONE, zone, type Spawner, type ZoneDefinition, type ZoneId } from './rpg/zones.js';
+import { mobStats, xpFor } from './rpg/mobs.js';
 import {
   BASE_STATS,
   POINTS_PER_LEVEL,
@@ -78,6 +82,8 @@ export class World extends Duel {
   /** Everything persistent, keyed by character id, which is also the player entity id. */
   readonly characters = new Map<string, Character>();
   private zoneId: ZoneId = DEFAULT_ZONE;
+  /** Seconds until each camp puts another monster on its feet, keyed by camp id. */
+  private respawn = new Map<string, number>();
 
   constructor(zoneId: ZoneId = DEFAULT_ZONE) {
     super(DEFAULT_MAP, 'duel');
@@ -90,6 +96,21 @@ export class World extends Duel {
     s.maxPlayers = Number.POSITIVE_INFINITY;
     s.bases = [];
     s.flags = [];
+    this.populate();
+  }
+
+  /**
+   * Camps start full. A valley nobody has touched yet is not an empty valley, and the respawn
+   * timer is meant to govern what comes back after a fight, not how long the world takes to exist.
+   */
+  private populate() {
+    const camps = this.definition.spawners;
+    for (let i = 0; i < camps.length; i++) {
+      const camp = camps[i];
+      const campId = this.campId(i);
+      for (let n = 0; n < camp.count; n++) this.spawnMob(camp, campId);
+      this.respawn.set(campId, camp.respawnSeconds);
+    }
   }
 
   get definition(): ZoneDefinition {
@@ -224,8 +245,82 @@ export class World extends Duel {
     this.stepArrows(dt);
     this.stepZombies(dt);
     this.stepTraps(placements, dt);
+    this.stepSpawners(dt);
     this.stepMana(dt);
     this.syncParticipants();
+  }
+
+  /**
+   * Guarded camps, Warcraft-style: each one keeps its own monsters alive, refills them on a timer
+   * and pulls back whoever chased too far, so nobody can drag a camp across the valley.
+   */
+  private stepSpawners(dt: number) {
+    const s = this.state;
+    const camps = this.definition.spawners;
+    for (let i = 0; i < camps.length; i++) {
+      const camp = camps[i];
+      const campId = this.campId(i);
+      const mine = s.zombies.filter((z) => z.owner === campId && z.hp > 0);
+      const stats = mobStats(camp.familyId, camp.level);
+      for (const z of mine) {
+        // Beyond its leash a monster forgets the chase, walks home and heals on the way.
+        if (distance(z, camp.at) <= stats.leash) continue;
+        z.target = null;
+        z.hp = Math.min(stats.hp, z.hp + stats.hp * 0.25 * dt);
+        this.walkZombie(z, camp.at, dt);
+      }
+      if (mine.length >= camp.count) continue;
+      const left = (this.respawn.get(campId) ?? 0) - dt;
+      if (left > 0) {
+        this.respawn.set(campId, left);
+        continue;
+      }
+      this.respawn.set(campId, camp.respawnSeconds);
+      this.spawnMob(camp, campId);
+    }
+  }
+
+  /** The camp id lives in `owner`: no player answers to it, so the brain treats the mob as wild. */
+  private campId(index: number) {
+    return `wild:${this.zoneId}:${index}`;
+  }
+
+  private spawnMob(camp: Spawner, campId: string) {
+    const stats = mobStats(camp.familyId, camp.level);
+    const angle = (this.state.zombies.length * 2.4) % (Math.PI * 2);
+    const at = {
+      x: camp.at.x + Math.cos(angle) * camp.radius * 0.7,
+      y: camp.at.y + Math.sin(angle) * camp.radius * 0.7,
+    };
+    const z = this.newZombie({ id: campId, team: 'red', angle }, at, camp.at, {
+      family: camp.familyId,
+      faction: 'monster',
+      level: camp.level,
+      hp: stats.hp,
+      maxHp: stats.hp,
+    });
+    this.state.zombies.push(z);
+  }
+
+  /**
+   * Experience for a kill.
+   *
+   * `damageZombie` is told the attacking side, never who struck, so for now the credit goes to
+   * the closest player of that side. It is a slice-one simplification, and the place to fix it is
+   * the day damage carries its author.
+   */
+  override damageZombie(z: Zombie, team: Team, amount = 1, angle?: number) {
+    const alive = z.hp > 0;
+    super.damageZombie(z, team, amount, angle);
+    if (!alive || z.hp > 0 || !z.family) return;
+    const killer = this.state.players
+      .filter((p) => p.team === team && p.hp > 0 && this.characters.has(p.id))
+      .sort((a, b) => distance(a, z) - distance(b, z))[0];
+    if (!killer) return;
+    const character = this.characters.get(killer.id)!;
+    const won = xpFor(z.family, z.level, character.level);
+    const subida = this.grantXp(killer.id, won);
+    this.event('levelup', z, team, undefined, killer.classId, subida ? subida.level : 0);
   }
 
   /** Mana ticks back for anyone who has a pool at all. */

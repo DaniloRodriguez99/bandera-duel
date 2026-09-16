@@ -25,6 +25,9 @@ import {
   type GameMode,
   type MapDefinition,
 } from './maps.js';
+// World monster numbers. `rpg/mobs` only imports a type from `rpg/zones`, and that one only types
+// from here, so TypeScript erases both and the runtime graph stays one-way: no cycle.
+import { mobStats } from './rpg/mobs.js';
 
 export type Team = 'blue' | 'red' | 'green' | 'violet';
 export type Phase = 'lobby' | 'countdown' | 'playing' | 'capture' | 'rewards' | 'finished';
@@ -815,8 +818,15 @@ export interface Zombie extends Vec {
   rise: number;
   bushId: string | null;
   revealLeft: number;
-  /** Sword zombie level, 1 to 3: one level per kill. */
+  /** Sword zombie level, 1 to 3: one level per kill. Also the level of a world monster. */
   level: number;
+  /**
+   * World monsters. A wild unit has no owning player, so `zombieMode` already falls through to
+   * automatic and it hunts whoever comes near; `family` is what makes a wolf cub and a boar
+   * fight differently instead of sharing the necromancer's numbers.
+   */
+  family?: import('./rpg/zones.js').MobFamilyId;
+  faction?: 'monster';
   /** Zombie mage: the spell it casts next (alternates ice and fire). */
   spell: 'ice' | 'fire';
   gustCd: number;
@@ -2179,7 +2189,13 @@ export class Duel {
     this.event('hit', z, team);
     if (z.hp === 0) this.event('death', z, z.team);
   }
-  protected newZombie(owner: Player, at: Vec, fallback: Vec, extra: Partial<Zombie> = {}): Zombie {
+  /** Only id, team and angle are read, so a wild monster can be born without an owning player. */
+  protected newZombie(
+    owner: Pick<Player, 'id' | 'team' | 'angle'>,
+    at: Vec,
+    fallback: Vec,
+    extra: Partial<Zombie> = {},
+  ): Zombie {
     const id = ++this.zombieId;
     return {
       id: `z${id}`,
@@ -2918,7 +2934,7 @@ export class Duel {
         ? c.id === marked
         : mode === 'guard'
           ? distance(owner!, c.at) <= RULES.zombieGuardRadius
-          : distance(z, c.at) <= RULES.zombieAggro,
+          : distance(z, c.at) <= (z.family ? mobStats(z.family, z.level).aggro : RULES.zombieAggro),
     );
     // Siblings already chasing a target make it less attractive, so a pack splits up.
     const score = (c: (typeof candidates)[number]) =>
@@ -2961,7 +2977,10 @@ export class Duel {
     z.angle = Math.atan2(aim.y - z.y, aim.x - z.x);
     const stride = Math.min(
       gap,
-      RULES.zombieSpeed * pace * ZOMBIE_PACE[z.slot % ZOMBIE_PACE.length] * dt,
+      (z.family ? mobStats(z.family, z.level).speed : RULES.zombieSpeed) *
+        pace *
+        ZOMBIE_PACE[z.slot % ZOMBIE_PACE.length] *
+        dt,
     );
     translate(z, Math.cos(z.angle) * stride, Math.sin(z.angle) * stride, this.terrain);
   }
@@ -3103,14 +3122,34 @@ export class Duel {
       }
       const melee = z.kind === 'thrall' && z.classId ? CLASSES[z.classId] : undefined;
       const sword = z.kind === 'sword' ? swordZombieStats(z.level) : undefined;
-      const reach = melee ? melee.meleeRange : sword ? RULES.zombieRange + 6 : RULES.zombieRange;
+      // A world monster brings its family's numbers, the same way a thrall brings its class's.
+      const wild = z.family ? mobStats(z.family, z.level) : undefined;
+      const reach = melee
+        ? melee.meleeRange
+        : sword
+          ? RULES.zombieRange + 6
+          : wild
+            ? wild.range
+            : RULES.zombieRange;
       if (z.windup > 0) {
         z.windup = Math.max(0, z.windup - dt);
         if (z.windup > 0) continue;
-        z.attackCd = melee ? melee.meleeCooldown : sword ? sword.cooldown : RULES.zombieCooldown;
+        z.attackCd = melee
+          ? melee.meleeCooldown
+          : sword
+            ? sword.cooldown
+            : wild
+              ? wild.cooldown
+              : RULES.zombieCooldown;
         if (target && distance(z, target) <= reach + 8 && lineClear(z, target, this.terrain)) {
           const angle = Math.atan2(target.y - z.y, target.x - z.x);
-          const amount = melee ? melee.meleeDamage : sword ? sword.damage : RULES.zombieDamage;
+          const amount = melee
+            ? melee.meleeDamage
+            : sword
+              ? sword.damage
+              : wild
+                ? wild.damage
+                : RULES.zombieDamage;
           // A level 3 sword zombie cleaves every rival within reach; the rest strike only their target.
           const inReach = (q: Vec & { team: Team; hp: number }) =>
             q.team !== z.team &&
@@ -3138,7 +3177,11 @@ export class Duel {
       if (target && distance(z, target) <= reach && lineClear(z, target, this.terrain)) {
         z.angle = Math.atan2(target.y - z.y, target.x - z.x);
         if (z.attackCd <= 0) {
-          z.windup = melee ? Math.max(melee.windup, 0.2) : RULES.zombieWindup;
+          z.windup = melee
+            ? Math.max(melee.windup, 0.2)
+            : wild
+              ? wild.windup
+              : RULES.zombieWindup;
           z.revealLeft = 1.5;
         }
         continue;
