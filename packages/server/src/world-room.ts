@@ -1,6 +1,7 @@
 import { Client, Room, ServerError } from '@colyseus/core';
 import { RULES, sanitizeInput, validClass, validName, type Input, type Player } from '@bandera/shared';
 import { World, newCharacter, type Character, type WorldSnapshot } from '@bandera/shared/world';
+import { DEFAULT_ZONE, ZONES, type ZoneId } from '@bandera/shared/rpg/zones';
 import { MemoryStore, StoreError, type AccountId, type CharacterStore } from './store/characters.js';
 
 /**
@@ -9,6 +10,9 @@ import { MemoryStore, StoreError, type AccountId, type CharacterStore } from './
  * Its lifecycle is the opposite of `DuelRoom`: there is no lobby, no countdown and no winner,
  * people walk in mid-session, and the room stays alive when the last one leaves so the world is
  * still there tomorrow. `DuelRoom` is not touched at all; this is registered beside it.
+ *
+ * Every zone is its own `World`, created the first time somebody sets foot in it. Crossing a
+ * portal moves the character from one to the other; the worlds never share entities.
  */
 
 /** How much more than a screen a client is told about, and where it stops being told. */
@@ -16,7 +20,7 @@ const VIEW_WIDTH = RULES.width;
 const VIEW_HEIGHT = RULES.height;
 const ENTER_SCALE = 1.3;
 const LEAVE_SCALE = 1.7;
-/** Saving is debounced: losing thirty seconds of walking is fine, losing a level is not. */
+/** Everyone online is saved on this beat; travel, leaving and disposal save at once. */
 const SAVE_EVERY_SECONDS = 15;
 
 /**
@@ -49,15 +53,36 @@ export class WorldRoom extends Room {
   /** No cap: the world is an open room, not a match. */
   maxClients = 200;
   maxMessagesPerSecond = 65;
-  private world = new World();
+  /** One World per zone that has been visited. */
+  private worlds = new Map<ZoneId, World>();
+  /** The zone each online character is standing in. */
+  private zoneOf = new Map<string, ZoneId>();
   private accounts = new Map<string, AccountId>();
   private characterOf = new Map<string, string>();
   private queues = new Map<string, Input[]>();
   private seen = new Map<string, number>();
   /** Ids a client already knows about, so entities are not resent as new on every tick. */
   private known = new Map<string, Set<string>>();
-  private dirty = new Set<string>();
   private saveClock = 0;
+
+  private worldFor(zoneId: ZoneId): World {
+    const id = ZONES[zoneId] ? zoneId : DEFAULT_ZONE;
+    let world = this.worlds.get(id);
+    if (!world) {
+      world = new World(id);
+      this.worlds.set(id, world);
+    }
+    return world;
+  }
+
+  private worldOf(characterId: string): World | undefined {
+    const zoneId = this.zoneOf.get(characterId);
+    return zoneId ? this.worlds.get(zoneId) : undefined;
+  }
+
+  private clientOf(characterId: string): Client | undefined {
+    return this.clients.find((c) => this.characterOf.get(c.sessionId) === characterId);
+  }
 
   onCreate() {
     this.autoDispose = false;
@@ -80,11 +105,14 @@ export class WorldRoom extends Room {
       const id = this.characterOf.get(client.sessionId);
       const stat = (message as { stat?: unknown })?.stat;
       if (!id || typeof stat !== 'string') return;
-      if (this.world.spendPoint(id, stat as never)) {
-        this.dirty.add(id);
-        this.sendSheet(client, id);
-      }
+      if (this.worldOf(id)?.spendPoint(id, stat as never)) this.sendSheet(client, id);
     });
+
+    // Colyseus closes the connection (code 4002) on any message type the room did not register.
+    // The client pings every two seconds, and the shared bind() can send duel messages too, so
+    // the world answers pings and quietly ignores anything else it does not know.
+    this.onMessage('ping', (client, stamp: unknown) => client.send('pong', stamp));
+    this.onMessage('*', () => {});
 
     this.onMessage('sync', (client) => {
       const id = this.characterOf.get(client.sessionId);
@@ -94,14 +122,16 @@ export class WorldRoom extends Room {
     });
 
     this.setFixedTimestep(() => {
-      const inputs = new Map<string, Input>();
-      for (const p of this.world.state.players) {
-        const queue = this.queues.get(p.id);
-        const next = queue?.shift();
-        if (next) inputs.set(p.id, next);
+      for (const world of this.worlds.values()) {
+        const inputs = new Map<string, Input>();
+        for (const p of world.state.players) {
+          const next = this.queues.get(p.id)?.shift();
+          if (next) inputs.set(p.id, next);
+        }
+        world.step(inputs);
+        this.drainBorders(world);
       }
-      this.world.step(inputs);
-      if (this.world.state.tick % 2 === 0) for (const client of this.clients) this.sendSnapshot(client);
+      if (this.tickCount() % 2 === 0) for (const client of this.clients) this.sendSnapshot(client);
       this.saveClock += RULES.tick;
       if (this.saveClock >= SAVE_EVERY_SECONDS) {
         this.saveClock = 0;
@@ -110,6 +140,50 @@ export class WorldRoom extends Room {
     }, 30);
     // Same reason as the duel room: disabling patches before the timer exists loses the clock.
     this.patchRate = null;
+  }
+
+  private ticks = 0;
+  private tickCount() {
+    return this.ticks++;
+  }
+
+  /** Carries out the trips a zone asked for, and tells the refused why they were turned back. */
+  private drainBorders(world: World) {
+    for (const refusal of world.refusals.splice(0)) {
+      this.clientOf(refusal.id)?.send('refused', {
+        to: refusal.to,
+        name: ZONES[refusal.to]?.name ?? null,
+        minLevel: refusal.minLevel,
+        open: refusal.open,
+      });
+    }
+    for (const trip of world.travels.splice(0)) void this.travel(trip.id, trip.to, trip.arrive);
+  }
+
+  /**
+   * Moves a character between zones. Asynchronous from day one: today it is a move between two
+   * maps in the same process, and this is exactly the seam that becomes a hand-off between
+   * instances the day one process stops holding the whole world.
+   */
+  async travel(characterId: string, to: ZoneId, arrive: { x: number; y: number }) {
+    const from = this.worldOf(characterId);
+    const character = from?.characters.get(characterId);
+    if (!from || !character || !ZONES[to]) return;
+    from.leave(characterId);
+    character.zoneId = to;
+    character.x = arrive.x;
+    character.y = arrive.y;
+    this.worldFor(to).join(character);
+    this.zoneOf.set(characterId, to);
+    this.queues.set(characterId, []);
+    const client = this.clientOf(characterId);
+    if (client) {
+      this.known.delete(client.sessionId);
+      client.send('entered', { characterId, zoneId: to });
+      this.sendSheet(client, characterId);
+      this.sendSnapshot(client);
+    }
+    await store.save(character);
   }
 
   /**
@@ -154,7 +228,10 @@ export class WorldRoom extends Room {
   }
 
   private enter(client: Client, character: Character) {
-    this.world.join(character);
+    const world = this.worldFor(character.zoneId);
+    character.zoneId = world.definition.id;
+    world.join(character);
+    this.zoneOf.set(character.id, character.zoneId);
     this.characterOf.set(client.sessionId, character.id);
     this.queues.set(character.id, []);
     client.send('entered', { characterId: character.id, zoneId: character.zoneId });
@@ -168,18 +245,19 @@ export class WorldRoom extends Room {
     this.accounts.delete(client.sessionId);
     this.known.delete(client.sessionId);
     if (!id) return;
+    const world = this.worldOf(id);
     // `leave` writes the position back onto the sheet before the entity disappears.
-    const character = this.world.characters.get(id);
-    this.world.leave(id);
+    const character = world?.characters.get(id);
+    world?.leave(id);
+    this.zoneOf.delete(id);
     this.queues.delete(id);
     this.seen.delete(id);
-    this.dirty.delete(id);
     if (character) await store.save(character);
   }
 
   /** The private sheet: experience, points and stats never travel in everyone's snapshot. */
   private sendSheet(client: Client, id: string) {
-    const character = this.world.characters.get(id);
+    const character = this.worldOf(id)?.characters.get(id);
     if (character) client.send('sheet', character);
   }
 
@@ -189,7 +267,10 @@ export class WorldRoom extends Room {
    */
   private viewFor(client: Client): WorldSnapshot | null {
     const id = this.characterOf.get(client.sessionId);
-    const source = this.world.state as WorldSnapshot;
+    if (!id) return null;
+    const world = this.worldOf(id);
+    if (!world) return null;
+    const source = world.state as WorldSnapshot;
     const own = source.players.find((p) => p.id === id);
     if (!own) return null;
     const known = this.known.get(client.sessionId) ?? new Set<string>();
@@ -221,17 +302,17 @@ export class WorldRoom extends Room {
     if (view) client.send('snapshot', view);
   }
 
+  /** Saves every character online. Cheap at this cadence, and nothing progress-related is missed. */
   private async flush() {
-    for (const id of [...this.dirty]) {
-      const character = this.world.characters.get(id);
-      this.dirty.delete(id);
-      if (character) await store.save(character);
+    const online = [...this.worlds.values()].flatMap((world) => [...world.characters.values()]);
+    for (const character of online) {
+      const p = this.worldOf(character.id)?.state.players.find((q) => q.id === character.id);
+      if (p) {
+        character.x = p.x;
+        character.y = p.y;
+      }
+      await store.save(character);
     }
-  }
-
-  /** Position is saved on a slower beat than progression; a level up marks the sheet at once. */
-  markDirty(id: string) {
-    this.dirty.add(id);
   }
 
   async onDispose() {

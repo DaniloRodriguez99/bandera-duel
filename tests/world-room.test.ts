@@ -27,17 +27,28 @@ interface Session {
   snapshots: Snapshot[];
   characters: { characters: { id: string; level: number; zoneId: string }[] } | null;
   sheet: Character | null;
-  entered: { characterId: string } | null;
+  entered: { characterId: string; zoneId: string } | null;
+  refused: { to: string; minLevel: number; open: boolean } | null;
 }
+
+/** The zone worlds inside the room, for tests that need to move or level a character by hand. */
+interface ZoneWorldForTests {
+  grantXp(id: string, xp: number): unknown;
+  state: { players: { id: string; x: number; y: number }[] };
+  definition: { portals: { to: string; minLevel: number; area: { x: number; y: number; w: number; h: number } }[] };
+}
+const zoneWorld = (roomId: string, zoneId: string) =>
+  (matchMaker.getLocalRoomById(roomId) as unknown as { worlds: Map<string, ZoneWorldForTests> }).worlds.get(zoneId)!;
 
 async function connect(options: Record<string, unknown>): Promise<Session> {
   const room = await sdk.joinOrCreate('world', options);
   sessions.push(room);
-  const session: Session = { room, snapshots: [], characters: null, sheet: null, entered: null };
+  const session: Session = { room, snapshots: [], characters: null, sheet: null, entered: null, refused: null };
+  room.onMessage('refused', (m: Session['refused']) => (session.refused = m));
   room.onMessage('snapshot', (s: Snapshot) => session.snapshots.push(s));
   room.onMessage('characters', (m: Session['characters']) => (session.characters = m));
   room.onMessage('sheet', (m: Character) => (session.sheet = m));
-  room.onMessage('entered', (m: { characterId: string }) => (session.entered = m));
+  room.onMessage('entered', (m: { characterId: string; zoneId: string }) => (session.entered = m));
   return session;
 }
 
@@ -112,9 +123,8 @@ describe('sala del mundo', () => {
     });
     await until(() => s.entered !== null);
     const roomId = s.room.roomId;
-    const host = matchMaker.getLocalRoomById(roomId) as unknown as WorldRoom;
     // Level the character up before leaving, so we can tell a real save from a fresh character.
-    (host as unknown as { world: { grantXp(id: string, xp: number): unknown } }).world.grantXp('ainz-1', 500);
+    zoneWorld(roomId, 'umbral').grantXp('ainz-1', 500);
     await s.room.leave();
     await sleep(200);
     // A duel room would have closed itself here; this one is still standing.
@@ -138,6 +148,41 @@ describe('sala del mundo', () => {
     // when the driver is Postgres and close() drops a live pool.
     expect(characterStore()).toBe(store);
     expect(await store.verify('Rentt2', 'ghoul123')).toBeTruthy();
+  });
+
+  it('sin el nivel, el portal devuelve al jugador y le dice cuánto le falta', async () => {
+    const s = await connect({
+      account: 'Novato', password: 'novato12', create: true,
+      characterId: 'novato-1', name: 'Novato', classId: 'guardian',
+    });
+    await until(() => s.entered !== null);
+    const valle = zoneWorld(s.room.roomId, 'umbral');
+    const portal = valle.definition.portals[0];
+    const p = valle.state.players.find((q) => q.id === 'novato-1')!;
+    Object.assign(p, { x: portal.area.x + portal.area.w / 2, y: portal.area.y + portal.area.h / 2 });
+    await until(() => s.refused !== null);
+    expect(s.refused).toMatchObject({ to: portal.to, minLevel: portal.minLevel, open: true });
+    expect(s.entered?.zoneId).toBe('umbral');
+  });
+
+  it('con el nivel, cruzar el portal lleva al personaje a la otra zona y lo guarda allá', async () => {
+    const s = await connect({
+      account: 'Viajero', password: 'portal12', create: true,
+      characterId: 'viajero-1', name: 'Viajero', classId: 'archer',
+    });
+    await until(() => s.entered !== null);
+    const valle = zoneWorld(s.room.roomId, 'umbral');
+    valle.grantXp('viajero-1', 5000);
+    const portal = valle.definition.portals[0];
+    const p = valle.state.players.find((q) => q.id === 'viajero-1')!;
+    Object.assign(p, { x: portal.area.x + portal.area.w / 2, y: portal.area.y + portal.area.h / 2 });
+    await until(() => s.entered?.zoneId === portal.to);
+    // The snapshots now come from the other zone, and the valley no longer holds the character.
+    await until(() => (s.snapshots.at(-1) as Snapshot & { zoneId?: string }).zoneId === portal.to);
+    expect(valle.state.players.some((q) => q.id === 'viajero-1')).toBe(false);
+    const cuenta = await characterStore().verify('Viajero', 'portal12');
+    const guardado = await characterStore().load(cuenta!, 'viajero-1');
+    expect(guardado?.zoneId).toBe(portal.to);
   });
 
   it('la sala de duelo sigue funcionando igual al lado', async () => {

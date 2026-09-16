@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { CLASSES, Duel, RULES, idleInput, type Input } from '@bandera/shared';
+import { CLASSES, Duel, RULES, blocked, idleInput, type Input } from '@bandera/shared';
 import { World, newCharacter } from '@bandera/shared/world';
+import { ZONES, ZONE_IDS, zone } from '@bandera/shared/rpg/zones';
+import { MOB_FAMILIES } from '@bandera/shared/rpg/mobs';
 
 const input = (options: Partial<Input> = {}): Input => ({ ...idleInput(), ...options });
 function setup(classId: 'guardian' | 'archer' | 'mage' = 'guardian') {
@@ -157,6 +159,88 @@ describe('mundo', () => {
     // It heals on the way home, so a player cannot whittle it down by kiting it forever.
     expect(mob.hp).toBeGreaterThan(1);
     expect(mob.target).toBe(null);
+  });
+
+  it('entra y revive con la vida llena de su ficha, no con la de su clase', () => {
+    const { world, p } = setup();
+    expect(p.maxHp).toBeGreaterThan(CLASSES.guardian.hp);
+    expect(p.hp).toBe(p.maxHp);
+    expect(p.mana).toBe(p.maxMana);
+    p.hp = 0;
+    p.respawnLeft = 0.1;
+    run(world, ticks(0.4));
+    expect(p.hp).toBe(p.maxHp);
+  });
+
+  it('un monstruo salvaje lastima al jugador que se le acerca', () => {
+    const { world, p } = setup();
+    const lobezno = world.state.zombies.find((z) => z.family === 'lobezno')!;
+    Object.assign(p, { x: lobezno.x + 22, y: lobezno.y, invuln: 0 });
+    const vida = p.hp;
+    run(world, ticks(3));
+    expect(p.hp).toBeLessThan(vida);
+  });
+
+  it('un portal rechaza al que no tiene el nivel y lo devuelve hacia adentro', () => {
+    const { world, p } = setup();
+    const portal = world.definition.portals[0];
+    Object.assign(p, { x: portal.area.x + portal.area.w / 2, y: portal.area.y + portal.area.h / 2 });
+    run(world, 1);
+    expect(world.refusals.at(-1)).toMatchObject({ id: 'c1', to: portal.to, minLevel: portal.minLevel, open: true });
+    expect(world.travels).toHaveLength(0);
+    expect(p.x).toBeLessThan(portal.area.x);
+  });
+
+  it('con el nivel alcanzado, el portal pide el viaje a la otra zona', () => {
+    const { world, character, p } = setup();
+    const portal = world.definition.portals[0];
+    character.level = portal.minLevel;
+    Object.assign(p, { x: portal.area.x + portal.area.w / 2, y: portal.area.y + portal.area.h / 2 });
+    run(world, 1);
+    expect(world.travels.at(-1)).toMatchObject({ id: 'c1', to: portal.to, arrive: portal.arrive });
+    expect(world.refusals).toHaveLength(0);
+  });
+
+  it('un portal hacia una zona que todavía no existe avisa que no está abierta', () => {
+    const world = new World('ceniza');
+    const character = newCharacter('c9', 'cuenta9', 'Rudeus', 'mage');
+    character.level = 60;
+    const p = world.join(character);
+    const portal = world.definition.portals.find((q) => !ZONES[q.to])!;
+    Object.assign(p, { x: portal.area.x + portal.area.w / 2, y: portal.area.y + portal.area.h / 2 });
+    world.step(new Map());
+    expect(world.refusals.at(-1)).toMatchObject({ id: 'c9', open: false });
+    expect(world.travels).toHaveLength(0);
+  });
+
+  it('todo portal lleva a un lugar libre, dentro de la zona y fuera de sus propios portales', () => {
+    for (const id of ZONE_IDS) {
+      for (const portal of zone(id).portals) {
+        const destino = ZONES[portal.to];
+        if (!destino) continue;
+        const b = destino.terrain.bounds;
+        const { x, y } = portal.arrive;
+        expect(x > b.minX && x < b.maxX && y > b.minY && y < b.maxY, `${id} → ${portal.to}`).toBe(true);
+        expect(blocked(x, y, RULES.radius, destino.terrain), `${id} → ${portal.to} cae en una pared`).toBe(false);
+        for (const vuelta of destino.portals) {
+          const a = vuelta.area;
+          const adentro = x >= a.x && x <= a.x + a.w && y >= a.y && y <= a.y + a.h;
+          expect(adentro, `${id} → ${portal.to} cae dentro de un portal y rebotaría`).toBe(false);
+        }
+      }
+    }
+  });
+
+  it('cada campamento de cada zona nace fuera de las paredes y con una familia conocida', () => {
+    for (const id of ZONE_IDS) {
+      const definicion = zone(id);
+      for (const camp of definicion.spawners) {
+        expect(MOB_FAMILIES[camp.familyId], `${id}: ${camp.familyId}`).toBeTruthy();
+        expect(blocked(camp.at.x, camp.at.y, RULES.zombieRadius, definicion.terrain), `${id}: ${camp.familyId}`).toBe(false);
+      }
+      expect(blocked(definicion.shrine.x, definicion.shrine.y, RULES.radius, definicion.terrain), `${id}: altar`).toBe(false);
+      expect(blocked(definicion.entry.x, definicion.entry.y, RULES.radius, definicion.terrain), `${id}: entrada`).toBe(false);
+    }
   });
 
   it('al salir guarda la posición y la zona para volver ahí', () => {

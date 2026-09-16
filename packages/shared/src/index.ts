@@ -2065,7 +2065,8 @@ export class Duel {
   /** `pierce`: breaks shields and wounds without knockback; `ignoreInvuln`: a sibling volley arrow. */
   damage(
     target: Player,
-    source: Player,
+    /** Only the side is read, so a world monster with no owning player can be its own source. */
+    source: Pick<Player, 'team'>,
     angle: number,
     amount = 1,
     options: { pierce?: boolean; ignoreInvuln?: boolean; freeze?: boolean } = {},
@@ -3160,9 +3161,12 @@ export class Duel {
           const zombies = sword?.cleave ? s.zombies.filter(inReach) : zombie ? [zombie] : [];
           const mobs=sword?.cleave?s.mobs.filter(q=>q.hp>0&&distance(z,q)<=reach+8&&lineClear(z,q,this.terrain)):mob?[mob]:[];
           let kills = 0;
-          if (owner)
+          // A wild monster answers to nobody, so it strikes in its own name; without this the
+          // world's monsters could chase and surround a player but never hurt one.
+          const striker = owner ?? (z.faction === 'monster' ? z : undefined);
+          if (striker)
             for (const q of players)
-              if (this.damage(q, owner, Math.atan2(q.y - z.y, q.x - z.x), amount) && q.hp <= 0)
+              if (this.damage(q, striker, Math.atan2(q.y - z.y, q.x - z.x), amount) && q.hp <= 0)
                 kills++;
           for (const q of zombies) {
             this.damageZombie(q, z.team, amount, Math.atan2(q.y - z.y, q.x - z.x));

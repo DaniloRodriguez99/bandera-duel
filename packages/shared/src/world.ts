@@ -5,6 +5,7 @@ import {
   RULES,
   distance,
   newPlayer,
+  translate,
   type ClassId,
   type Team,
   type Zombie,
@@ -17,7 +18,25 @@ import {
   type Vec,
   defaultCustomization,
 } from './index.js';
-import { DEFAULT_ZONE, zone, type Spawner, type ZoneDefinition, type ZoneId } from './rpg/zones.js';
+import { DEFAULT_ZONE, ZONES, zone, type Spawner, type ZoneDefinition, type ZoneId } from './rpg/zones.js';
+
+/** Seconds a player cannot use a portal again, so two facing portals never bounce anyone. */
+const PORTAL_COOLDOWN = 1.5;
+/** How far a refused player is pushed back towards the middle of the zone. */
+const PORTAL_PUSH = 90;
+
+export interface Travel {
+  id: string;
+  to: ZoneId;
+  arrive: Vec;
+}
+export interface Refusal {
+  id: string;
+  to: ZoneId;
+  minLevel: number;
+  /** False while the destination zone has not been built yet. */
+  open: boolean;
+}
 import { mobStats, xpFor } from './rpg/mobs.js';
 import {
   BASE_STATS,
@@ -84,6 +103,13 @@ export class World extends Duel {
   private zoneId: ZoneId = DEFAULT_ZONE;
   /** Seconds until each camp puts another monster on its feet, keyed by camp id. */
   private respawn = new Map<string, number>();
+  /**
+   * The world detects a portal; carrying the character to another zone is the room's job, since
+   * each zone is its own World. The room drains both lists after every step.
+   */
+  readonly travels: Travel[] = [];
+  readonly refusals: Refusal[] = [];
+  private portalCd = new Map<string, number>();
 
   constructor(zoneId: ZoneId = DEFAULT_ZONE) {
     super(DEFAULT_MAP, 'duel');
@@ -160,7 +186,11 @@ export class World extends Duel {
   protected override revive(p: Player, invuln = 0) {
     const character = this.characters.get(p.id);
     super.revive(p, invuln);
-    if (character) this.applyCharacter(p, character);
+    if (!character) return;
+    this.applyCharacter(p, character);
+    // `Duel.revive` rebuilt the player with its class's health (3), which the sheet would then
+    // clamp to instead of refilling: a character came back from the shrine at a third of its life.
+    p.hp = p.maxHp;
   }
 
   /**
@@ -199,6 +229,9 @@ export class World extends Duel {
     );
     this.characters.set(character.id, character);
     this.applyCharacter(p, character);
+    // A fresh entity carries its class's health; a character walks in whole.
+    p.hp = p.maxHp;
+    p.mana = p.maxMana;
     this.state.players.push(p);
     return p;
   }
@@ -245,9 +278,43 @@ export class World extends Duel {
     this.stepArrows(dt);
     this.stepZombies(dt);
     this.stepTraps(placements, dt);
+    this.stepPortals(dt);
     this.stepSpawners(dt);
     this.stepMana(dt);
     this.syncParticipants();
+  }
+
+  /**
+   * Borders between zones. Stepping into a portal either asks the room for the trip or, below the
+   * zone's level (or towards a zone not built yet), pushes the player back in and says why.
+   */
+  private stepPortals(dt: number) {
+    for (const [id, left] of this.portalCd) {
+      if (left - dt <= 0) this.portalCd.delete(id);
+      else this.portalCd.set(id, left - dt);
+    }
+    for (const p of this.state.players) {
+      if (p.hp <= 0 || this.portalCd.has(p.id)) continue;
+      const character = this.characters.get(p.id);
+      if (!character) continue;
+      for (const portal of this.definition.portals) {
+        const a = portal.area;
+        if (p.x < a.x || p.x > a.x + a.w || p.y < a.y || p.y > a.y + a.h) continue;
+        this.portalCd.set(p.id, PORTAL_COOLDOWN);
+        const open = !!ZONES[portal.to];
+        if (open && character.level >= portal.minLevel) {
+          this.travels.push({ id: p.id, to: portal.to, arrive: portal.arrive });
+        } else {
+          this.refusals.push({ id: p.id, to: portal.to, minLevel: portal.minLevel, open });
+          const b = this.definition.terrain.bounds;
+          const dx = (b.minX + b.maxX) / 2 - (a.x + a.w / 2);
+          const dy = (b.minY + b.maxY) / 2 - (a.y + a.h / 2);
+          const length = Math.hypot(dx, dy) || 1;
+          translate(p, (dx / length) * PORTAL_PUSH, (dy / length) * PORTAL_PUSH, this.terrain);
+        }
+        break;
+      }
+    }
   }
 
   /**
