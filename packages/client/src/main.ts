@@ -57,7 +57,7 @@ document.querySelector('#app')!.innerHTML = `
 <header class="topbar"><a class="brand" href="/" aria-label="Bandera Duel, inicio"><span class="brand-mark">⚑</span><span>BANDERA<span class="brand-thin"> DUEL</span><small>LA GLORIA NO SE HEREDA. SE ROBA.</small></span></a><div class="header-right"><span class="edition">PRIMERA EDICIÓN <b>01</b></span><button id="mute" class="icon-btn" aria-label="Silenciar sonido"></button></div></header>
 <main>
 <section id="intro" class="intro"><div class="hero-copy"><div class="eyebrow"><i></i> DUELO ONLINE · HASTA 4 JUGADORES</div><h1>Tu rival tiene<br>algo <em>tuyo.</em></h1><p>Entrá al castillo. Robá su bandera.<br>Volvé con la gloria antes de que te alcancen.</p><div class="facts"><span><b>04</b> jugadores</span><span><b>03</b> minutos</span><span><b>01</b> vencedor</span></div></div>
-<div class="entry-card"><div class="card-top"><span class="tiny">EL DESAFÍO EMPIEZA ACÁ</span><span class="swords">⚔</span></div><h2 id="entry-title">Prepará tu estandarte.</h2><p id="entry-description">Elegí tu guerrero, prepará una sala e invitá a tu rival.</p><form id="entry-form"><div class="player-setup"><div class="setup-heading"><span>01</span><h3>Tu guerrero</h3></div><label for="name">TU APODO</label><input id="name" name="name" placeholder="Caballero sin nombre" maxlength="16" autocomplete="nickname" required><fieldset id="entry-class-picker" class="class-picker"><legend>ELEGÍ TU GUERRERO</legend><div id="entry-classes" class="class-grid"></div></fieldset></div><div class="room-setup"><div class="setup-heading"><span>02</span><h3>Tu próxima partida</h3></div><fieldset id="room-options"><legend>TU SALA</legend><label for="room-title">TÍTULO</label><input id="room-title" maxlength="48" value="Duelo medieval"><label for="visibility">VISIBILIDAD</label><select id="visibility"><option value="private">Privada · solo por enlace</option><option value="public">Pública · aparece en el listado</option></select><div class="option-row"><label>FORMATO<select id="game-mode"><option value="duel">Duelo · 1v1</option><option value="teams">Equipos · 2v2</option><option value="ffa3">Todos contra todos · 3</option><option value="ffa4">Todos contra todos · 4</option><option value="pve">Hordas PvE · 1–4</option></select></label><label>MAPA<select id="map-select"><option value="courtyard">Patio del Rey</option><option value="forest">Bosque de Emboscadas</option><option value="ruins">Ruinas del Bastión</option><option value="crossroads">Encrucijada</option></select></label></div><div id="map-preview" class="map-preview"></div><label class="check-option"><input id="allow-spectators" type="checkbox" checked> Permitir espectadores (máximo 5)</label></fieldset><label for="room-password">CONTRASEÑA (OPCIONAL)</label><input id="room-password" type="password" maxlength="64" autocomplete="off" placeholder="Sin contraseña"><label id="spectator-choice" hidden><input id="spectator" type="checkbox"> Entrar como espectador</label><label id="perspective-choice" hidden>PERSPECTIVA<select id="spectator-perspective"><option value="blue">Azul</option><option value="red">Carmesí</option><option value="green">Jade</option><option value="violet">Violeta</option></select></label></div><div class="entry-actions"><button id="enter" class="primary" type="submit">Crear un duelo <span>↗</span></button><button id="practice-start" class="secondary" type="button">Probar contra un rival inmóvil</button><span class="entry-note">Práctica local, sin sala.</span></div></form><div id="status" class="status" role="status" aria-live="polite">Sin cuentas. Sin descargas. Solo el duelo.</div><button id="new-instead" class="text-btn" hidden>Crear otra sala</button></div></section>
+<div class="entry-card"><div class="card-top"><span class="tiny">EL DESAFÍO EMPIEZA ACÁ</span><span class="swords">⚔</span></div><h2 id="entry-title">Prepará tu estandarte.</h2><p id="entry-description">Elegí tu guerrero, prepará una sala e invitá a tu rival.</p><form id="entry-form"><div class="player-setup"><div class="setup-heading"><span>01</span><h3>Tu guerrero</h3></div><label for="name">TU APODO</label><input id="name" name="name" placeholder="Caballero sin nombre" maxlength="16" autocomplete="nickname" required><fieldset id="world-account" class="world-account" hidden><legend>TU CUENTA DEL MUNDO</legend><p class="world-hint">El mundo guarda tus personajes. Entrá con tu cuenta o creá una nueva.</p><label for="world-user">CUENTA</label><input id="world-user" maxlength="16" autocomplete="username" placeholder="Tu nombre de cuenta"><label for="world-pass">CLAVE</label><input id="world-pass" type="password" minlength="6" maxlength="64" autocomplete="current-password" placeholder="Al menos 6 caracteres"><label class="check"><input id="world-new" type="checkbox"> Es mi primera vez, crear la cuenta</label><div id="world-characters" class="world-characters" hidden></div></fieldset><fieldset id="entry-class-picker" class="class-picker"><legend>ELEGÍ TU GUERRERO</legend><div id="entry-classes" class="class-grid"></div></fieldset></div><div class="room-setup"><div class="setup-heading"><span>02</span><h3>Tu próxima partida</h3></div><fieldset id="room-options"><legend>TU SALA</legend><label for="room-title">TÍTULO</label><input id="room-title" maxlength="48" value="Duelo medieval"><label for="visibility">VISIBILIDAD</label><select id="visibility"><option value="private">Privada · solo por enlace</option><option value="public">Pública · aparece en el listado</option></select><div class="option-row"><label>FORMATO<select id="game-mode"><option value="duel">Duelo · 1v1</option><option value="teams">Equipos · 2v2</option><option value="ffa3">Todos contra todos · 3</option><option value="ffa4">Todos contra todos · 4</option><option value="pve">Hordas PvE · 1–4</option><option value="world">Mundo isekai · abierto</option></select></label><label>MAPA<select id="map-select"><option value="courtyard">Patio del Rey</option><option value="forest">Bosque de Emboscadas</option><option value="ruins">Ruinas del Bastión</option><option value="crossroads">Encrucijada</option></select></label></div><div id="map-preview" class="map-preview"></div><label class="check-option"><input id="allow-spectators" type="checkbox" checked> Permitir espectadores (máximo 5)</label></fieldset><label for="room-password">CONTRASEÑA (OPCIONAL)</label><input id="room-password" type="password" maxlength="64" autocomplete="off" placeholder="Sin contraseña"><label id="spectator-choice" hidden><input id="spectator" type="checkbox"> Entrar como espectador</label><label id="perspective-choice" hidden>PERSPECTIVA<select id="spectator-perspective"><option value="blue">Azul</option><option value="red">Carmesí</option><option value="green">Jade</option><option value="violet">Violeta</option></select></label></div><div class="entry-actions"><button id="enter" class="primary" type="submit">Crear un duelo <span>↗</span></button><button id="practice-start" class="secondary" type="button">Probar contra un rival inmóvil</button><span class="entry-note">Práctica local, sin sala.</span></div></form><div id="status" class="status" role="status" aria-live="polite">Sin cuentas. Sin descargas. Solo el duelo.</div><button id="new-instead" class="text-btn" hidden>Crear otra sala</button></div></section>
 <section id="room-browser" class="room-browser"><div class="browser-heading"><div><span class="tiny">BUSCÁ TU PRÓXIMO RIVAL</span><h2>Salas públicas</h2></div><button id="refresh-rooms" class="secondary">↻ Actualizar salas</button></div><p id="rooms-status" role="status"></p><h3 class="room-group-title">● Combates en vivo</h3><p id="live-empty">No hay combates públicos en curso.</p><div id="live-rooms-list"></div><h3 class="room-group-title">Salas para jugar y próximas rondas</h3><div id="rooms-list"></div></section><section class="arena-section"><div class="arena-heading"><div><span class="live-dot"></span><span id="arena-label">EL PATIO DEL REY</span><span class="map-label">ARENA 01</span></div><span id="connection-label">ACERO · ARCO · MAGIA</span></div>
 <div id="practice-toolbar" hidden><span>PRÁCTICA · RIVAL INMÓVIL</span><button id="practice-reset" class="secondary">Reiniciar</button><button id="practice-exit" class="secondary">Salir</button></div><div id="hud" class="hud" hidden>${hudTeam('blue')}${hudTeam('green')}<div class="clock"><span id="timer">3:00</span><small>PRIMERO A 3</small></div>${hudTeam('violet', true)}${hudTeam('red', true)}<span id="spectator-count" hidden aria-live="polite"></span><div id="pve-hud" hidden><b id="pve-wave">OLEADA 0</b><span id="pve-enemies">0 enemigos</span><span id="pve-alive"></span></div><div id="pve-upgrades" hidden aria-label="Mejoras elegidas"></div><div id="boss-hud" hidden><span>GUARDIÁN DE LA CRIPTA</span><i><b id="boss-health"></b></i></div><div id="mobile-player-status" hidden><b id="mobile-health"></b><span id="mobile-state"></span></div></div>
 <div id="stage" class="stage"><section id="pve-rewards" class="pve-rewards" hidden><header><span id="reward-wave"></span><b id="reward-time"></b></header><p>Elegí una recompensa. Si el tiempo termina, no recibirás ninguna.</p><div id="reward-cards"></div></section><label id="room-perspective-choice" hidden>PERSPECTIVA<select id="room-perspective"></select></label><div id="game"></div><div id="abilities" class="abilities" hidden aria-label="Habilidades"></div><div class="preview-tag" id="preview-tag">HASTA CUATRO ESTANDARTES. UNA SOLA GLORIA.</div>
@@ -482,9 +482,23 @@ function bind(joined: Room) {
     if (info.teams.includes(value as Team)) perspective.value = value;
   });
   room.onMessage('upgradeOffer', (offer: UpgradeOffer | null) => showUpgradeOffer(offer));
+  // World: the list to choose from, the sheet, and the moment the character walks in.
+  room.onMessage('characters', (list: WorldCharacterList) => showCharacters(list));
+  room.onMessage('sheet', (sheet: WorldSheet) => showSheet(sheet));
+  room.onMessage('entered', ({ zoneId, characterId }: { zoneId: string; characterId: string }) => {
+    worldCharacterId = characterId;
+    $('overlay').hidden = true;
+    $('world-characters').hidden = true;
+    $('stage').dataset.zone = zoneId;
+    $('stage').dataset.mode = 'world';
+  });
   room.onMessage('snapshot', (s: Snapshot) => {
     current = s;
-    arena.receive(s, joined.sessionId);
+    arena.receive(s, worldCharacterId ?? joined.sessionId);
+    if (worldCharacterId) {
+      const self = s.players.find((p) => p.id === worldCharacterId);
+      if (self) $('stage').dataset.x = String(Math.round(self.x));
+    }
     render(s);
   });
   room.onMessage('chatHistory', (history: ChatHistory) => {
@@ -545,7 +559,7 @@ function bind(joined: Room) {
     setStatus(message || 'Error de conexión.', true);
   });
   arena.send = (input) => {
-    if (online && current?.players.some((p) => p.id === joined.sessionId))
+    if (online && current?.players.some((p) => p.id === (worldCharacterId ?? joined.sessionId)))
       joined.send('input', input);
   };
   room.send('sync');
@@ -565,7 +579,9 @@ $('entry-form').onsubmit = async (e) => {
   localStorage.setItem('bandera-name', name);
   try {
     await warmup();
-    const joined = target
+    // bind() leaves `target` pointing at the room just joined, so the world must be checked first:
+    // otherwise picking a character would rejoin by id with duel options and no account.
+    const joined = target && $<HTMLSelectElement>('game-mode').value !== 'world'
       ? await client.joinById(target, {
           name,
           classId: selectedClass,
@@ -574,6 +590,14 @@ $('entry-form').onsubmit = async (e) => {
           spectator: $<HTMLInputElement>('spectator').checked,
           perspective: $<HTMLSelectElement>('spectator-perspective').value,
           password: $<HTMLInputElement>('room-password').value,
+        })
+      : $<HTMLSelectElement>('game-mode').value === 'world'
+      ? await client.joinOrCreate('world', {
+          account: $<HTMLInputElement>('world-user').value,
+          password: $<HTMLInputElement>('world-pass').value,
+          create: $<HTMLInputElement>('world-new').checked,
+          // Without a character named, the server answers with the list to choose from.
+          ...(chosenCharacter ? { characterId: chosenCharacter, classId: selectedClass, name } : {}),
         })
       : await client.create('duel', {
           name,
@@ -604,6 +628,107 @@ $('entry-form').onsubmit = async (e) => {
     $<HTMLButtonElement>('enter').disabled = false;
   }
 };
+/** The world screen: account fields, the saved characters, and the sheet once you are inside. */
+interface WorldCharacterList {
+  characters: { id: string; name: string; classId: string; level: number; zoneId: string }[];
+  max: number;
+}
+interface WorldSheet {
+  id: string;
+  name: string;
+  level: number;
+  xp: number;
+  unspent: number;
+  zoneId: string;
+}
+let chosenCharacter: string | null = null;
+/**
+ * In the world the entity id is the character id, not the connection's session id. Null in a
+ * match, where everything keeps finding itself by session id as before.
+ */
+let worldCharacterId: string | null = null;
+
+const syncWorldFields = () => {
+  const world = $<HTMLSelectElement>('game-mode').value === 'world';
+  $('world-account').hidden = !world;
+  // `#game-mode` lives inside `#room-options`: hiding that fieldset in world mode would take the
+  // mode selector with it, and there would be no way back to a duel without reloading the page.
+  $('room-options').hidden = !!target;
+  $<HTMLInputElement>('world-user').required = world;
+  $<HTMLInputElement>('world-pass').required = world;
+  // Nothing else rewrites this button's copy, so it kept saying "duel" while entering the world.
+  $('enter').textContent = world ? 'Entrar al mundo ↗' : 'Crear un duelo ↗';
+};
+$('game-mode').addEventListener('change', () => {
+  chosenCharacter = null;
+  syncWorldFields();
+});
+syncWorldFields();
+
+/**
+ * Coming back with an account but no character: the server sends what is saved, with the zone and
+ * the level of each one, which is what tells you where you left off.
+ */
+function showCharacters(list: WorldCharacterList) {
+  const box = $('world-characters');
+  // It was born inside the entry form, and `bind()` hides that whole section the moment the
+  // connection succeeds — the list would render inside a hidden container and nobody could ever
+  // pick a character. Move it into the overlay card, which stays up while choosing.
+  const card = document.querySelector('#overlay .overlay-card');
+  if (card && box.parentElement !== card) card.append(box);
+  // The account exists now. Left ticked, picking a character would ask to create it again and
+  // the server would refuse the second join with "that name is taken".
+  $<HTMLInputElement>('world-new').checked = false;
+  box.hidden = false;
+  box.replaceChildren();
+  const title = document.createElement('p');
+  title.className = 'world-hint';
+  title.textContent = list.characters.length
+    ? 'Elegí con quién volver:'
+    : 'Todavía no tenés personajes. Elegí una clase arriba y creá el primero.';
+  box.append(title);
+  for (const character of list.characters) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'world-character';
+    button.dataset.character = character.id;
+    button.textContent = `${character.name} · nivel ${character.level} · ${character.zoneId}`;
+    button.onclick = () => {
+      chosenCharacter = character.id;
+      $<HTMLButtonElement>('enter').click();
+    };
+    box.append(button);
+  }
+  if (list.characters.length < list.max) {
+    const crear = document.createElement('button');
+    crear.type = 'button';
+    crear.className = 'world-character new';
+    crear.id = 'world-create';
+    crear.textContent = 'Crear un personaje nuevo ↗';
+    crear.onclick = () => {
+      chosenCharacter = `c${Date.now().toString(36)}`;
+      $<HTMLButtonElement>('enter').click();
+    };
+    box.append(crear);
+  }
+  // The overlay is what stays visible after `bind()`, so the choice lives there.
+  $('overlay').hidden = false;
+  $('overlay-kicker').textContent = 'MUNDO';
+  $('overlay-title').textContent = 'Elegí tu personaje';
+  $('overlay-description').textContent = list.characters.length
+    ? `Tenés ${list.characters.length} de ${list.max}. El mundo te espera donde lo dejaste.`
+    : 'Todavía no creaste ninguno. Dios te espera del otro lado.';
+  document.body.classList.remove('joining-room');
+}
+
+function showSheet(sheet: WorldSheet) {
+  const stage = $('stage');
+  stage.dataset.level = String(sheet.level);
+  stage.dataset.xp = String(sheet.xp);
+  stage.dataset.unspent = String(sheet.unspent);
+  stage.dataset.zone = sheet.zoneId;
+}
+
 $('new-instead').onclick = () => {
   target = null;
   document.body.classList.remove('joining-room');
@@ -652,7 +777,9 @@ $('leave').onclick = () => {
 };
 function render(s: Snapshot) {
   if (!room && !practice) return;
-  const me = s.players.find((p) => p.id === (practice ? PRACTICE_PLAYER : room!.sessionId));
+  const me = s.players.find(
+    (p) => p.id === (practice ? PRACTICE_PLAYER : (worldCharacterId ?? room!.sessionId)),
+  );
   const participants = s.participants?.length ? s.participants : s.players;
   setMusicMode(
     s.paused
