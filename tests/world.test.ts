@@ -129,6 +129,23 @@ describe('mundo', () => {
     expect(character.xp > xpAntes || character.level > nivelAntes).toBe(true);
   });
 
+  it('matar sin subir no anuncia nada; subir de nivel se anuncia sobre quien subió', () => {
+    const { world, character, p } = setup();
+    const presa = world.state.zombies.find((z) => z.family === 'lobezno')!;
+    Object.assign(p, { x: presa.x, y: presa.y });
+    const antes = world.state.events.at(-1)?.id ?? 0;
+    world.damageZombie(presa, p.team, 999);
+    expect(world.state.events.filter((e) => e.id > antes && e.kind === 'levelup')).toHaveLength(0);
+    expect(world.sheetChanged.has('c1')).toBe(true);
+    const otra = world.state.zombies.find((z) => z.family && z.hp > 0 && z !== presa)!;
+    Object.assign(p, { x: otra.x, y: otra.y });
+    character.xp = 39;
+    world.damageZombie(otra, p.team, 999);
+    const subida = world.state.events.filter((e) => e.kind === 'levelup').at(-1);
+    expect(subida?.power).toBe(2);
+    expect(subida?.x).toBeCloseTo(p.x);
+  });
+
   it('el campamento arranca lleno y repuebla de a uno con el tiempo', () => {
     const { world } = setup();
     const campamento = world.definition.spawners[0];

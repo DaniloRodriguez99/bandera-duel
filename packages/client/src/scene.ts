@@ -408,6 +408,9 @@ export class Arena extends Phaser.Scene {
       if (zoneId !== this.currentZoneId) {
         this.drawZone(zoneId);
         this.layoutKey = '';
+        // Each zone is its own World with its own event counter. Without resetting the watermark,
+        // crossing a portal would silently skip every effect of the new zone until its ids caught up.
+        this.lastEvent = snapshot.events.at(-1)?.id ?? 0;
       }
     } else if (snapshot.mapId !== this.currentMapId) {
       this.drawMap(snapshot.mapId);

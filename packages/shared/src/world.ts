@@ -110,6 +110,8 @@ export class World extends Duel {
   readonly travels: Travel[] = [];
   readonly refusals: Refusal[] = [];
   private portalCd = new Map<string, number>();
+  /** Characters whose private sheet changed this step; the room re-sends it to each of them. */
+  readonly sheetChanged = new Set<string>();
 
   constructor(zoneId: ZoneId = DEFAULT_ZONE) {
     super(DEFAULT_MAP, 'duel');
@@ -212,6 +214,7 @@ export class World extends Duel {
     if (!character || character.unspent <= 0) return false;
     character.unspent--;
     character.stats[stat]++;
+    this.sheetChanged.add(id);
     const p = this.state.players.find((player) => player.id === id);
     if (p) this.applyCharacter(p, character);
     return true;
@@ -255,6 +258,7 @@ export class World extends Duel {
   grantXp(id: string, amount: number): { level: number; gained: number } | null {
     const character = this.characters.get(id);
     if (!character || amount <= 0) return null;
+    this.sheetChanged.add(id);
     const result = applyXp(character.level, character.xp, amount);
     character.level = result.level;
     character.xp = result.xp;
@@ -387,7 +391,9 @@ export class World extends Duel {
     const character = this.characters.get(killer.id)!;
     const won = xpFor(z.family, z.level, character.level);
     const subida = this.grantXp(killer.id, won);
-    this.event('levelup', z, team, undefined, killer.classId, subida ? subida.level : 0);
+    // Announced only when a level is actually gained, and on the one who gained it: emitting it on
+    // every kill with power 0 painted "NV 0" over each dead monster.
+    if (subida) this.event('levelup', killer, team, undefined, killer.classId, subida.level);
   }
 
   /** Mana ticks back for anyone who has a pool at all. */

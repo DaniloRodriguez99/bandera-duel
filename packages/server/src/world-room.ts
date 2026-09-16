@@ -157,6 +157,13 @@ export class WorldRoom extends Room {
         open: refusal.open,
       });
     }
+    // Experience, levels and spent points change the private sheet; without this the client kept
+    // showing its old level until it happened to resync.
+    for (const id of world.sheetChanged) {
+      const client = this.clientOf(id);
+      if (client) this.sendSheet(client, id);
+    }
+    world.sheetChanged.clear();
     for (const trip of world.travels.splice(0)) void this.travel(trip.id, trip.to, trip.arrive);
   }
 

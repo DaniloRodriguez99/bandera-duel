@@ -185,6 +185,17 @@ describe('sala del mundo', () => {
     expect(guardado?.zoneId).toBe(portal.to);
   });
 
+  it('ganar experiencia le manda al jugador su ficha actualizada', async () => {
+    const s = await connect({
+      account: 'Aprendiz', password: 'aprende1', create: true,
+      characterId: 'aprendiz-1', name: 'Aprendiz', classId: 'mage',
+    });
+    await until(() => s.sheet !== null);
+    zoneWorld(s.room.roomId, 'umbral').grantXp('aprendiz-1', 500);
+    await until(() => (s.sheet?.level ?? 1) > 1);
+    expect(s.sheet!.unspent).toBeGreaterThan(0);
+  });
+
   it('la sala de duelo sigue funcionando igual al lado', async () => {
     const duelo = await sdk.create('duel', { name: 'Azul', classId: 'guardian' });
     sessions.push(duelo);
