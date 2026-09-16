@@ -6,6 +6,7 @@ import {
   CLASS_IDS,
   DEFAULT_CLASS,
   MAPS,
+  ARENA_BOUNDS,
   TEAMS,
   TEAM_NAMES,
   TEAM_ICONS,
@@ -24,12 +25,14 @@ import {
   type Player,
   type Team,
   type Base,
+  type Bounds,
   type Zombie,
   type Input,
   type MapId,
   type Mob,
   type MobKind,
 } from '@bandera/shared';
+import { zone, type ZoneId } from '@bandera/shared/rpg/zones';
 import { Controls } from './input.js';
 import { blueprintSpec, clipRay } from './targeting.js';
 import { sound } from './audio.js';
@@ -115,6 +118,8 @@ export class Arena extends Phaser.Scene {
   private phase = '';
   private receivedAt = 0;
   private currentMapId: MapId = 'courtyard';
+  /** Empty while playing a match; the zone being painted while in the world. */
+  private currentZoneId = '';
   private mapObjects: Phaser.GameObjects.GameObject[] = [];
   private cameraKey = '';
   constructor() {
@@ -134,8 +139,9 @@ export class Arena extends Phaser.Scene {
     this.input.on('pointermove', (p: Phaser.Input.Pointer) => {
       if (p.wasTouch || !this.predicted) return;
       this.controls.angle = Math.atan2(p.worldY - this.predicted.y, p.worldX - this.predicted.x);
-      this.controls.aimX = Math.max(0, Math.min(RULES.width, p.worldX));
-      this.controls.aimY = Math.max(0, Math.min(RULES.height, p.worldY));
+      const b = this.bounds();
+      this.controls.aimX = Math.max(b.minX, Math.min(b.maxX, p.worldX));
+      this.controls.aimY = Math.max(b.minY, Math.min(b.maxY, p.worldY));
       this.controls.aimFromPointer = true;
     });
     this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
@@ -246,7 +252,72 @@ export class Arena extends Phaser.Scene {
         .setDepth(1);
     });
   }
+  /** The stonework of a wall, shared by the arena and the world. */
+  private wall(g: Phaser.GameObjects.Graphics, x: number, y: number, w: number, h: number) {
+    g.fillStyle(0x0e1c20, 0.6);
+    g.fillRect(x + 6, y + 9, w, h);
+    g.fillStyle(0x313e42);
+    g.fillRect(x, y, w, h);
+    for (let row = 0; row < h; row += 14)
+      for (let col = 0; col < w; col += 26) {
+        g.fillStyle((row + col) % 3 ? 0x626e69 : 0x56635f);
+        g.fillRect(x + col + 1, y + row + 1, Math.min(24, w - col - 2), Math.min(12, h - row - 2));
+        g.fillStyle(0x899084, 0.55);
+        g.fillRect(x + col + 2, y + row + 1, Math.min(22, w - col - 3), 2);
+      }
+    g.fillStyle(0x9ca08b, 0.55);
+    g.fillRect(x, y, w, 3);
+    g.fillStyle(0x1f2e31);
+    g.fillRect(x, y + h - 6, w, 6);
+  }
+
+  /** The play area: the arena's fixed rectangle, or the bounds of the zone being played. */
+  private bounds(): Bounds {
+    const zoneId = (this.snapshot as (Snapshot & { zoneId?: ZoneId }) | undefined)?.zoneId;
+    return zoneId ? zone(zoneId).terrain.bounds : ARENA_BOUNDS;
+  }
+
+  /**
+   * A zone is painted plainly on purpose: ground, its walls and a border. The arena's decoration
+   * (the stone cross, the lanes, the central ring, the torches) is furniture for a 960x540 room,
+   * and running its noise grid over eight million pixels would cost a frame for nothing.
+   */
+  private drawZone(zoneId: ZoneId) {
+    this.currentZoneId = zoneId;
+    this.currentMapId = 'courtyard';
+    this.mapObjects.forEach((object) => object.destroy());
+    this.mapObjects = [];
+    const definition = zone(zoneId);
+    const b = definition.terrain.bounds;
+    const width = b.maxX + b.minX;
+    const height = b.maxY + b.minY;
+    const g = this.add.graphics();
+    this.mapObjects.push(g);
+    g.fillStyle(definition.theme === 'valle' ? 0x1d3327 : 0x1a2b2f);
+    g.fillRect(0, 0, width, height);
+    // Coarse patches, big enough that the whole zone costs a few hundred rectangles.
+    for (let y = b.minY; y < b.maxY; y += 120)
+      for (let x = b.minX; x < b.maxX; x += 120) {
+        const n = ((x * 37 + y * 19) % 113) / 113;
+        if (n < 0.55) continue;
+        g.fillStyle(n > 0.85 ? 0x24402f : 0x21392c, 0.6);
+        g.fillRect(x, y, 118, 118);
+      }
+    for (const w of definition.terrain.walls) this.wall(g, w.x, w.y, w.w, w.h);
+    const edge = b.minX;
+    this.wall(g, 0, 0, width, edge);
+    this.wall(g, 0, b.maxY, width, edge);
+    this.wall(g, 0, edge, edge, b.maxY - edge);
+    this.wall(g, b.maxX, edge, edge, b.maxY - edge);
+    // The shrine: where you revive and where the world saves you.
+    g.fillStyle(0x2c4a3a);
+    g.fillCircle(definition.shrine.x, definition.shrine.y, 26);
+    g.lineStyle(2, 0x9fd8b0, 0.5);
+    g.strokeCircle(definition.shrine.x, definition.shrine.y, 26);
+  }
+
   private drawMap(mapId: MapId) {
+    this.currentZoneId = '';
     this.currentMapId = mapId;
     this.mapObjects.forEach((object) => object.destroy());
     this.mapObjects = [];
@@ -293,28 +364,7 @@ export class Arena extends Phaser.Scene {
     g.fillStyle(0x8a9073, 0.3);
     g.fillTriangle(480, 245, 496, 270, 480, 295);
     g.fillTriangle(480, 245, 464, 270, 480, 295);
-    const wall = (x: number, y: number, w: number, h: number) => {
-      g.fillStyle(0x0e1c20, 0.6);
-      g.fillRect(x + 6, y + 9, w, h);
-      g.fillStyle(0x313e42);
-      g.fillRect(x, y, w, h);
-      for (let row = 0; row < h; row += 14)
-        for (let col = 0; col < w; col += 26) {
-          g.fillStyle((row + col) % 3 ? 0x626e69 : 0x56635f);
-          g.fillRect(
-            x + col + 1,
-            y + row + 1,
-            Math.min(24, w - col - 2),
-            Math.min(12, h - row - 2),
-          );
-          g.fillStyle(0x899084, 0.55);
-          g.fillRect(x + col + 2, y + row + 1, Math.min(22, w - col - 3), 2);
-        }
-      g.fillStyle(0x9ca08b, 0.55);
-      g.fillRect(x, y, w, 3);
-      g.fillStyle(0x1f2e31);
-      g.fillRect(x, y + h - 6, w, 6);
-    };
+    const wall = (x: number, y: number, w: number, h: number) => this.wall(g, x, y, w, h);
     for (const bush of map.bushes) {
       g.fillStyle(0x1a472c, 0.68);
       g.fillRoundedRect(bush.x, bush.y, bush.w, bush.h, 13);
@@ -352,7 +402,14 @@ export class Arena extends Phaser.Scene {
   }
   receive(snapshot: Snapshot, id: string) {
     if (!this.controls) return;
-    if (snapshot.mapId !== this.currentMapId) {
+    // A world snapshot carries its zone; a match snapshot only ever has a map.
+    const zoneId = (snapshot as Snapshot & { zoneId?: ZoneId }).zoneId;
+    if (zoneId) {
+      if (zoneId !== this.currentZoneId) {
+        this.drawZone(zoneId);
+        this.layoutKey = '';
+      }
+    } else if (snapshot.mapId !== this.currentMapId) {
       this.drawMap(snapshot.mapId);
       this.layoutKey = '';
     }
@@ -1610,10 +1667,14 @@ export class Arena extends Phaser.Scene {
     if (this.predicted && !this.controls.aimFromPointer) {
       // Touch aiming has no cursor: project the aim direction into the arena instead.
       const a = this.controls.angle;
-      this.controls.aimX = Math.max(0, Math.min(RULES.width, this.predicted.x + Math.cos(a) * 150));
+      const b = this.bounds();
+      this.controls.aimX = Math.max(
+        b.minX,
+        Math.min(b.maxX, this.predicted.x + Math.cos(a) * 150),
+      );
       this.controls.aimY = Math.max(
-        0,
-        Math.min(RULES.height, this.predicted.y + Math.sin(a) * 150),
+        b.minY,
+        Math.min(b.maxY, this.predicted.y + Math.sin(a) * 150),
       );
     }
     while (this.accumulator >= 1000 / 30) {
@@ -1964,11 +2025,32 @@ export class Arena extends Phaser.Scene {
     const camera = this.cameras.main;
     const width = Math.max(1, camera.width);
     const height = Math.max(1, camera.height);
-    // Always contain the complete 16:9 arena. Cover zoom made wide phones crop routes and flags.
-    const zoom = Math.min(width / RULES.width, height / RULES.height);
-    const targetX = RULES.width / 2;
-    const targetY = RULES.height / 2;
-    const key = `${width}x${height}:contain`;
+    const b = this.bounds();
+    const world = b !== ARENA_BOUNDS;
+    // In a match: always contain the complete 16:9 arena. Cover zoom made wide phones crop routes
+    // and flags. In the world: follow the character, showing at most one arena's worth of ground,
+    // which is exactly the interest rectangle the server sends — see any more and entities would
+    // appear out of thin air at the edge of the screen.
+    const zoom = world
+      ? Math.max(width / RULES.width, height / RULES.height)
+      : Math.min(width / RULES.width, height / RULES.height);
+    const me =
+      this.predicted ?? this.snapshot?.players.find((p) => p.id === this.localId) ?? undefined;
+    let targetX = RULES.width / 2;
+    let targetY = RULES.height / 2;
+    if (world && me) {
+      // Clamped so the camera never looks past the edge of the zone. When the zone is narrower
+      // than the screen the two limits cross, so the larger one wins and it simply centres.
+      const halfWidth = width / zoom / 2;
+      const halfHeight = height / zoom / 2;
+      const minX = b.minX + halfWidth;
+      const maxX = Math.max(minX, b.maxX - halfWidth);
+      const minY = b.minY + halfHeight;
+      const maxY = Math.max(minY, b.maxY - halfHeight);
+      targetX = Math.min(Math.max(me.x, minX), maxX);
+      targetY = Math.min(Math.max(me.y, minY), maxY);
+    }
+    const key = `${width}x${height}:${world ? 'follow' : 'contain'}`;
     const snap = key !== this.cameraKey;
     this.cameraKey = key;
     camera.setZoom(zoom).setRoundPixels(true);
