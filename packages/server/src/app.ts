@@ -2,6 +2,7 @@ import { Server } from '@colyseus/core';
 import { WebSocketTransport } from '@colyseus/ws-transport';
 import cors from 'cors';
 import { DuelRoom, publicRooms } from './room.js';
+import { WorldRoom } from './world-room.js';
 
 export function createServer() {
   const allowed = (process.env.ALLOWED_ORIGINS || 'http://localhost:5173,http://127.0.0.1:5173')
@@ -38,5 +39,8 @@ export function createServer() {
     },
   });
   server.define('duel', DuelRoom);
+  // The persistent world lives beside the matches, with the opposite lifecycle: no lobby, people
+  // walk in mid-session, and it stays alive when the last one leaves. DuelRoom is untouched.
+  server.define('world', WorldRoom);
   return server;
 }
