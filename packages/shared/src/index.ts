@@ -155,6 +155,12 @@ export interface Rect extends Vec {
 export const RULES = {
   width: 960,
   height: 540,
+  /**
+   * How far a charged projectile keeps flying, as a distance rather than a share of the map.
+   * Deliberately a fixed number: it must NOT grow with a larger world, or a charged fireball
+   * would stay alive for tens of seconds instead of crossing an arena.
+   */
+  projectileCrossing: 960 * 1.1,
   tick: 1 / 30,
   matchTime: 180,
   target: 3,
@@ -1043,7 +1049,7 @@ export function projectileStats(classId: ClassId, charged = false, power = 0) {
   if (!boost || power <= 0) return base;
   const speed = base.speed * (1 + power * (boost.speed - 1));
   // A charged cast keeps flying until it crosses the whole arena.
-  const crossing = (RULES.width * 1.1) / speed;
+  const crossing = RULES.projectileCrossing / speed;
   return {
     ...base,
     speed,
@@ -1679,18 +1685,18 @@ export class Duel {
     events: [],
     pve: null,
   };
-  private eventId = 0;
-  private arrowId = 0;
-  private trapId = 0;
-  private zombieId = 0;
+  protected eventId = 0;
+  protected arrowId = 0;
+  protected trapId = 0;
+  protected zombieId = 0;
   private mobId = 0;
   private mobProjectileId = 0;
   private pveSpawnClock = 0;
   private pveOffers = new Map<string, UpgradeOffer>();
   private executionId = 0;
-  private paths = new Map<string, { goal: Vec; points: Vec[] }>();
-  private packBearings = new Map<string, number>();
-  private packSeen = new Set<string>();
+  protected paths = new Map<string, { goal: Vec; points: Vec[] }>();
+  protected packBearings = new Map<string, number>();
+  protected packSeen = new Set<string>();
   private volleyId = 0;
   /** `${volley}:${target}` → tick a volley arrow first reached that target. */
   private volleyHits = new Map<string, number>();
@@ -1706,7 +1712,7 @@ export class Duel {
   get map(): MapDefinition {
     return MAPS[this.state.mapId];
   }
-  private syncParticipants() {
+  protected syncParticipants() {
     this.state.participants = this.state.players.map(
       ({ id, name, team, classId, ready, connected, deaths }) => ({
         id,
@@ -1720,7 +1726,7 @@ export class Duel {
     );
   }
   /** Executions of guard zombies killed in the red circle, per necromancer, oldest first. */
-  private fallen = new Map<string, number[]>();
+  protected fallen = new Map<string, number[]>();
   add(id: string, name: string, classId: ClassId = DEFAULT_CLASS, customization = defaultCustomization(classId)) {
     const s = this.state;
     const team =
@@ -1755,7 +1761,7 @@ export class Duel {
       layout([team], this.state.mapId, this.state.mode)[0]
     );
   }
-  private spawnFor(p: Player): Vec {
+  protected spawnFor(p: Player): Vec {
     const same = this.state.players.filter((q) => q.team === p.team),
       i = Math.max(0, same.indexOf(p));
     if (this.state.mode === 'pve') {
@@ -1768,7 +1774,7 @@ export class Duel {
       return this.map.sideSpawns[p.team === 'red' ? 'red' : 'blue'][i] ?? this.base(p.team).spawn;
     return this.map.cornerSpawns[p.team][0];
   }
-  private arrange() {
+  protected arrange() {
     const s = this.state;
     if (s.mode === 'pve') {
       s.bases = []; s.flags = [];
@@ -1786,7 +1792,7 @@ export class Duel {
       Object.assign(p, spawn, { angle: spawn.x < RULES.width / 2 ? 0 : Math.PI });
     }
   }
-  private revive(p: Player, invuln = 0) {
+  protected revive(p: Player, invuln = 0) {
     const customization = defaultCustomization(p.classId);
     customization.selectedSkin = p.skinId;
     customization.presets.default.loadout = { ...p.loadout };
@@ -2057,7 +2063,7 @@ export class Duel {
       translate(target, Math.cos(angle) * 24, Math.sin(angle) * 24, this.map.walls);
     return true;
   }
-  private freeze(p: Player) {
+  protected freeze(p: Player) {
     if (
       p.hp <= 0 ||
       (p.classId === 'guardian' && p.guarding) ||
@@ -2076,7 +2082,7 @@ export class Duel {
     this.event('freeze', p, p.team);
   }
   /** A charged fireball bursts on impact, splashing half its damage around. */
-  private explode(a: Arrow, owner: Player, amount: number, skip?: string) {
+  protected explode(a: Arrow, owner: Player, amount: number, skip?: string) {
     if ((a.skillId ? a.skillId !== 'mage.fireball' : a.classId !== 'mage') || !a.power) return;
     const s = this.state,
       radius = RULES.explosionRadius * (0.6 + 0.4 * a.power) * (1+(owner.pve?.classRanks.mage??0)*.12);
@@ -2114,7 +2120,7 @@ export class Duel {
     this.event('hit', z, team);
     if (z.hp === 0) this.event('death', z, z.team);
   }
-  private newZombie(owner: Player, at: Vec, fallback: Vec, extra: Partial<Zombie> = {}): Zombie {
+  protected newZombie(owner: Player, at: Vec, fallback: Vec, extra: Partial<Zombie> = {}): Zombie {
     const id = ++this.zombieId;
     return {
       id: `z${id}`,
@@ -2157,7 +2163,7 @@ export class Duel {
     };
   }
   /** Tap: two zombies. Held: one hat zombie. Full aura: raise or recall the thrall. */
-  private summon(p: Player, charge = 0) {
+  protected summon(p: Player, charge = 0) {
     const s = this.state;
     const ahead = { x: p.x + Math.cos(p.angle) * 26, y: p.y + Math.sin(p.angle) * 26 };
     if (charge >= RULES.overchargeTap) {
@@ -2225,7 +2231,7 @@ export class Duel {
     p.activeExecutions = this.activeExecutions(p.id);
     this.event('summon', p, p.team, p.angle, p.classId);
   }
-  private raise(p: Player, ahead: Vec) {
+  protected raise(p: Player, ahead: Vec) {
     const s = this.state;
     // One thrall at a time; the necromancer's other zombies may stay alive.
     if (
@@ -2257,7 +2263,7 @@ export class Duel {
     this.event('mandala', at, p.team, p.angle, p.thrall!.classId);
     return true;
   }
-  private finishRaise(p: Player) {
+  protected finishRaise(p: Player) {
     const s = this.state;
     const bound = this.raising.get(p.id);
     this.raising.delete(p.id);
@@ -2352,7 +2358,7 @@ export class Duel {
    * A revived player fights with its class skills and chains them into combos. Returns true while a
    * skill keeps it busy this tick, so it neither walks nor makes a basic attack.
    */
-  private thrallSkills(
+  protected thrallSkills(
     z: Zombie,
     target: Vec | undefined,
     owner: Player,
@@ -2513,7 +2519,7 @@ export class Duel {
               wind: true,
               hits: [],
               damageScale: RULES.windScale,
-              life: (RULES.width * 1.1) / speed,
+              life: RULES.projectileCrossing / speed,
             },
             aim,
           );
@@ -2688,7 +2694,7 @@ export class Duel {
     }
   }
   /** A sword zombie that kills levels up (up to 3): more damage and life, faster swings, then cleave. */
-  private levelUp(z: Zombie) {
+  protected levelUp(z: Zombie) {
     if (z.level >= RULES.swordZombieLevelMax) return;
     z.level++;
     z.maxHp = swordZombieStats(z.level).hp;
@@ -2707,7 +2713,7 @@ export class Duel {
       this.volleyHits.set(key, this.state.tick);
   }
   /** Zombie mage: the icy breeze or the fireball, then the other one next time. Thrall: its class shot. */
-  private castSpell(z: Zombie, owner: Player) {
+  protected castSpell(z: Zombie, owner: Player) {
     if (z.kind === 'hat') {
       if (z.spell === 'ice') {
         this.iceCone(z, owner);
@@ -2741,7 +2747,7 @@ export class Duel {
     ).size;
   }
   /** Normal zombies guard the red circle around the necromancer; the hat zombie, its minions and the thrall follow the mouse. */
-  private zombieMode(z: Zombie, owner = this.state.players.find((p) => p.id === z.owner)) {
+  protected zombieMode(z: Zombie, owner = this.state.players.find((p) => p.id === z.owner)) {
     if (!owner || owner.hp <= 0 || owner.zombieAuto) return 'auto' as const;
     return z.role === 'cursor' && owner.aimX >= 0 ? ('cursor' as const) : ('guard' as const);
   }
@@ -2780,7 +2786,7 @@ export class Duel {
    * spread over it (a pincer for two, a ring for more), each keeping the side it is already on,
    * so the pack closes in from several directions instead of queueing behind each other.
    */
-  private formation(z: Zombie, center: Vec, near: number, far = near): Vec {
+  protected formation(z: Zombie, center: Vec, near: number, far = near): Vec {
     // Idle zombies group by what they do: guards around the necromancer apart from the cursor squad.
     const mode = this.zombieMode(z);
     const pack = this.state.zombies.filter(
@@ -2821,14 +2827,14 @@ export class Duel {
     }
     return center;
   }
-  private siblingCells(z: Zombie) {
+  protected siblingCells(z: Zombie) {
     const cells = new Set<number>();
     for (const q of this.state.zombies)
       if (q !== z && q.owner === z.owner && q.target === z.target)
         for (const cell of pathCells(this.paths.get(q.id)?.points ?? [])) cells.add(cell);
     return cells;
   }
-  private chooseTarget(z: Zombie) {
+  protected chooseTarget(z: Zombie) {
     const s = this.state;
     const candidates = [
       ...s.players
@@ -2873,7 +2879,7 @@ export class Duel {
     if (best?.id !== z.target) this.paths.delete(z.id);
     z.target = best?.id ?? null;
   }
-  private walkZombie(z: Zombie, goal: Vec, dt: number, pace = 1) {
+  protected walkZombie(z: Zombie, goal: Vec, dt: number, pace = 1) {
     let aim = goal;
     if (bodyClear(z, goal, RULES.zombieRadius - 1, this.map.walls)) this.paths.delete(z.id);
     else {
@@ -2900,7 +2906,7 @@ export class Duel {
     );
     translate(z, Math.cos(z.angle) * stride, Math.sin(z.angle) * stride, this.map.walls);
   }
-  private stepZombies(dt: number) {
+  protected stepZombies(dt: number) {
     const s = this.state;
     s.graves = s.graves.filter((g) => (g.left -= dt) > 0);
     const minions: Zombie[] = [];
@@ -3326,6 +3332,79 @@ export class Duel {
       this.finish(leaders.length === 1 ? leaders[0] : 'draw', 'tiempo');
       return;
     }
+    const placements = this.stepPlayers(inputs, dt);
+    if (s.winner) {
+      this.syncParticipants();
+      return;
+    }
+    this.stepArrows(dt);
+    this.stepZombies(dt);
+    this.stepTraps(placements, dt);
+    if (s.winner) {
+      this.syncParticipants();
+      return;
+    }
+    for (const p of s.players) p.activeTraps = s.traps.filter((t) => t.owner === p.id).length;
+    if(s.mode==='pve'){this.stepPveWorld(dt);this.syncParticipants();return;}
+    // Own-flag returns precede enemy pickups and scoring, independent of player iteration order.
+    for (const f of s.flags) {
+      f.lockLeft = Math.max(0, f.lockLeft - dt);
+      if (f.status === 'dropped') {
+        f.returnLeft -= dt;
+        if (
+          f.returnLeft <= 0 ||
+          s.players.some((p) => p.team === f.team && p.hp > 0 && distance(p, f) < 25)
+        )
+          this.returnFlag(f);
+      }
+    }
+    for (const f of s.flags) {
+      if (f.status !== 'carried') {
+        const p = s.players.find(
+          (p) =>
+            p.team !== f.team &&
+            p.hp > 0 &&
+            !s.flags.some((other) => other.carrier === p.id) &&
+            distance(p, f) < 25 &&
+            !(f.blockedId === p.id && f.lockLeft > 0),
+        );
+        if (p) {
+          f.status = 'carried';
+          f.carrier = p.id;
+          p.invuln = 0;
+          this.event('pickup', p, p.team);
+        }
+      }
+      const carrier = s.players.find((p) => p.id === f.carrier);
+      if (carrier) {
+        f.x = carrier.x;
+        f.y = carrier.y;
+      }
+    }
+    for (const p of s.players) {
+      if (
+        p.hp > 0 &&
+        s.flags.some((f) => f.carrier === p.id) &&
+        s.flags.find((f) => f.team === p.team)?.status === 'home' &&
+        distance(p, this.base(p.team).home) < 38
+      ) {
+        s.score[p.team]++;
+        this.event('capture', p, p.team);
+        this.resetArena();
+        if (s.score[p.team] >= RULES.target) this.finish(p.team, 'capturas');
+        else {
+          s.phase = 'capture';
+          s.phaseLeft = RULES.capturePause;
+        }
+        break;
+      }
+    }
+    this.syncParticipants();
+  }
+  /** Defenses, movement and attack preparation, then the impacts they produce. Returns the
+   *  players who placed a trap this tick, which `stepTraps` needs further down the step. */
+  protected stepPlayers(inputs: Map<string, Input>, dt: number): Player[] {
+    const s = this.state;
     const swings: Player[] = [];
     const placements: Player[] = [];
     const bashers: Player[] = [];
@@ -3401,7 +3480,7 @@ export class Duel {
             charged,
             power,
             // A wind arrow crosses the whole arena.
-            life: action.wind ? (RULES.width * 1.1) / stats.speed : stats.life,
+            life: action.wind ? RULES.projectileCrossing / stats.speed : stats.life,
             ...(volley !== undefined || action.wind ? { hits: [], volley } : {}),
             ...(action.wind
               ? { wind: true, damageScale: action.volley ? RULES.windVolleyScale : RULES.windScale }
@@ -3559,10 +3638,11 @@ export class Duel {
       }
     }
     for (const hit of hits) this.damage(hit.target, hit.source, hit.angle, hit.amount);
-    if (s.winner) {
-      this.syncParticipants();
-      return;
-    }
+    return placements;
+  }
+  /** Projectile flight and everything they hit. */
+  protected stepArrows(dt: number) {
+    const s = this.state;
     s.arrows = s.arrows.filter((a) => {
       const travelTime = Math.min(dt, a.life);
       if (travelTime <= 1e-8) return false;
@@ -3692,7 +3772,10 @@ export class Duel {
       return true;
     });
     for (const [key, tick] of this.volleyHits) if (s.tick - tick > 60) this.volleyHits.delete(key);
-    this.stepZombies(dt);
+  }
+  /** Traps placed this tick, then the arming and triggering of every live trap. */
+  protected stepTraps(placements: Player[], dt: number) {
+    const s = this.state;
     for (const p of placements) {
       if (p.hp <= 0 || p.hitFlash > 0 || s.winner) continue;
       const owned = s.traps.filter((t) => t.owner === p.id);
@@ -3748,65 +3831,5 @@ export class Duel {
       }
       return false;
     });
-    if (s.winner) {
-      this.syncParticipants();
-      return;
-    }
-    for (const p of s.players) p.activeTraps = s.traps.filter((t) => t.owner === p.id).length;
-    if(s.mode==='pve'){this.stepPveWorld(dt);this.syncParticipants();return;}
-    // Own-flag returns precede enemy pickups and scoring, independent of player iteration order.
-    for (const f of s.flags) {
-      f.lockLeft = Math.max(0, f.lockLeft - dt);
-      if (f.status === 'dropped') {
-        f.returnLeft -= dt;
-        if (
-          f.returnLeft <= 0 ||
-          s.players.some((p) => p.team === f.team && p.hp > 0 && distance(p, f) < 25)
-        )
-          this.returnFlag(f);
-      }
-    }
-    for (const f of s.flags) {
-      if (f.status !== 'carried') {
-        const p = s.players.find(
-          (p) =>
-            p.team !== f.team &&
-            p.hp > 0 &&
-            !s.flags.some((other) => other.carrier === p.id) &&
-            distance(p, f) < 25 &&
-            !(f.blockedId === p.id && f.lockLeft > 0),
-        );
-        if (p) {
-          f.status = 'carried';
-          f.carrier = p.id;
-          p.invuln = 0;
-          this.event('pickup', p, p.team);
-        }
-      }
-      const carrier = s.players.find((p) => p.id === f.carrier);
-      if (carrier) {
-        f.x = carrier.x;
-        f.y = carrier.y;
-      }
-    }
-    for (const p of s.players) {
-      if (
-        p.hp > 0 &&
-        s.flags.some((f) => f.carrier === p.id) &&
-        s.flags.find((f) => f.team === p.team)?.status === 'home' &&
-        distance(p, this.base(p.team).home) < 38
-      ) {
-        s.score[p.team]++;
-        this.event('capture', p, p.team);
-        this.resetArena();
-        if (s.score[p.team] >= RULES.target) this.finish(p.team, 'capturas');
-        else {
-          s.phase = 'capture';
-          s.phaseLeft = RULES.capturePause;
-        }
-        break;
-      }
-    }
-    this.syncParticipants();
   }
 }
