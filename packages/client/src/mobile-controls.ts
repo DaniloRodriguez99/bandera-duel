@@ -76,6 +76,9 @@ function button(slot: TouchAbilitySlot) {
   const node = document.createElement('button');
   node.type = 'button';
   node.className = `touch-ability${slot.primary ? ' primary' : ''}`;
+  // The stylesheet lays these out by id (`.stage[data-class=archer] #touch-trap`) and the browser
+  // specs address them the same way, so every button needs one.
+  node.id = `touch-${slot.id}`;
   node.dataset.touchAbility = slot.id;
   node.dataset.mode = slot.mode;
   node.dataset.directional = String(slot.directional);

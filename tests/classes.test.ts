@@ -43,7 +43,7 @@ describe('armas y permisos',()=>{
     step(d,p,{},15);step(d,p,{dash:true});expect(p.dashCd).toBeGreaterThan(0);
   });
   it('flechas rápidas alcanzan como máximo 672 unidades',()=>{
-    const {d,p,q}=setup('archer');p.x=80;q.y=450;step(d,p,{shot:true});const arrow=d.state.arrows[0];expect(arrow.x-80).toBeCloseTo(560/30);
+    const {d,p,q}=setup('archer');p.x=80;q.y=450;step(d,p,{shot:true});const arrow=d.state.arrows[0];expect(arrow.x-80).toBeCloseTo(RULES.archerArrowSpeed/30);
     step(d,p,{},35);expect(arrow.x-80).toBeCloseTo(672);step(d,p);expect(d.state.arrows).toHaveLength(0);
   });
   it('la espada pesada tampoco atraviesa paredes',()=>{const {d,p,q}=setup('vanguard');Object.assign(p,{x:480,y:150});Object.assign(q,{x:480,y:219});step(d,p,{sword:true,angle:Math.PI/2});step(d,p,{},12);expect(q.hp).toBe(3);});

@@ -1418,9 +1418,12 @@ export function movePlayer(
           (p.classId === 'vanguard' ? RULES.vanguardDash : 1);
     p.dashCd = p.classId === 'guardian' ? RULES.guardianDashCooldown : RULES.dashCooldown;
     result.dashStarted = true;
-    // Only a fully drawn bow opens the wind-combo window during the archer's dash.
+    // A deliberate jump opens the archer's air-combo window: either the bow was fully drawn or the
+    // jump itself was charged. A plain escape dash opens nothing, so it cannot grant invulnerability
+    // and an attack at the same time. Read specialCharge before the reset below.
     p.windDash =
-      p.classId === 'archer' && p.shotCharge >= RULES.chargeTime - 1e-8
+      p.classId === 'archer' &&
+      (p.shotCharge >= RULES.chargeTime - 1e-8 || chargePower(p.specialCharge) > 0)
         ? p.dashLeft + RULES.windGrace
         : 0;
     p.specialCharge = 0;
@@ -1460,7 +1463,10 @@ export function movePlayer(
   const movingVolley =
     p.classId === 'archer' && (dashCombo || Math.hypot(p.x - beforeX, p.y - beforeY) > 1e-6);
   const fullArcherCharge = p.classId === 'archer' && heldCharge >= RULES.chargeTime - 1e-8;
-  const dashAttackWindow = movingVolley || p.classId === 'vanguard';
+  // Only the air-combo window opened above (a fully drawn bow or a charged jump) lets the archer
+  // act while the dash keeps it invulnerable. Plain displacement must not open the attack ladder
+  // mid-dash, or an escape dash would grant invulnerability and a swing at the same time.
+  const dashAttackWindow = dashCombo || p.classId === 'vanguard';
   const canCharge =
     !p.guarding &&
     (!p.dashInvulnerable || dashAttackWindow) &&
