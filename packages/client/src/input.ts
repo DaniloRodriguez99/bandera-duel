@@ -38,6 +38,11 @@ export class Controls {
   move = { x: 0, y: 0 };
   actions = emptyActions();
   enabled = false;
+  /**
+   * Set in the world: E, Q and Space stop being a class kit and cast whatever skill sits in that
+   * slot. Null in every match, where the keys keep meaning what they always meant.
+   */
+  onCast: ((slot: 'e' | 'q' | 'space') => void) | null = null;
   classId: ClassId = DEFAULT_CLASS;
   bindings = { ...DEFAULT_BINDINGS[DEFAULT_CLASS] };
   loadout = { ...DEFAULT_LOADOUTS[DEFAULT_CLASS] };
@@ -149,6 +154,11 @@ export class Controls {
     if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.code))
       event.preventDefault();
     this.keys.add(event.code);
+    const cast = event.code === 'KeyE' ? 'e' : event.code === 'KeyQ' ? 'q' : event.code === 'Space' ? 'space' : null;
+    if (this.onCast && cast) {
+      if (!event.repeat) this.onCast(cast);
+      return;
+    }
     const binding=this.keyBinding(event.code);if(binding&&!event.repeat)this.pressPhysical(binding);
     if (binding === this.bindings.companionCommand && Object.values(this.loadout).includes('necromancer.summon')) {
       event.preventDefault();

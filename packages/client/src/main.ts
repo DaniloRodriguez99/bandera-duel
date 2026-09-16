@@ -41,6 +41,9 @@ import './style.css';
 import { Practice, PRACTICE_PLAYER } from './practice.js';
 import { loadMageCustomization, mountMageCustomization } from './customization.js';
 import { UPGRADE_META, UPGRADE_ORDER } from './pve-upgrades.js';
+import { WorldHud } from './isekai-hud.js';
+import { zone, type ZoneId } from '@bandera/shared/rpg/zones';
+import type { CastSlot, Character, Creation, Notice } from '@bandera/shared/world';
 
 function hudTeam(team: Team, right = false) {
   const label = right
@@ -59,7 +62,7 @@ document.querySelector('#app')!.innerHTML = `
 <section id="intro" class="intro"><div class="hero-copy"><div class="eyebrow"><i></i> DUELO ONLINE · HASTA 4 JUGADORES</div><h1>Tu rival tiene<br>algo <em>tuyo.</em></h1><p>Entrá al castillo. Robá su bandera.<br>Volvé con la gloria antes de que te alcancen.</p><div class="facts"><span><b>04</b> jugadores</span><span><b>03</b> minutos</span><span><b>01</b> vencedor</span></div></div>
 <div class="entry-card"><div class="card-top"><span class="tiny">EL DESAFÍO EMPIEZA ACÁ</span><span class="swords">⚔</span></div><h2 id="entry-title">Prepará tu estandarte.</h2><p id="entry-description">Elegí tu guerrero, prepará una sala e invitá a tu rival.</p><form id="entry-form"><div class="player-setup"><div class="setup-heading"><span>01</span><h3>Tu guerrero</h3></div><label for="name">TU APODO</label><input id="name" name="name" placeholder="Caballero sin nombre" maxlength="16" autocomplete="nickname" required><fieldset id="world-account" class="world-account" hidden><legend>TU CUENTA DEL MUNDO</legend><p class="world-hint">El mundo guarda tus personajes. Entrá con tu cuenta o creá una nueva.</p><label for="world-user">CUENTA</label><input id="world-user" maxlength="16" autocomplete="username" placeholder="Tu nombre de cuenta"><label for="world-pass">CLAVE</label><input id="world-pass" type="password" minlength="6" maxlength="64" autocomplete="current-password" placeholder="Al menos 6 caracteres"><label class="check"><input id="world-new" type="checkbox"> Es mi primera vez, crear la cuenta</label><div id="world-characters" class="world-characters" hidden></div></fieldset><fieldset id="entry-class-picker" class="class-picker"><legend>ELEGÍ TU GUERRERO</legend><div id="entry-classes" class="class-grid"></div></fieldset></div><div class="room-setup"><div class="setup-heading"><span>02</span><h3>Tu próxima partida</h3></div><fieldset id="room-options"><legend>TU SALA</legend><label for="room-title">TÍTULO</label><input id="room-title" maxlength="48" value="Duelo medieval"><label for="visibility">VISIBILIDAD</label><select id="visibility"><option value="private">Privada · solo por enlace</option><option value="public">Pública · aparece en el listado</option></select><div class="option-row"><label>FORMATO<select id="game-mode"><option value="duel">Duelo · 1v1</option><option value="teams">Equipos · 2v2</option><option value="ffa3">Todos contra todos · 3</option><option value="ffa4">Todos contra todos · 4</option><option value="pve">Hordas PvE · 1–4</option><option value="world">Mundo isekai · abierto</option></select></label><label>MAPA<select id="map-select"><option value="courtyard">Patio del Rey</option><option value="forest">Bosque de Emboscadas</option><option value="ruins">Ruinas del Bastión</option><option value="crossroads">Encrucijada</option></select></label></div><div id="map-preview" class="map-preview"></div><label class="check-option"><input id="allow-spectators" type="checkbox" checked> Permitir espectadores (máximo 5)</label></fieldset><label for="room-password">CONTRASEÑA (OPCIONAL)</label><input id="room-password" type="password" maxlength="64" autocomplete="off" placeholder="Sin contraseña"><label id="spectator-choice" hidden><input id="spectator" type="checkbox"> Entrar como espectador</label><label id="perspective-choice" hidden>PERSPECTIVA<select id="spectator-perspective"><option value="blue">Azul</option><option value="red">Carmesí</option><option value="green">Jade</option><option value="violet">Violeta</option></select></label></div><div class="entry-actions"><button id="enter" class="primary" type="submit">Crear un duelo <span>↗</span></button><button id="practice-start" class="secondary" type="button">Probar contra un rival inmóvil</button><span class="entry-note">Práctica local, sin sala.</span></div></form><div id="status" class="status" role="status" aria-live="polite">Sin cuentas. Sin descargas. Solo el duelo.</div><button id="new-instead" class="text-btn" hidden>Crear otra sala</button></div></section>
 <section id="room-browser" class="room-browser"><div class="browser-heading"><div><span class="tiny">BUSCÁ TU PRÓXIMO RIVAL</span><h2>Salas públicas</h2></div><button id="refresh-rooms" class="secondary">↻ Actualizar salas</button></div><p id="rooms-status" role="status"></p><h3 class="room-group-title">● Combates en vivo</h3><p id="live-empty">No hay combates públicos en curso.</p><div id="live-rooms-list"></div><h3 class="room-group-title">Salas para jugar y próximas rondas</h3><div id="rooms-list"></div></section><section class="arena-section"><div class="arena-heading"><div><span class="live-dot"></span><span id="arena-label">EL PATIO DEL REY</span><span class="map-label">ARENA 01</span></div><span id="connection-label">ACERO · ARCO · MAGIA</span></div>
-<div id="practice-toolbar" hidden><span>PRÁCTICA · RIVAL INMÓVIL</span><button id="practice-reset" class="secondary">Reiniciar</button><button id="practice-exit" class="secondary">Salir</button></div><div id="hud" class="hud" hidden>${hudTeam('blue')}${hudTeam('green')}<div class="clock"><span id="timer">3:00</span><small>PRIMERO A 3</small></div>${hudTeam('violet', true)}${hudTeam('red', true)}<span id="spectator-count" hidden aria-live="polite"></span><div id="pve-hud" hidden><b id="pve-wave">OLEADA 0</b><span id="pve-enemies">0 enemigos</span><span id="pve-alive"></span></div><div id="pve-upgrades" hidden aria-label="Mejoras elegidas"></div><div id="boss-hud" hidden><span>GUARDIÁN DE LA CRIPTA</span><i><b id="boss-health"></b></i></div><div id="mobile-player-status" hidden><b id="mobile-health"></b><span id="mobile-state"></span></div></div>
+<div id="practice-toolbar" hidden><span>PRÁCTICA · RIVAL INMÓVIL</span><button id="practice-reset" class="secondary">Reiniciar</button><button id="practice-exit" class="secondary">Salir</button></div><div id="hud" class="hud" hidden>${hudTeam('blue')}${hudTeam('green')}<div class="clock"><span id="timer">3:00</span><small id="clock-note">PRIMERO A 3</small></div>${hudTeam('violet', true)}${hudTeam('red', true)}<span id="spectator-count" hidden aria-live="polite"></span><div id="pve-hud" hidden><b id="pve-wave">OLEADA 0</b><span id="pve-enemies">0 enemigos</span><span id="pve-alive"></span></div><div id="pve-upgrades" hidden aria-label="Mejoras elegidas"></div><div id="boss-hud" hidden><span>GUARDIÁN DE LA CRIPTA</span><i><b id="boss-health"></b></i></div><div id="mobile-player-status" hidden><b id="mobile-health"></b><span id="mobile-state"></span></div></div>
 <div id="stage" class="stage"><section id="pve-rewards" class="pve-rewards" hidden><header><span id="reward-wave"></span><b id="reward-time"></b></header><p>Elegí una recompensa. Si el tiempo termina, no recibirás ninguna.</p><div id="reward-cards"></div></section><label id="room-perspective-choice" hidden>PERSPECTIVA<select id="room-perspective"></select></label><div id="game"></div><div id="abilities" class="abilities" hidden aria-label="Habilidades"></div><div class="preview-tag" id="preview-tag">HASTA CUATRO ESTANDARTES. UNA SOLA GLORIA.</div>
 <button id="chat-toggle" class="chat-toggle" type="button" hidden aria-expanded="false" aria-controls="chat-panel"><span aria-hidden="true">◈</span><span class="chat-label">CHAT</span><b id="chat-unread" hidden></b></button>
 <aside id="chat-panel" class="chat-panel" hidden aria-label="Chat de sala"><header><div><span>CHAT DE SALA</span><small id="chat-players"></small></div><button id="chat-close" type="button" aria-label="Cerrar chat">×</button></header><ol id="chat-messages" role="log" aria-live="polite"></ol><p id="chat-status" role="status"></p><form id="chat-form"><input id="chat-input" maxlength="240" autocomplete="off" placeholder="Escribí un mensaje…" aria-label="Mensaje"><button id="chat-send" type="submit">Enviar</button></form></aside>
@@ -74,6 +77,22 @@ document.querySelector('#app')!.innerHTML = `
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const arena = new Arena();
 $('cooldowns').insertAdjacentHTML('beforeend', '<span id="cd-ice" hidden></span>');
+/** A key or a tap on a skill slot: cast it at wherever the character is aiming right now. */
+const castSlot = (slot: CastSlot) => {
+  if (!room || !online || !worldCharacterId) return;
+  room.send('cast', { slot, aimX: arena.controls?.aimX ?? 0, aimY: arena.controls?.aimY ?? 0 });
+};
+const worldHud = new WorldHud($('stage'), {
+  cast: castSlot,
+  learn: (skillId, nodeId) => room?.send('learn', { skillId, nodeId }),
+  slot: (slot, skillId) => room?.send('slot', { slot, skillId }),
+  spend: (stat) => room?.send('spendPoint', { stat }),
+});
+window.addEventListener('keydown', (event) => {
+  if (!worldCharacterId || (event.target as HTMLElement)?.matches?.('input, textarea, select')) return;
+  if (event.code === 'KeyK' && !event.repeat) worldHud.togglePanel();
+  if (event.code === 'Escape' && worldHud.panelOpen) worldHud.togglePanel(false);
+});
 new Phaser.Game({
   type: Phaser.AUTO,
   parent: 'game',
@@ -484,13 +503,18 @@ function bind(joined: Room) {
   room.onMessage('upgradeOffer', (offer: UpgradeOffer | null) => showUpgradeOffer(offer));
   // World: the list to choose from, the sheet, and the moment the character walks in.
   room.onMessage('characters', (list: WorldCharacterList) => showCharacters(list));
-  room.onMessage('sheet', (sheet: WorldSheet) => showSheet(sheet));
+  room.onMessage('sheet', (sheet: Character) => showSheet(sheet));
+  room.onMessage('system', (notice: Notice) => worldHud.notice(notice));
   room.onMessage('entered', ({ zoneId, characterId }: { zoneId: string; characterId: string }) => {
     worldCharacterId = characterId;
     $('overlay').hidden = true;
     $('world-characters').hidden = true;
     $('stage').dataset.zone = zoneId;
     $('stage').dataset.mode = 'world';
+    document.body.classList.add('world-mode');
+    worldHud.show();
+    // In the world E, Q and Space belong to the skill slots, not to a class kit.
+    if (arena.controls) arena.controls.onCast = castSlot;
   });
   room.onMessage('snapshot', (s: Snapshot) => {
     current = s;
@@ -598,6 +622,7 @@ $('entry-form').onsubmit = async (e) => {
           create: $<HTMLInputElement>('world-new').checked,
           // Without a character named, the server answers with the list to choose from.
           ...(chosenCharacter ? { characterId: chosenCharacter, classId: selectedClass, name } : {}),
+          ...(chosenCreation ? { creation: chosenCreation } : {}),
         })
       : await client.create('duel', {
           name,
@@ -633,15 +658,9 @@ interface WorldCharacterList {
   characters: { id: string; name: string; classId: string; level: number; zoneId: string }[];
   max: number;
 }
-interface WorldSheet {
-  id: string;
-  name: string;
-  level: number;
-  xp: number;
-  unspent: number;
-  zoneId: string;
-}
 let chosenCharacter: string | null = null;
+/** The sparks and weapon placed in the Man-God's void, sent once with the new character. */
+let chosenCreation: Creation | null = null;
 /**
  * In the world the entity id is the character id, not the connection's session id. Null in a
  * match, where everything keeps finding itself by session id as before.
@@ -706,8 +725,13 @@ function showCharacters(list: WorldCharacterList) {
     crear.id = 'world-create';
     crear.textContent = 'Crear un personaje nuevo ↗';
     crear.onclick = () => {
-      chosenCharacter = `c${Date.now().toString(36)}`;
-      $<HTMLButtonElement>('enter').click();
+      // Birth happens before the join: the server rolls fate from the sparks and weapon it gets.
+      $('overlay').hidden = true;
+      worldHud.openCreation((creation) => {
+        chosenCreation = creation;
+        chosenCharacter = `c${Date.now().toString(36)}`;
+        $<HTMLButtonElement>('enter').click();
+      });
     };
     box.append(crear);
   }
@@ -721,12 +745,15 @@ function showCharacters(list: WorldCharacterList) {
   document.body.classList.remove('joining-room');
 }
 
-function showSheet(sheet: WorldSheet) {
+function showSheet(sheet: Character) {
+  worldHud.setSheet(sheet);
+  arena.weapon = sheet.weapon;
   const stage = $('stage');
   stage.dataset.level = String(sheet.level);
   stage.dataset.xp = String(sheet.xp);
   stage.dataset.unspent = String(sheet.unspent);
   stage.dataset.zone = sheet.zoneId;
+  stage.dataset.skillPoints = String(sheet.skillPoints);
 }
 
 $('new-instead').onclick = () => {
@@ -775,6 +802,34 @@ $('leave').onclick = () => {
   void previous?.leave();
   location.assign(location.pathname);
 };
+/**
+ * The match chrome says "first to 3", counts a clock down from infinity and asks for a flag. The
+ * world has none of that: the top bar names the zone, and the System HUD carries the rest.
+ */
+function renderWorldChrome(s: Snapshot, me: Snapshot['players'][number] | undefined) {
+  const zoneId = (s as Snapshot & { zoneId?: ZoneId }).zoneId;
+  const here = zoneId ? zone(zoneId) : undefined;
+  $('timer').textContent = here?.name ?? '';
+  $('clock-note').textContent = here
+    ? here.pvp === 'safe'
+      ? 'SANTUARIO'
+      : `ZONA SALVAJE · NV ${here.minLevel}+`
+    : '';
+  $('arena-label').textContent = here ? `${here.name.toUpperCase()} · MUNDO ISEKAI` : 'MUNDO ISEKAI';
+  $('arena-hint').textContent = !me
+    ? ''
+    : me.hp <= 0
+      ? `Caíste. Volvés al altar en ${Math.ceil(me.respawnLeft)} s.`
+      : (here?.description ?? '');
+  const guide = $('control-guide');
+  if (!guide.querySelector('[data-world]'))
+    guide.innerHTML =
+      '<span data-world><span><kbd>WASD</kbd> Moverse</span><span><kbd>CLIC</kbd> Tu arma</span><span><kbd>E</kbd><kbd>Q</kbd><kbd>ESPACIO</kbd> Habilidades</span><span><kbd>K</kbd> Sistema</span></span>';
+  $('cooldowns').hidden = true;
+  $('abilities').hidden = true;
+  $('overlay').hidden = true;
+  if (me) worldHud.setPlayer(me);
+}
 function render(s: Snapshot) {
   if (!room && !practice) return;
   const me = s.players.find(
@@ -937,6 +992,10 @@ function render(s: Snapshot) {
           : '☠ Cargando · zombie con gorro';
   } else {
     $('mobile-player-status').hidden = true;
+  }
+  if (worldCharacterId) {
+    renderWorldChrome(s, me);
+    return;
   }
   $('arena-hint').textContent = pve
     ? me?.hp === 0

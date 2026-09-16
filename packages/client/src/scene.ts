@@ -26,6 +26,8 @@ import {
   type Team,
   type Base,
   type Bounds,
+  type Rect,
+  type Terrain,
   type Zombie,
   type Input,
   type MapId,
@@ -33,6 +35,7 @@ import {
   type MobKind,
 } from '@bandera/shared';
 import { zone, type ZoneId } from '@bandera/shared/rpg/zones';
+import { worldInput, type Weapon } from '@bandera/shared/world';
 import { Controls } from './input.js';
 import { blueprintSpec, clipRay } from './targeting.js';
 import { sound } from './audio.js';
@@ -74,6 +77,8 @@ export class Arena extends Phaser.Scene {
   snapshot?: Snapshot;
   predicted?: Player;
   localStep?: (input: Input) => void;
+  /** The world character's weapon, from its sheet. It decides what a click predicts. */
+  weapon: Weapon | null = null;
   send: (input: Input) => void = () => {};
   private visuals = new Map<
     string,
@@ -277,6 +282,21 @@ export class Arena extends Phaser.Scene {
     return zoneId ? zone(zoneId).terrain.bounds : ARENA_BOUNDS;
   }
 
+  /** What bodies collide with: the zone's terrain in the world, the map's walls in a match. */
+  private terrain(): Rect[] | Terrain {
+    const zoneId = (this.snapshot as (Snapshot & { zoneId?: ZoneId }) | undefined)?.zoneId;
+    return zoneId ? zone(zoneId).terrain : MAPS[this.snapshot?.mapId ?? this.currentMapId].walls;
+  }
+
+  /**
+   * The input the server will actually apply. In the world the class kit is gone, so predicting a
+   * guardian's dash on Space would snap the body forward and back on every press.
+   */
+  private shape(input: Input): Input {
+    const world = !!(this.snapshot as (Snapshot & { zoneId?: ZoneId }) | undefined)?.zoneId;
+    return world ? worldInput(input, this.weapon ?? 'espada') : input;
+  }
+
   /**
    * A zone is painted plainly on purpose: ground, its walls and a border. The arena's decoration
    * (the stone cross, the lanes, the central ring, the torches) is furniture for a 960x540 room,
@@ -445,10 +465,10 @@ export class Arena extends Phaser.Scene {
         for (const input of this.pending)
           movePlayer(
             this.predicted,
-            snapshot.phase === 'rewards' ? movementInput(input) : resolveSlotInput(this.predicted,input),
+            snapshot.phase === 'rewards' ? movementInput(input) : resolveSlotInput(this.predicted, this.shape(input)),
             snapshot.flags.some((f) => f.carrier === id),
             RULES.tick,
-            MAPS[snapshot.mapId].walls,
+            this.terrain(),
           );
     }
     this.phase = snapshot.phase;
@@ -1694,13 +1714,15 @@ export class Arena extends Phaser.Scene {
         this.send(input);
         this.pending.push(input);
         if (this.pending.length > 90) this.pending.shift();
+        // Predicting against the arena's walls in a zone clamped the body at x 940 every frame,
+        // and every snapshot then yanked it back to where the server had it.
         if (this.predicted)
           movePlayer(
             this.predicted,
-            input,
+            this.shape(input),
             s.flags.some((f) => f.carrier === this.localId),
             RULES.tick,
-            MAPS[s.mapId].walls,
+            this.terrain(),
           );
       }
     }
@@ -1800,7 +1822,7 @@ export class Arena extends Phaser.Scene {
         x: a.x + Math.cos(a.angle) * arrowMotion(a).speed * age,
         y: a.y + Math.sin(a.angle) * arrowMotion(a).speed * age,
       };
-      const p = lineClear(a, next, MAPS[s.mapId].walls) ? next : a;
+      const p = lineClear(a, next, this.terrain()) ? next : a;
       const grow = 1 + (a.power ?? 0);
       if (a.reflected) {
         // Countered projectile: a golden halo, bigger when the counter was charged.
@@ -2067,7 +2089,7 @@ export class Arena extends Phaser.Scene {
   private drawBlueprint(p: Player, abilityId: string, angle: number, time: number) {
     const spec = blueprintSpec(p, abilityId);
     if (!spec) return;
-    const walls = MAPS[this.currentMapId].walls;
+    const walls = this.terrain();
     const pulse = 0.72 + Math.sin(time * 0.012) * 0.12;
     const charge =
       abilityId === 'shot' || abilityId === 'sword'

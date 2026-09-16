@@ -8,6 +8,7 @@ import {
   type MapId,
   type Player,
   type Rect,
+  type Terrain,
   type Vec,
 } from '@bandera/shared';
 
@@ -98,7 +99,7 @@ export function blueprintSpec(p: Player, abilityId: string): BlueprintSpec | nul
   return null;
 }
 
-export function clipRay(origin: Vec, angle: number, range: number, walls: Rect[], radius = 1) {
+export function clipRay(origin: Vec, angle: number, range: number, walls: Rect[] | Terrain, radius = 1) {
   const step = 3;
   for (let distance = step; distance <= range; distance += step) {
     const x = origin.x + Math.cos(angle) * distance;
