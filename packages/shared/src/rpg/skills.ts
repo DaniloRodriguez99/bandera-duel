@@ -66,7 +66,9 @@ export type SkillEffect =
   | { kind: 'dash'; distance: number; invulnerable?: boolean }
   | { kind: 'buff'; damage: number; speed: number; duration: number }
   | { kind: 'devour'; heal: number; radius: number }
-  | { kind: 'steal'; range: number };
+  | { kind: 'steal'; range: number }
+  /** Raises the character you killed, whose grave lies near, as a Sombra that fights for you. */
+  | { kind: 'raise' };
 
 /** What a node adds on top of the base effect when learned. All optional, all additive. */
 export interface NodeGrant {
@@ -430,6 +432,23 @@ export const SKILLS_WORLD: Record<string, WorldSkill> = {
     firstLevelUses: 10,
     evolutions: [{ level: 5, name: 'Abismo Hambriento', line: 'La sombra ya no vuelve con las manos vacías.' }],
     tree: [node('sombra_voraz', 1, { name: 'Sed', level: 3, cost: 1, text: 'Roba más vida.', grants: { drain: 0.3 } })],
+  },
+  alzar: {
+    id: 'alzar',
+    name: 'Alzar',
+    school: 'sombra',
+    rarity: 'epica',
+    flavor: 'Nadie se va del todo mientras vos lo necesites.',
+    incantation: 'Levantate, que todavía no terminaste…',
+    color: '#a070e0',
+    icon: 'necromancer-resurrection',
+    mana: 16,
+    cooldown: 4,
+    effect: { kind: 'raise' },
+    maxLevel: 6,
+    firstLevelUses: 4,
+    evolutions: [{ level: 4, name: 'Sombra Fiel', line: 'Tus muertos ya te reconocen antes de que los llames.' }],
+    tree: [],
   },
   emboscada: {
     id: 'emboscada',

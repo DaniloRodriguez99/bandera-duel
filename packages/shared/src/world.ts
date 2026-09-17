@@ -8,8 +8,10 @@ import {
   projectileStats,
   translate,
   defaultCustomization,
+  type Allegiant,
   type Arrow,
   type ClassId,
+  type Grave,
   type Input,
   type MapDefinition,
   type Player,
@@ -22,7 +24,15 @@ import {
 } from './index.js';
 import { DEFAULT_ZONE, ZONES, zone, type Spawner, type ZoneDefinition, type ZoneId } from './rpg/zones.js';
 import { MOB_FAMILIES, formName, mobStats, xpFor } from './rpg/mobs.js';
-import { POINTS_PER_LEVEL, applyXp, maxHpFor, maxManaFor, manaRegenFor, type StatId } from './rpg/progression.js';
+import {
+  POINTS_PER_LEVEL,
+  applyXp,
+  deathPenalty,
+  maxHpFor,
+  maxManaFor,
+  manaRegenFor,
+  type StatId,
+} from './rpg/progression.js';
 import {
   AFFINITY_NAMES,
   ARCANE,
@@ -104,7 +114,19 @@ export interface Refusal {
  */
 export interface Notice {
   id: string;
-  kind: 'callout' | 'skill' | 'evolution' | 'rank' | 'denied' | 'steal' | 'level' | 'learn' | 'widen';
+  kind:
+    | 'callout'
+    | 'skill'
+    | 'evolution'
+    | 'rank'
+    | 'denied'
+    | 'steal'
+    | 'level'
+    | 'learn'
+    | 'widen'
+    | 'death'
+    | 'kill'
+    | 'raise';
   title: string;
   text: string;
   color?: string;
@@ -120,6 +142,13 @@ export interface WorldSnapshot extends Snapshot {
   /** The zone this view belongs to. `mapId` stays a valid arena id so the shared types hold. */
   zoneId: ZoneId;
 }
+
+/** Around a wild zone's shrine nobody hurts anybody: the place you revive is not a place to camp. */
+export const SHRINE_WARD = 240;
+/** A raised character keeps this share of its life (capped by its raiser's). */
+export const THRALL_HP_SHARE = 0.6;
+/** A parry turns a player's blow back only on someone standing close enough to have struck it. */
+const PARRY_REACH = 90;
 
 /** Which engine projectile carries each element, so existing renderers draw it for free. */
 const BOLT_LOOK: Record<Element, { classId: ClassId; element?: Arrow['element']; wind?: boolean }> = {
@@ -303,6 +332,8 @@ export class World extends Duel {
     );
     this.characters.set(character.id, character);
     this.applyCharacter(p, character);
+    // The bond survives the trip; the body stayed behind. Alzar brings it back without a grave.
+    p.thrall = character.thrall ? { classId: character.thrall.classId, name: character.thrall.name } : null;
     // A fresh entity carries its class's health; a character walks in whole.
     p.hp = p.maxHp;
     p.mana = p.maxMana;
@@ -314,15 +345,19 @@ export class World extends Duel {
     const s = this.state;
     const p = s.players.find((player) => player.id === id);
     const character = this.characters.get(id);
-    // Remember where they stood, so re-logging in puts them back there.
+    // Remember where they stood, so re-logging in puts them back there. The dead stood nowhere:
+    // closing the tab must not skip the walk back from the shrine.
     if (p && character) {
-      character.x = p.x;
-      character.y = p.y;
+      const at = this.restingPlace(p);
+      character.x = at.x;
+      character.y = at.y;
       character.zoneId = this.zoneId;
     }
     s.players = s.players.filter((player) => player.id !== id);
     s.zombies = s.zombies.filter((z) => z.owner !== id);
     this.characters.delete(id);
+    // Leaving mid-raise would otherwise leave the entry behind and refuse every later Alzar here.
+    this.raising.delete(id);
     this.incantations.delete(id);
     this.parries.delete(id);
     this.buffs.delete(id);
@@ -416,10 +451,75 @@ export class World extends Duel {
     return 1 + buff + this.passivesOf(character).damage + touki;
   }
 
-  private nearestCharacter(team: Team, at: Vec, reach = 520) {
+  /** Where a character counts as standing for saving: its body, or the shrine if it lies dead. */
+  restingPlace(p: Player): Vec {
+    return p.hp > 0 ? { x: p.x, y: p.y } : this.definition.shrine;
+  }
+
+  // ─── Hostility ────────────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Who a combatant answers to. Every world player is on the blue team, so the team says nothing:
+   * monsters are one side, and each character is its own side together with its undead, its
+   * arrows and its graves.
+   */
+  private side(x: Allegiant): string {
+    if (x.faction === 'monster' || x.owner?.startsWith('wild:')) return 'monster';
+    if (x.owner !== undefined) return x.owner;
+    if (x.victim !== undefined) return x.victim;
+    return String(x.id);
+  }
+
+  /** Enemies by nature: monsters against everyone, and characters against each other in the wild. */
+  private rivals(a: Allegiant, b: Allegiant) {
+    const sa = this.side(a);
+    const sb = this.side(b);
+    return sa !== sb && (sa === 'monster' || sb === 'monster' || this.definition.pvp === 'wild');
+  }
+
+  private warded(x: Allegiant) {
+    return x.x !== undefined && x.y !== undefined && distance(x as Vec, this.definition.shrine) <= SHRINE_WARD;
+  }
+
+  /** Sanctuaries refuse player against player; so does the ring around a wild zone's shrine. */
+  protected override hostile(a: Allegiant, b: Allegiant) {
+    if (!this.rivals(a, b)) return false;
+    const monster = this.side(a) === 'monster' || this.side(b) === 'monster';
+    return monster || (!this.warded(a) && !this.warded(b));
+  }
+
+  /** Whether `entity` is an enemy of this character by nature; the room paints those red. */
+  rivalOf(characterId: string, entity: Allegiant) {
+    return this.rivals({ team: 'blue', id: characterId }, entity);
+  }
+
+  /** Only the one who killed you can raise you. */
+  protected override canRaise(raiser: Pick<Player, 'team' | 'id'>, g: Grave) {
+    return g.killer !== undefined && g.killer === this.side(raiser);
+  }
+
+  private nearestRival(z: Zombie, reach = 520) {
     return this.state.players
-      .filter((p) => p.team === team && p.hp > 0 && this.characters.has(p.id) && distance(p, at) <= reach)
-      .sort((a, b) => distance(a, at) - distance(b, at))[0];
+      .filter((p) => p.hp > 0 && this.characters.has(p.id) && this.rivals(p, z) && distance(p, z) <= reach)
+      .sort((a, b) => distance(a, z) - distance(b, z))[0];
+  }
+
+  /**
+   * Who a blow on a monster belongs to. A character's own blow is `own`: its buffs and drain apply.
+   * A Sombra's blow credits its owner without them. With no author (legacy direct calls) the
+   * closest rival character takes it, as the first slice did.
+   */
+  private creditFor(z: Zombie, by?: string): { killer?: Player; own: boolean } {
+    const s = this.state;
+    if (by === undefined) {
+      const near = this.nearestRival(z);
+      return { killer: near, own: !!near };
+    }
+    const player = s.players.find((p) => p.id === by && this.characters.has(p.id));
+    if (player) return { killer: player, own: true };
+    const minion = s.zombies.find((q) => q.id === by);
+    const owner = minion ? s.players.find((p) => p.id === minion.owner && this.characters.has(p.id)) : undefined;
+    return { killer: owner, own: false };
   }
 
   /** Timers, passives, incantations finishing, and the casts asked for since the last step. */
@@ -509,6 +609,15 @@ export class World extends Duel {
 
   /** Skills that need something to act on refuse before spending anything. */
   private precheck(p: Player, character: Character, skill: WorldSkill): string | null {
+    if (skill.effect.kind === 'raise') {
+      const s = this.state;
+      if (p.raiseCast > 0 || this.raising.has(p.id)) return 'Ya estás alzando a alguien.';
+      if (s.zombies.some((z) => z.owner === p.id && z.kind === 'thrall' && z.hp > 0))
+        return 'Tu Sombra ya camina a tu lado.';
+      const grave = s.graves.some((g) => this.canRaise(p, g) && distance(p, g) <= RULES.raiseRange);
+      if (!grave && !p.thrall) return 'No hay nadie que hayas matado cerca.';
+      if (!grave && p.thrallCd > 0) return `Tu Sombra se está rearmando: ${Math.ceil(p.thrallCd)} s.`;
+    }
     if (skill.effect.kind === 'devour' && !this.devourTarget(p, skill.effect.radius))
       return 'No hay nada que devorar cerca.';
     if (skill.effect.kind === 'steal') {
@@ -572,19 +681,24 @@ export class World extends Duel {
       }
       case 'nova': {
         for (const z of s.zombies) {
-          if (z.team === p.team || z.hp <= 0 || distance(p, z) > effect.radius) continue;
-          this.damageZombie(z, p.team, effect.damage * staff, Math.atan2(z.y - p.y, z.x - p.x));
+          if (!this.hostile(p, z) || z.hp <= 0 || distance(p, z) > effect.radius) continue;
+          this.damageZombie(z, p.team, effect.damage * staff, Math.atan2(z.y - p.y, z.x - p.x), p.id);
           if (effect.freeze && z.hp > 0) {
             z.frozenLeft = Math.max(z.frozenLeft, effect.freeze);
             this.event('freeze', z, z.team);
           }
+        }
+        for (const q of s.players) {
+          if (q === p || q.hp <= 0 || !this.hostile(p, q) || distance(p, q) > effect.radius) continue;
+          if (this.damage(q, p, Math.atan2(q.y - p.y, q.x - p.x), effect.damage * staff) && effect.freeze)
+            this.freeze(q);
         }
         this.event('explosion', p, p.team, angle, p.classId, 1);
         return;
       }
       case 'heal': {
         for (const q of s.players) {
-          if (q.team !== p.team || q.hp <= 0 || distance(p, q) > effect.radius) continue;
+          if (this.hostile(p, q) || q.hp <= 0 || distance(p, q) > effect.radius) continue;
           q.hp = Math.min(q.maxHp, q.hp + effect.amount * staff);
           this.event('heal', q, q.team);
         }
@@ -622,7 +736,50 @@ export class World extends Duel {
         if (prey) this.steal(p, character, prey);
         return;
       }
+      case 'raise': {
+        this.raise(p, { x: p.x + Math.cos(angle) * 26, y: p.y + Math.sin(angle) * 26 });
+        return;
+      }
     }
+  }
+
+  /** Raising the one you killed binds them to you: the bond is saved, the body is not. */
+  protected override raise(p: Player, ahead: Vec) {
+    const before = [...this.state.graves];
+    const started = super.raise(p, ahead);
+    const character = this.characters.get(p.id);
+    if (!started || !character) return started;
+    const consumed = before.find((g) => !this.state.graves.includes(g));
+    if (consumed?.victim) {
+      character.thrall = {
+        victimId: consumed.victim,
+        name: consumed.name,
+        classId: consumed.classId,
+        level: consumed.level ?? 1,
+        maxHp: consumed.maxHp ?? CLASSES[consumed.classId].hp,
+      };
+      this.sheetChanged.add(p.id);
+    }
+    return started;
+  }
+
+  /** The engine sizes a thrall for a duel; a raised character keeps a share of its real life. */
+  protected override finishRaise(p: Player) {
+    const count = this.state.zombies.length;
+    super.finishRaise(p);
+    const bond = this.characters.get(p.id)?.thrall;
+    if (!bond || this.state.zombies.length === count) return;
+    const z = this.state.zombies.at(-1)!;
+    const hp = Math.max(1, Math.round(Math.min(bond.maxHp, p.maxHp) * THRALL_HP_SHARE * 10) / 10);
+    z.hp = hp;
+    z.maxHp = hp;
+    z.level = bond.level;
+    this.notify(p.id, {
+      kind: 'raise',
+      title: `${bond.name} se levanta`,
+      text: 'Pelea para vos con lo que sabía en vida.',
+      color: '#a070e0',
+    });
   }
 
   /**
@@ -739,19 +896,100 @@ export class World extends Duel {
     amount = 1,
     options: { pierce?: boolean; ignoreInvuln?: boolean; freeze?: boolean } = {},
   ): boolean {
+    if (!this.hostile(source, target)) return false;
     const striker = source as Partial<Zombie>;
     const parry = this.parries.get(target.id);
-    if (parry && striker.family && (striker.hp ?? 0) > 0 && target.hp > 0) {
-      this.damageZombie(striker as Zombie, target.team, amount * parry.reflect, angle + Math.PI);
-      this.event('counter', target, target.team, angle + Math.PI, target.classId, parry.reflect >= 2 ? 1 : 0);
-      return false;
+    // A reflected blow cannot be parried back, or two parries would bounce it forever.
+    if (parry && target.hp > 0 && !this.reflecting) {
+      if (striker.family && (striker.hp ?? 0) > 0) {
+        this.damageZombie(striker as Zombie, target.team, amount * parry.reflect, angle + Math.PI, target.id);
+        this.event('counter', target, target.team, angle + Math.PI, target.classId, parry.reflect >= 2 ? 1 : 0);
+        return false;
+      }
+      const attacker = this.state.players.find((q) => q.id === (source as Partial<Player>).id);
+      if (attacker && attacker !== target) {
+        // A Sombra's blow arrives in its owner's name; an owner standing far away is only blocked.
+        if (distance(attacker, target) <= PARRY_REACH) {
+          this.reflecting = true;
+          try {
+            this.damage(attacker, target, angle + Math.PI, amount * parry.reflect);
+          } finally {
+            this.reflecting = false;
+          }
+        }
+        this.event('counter', target, target.team, angle + Math.PI, target.classId, parry.reflect >= 2 ? 1 : 0);
+        return false;
+      }
     }
     const caster = (source as Partial<Player>).id;
     const scaled = caster && this.characters.has(caster) ? amount * this.damageMultiplier(caster) : amount;
+    const alive = target.hp > 0;
     const landed = super.damage(target, source, angle, scaled, options);
     if (landed && caster) this.heal(caster, scaled);
-    if (landed && target.hp <= 0 && striker.family) this.evolveMonster(striker as Zombie);
+    if (landed && alive && target.hp <= 0) this.onDeath(target, source);
     return landed;
+  }
+
+  private reflecting = false;
+
+  /**
+   * A death. The grave remembers who lies there and who put them there; the wild takes a tenth of
+   * the level's experience (never a level, never an item); the killer hears about it.
+   */
+  private onDeath(target: Player, source: Pick<Player, 'team'>) {
+    const striker = source as Partial<Zombie & Player>;
+    if (striker.family) this.evolveMonster(striker as Zombie);
+    const killerId =
+      striker.id !== undefined && !striker.family && striker.id !== target.id && this.characters.has(String(striker.id))
+        ? String(striker.id)
+        : undefined;
+    const grave = this.state.graves.at(-1);
+    if (grave && grave.name === target.name && grave.victim === undefined)
+      Object.assign(grave, { victim: target.id, killer: killerId, level: target.level, maxHp: target.maxHp });
+    this.incantations.delete(target.id);
+    this.buffs.delete(target.id);
+    this.drains.delete(target.id);
+    this.parries.delete(target.id);
+
+    const character = this.characters.get(target.id);
+    if (character) {
+      const lost = this.definition.pvp === 'wild' ? deathPenalty(character.level, character.xp) : 0;
+      character.xp -= lost;
+      if (lost > 0) this.sheetChanged.add(target.id);
+      const by = killerId
+        ? this.characters.get(killerId)!.name
+        : striker.family
+          ? formName(striker.family, striker.level ?? 1)
+          : undefined;
+      this.notify(target.id, {
+        kind: 'death',
+        title: 'Caíste',
+        text:
+          (by ? `${by} te mató. ` : '') +
+          (lost > 0 ? `Perdiste ${lost} de experiencia; lo que llevás es tuyo.` : 'Acá no se pierde nada. Volvés al altar.'),
+        color: '#ff5a6e',
+      });
+    }
+
+    const killer = killerId ? this.characters.get(killerId) : undefined;
+    if (!killer || !character) return;
+    // Killing another player gives no experience, or two browsers could farm each other.
+    const awakens = this.definition.pvp === 'wild' && (killer.affinities.sombra?.points ?? 0) > 0 && !killer.skills.alzar;
+    if (awakens) {
+      killer.skills.alzar = { level: 1, uses: 0, nodes: [] };
+      const free = CAST_SLOTS.find((slot) => slotOpen(slot, killer.level) && killer.slots[slot] === null);
+      if (free) killer.slots[free] = 'alzar';
+      this.sheetChanged.add(killer.id);
+      this.notify(killer.id, { kind: 'learn', title: 'Un muerto te mira', text: '«Alzar» despertó en vos.', color: '#a070e0', skillId: 'alzar' });
+    }
+    this.notify(killer.id, {
+      kind: 'kill',
+      title: `Derrotaste a ${target.name}`,
+      text: killer.skills.alzar
+        ? `Su cuerpo queda ${RULES.graveLife} s. Podés alzarlo.`
+        : 'Su tumba queda un momento donde cayó.',
+      color: '#a070e0',
+    });
   }
 
   private heal(id: string, dealt: number) {
@@ -773,21 +1011,18 @@ export class World extends Duel {
   }
 
   /**
-   * Experience for a kill.
-   *
-   * `damageZombie` is told the attacking side, never who struck, so the credit — and any buff or
-   * drain — goes to the closest character of that side. A slice-one simplification, to be fixed
-   * the day damage carries its author.
+   * Experience for a kill goes to whoever struck it (`by`), not to whoever stood closest: a
+   * bystander in the wild must not collect someone else's kill, buffs or drain.
    */
-  override damageZombie(z: Zombie, team: Team, amount = 1, angle?: number) {
+  override damageZombie(z: Zombie, team: Team, amount = 1, angle?: number, by?: string) {
     const alive = z.hp > 0;
-    const nearest = this.nearestCharacter(team, z);
-    const scaled = nearest ? amount * this.damageMultiplier(nearest.id) : amount;
-    super.damageZombie(z, team, scaled, angle);
-    if (nearest && alive) this.heal(nearest.id, scaled);
+    const credit = this.creditFor(z, by);
+    const scaled = credit.own && credit.killer ? amount * this.damageMultiplier(credit.killer.id) : amount;
+    super.damageZombie(z, team, scaled, angle, by);
+    if (credit.own && credit.killer && alive) this.heal(credit.killer.id, scaled);
     if (!alive || z.hp > 0 || !z.family) return;
     this.corpses.push({ x: z.x, y: z.y, left: CORPSE_LIFE });
-    const killer = nearest ?? this.nearestCharacter(team, z, Infinity);
+    const killer = credit.killer ?? (by === undefined ? this.nearestRival(z, Infinity) : undefined);
     if (!killer) return;
     const character = this.characters.get(killer.id)!;
     const won = xpFor(z.family, z.level, character.level);

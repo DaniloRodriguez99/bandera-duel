@@ -816,6 +816,7 @@ function renderWorldChrome(s: Snapshot, me: Snapshot['players'][number] | undefi
       : `ZONA SALVAJE · NV ${here.minLevel}+`
     : '';
   $('arena-label').textContent = here ? `${here.name.toUpperCase()} · MUNDO ISEKAI` : 'MUNDO ISEKAI';
+  if (here) $('stage').dataset.pvp = here.pvp;
   $('arena-hint').textContent = !me
     ? ''
     : me.hp <= 0

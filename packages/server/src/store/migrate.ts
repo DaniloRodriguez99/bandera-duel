@@ -85,6 +85,12 @@ function checkCharacter(raw: unknown): Character {
       if (v !== undefined && v !== null && !text(v)) invalid(`slots.${slot}`);
     }
   }
+  if (c.thrall !== undefined && c.thrall !== null) {
+    // A broken bond would make the engine read the stats of a class that does not exist mid-tick.
+    const t = c.thrall;
+    if (!isObject(t) || !text(t.victimId) || !text(t.name) || !validClass(t.classId)) invalid('thrall');
+    if (!finite(t.level) || t.level < 1 || !finite(t.maxHp) || t.maxHp <= 0) invalid('thrall');
+  }
   if (c.destiny !== undefined) {
     if (!isObject(c.destiny) || !text(c.destiny.skillId) || !RARITIES.includes(c.destiny.rarity as string))
       invalid('destiny');

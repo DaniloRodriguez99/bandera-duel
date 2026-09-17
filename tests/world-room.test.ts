@@ -240,6 +240,43 @@ describe('sala del mundo', () => {
     expect(testigo.system.some((n) => n.kind === 'callout')).toBe(false);
   });
 
+  it('en el Valle el otro jugador llega azul y en el Bosque, rojo; y morir allá avisa y cobra', async () => {
+    const a = await connect({ account: 'Rival1', password: 'rival123', create: true, characterId: 'rival-a', name: 'Rival A', classId: 'guardian' });
+    const b = await connect({ account: 'Rival2', password: 'rival123', create: true, characterId: 'rival-b', name: 'Rival B', classId: 'guardian' });
+    await until(() => a.entered !== null && b.entered !== null);
+    const room = matchMaker.getLocalRoomById(a.room.roomId) as unknown as {
+      travel(id: string, to: string, arrive: { x: number; y: number }): Promise<void>;
+      worlds: Map<string, { state: { players: { id: string; x: number; y: number }[] } }>;
+    };
+    const valle = zoneWorld(a.room.roomId, 'umbral');
+    const pa = valle.state.players.find((p) => p.id === 'rival-a')!;
+    Object.assign(valle.state.players.find((p) => p.id === 'rival-b')!, { x: pa.x + 60, y: pa.y });
+    const colorDe = (s: Session, id: string) => s.snapshots.at(-1)?.players.find((p) => p.id === id)?.team;
+    await until(() => colorDe(a, 'rival-b') !== undefined);
+    expect(colorDe(a, 'rival-b')).toBe('blue');
+
+    // Far from the Bosque shrine, so nothing but the test decides who gets hurt.
+    await room.travel('rival-a', 'bosque', { x: 1300, y: 1000 });
+    await room.travel('rival-b', 'bosque', { x: 1340, y: 1000 });
+    await until(() => (a.snapshots.at(-1) as Snapshot & { zoneId?: string }).zoneId === 'bosque' && colorDe(a, 'rival-b') !== undefined);
+    await until(() => colorDe(a, 'rival-b') === 'red');
+    expect(colorDe(a, 'rival-a')).toBe('blue');
+
+    const bosque = room.worlds.get('bosque') as unknown as {
+      state: { players: (Snapshot['players'][number])[] };
+      characters: Map<string, Character>;
+      damage(target: object, source: object, angle: number, amount: number): boolean;
+    };
+    const cb = bosque.characters.get('rival-b')!;
+    cb.level = 5;
+    cb.xp = 100;
+    const pb = bosque.state.players.find((p) => p.id === 'rival-b')!;
+    pb.invuln = 0;
+    expect(bosque.damage(pb, bosque.state.players.find((p) => p.id === 'rival-a')!, 0, 999)).toBe(true);
+    await until(() => b.system.some((n) => n.kind === 'death') && (b.sheet?.xp ?? 100) < 100);
+    expect(a.system.some((n) => n.kind === 'kill')).toBe(true);
+  });
+
   it('la sala de duelo sigue funcionando igual al lado', async () => {
     const duelo = await sdk.create('duel', { name: 'Azul', classId: 'guardian' });
     sessions.push(duelo);

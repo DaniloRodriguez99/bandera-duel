@@ -1359,6 +1359,9 @@ body.world-mode #clock-note{color:#7fd6ff;letter-spacing:3px}
 .wh-notice[data-kind=level]{border-color:#ffd76a99;box-shadow:0 0 26px #ffc84d44,inset 0 0 26px #ffc84d18}
 .wh-notice[data-kind=level]>header{color:#ffd76a}
 .wh-notice[data-kind=rank]{border-color:#c792ff99}
+.wh-notice[data-kind=death]{border-color:#ff5a6e99;background:linear-gradient(180deg,#3a0d1aee,#14050cf2)}
+.wh-notice[data-kind=death]>header{color:#ff8a99}
+.wh-notice[data-kind=kill],.wh-notice[data-kind=raise]{border-color:#b98cf299;box-shadow:0 0 22px #8d45ad44,inset 0 0 22px #8d45ad18}
 .wh-notice.leaving{animation:whNoticeOut .4s ease-in forwards}
 
 /* Escenas: evolución y robo */

@@ -1,5 +1,5 @@
 import { Client, Room, ServerError } from '@colyseus/core';
-import { RULES, sanitizeInput, validClass, validName, type Input, type Player } from '@bandera/shared';
+import { RULES, sanitizeInput, validClass, validName, type Input, type Player, type Zombie } from '@bandera/shared';
 import {
   CAST_SLOTS,
   World,
@@ -350,10 +350,13 @@ export class WorldRoom extends Room {
       else known.delete(entity.id);
       return keep;
     };
+    // Colour is per viewer: in the wild every other character and its undead are the enemy, and the
+    // client already paints red. The shared state keeps its teams; only this view changes.
+    const paint = <T extends Player | Zombie>(x: T): T => (x.id !== id && world.rivalOf(id, x) ? { ...x, team: 'red' } : x);
     return {
       ...source,
-      players: source.players.filter((p) => p.id === own.id || visible(p)),
-      zombies: source.zombies.filter(visible),
+      players: source.players.filter((p) => p.id === own.id || visible(p)).map(paint),
+      zombies: source.zombies.filter(visible).map(paint),
       arrows: source.arrows.filter((a) => inside(leave, a)),
       graves: source.graves.filter((g) => inside(leave, g)),
       traps: source.traps.filter((t) => inside(leave, t)),
@@ -375,10 +378,12 @@ export class WorldRoom extends Room {
     const online = [...this.worlds.values()].flatMap((world) => [...world.characters.values()]);
     const results = await Promise.allSettled(
       online.map((character) => {
-        const p = this.worldOf(character.id)?.state.players.find((q) => q.id === character.id);
-        if (p) {
-          character.x = p.x;
-          character.y = p.y;
+        const world = this.worldOf(character.id);
+        const p = world?.state.players.find((q) => q.id === character.id);
+        if (world && p) {
+          const at = world.restingPlace(p);
+          character.x = at.x;
+          character.y = at.y;
         }
         return store.save(character);
       }),

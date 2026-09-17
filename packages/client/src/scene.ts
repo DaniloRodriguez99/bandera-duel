@@ -35,7 +35,7 @@ import {
   type MobKind,
 } from '@bandera/shared';
 import { zone, type ZoneId } from '@bandera/shared/rpg/zones';
-import { worldInput, type Weapon } from '@bandera/shared/world';
+import { SHRINE_WARD, worldInput, type Weapon } from '@bandera/shared/world';
 import { Controls } from './input.js';
 import { blueprintSpec, clipRay } from './targeting.js';
 import { sound } from './audio.js';
@@ -334,6 +334,14 @@ export class Arena extends Phaser.Scene {
     g.fillCircle(definition.shrine.x, definition.shrine.y, 26);
     g.lineStyle(2, 0x9fd8b0, 0.5);
     g.strokeCircle(definition.shrine.x, definition.shrine.y, 26);
+    // In the wild, the ring inside which nobody can hurt anybody.
+    if (definition.pvp === 'wild')
+      for (let a = 0; a < Math.PI * 2; a += Math.PI / 24) {
+        g.lineStyle(2, 0x9fd8b0, 0.22);
+        g.beginPath();
+        g.arc(definition.shrine.x, definition.shrine.y, SHRINE_WARD, a, a + Math.PI / 48);
+        g.strokePath();
+      }
   }
 
   private drawMap(mapId: MapId) {

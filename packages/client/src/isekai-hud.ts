@@ -91,6 +91,9 @@ const NOTICE_LIFE: Partial<Record<Notice['kind'], number>> = {
   level: 5000,
   denied: 2200,
   learn: 3800,
+  death: 6000,
+  kill: 4500,
+  raise: 5000,
 };
 
 export class WorldHud {

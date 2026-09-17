@@ -95,6 +95,19 @@ export interface Character {
   destiny: Destiny;
   /** Maximum mana widened in childhood by running the pool dry. */
   bonusMana: number;
+  /**
+   * The last character this one killed and raised. The body never outlives a trip or a logout;
+   * the bond does, so Alzar can bring the same Sombra back without a grave.
+   */
+  thrall: ThrallBond | null;
+}
+
+export interface ThrallBond {
+  victimId: string;
+  name: string;
+  classId: ClassId;
+  level: number;
+  maxHp: number;
 }
 
 export function newCharacter(
@@ -136,6 +149,7 @@ export function newCharacter(
     passives: [],
     destiny: { skillId: skill.id, rarity: destiny.rarity },
     bonusMana: 0,
+    thrall: null,
   };
 }
 
@@ -152,6 +166,7 @@ export function normalizeCharacter(raw: Character): Character {
     trees: raw.trees ?? [],
     passives: raw.passives ?? [],
     bonusMana: raw.bonusMana ?? 0,
+    thrall: raw.thrall ?? null,
   };
 }
 

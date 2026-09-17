@@ -27,6 +27,18 @@ export function xpToLevel(level: number) {
   return Math.round(40 * Math.pow(l, 1.45));
 }
 
+/** Share of the current level's requirement a death in the wild costs. */
+export const DEATH_XP_SHARE = 0.1;
+
+/**
+ * Experience lost when a character dies in a wild zone: a tenth of what the level asks, never more
+ * than was earned inside it. A level is never lost, and nothing is lost at the cap.
+ */
+export function deathPenalty(level: number, xp: number) {
+  if (level >= MAX_LEVEL) return 0;
+  return Math.max(0, Math.min(xp, Math.round(xpToLevel(level) * DEATH_XP_SHARE)));
+}
+
 /** Total experience from level 1 up to the start of `level`. */
 export function xpTotalTo(level: number) {
   let total = 0;

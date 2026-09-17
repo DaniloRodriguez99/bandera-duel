@@ -894,7 +894,21 @@ export interface Grave extends Vec {
   name: string;
   team: Team;
   left: number;
+  /** World only: who lies here, who killed them, and what they were. Duels never set these. */
+  victim?: string;
+  killer?: string;
+  level?: number;
+  maxHp?: number;
 }
+/** Anything that takes a side in a fight. Duels read only `team`; the world reads the rest. */
+export type Allegiant = Pick<Player, 'team'> & {
+  id?: string | number;
+  owner?: string;
+  faction?: 'monster';
+  victim?: string;
+  x?: number;
+  y?: number;
+};
 export interface Participant {
   id: string;
   name: string;
@@ -1757,7 +1771,7 @@ export class Duel {
   /** `${volley}:${target}` → tick a volley arrow first reached that target. */
   private volleyHits = new Map<string, number>();
   /** Necromancers mid-cast and the thrall they are raising. */
-  private raising = new Map<string, { classId: ClassId; name: string }>();
+  protected raising = new Map<string, { classId: ClassId; name: string }>();
   /** Enemy ids already struck by each knight's current offensive dash. */
   private guardianDashHits = new Map<string, Set<string>>();
   constructor(mapId: MapId = DEFAULT_MAP, mode: GameMode = DEFAULT_MODE) {
@@ -2072,7 +2086,7 @@ export class Duel {
     options: { pierce?: boolean; ignoreInvuln?: boolean; freeze?: boolean } = {},
   ): boolean {
     if (
-      target.team === source.team ||
+      !this.hostile(source, target) ||
       target.hp <= 0 ||
       (target.invuln > 0 && !options.ignoreInvuln) ||
       target.dashInvulnerable
@@ -2157,17 +2171,29 @@ export class Duel {
     const s = this.state,
       radius = RULES.explosionRadius * (0.6 + 0.4 * a.power) * (1+(owner.pve?.classRanks.mage??0)*.12);
     for (const q of s.players)
-      if (q.id !== skip && q.team !== a.team && q.hp > 0 && distance(q, a) <= radius)
+      if (q.id !== skip && this.hostile(a, q) && q.hp > 0 && distance(q, a) <= radius)
         this.damage(q, owner, Math.atan2(q.y - a.y, q.x - a.x), amount * 0.5);
     for (const z of s.zombies)
-      if (z.id !== skip && z.team !== a.team && z.hp > 0 && distance(z, a) <= radius)
-        this.damageZombie(z, a.team, amount * 0.5);
+      if (z.id !== skip && this.hostile(a, z) && z.hp > 0 && distance(z, a) <= radius)
+        this.damageZombie(z, a.team, amount * 0.5, undefined, owner.id);
     for (const mob of s.mobs)
       if (mob.id !== skip && mob.hp > 0 && mob.spawnLeft <= 0 && distance(mob, a) <= radius + MOB_STATS[mob.kind].radius)
         this.damageMob(mob, owner, amount * 0.5);
     this.event('explosion', a, a.team, a.angle, a.classId, a.power);
   }
-  damageZombie(z: Zombie, team: Team, amount = 1, angle?: number) {
+  /**
+   * Whether `a` may hurt `b`. In a match that is simply being on different teams; the world
+   * overrides it with sanctuaries, wild zones and monsters. Must stay pure: it is asked everywhere.
+   */
+  protected hostile(a: Allegiant, b: Allegiant): boolean {
+    return a.team !== b.team;
+  }
+  /** Whether this grave is one `raiser` may raise. */
+  protected canRaise(raiser: Pick<Player, 'team' | 'id'>, g: Grave): boolean {
+    return g.team !== raiser.team;
+  }
+  /** `by` names the striking entity (a player or a zombie id); matches ignore it, the world credits kills with it. */
+  damageZombie(z: Zombie, team: Team, amount = 1, angle?: number, _by?: string) {
     // A revived mage's magic shield absorbs hits; a revived knight's raised guard blocks from the front.
     if (z.shieldHits > 0 && amount > 0) {
       z.shieldHits--;
@@ -2325,7 +2351,7 @@ export class Duel {
     const at = spot(Math.max(0, reach));
     // The fallen rival whose grave is closest to the mandala rises there.
     const corpse = s.graves
-      .filter((g) => g.team !== p.team && distance(p, g) <= RULES.raiseRange)
+      .filter((g) => this.canRaise(p, g) && distance(p, g) <= RULES.raiseRange)
       .sort((a, b) => distance(at, a) - distance(at, b))[0];
     if (corpse) {
       p.thrall = { classId: corpse.classId, name: corpse.name };
@@ -2400,15 +2426,15 @@ export class Duel {
     };
     for (const p of s.players)
       if (
-        p.team !== z.team &&
+        this.hostile(z, p) &&
         p.hp > 0 &&
         inside(p, RULES.radius) &&
         this.damage(p, owner, z.angle, RULES.spellDamage)
       )
         this.freeze(p);
     for (const q of s.zombies)
-      if (q.team !== z.team && q.hp > 0 && inside(q, RULES.zombieRadius)) {
-        this.damageZombie(q, z.team, RULES.spellDamage, z.angle);
+      if (this.hostile(z, q) && q.hp > 0 && inside(q, RULES.zombieRadius)) {
+        this.damageZombie(q, z.team, RULES.spellDamage, z.angle, z.id);
         q.frozenLeft = RULES.freeze;
         this.event('freeze', q, q.team);
       }
@@ -2421,7 +2447,7 @@ export class Duel {
   /** A rival projectile about to reach this zombie: within 120 px and flying straight at it. */
   private incomingShot(z: Zombie) {
     return this.state.arrows.find((a) => {
-      if (a.team === z.team || a.hits?.includes(z.id)) return false;
+      if (!this.hostile(a, z) || a.hits?.includes(z.id)) return false;
       const dx = z.x - a.x,
         dy = z.y - a.y;
       if (Math.hypot(dx, dy) > 120) return false;
@@ -2660,9 +2686,9 @@ export class Duel {
       );
     };
     for (const p of s.players)
-      if (p.team !== z.team && p.hp > 0 && within(p)) this.damage(p, owner, angle, amount);
+      if (this.hostile(z, p) && p.hp > 0 && within(p)) this.damage(p, owner, angle, amount);
     for (const q of s.zombies)
-      if (q.team !== z.team && q.hp > 0 && within(q)) this.damageZombie(q, z.team, amount, angle);
+      if (this.hostile(z, q) && q.hp > 0 && within(q)) this.damageZombie(q, z.team, amount, angle, z.id);
     for (const mob of s.mobs)
       if (mob.hp > 0 && mob.spawnLeft <= 0 && within(mob)) this.damageMob(mob, owner, amount);
     this.event('sword', z, z.team, angle, z.classId, 1);
@@ -2914,14 +2940,14 @@ export class Duel {
     const s = this.state;
     const candidates = [
       ...s.players
-        .filter((p) => p.team !== z.team && p.hp > 0 && playerVisibleTo(s, p, z.team))
+        .filter((p) => this.hostile(z, p) && p.hp > 0 && playerVisibleTo(s, p, z.team))
         .map((p) => ({
           id: p.id,
           at: p as Vec,
           carrying: s.flags.some((f) => f.carrier === p.id),
         })),
       ...s.zombies
-        .filter((q) => q.team !== z.team && q.hp > 0 && zombieVisibleTo(s, q, z.team))
+        .filter((q) => this.hostile(z, q) && q.hp > 0 && zombieVisibleTo(s, q, z.team))
         .map((q) => ({ id: q.id, at: q as Vec, carrying: false })),
       ...s.mobs.filter(m=>m.hp>0&&m.spawnLeft<=0).map(m=>({id:m.id,at:m as Vec,carrying:false})),
     ];
@@ -3152,8 +3178,8 @@ export class Duel {
                 ? wild.damage
                 : RULES.zombieDamage;
           // A level 3 sword zombie cleaves every rival within reach; the rest strike only their target.
-          const inReach = (q: Vec & { team: Team; hp: number }) =>
-            q.team !== z.team &&
+          const inReach = (q: Vec & Allegiant & { hp: number }) =>
+            this.hostile(z, q) &&
             q.hp > 0 &&
             distance(z, q) <= reach + 8 &&
             lineClear(z, q, this.terrain);
@@ -3169,7 +3195,7 @@ export class Duel {
               if (this.damage(q, striker, Math.atan2(q.y - z.y, q.x - z.x), amount) && q.hp <= 0)
                 kills++;
           for (const q of zombies) {
-            this.damageZombie(q, z.team, amount, Math.atan2(q.y - z.y, q.x - z.x));
+            this.damageZombie(q, z.team, amount, Math.atan2(q.y - z.y, q.x - z.x), z.id);
             if (q.hp <= 0) kills++;
           }
           if(owner)for(const q of mobs){this.damageMob(q,owner,amount);if(q.hp<=0)kills++;}
@@ -3612,7 +3638,7 @@ export class Duel {
       this.guardianDashHits.set(p.id, struck);
       for (const q of s.players) {
         if (
-          q.team === p.team ||
+          !this.hostile(p, q) ||
           q.hp <= 0 ||
           struck.has(q.id) ||
           distance(p, q) > RULES.radius * 2 + 4
@@ -3624,14 +3650,14 @@ export class Duel {
       }
       for (const z of s.zombies) {
         if (
-          z.team === p.team ||
+          !this.hostile(p, z) ||
           z.hp <= 0 ||
           struck.has(z.id) ||
           distance(p, z) > RULES.radius + RULES.zombieRadius + 4
         )
           continue;
         struck.add(z.id);
-        this.damageZombie(z, p.team, RULES.guardianDashDamage);
+        this.damageZombie(z, p.team, RULES.guardianDashDamage, undefined, p.id);
         this.event('dash', z, p.team, p.angle, p.classId, 1);
       }
       for (const mob of s.mobs) {
@@ -3650,10 +3676,10 @@ export class Duel {
       this.event('bash', p, p.team, p.shieldBashAngle, p.classId);
       const candidates = [
         ...s.players
-          .filter((q) => q.team !== p.team && q.hp > 0)
+          .filter((q) => this.hostile(p, q) && q.hp > 0)
           .map((q) => ({ kind: 'player' as const, entity: q, radius: 0 })),
         ...s.zombies
-          .filter((z) => z.team !== p.team && z.hp > 0)
+          .filter((z) => this.hostile(p, z) && z.hp > 0)
           .map((z) => ({ kind: 'zombie' as const, entity: z, radius: 0 })),
         ...s.mobs
           .filter((mob) => mob.hp > 0 && mob.spawnLeft <= 0)
@@ -3689,7 +3715,7 @@ export class Duel {
           lowerGuard(hit.entity);
         }
       } else if (hit.kind === 'zombie') {
-        this.damageZombie(hit.entity, p.team, RULES.shieldBashDamage);
+        this.damageZombie(hit.entity, p.team, RULES.shieldBashDamage, undefined, p.id);
         hit.entity.frozenLeft = Math.max(hit.entity.frozenLeft, RULES.shieldBashStun);
       } else {
         this.damageMob(hit.entity, p, RULES.shieldBashDamage, RULES.shieldBashStun);
@@ -3711,7 +3737,7 @@ export class Duel {
         const angle = Math.atan2(q.y - p.y, q.x - p.x);
         const diff = Math.atan2(Math.sin(angle - p.swingAngle), Math.cos(angle - p.swingAngle));
         if (
-          q.team !== p.team &&
+          this.hostile(p, q) &&
           q.hp > 0 &&
           distance(p, q) <= range &&
           Math.abs(diff) <= arc / 2 &&
@@ -3723,13 +3749,13 @@ export class Duel {
         const angle = Math.atan2(z.y - p.y, z.x - p.x);
         const diff = Math.atan2(Math.sin(angle - p.swingAngle), Math.cos(angle - p.swingAngle));
         if (
-          z.team !== p.team &&
+          this.hostile(p, z) &&
           z.hp > 0 &&
           distance(p, z) <= range &&
           Math.abs(diff) <= arc / 2 &&
           lineClear(p, z, this.terrain)
         )
-          this.damageZombie(z, p.team, amount);
+          this.damageZombie(z, p.team, amount, undefined, p.id);
       }
       for (const mob of s.mobs) {
         const angle = Math.atan2(mob.y - p.y, mob.x - p.x);
@@ -3767,7 +3793,7 @@ export class Duel {
         }
         const target = s.players.find(
           (p) =>
-            p.team !== a.team &&
+            this.hostile(a, p) &&
             p.hp > 0 &&
             distance(p, a) < RULES.radius + radius &&
             !a.hits?.includes(p.id),
@@ -3817,7 +3843,7 @@ export class Duel {
         }
         const zombie = s.zombies.find(
           (z) =>
-            z.team !== a.team &&
+            this.hostile(a, z) &&
             z.hp > 0 &&
             distance(z, a) < RULES.zombieRadius + radius &&
             !a.hits?.includes(z.id),
@@ -3842,7 +3868,7 @@ export class Duel {
         if (zombie) {
           this.markVolley(a, zombie.id);
           if (a.ice) zombie.frozenLeft = RULES.freezeDuration;
-          else this.damageZombie(zombie, a.team, amount, a.angle);
+          else this.damageZombie(zombie, a.team, amount, a.angle, owner.id);
           if (a.wind || a.slash || a.blast) {
             a.hits!.push(zombie.id);
             continue;
@@ -3905,7 +3931,7 @@ export class Duel {
       if (t.armLeft > 1e-8) return true;
       const target = s.players.find(
         (p) =>
-          p.team !== t.team &&
+          this.hostile(t, p) &&
           p.hp > 0 &&
           distance(p, t) < RULES.trapRadius + RULES.radius &&
           lineClear(p, t, this.terrain),

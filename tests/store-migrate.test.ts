@@ -27,6 +27,17 @@ describe('migración de guardados', () => {
     expect(saved.character.weapon).toBe('espada');
   });
 
+  it('un vínculo de Sombra roto se rechaza y uno ausente carga como null', () => {
+    const { character } = guardado();
+    const roto = { ...character, thrall: { victimId: 'b', name: 'Paul', classId: 'dragon', level: 3, maxHp: 6 } };
+    expect(() => migrate({ version: 1, character: roto, updatedAt: 0 })).toThrow(expect.objectContaining({ code: 'save-invalido' }));
+    const sano = { ...character, thrall: { victimId: 'b', name: 'Paul', classId: 'archer', level: 3, maxHp: 6 } };
+    expect(migrate({ version: 1, character: sano, updatedAt: 0 }).character.thrall).toMatchObject({ classId: 'archer' });
+    const viejo: Record<string, unknown> = { ...character };
+    delete viejo.thrall;
+    expect(migrate({ version: 1, character: viejo, updatedAt: 0 }).character.thrall).toBe(null);
+  });
+
   it('la basura no se convierte en un personaje nuevo: tira save-invalido', () => {
     const rotos: unknown[] = [
       null,

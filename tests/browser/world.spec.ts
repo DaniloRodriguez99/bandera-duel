@@ -49,6 +49,7 @@ test('entra al mundo: nace en el vacío blanco, aparece en el valle y el Sistema
   // None of the match chrome survives in the world: no clock counting from infinity, no scores.
   await expect(page.locator('#world-hud')).toBeVisible();
   await expect(page.locator('#timer')).toHaveText('Valle de Umbral');
+  await expect(page.locator('#stage')).toHaveAttribute('data-pvp', 'safe');
   await expect(page.locator('#abilities')).toBeHidden();
   await expect(page.locator('#team-blue')).toBeHidden();
   await expect(page.locator('#arena-hint')).not.toHaveText(/bandera/i);
