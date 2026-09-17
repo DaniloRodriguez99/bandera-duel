@@ -82,7 +82,7 @@ describe('botín de cofres', () => {
         expect(item.slot).toBe('weapon');
       }
       if (item.grimoire?.kind === 'teach') expect(SKILLS_WORLD[item.grimoire.skillId]).toBeTruthy();
-      expect(existsSync(`packages/client/public/assets/skills/${item.icon}.png`)).toBe(true);
+      expect(existsSync(`packages/client/public/assets/icons/${item.icon}.svg`)).toBe(true);
     }
     for (const w of WEAPON_IDS) {
       expect(ITEMS[STARTER_WEAPON[w]]).toMatchObject({ weapon: w, starter: true });

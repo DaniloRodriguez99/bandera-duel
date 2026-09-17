@@ -175,7 +175,7 @@ describe('habilidades del mundo', () => {
         expect(n.id.startsWith(`${skill.id}:`), n.id).toBe(true);
         for (const required of n.requires ?? []) expect(ids.has(required), `${n.id} → ${required}`).toBe(true);
       }
-      expect(existsSync(`packages/client/public/assets/skills/${skill.icon}.png`), skill.icon).toBe(true);
+      expect(existsSync(`packages/client/public/assets/icons/${skill.icon}.svg`), skill.icon).toBe(true);
       for (let i = 1; i < skill.evolutions.length; i++)
         expect(skill.evolutions[i].level, skill.id).toBeGreaterThan(skill.evolutions[i - 1].level);
     }

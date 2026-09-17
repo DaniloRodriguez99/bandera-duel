@@ -116,7 +116,6 @@ const EQUIPMENT: Record<string, Def> = {
 };
 
 const GRIMOIRE_LEVEL: Record<Rarity, number> = { comun: 1, rara: 1, epica: 8, legendaria: 12, unica: 12 };
-const TOME_ICON = 'mage-fireball';
 
 function grimoires(): Record<string, Def> {
   const out: Record<string, Def> = {};
@@ -127,7 +126,7 @@ function grimoires(): Record<string, Def> {
       kind: 'grimorio',
       rarity: skill.rarity,
       level: GRIMOIRE_LEVEL[skill.rarity],
-      icon: skill.icon,
+      icon: `grimorio-${skill.id}`,
       flavor: skill.flavor,
       grimoire: { kind: 'teach', skillId: skill.id },
     };
@@ -138,7 +137,7 @@ function grimoires(): Record<string, Def> {
       kind: 'grimorio',
       rarity: 'rara',
       level: 1,
-      icon: TOME_ICON,
+      icon: `tomo-${affinity}`,
       flavor: 'Leerlo no te enseña nada. Te abre una puerta.',
       grimoire: { kind: 'affinity', affinity },
     };
@@ -147,7 +146,7 @@ function grimoires(): Record<string, Def> {
     kind: 'grimorio',
     rarity: 'rara',
     level: 1,
-    icon: 'vanguard-counter',
+    icon: 'item-manual_practica',
     flavor: 'Mil repeticiones, resumidas en una noche sin dormir.',
     grimoire: { kind: 'train', levels: 1 },
   };
@@ -156,15 +155,19 @@ function grimoires(): Record<string, Def> {
     kind: 'grimorio',
     rarity: 'unica',
     level: 1,
-    icon: 'necromancer-resurrection',
+    icon: 'item-fragmento_reflejo',
     flavor: 'Un pedazo de espejo que no refleja lo que tenés adelante, sino lo que te falta.',
     grimoire: { kind: 'copy' },
   };
   return out;
 }
 
+/** Every item's icon lives in /assets/icons, built by scripts/build-icons.mjs. */
 export const ITEMS: Record<string, ItemDefinition> = Object.fromEntries(
-  Object.entries({ ...EQUIPMENT, ...grimoires() }).map(([id, def]) => [id, { id, ...def }]),
+  Object.entries({ ...EQUIPMENT, ...grimoires() }).map(([id, def]) => [
+    id,
+    { id, ...def, icon: def.kind === 'grimorio' ? def.icon : `item-${id}` },
+  ]),
 );
 
 export const STARTER_WEAPON: Record<Weapon, string> = {
