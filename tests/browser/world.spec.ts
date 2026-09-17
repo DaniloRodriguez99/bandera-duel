@@ -43,7 +43,7 @@ test('entra al mundo: nace en el vacío blanco, aparece en el valle y el Sistema
   // Fate turns its card over, and the skill it gave sits in the E slot.
   await expect(page.locator('#wh-destiny')).toBeVisible({ timeout: 15000 });
   await expect(page.locator('#skillbar [data-slot=e]')).toHaveAttribute('data-skill', /\w+/);
-  await expect(page.locator('#skillbar [data-slot=q]')).toHaveAttribute('data-locked', 'true');
+  await expect(page.locator('#skillbar [data-slot=x]')).toHaveAttribute('data-locked', 'true');
   await page.waitForTimeout(700);
   await page.screenshot({ path: test.info().outputPath('3-destino.png') });
 

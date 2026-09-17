@@ -108,10 +108,10 @@ describe('lanzar habilidades', () => {
     expect(p.mana).toBeGreaterThanOrEqual(mana);
   });
 
-  it('la ranura Q está cerrada hasta el nivel 5', () => {
+  it('la ranura X está cerrada hasta el nivel 5', () => {
     const { world, aim } = setup('parada');
-    expect(world.setSlot('h', 'q', 'parada')).toBe(false);
-    world.cast('h', 'q', aim);
+    expect(world.setSlot('h', 'x', 'parada')).toBe(false);
+    world.cast('h', 'x', aim);
     run(world, 1);
     expect(seen(world, 'denied').at(-1)!.text).toMatch(/nivel 5/);
   });
@@ -186,13 +186,13 @@ describe('árboles y robo', () => {
     expect(seen(world, 'learn')).toHaveLength(2);
   });
 
-  it('subir de nivel da un punto de habilidad, lo anuncia y abre la ranura Q en el nivel 5', () => {
+  it('subir de nivel da un punto de habilidad, lo anuncia y abre la ranura X en el nivel 5', () => {
     const { world, character } = setup('parada');
     world.grantXp('h', 5000);
     expect(character.level).toBeGreaterThanOrEqual(5);
     expect(character.skillPoints).toBe(character.level - 1);
-    expect(seen(world, 'level').some((n) => /ranura Q/.test(n.text))).toBe(true);
-    expect(world.setSlot('h', 'q', 'parada')).toBe(true);
+    expect(seen(world, 'level').some((n) => /ranura X/.test(n.text))).toBe(true);
+    expect(world.setSlot('h', 'x', 'parada')).toBe(true);
   });
 
   it('el Ojo del Impostor le roba al ghoul su árbol oculto y su pasiva, una sola vez', () => {

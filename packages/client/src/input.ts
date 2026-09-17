@@ -39,10 +39,11 @@ export class Controls {
   actions = emptyActions();
   enabled = false;
   /**
-   * Set in the world: E, Q and Space stop being a class kit and cast whatever skill sits in that
-   * slot. Null in every match, where the keys keep meaning what they always meant.
+   * Set in the world: E, X and C cast whatever skill sits in that slot, Q swings the weapon and
+   * the arrows aim, so the world plays without a mouse. Null in every match, where the keys keep
+   * meaning what they always meant (arrows move there).
    */
-  onCast: ((slot: 'e' | 'q' | 'space') => void) | null = null;
+  onCast: ((slot: 'e' | 'x' | 'c') => void) | null = null;
   /**
    * World only: what the equipped weapon's click is. A dagger aims a short cone, not the line of
    * the archer class that simulates it. Null in matches, where the class decides.
@@ -81,7 +82,7 @@ export class Controls {
   get targetingAbility(): string | null {
     const touches = [...this.gestures.values()];
     if (touches.length) return touches.at(-1)!.slot.id;
-    if (this.chargeSources.has('mouse'))
+    if (this.chargeSources.has('mouse') || this.chargeSources.has('key'))
       return this.attackKind ? (this.attackKind === 'melee' ? 'sword' : 'shot') : primaryAbility(this.classId);
     if (this.specialSources.has('key')) return CLASSES[this.classId].summon ? 'summon' : 'dash';
     if (this.guardSources.has('mouse')) return this.classId === 'mage' ? 'magic-shield' : 'guard';
@@ -94,9 +95,18 @@ export class Controls {
     if (this.classId === 'guardian') this.guardSources.clear();
     this.chargeSources.add('mouse');
   }
-  releasePrimary() {
-    if (this.chargeSources.delete('mouse') && this.enabled)
+  releasePrimary(source = 'mouse') {
+    if (this.chargeSources.delete(source) && this.enabled)
       this.actions[CLASSES[this.classId].ranged ? 'shot' : 'sword'] = true;
+  }
+  /** World: the arrows held right now point the aim, in eight directions. Nothing held keeps the last. */
+  private aimWithArrows() {
+    const dx = (this.keys.has('ArrowRight') ? 1 : 0) - (this.keys.has('ArrowLeft') ? 1 : 0);
+    const dy = (this.keys.has('ArrowDown') ? 1 : 0) - (this.keys.has('ArrowUp') ? 1 : 0);
+    if (!dx && !dy) return;
+    this.angle = Math.atan2(dy, dx);
+    // The scene then places the aim point along this angle, the same way a touch stick does.
+    this.aimFromPointer = false;
   }
   pressSpecial(source: string) {
     const stats = CLASSES[this.classId];
@@ -156,13 +166,19 @@ export class Controls {
   }
 
   private keyDown(event: KeyboardEvent) {
-    if (!this.enabled || (event.target as HTMLElement)?.matches('input')) return;
+    if (!this.enabled || (event.target as HTMLElement)?.matches?.('input, textarea, select')) return;
     if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.code))
       event.preventDefault();
     this.keys.add(event.code);
-    const cast = event.code === 'KeyE' ? 'e' : event.code === 'KeyQ' ? 'q' : event.code === 'Space' ? 'space' : null;
-    if (this.onCast && cast) {
-      if (!event.repeat) this.onCast(cast);
+    if (this.onCast) {
+      const cast = event.code === 'KeyE' ? 'e' : event.code === 'KeyX' ? 'x' : event.code === 'KeyC' ? 'c' : null;
+      if (cast) {
+        if (!event.repeat) this.onCast(cast);
+      } else if (event.code === 'KeyQ') {
+        // Held like the mouse button: holding charges, releasing strikes.
+        if (!event.repeat) this.chargeSources.add('key');
+      } else if (event.code.startsWith('Arrow')) this.aimWithArrows();
+      // No class kit in the world: every other key is movement or nothing.
       return;
     }
     const binding=this.keyBinding(event.code);if(binding&&!event.repeat)this.pressPhysical(binding);
@@ -191,6 +207,11 @@ export class Controls {
 
   private keyUp(event: KeyboardEvent) {
     this.keys.delete(event.code);
+    if (this.onCast) {
+      if (event.code === 'KeyQ') this.releasePrimary('key');
+      else if (event.code.startsWith('Arrow')) this.aimWithArrows();
+      return;
+    }
     const binding=this.keyBinding(event.code);if(binding)this.releasePhysical(binding);
     if (event.code === 'Space') this.releaseSpecial('key');
     if (event.code === 'KeyE') this.counterSources.delete('key');
@@ -345,14 +366,16 @@ export class Controls {
 
   read(seq: number): Input {
     if (!this.enabled) return idleInput(seq, this.angle);
+    // In the world the arrows aim; only in a match do they also move.
+    const arrows = !this.onCast;
     let x =
       this.move.x +
-      (this.keys.has('KeyD') || this.keys.has('ArrowRight') ? 1 : 0) -
-      (this.keys.has('KeyA') || this.keys.has('ArrowLeft') ? 1 : 0);
+      (this.keys.has('KeyD') || (arrows && this.keys.has('ArrowRight')) ? 1 : 0) -
+      (this.keys.has('KeyA') || (arrows && this.keys.has('ArrowLeft')) ? 1 : 0);
     let y =
       this.move.y +
-      (this.keys.has('KeyS') || this.keys.has('ArrowDown') ? 1 : 0) -
-      (this.keys.has('KeyW') || this.keys.has('ArrowUp') ? 1 : 0);
+      (this.keys.has('KeyS') || (arrows && this.keys.has('ArrowDown')) ? 1 : 0) -
+      (this.keys.has('KeyW') || (arrows && this.keys.has('ArrowUp')) ? 1 : 0);
     if (this.directionalDashPulse && this.actions.dash) {
       x = Math.cos(this.angle);
       y = Math.sin(this.angle);

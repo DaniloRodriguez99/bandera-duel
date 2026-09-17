@@ -33,12 +33,17 @@ const WEAPON_OF_CLASS: Record<ClassId, Weapon> = {
   archer: 'arco',
 };
 
-/** The keys a skill can live in. Click always belongs to the weapon. */
-export type CastSlot = 'e' | 'q' | 'space';
-export const CAST_SLOTS: CastSlot[] = ['e', 'q', 'space'];
-/** The fated skill sits in E from the first minute; Q and Space open as the character grows. */
-export const SLOT_LEVEL: Record<CastSlot, number> = { e: 1, q: 5, space: 10 };
-export const SLOT_NAMES: Record<CastSlot, string> = { e: 'E', q: 'Q', space: 'Espacio' };
+/**
+ * The keys a skill can live in. Q always belongs to the weapon, and the arrows aim, so the whole
+ * world plays from the keyboard: the left hand moves, casts and strikes, the right hand points.
+ */
+export type CastSlot = 'e' | 'x' | 'c';
+export const CAST_SLOTS: CastSlot[] = ['e', 'x', 'c'];
+/** The fated skill sits in E from the first minute; X and C open as the character grows. */
+export const SLOT_LEVEL: Record<CastSlot, number> = { e: 1, x: 5, c: 10 };
+export const SLOT_NAMES: Record<CastSlot, string> = { e: 'E', x: 'X', c: 'C' };
+/** Where each slot lived before the keyboard layout: Q became X, Space became C. */
+const LEGACY_SLOTS: Record<string, CastSlot> = { q: 'x', space: 'c' };
 export const slotOpen = (slot: CastSlot, level: number) => level >= SLOT_LEVEL[slot];
 
 /** The sparks the Man-God lets you place at birth. */
@@ -150,7 +155,7 @@ export function newCharacter(
     weapon,
     affinities,
     skills: { [skill.id]: { level: 1, uses: 0, nodes: [] } },
-    slots: { e: skill.id, q: null, space: null },
+    slots: { e: skill.id, x: null, c: null },
     skillPoints: 0,
     copyCharges: skill.effect.kind === 'steal' ? 1 : 0,
     trees: [],
@@ -173,6 +178,17 @@ function nextSerial(raw: Partial<Character>) {
   return Math.max(0, ...uids) + 1;
 }
 
+/** A save from before the keyboard layout keeps its skills: what sat in Q moves to X, Space to C. */
+function migrateSlots(base: Character['slots'], raw?: Record<string, string | null>): Character['slots'] {
+  const slots = { ...base };
+  if (!raw) return slots;
+  for (const [key, value] of Object.entries(raw)) {
+    const slot = (CAST_SLOTS as string[]).includes(key) ? (key as CastSlot) : LEGACY_SLOTS[key];
+    if (slot && (value === null || typeof value === 'string') && !(key !== slot && raw[slot])) slots[slot] = value;
+  }
+  return slots;
+}
+
 /** Fills whatever an older save lacks, so a character from before skills existed still loads. */
 export function normalizeCharacter(raw: Character): Character {
   const base = newCharacter(raw.id, raw.accountId, raw.name, raw.classId);
@@ -180,7 +196,7 @@ export function normalizeCharacter(raw: Character): Character {
     ...base,
     ...raw,
     stats: { ...base.stats, ...raw.stats },
-    slots: { ...base.slots, ...(raw.slots ?? {}) },
+    slots: migrateSlots(base.slots, raw.slots),
     skills: raw.skills ?? base.skills,
     affinities: raw.affinities ?? base.affinities,
     trees: raw.trees ?? [],

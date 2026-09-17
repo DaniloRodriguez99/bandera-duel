@@ -591,7 +591,7 @@ export class WorldHud {
     const bar = this.root.querySelector('#skillbar')!;
     const weapon = el('div', 'skill-slot weapon');
     weapon.dataset.slot = 'click';
-    weapon.innerHTML = `<span class="slot-frame"><img alt="" aria-hidden="true"></span><kbd>CLIC</kbd>`;
+    weapon.innerHTML = `<span class="slot-frame"><img alt="" aria-hidden="true"></span><kbd>Q</kbd>`;
     bar.append(weapon);
     this.slotEls.set('click', weapon);
     for (const slot of CAST_SLOTS) {

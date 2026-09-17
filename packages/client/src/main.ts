@@ -556,7 +556,15 @@ function bind(joined: Room) {
     arena.receive(s, worldCharacterId ?? joined.sessionId);
     if (worldCharacterId) {
       const self = s.players.find((p) => p.id === worldCharacterId);
-      if (self) $('stage').dataset.x = String(Math.round(self.x));
+      if (self) {
+        const stage = $('stage');
+        stage.dataset.x = String(Math.round(self.x));
+        stage.dataset.y = String(Math.round(self.y));
+        // Where the character points and whether its weapon is charging: what a keyboard-only
+        // player changes with the arrows and Q, readable without looking at the canvas.
+        stage.dataset.aim = String(Math.round((self.angle * 180) / Math.PI));
+        stage.dataset.windup = String(self.windup > 0 || self.shotCharge > 0);
+      }
     }
     render(s);
   });
@@ -656,6 +664,11 @@ function bind(joined: Room) {
 $('entry-form').onsubmit = (e) => {
   e.preventDefault();
   worldMode = false;
+  // A match after the world: the keys mean the class kit again, and arrows move.
+  if (arena.controls) {
+    arena.controls.onCast = null;
+    arena.controls.attackKind = null;
+  }
   void join();
 };
 async function join() {
@@ -914,7 +927,7 @@ function renderWorldChrome(s: Snapshot, me: Snapshot['players'][number] | undefi
   const guide = $('control-guide');
   if (!guide.querySelector('[data-world]'))
     guide.innerHTML =
-      '<span data-world><span><kbd>WASD</kbd> Moverse</span><span><kbd>CLIC</kbd> Tu arma</span><span><kbd>E</kbd><kbd>Q</kbd><kbd>ESPACIO</kbd> Habilidades</span><span><kbd>K</kbd> Sistema</span><span><kbd>M</kbd> Mapa</span></span>';
+      '<span data-world><span><kbd>WASD</kbd> Moverse</span><span><kbd>←↑↓→</kbd> Apuntar</span><span><kbd>Q</kbd> Tu arma</span><span><kbd>E</kbd><kbd>X</kbd><kbd>C</kbd> Habilidades</span><span><kbd>K</kbd> Sistema</span><span><kbd>M</kbd> Mapa</span></span>';
   $('cooldowns').hidden = true;
   $('abilities').hidden = true;
   $('overlay').hidden = true;
