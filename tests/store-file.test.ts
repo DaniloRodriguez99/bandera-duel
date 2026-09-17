@@ -6,6 +6,7 @@ import { newCharacter } from '@bandera/shared/world';
 import { FileStore } from '../packages/server/src/store/file.js';
 import { MemoryStore } from '../packages/server/src/store/characters.js';
 import { storeFromEnv } from '../packages/server/src/store/env.js';
+import { PostgresStore } from '../packages/server/src/store/postgres.js';
 
 const temporales: string[] = [];
 async function archivoTemporal() {
@@ -168,7 +169,10 @@ describe('elección del driver', () => {
     expect((store as FileStore).path).toBe(path);
   });
 
-  it('con DATABASE_URL falla en vez de usar memoria a escondidas', () => {
-    expect(() => storeFromEnv({ DATABASE_URL: 'postgres://x', STORE_FILE: '/tmp/x.json' })).toThrow(/Postgres/);
+  it('con DATABASE_URL usa Postgres, antes que el archivo', async () => {
+    const store = storeFromEnv({ DATABASE_URL: 'postgres://nadie:nada@127.0.0.1:1/bandera', STORE_FILE: '/tmp/x.json' });
+    expect(store).toBeInstanceOf(PostgresStore);
+    // Building it does not connect; closing it without ever using it must not hang or throw.
+    await store.close();
   });
 });

@@ -109,7 +109,7 @@ export interface BookData {
   accounts: { id: AccountId; name: string; password: string; characters: Record<CharacterId, unknown> }[];
 }
 
-const envelope = (character: Character): SavedCharacter => ({
+export const envelope = (character: Character): SavedCharacter => ({
   version: SAVE_VERSION,
   // A copy, never the live object: the world keeps mutating its character between saves, and
   // sharing nested objects (stats, skills) would let unsaved progress leak into the store.

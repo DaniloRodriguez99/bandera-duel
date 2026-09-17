@@ -12,6 +12,7 @@ import {
   type CharacterStore,
 } from '../packages/server/src/store/characters.js';
 import { FileStore } from '../packages/server/src/store/file.js';
+import { PostgresStore } from '../packages/server/src/store/postgres.js';
 
 const temporales: string[] = [];
 /** A fresh directory per store, so no two tests ever share a file. */
@@ -32,6 +33,28 @@ const drivers: [string, () => Promise<CharacterStore>][] = [
   ['MemoryStore', async () => new MemoryStore()],
   ['FileStore', async () => new FileStore(join(await carpetaTemporal(), 'personajes.json'))],
 ];
+/**
+ * Postgres runs the same contract when a throwaway database is given. Each store gets its own
+ * schema-free start by wiping the tables, so point this only at a database made for tests.
+ */
+const testDatabase = process.env.TEST_DATABASE_URL;
+const abiertos: CharacterStore[] = [];
+if (testDatabase)
+  drivers.push([
+    'PostgresStore',
+    async () => {
+      const store = new PostgresStore(testDatabase);
+      abiertos.push(store);
+      await store.listCharacters('nadie');
+      await (store as unknown as { pool: { query(sql: string): Promise<unknown> } }).pool.query(
+        'truncate bandera_characters, bandera_accounts',
+      );
+      return store;
+    },
+  ]);
+afterAll(async () => {
+  await Promise.all(abiertos.map((store) => store.close().catch(() => {})));
+});
 
 describe.each(drivers)('contrato del guardado: %s', (_nombre, crear) => {
   it('crea una cuenta y entra con la clave correcta', async () => {

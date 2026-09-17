@@ -1,12 +1,12 @@
 import { MemoryStore, type CharacterStore } from './characters.js';
 import { FileStore } from './file.js';
+import { PostgresStore } from './postgres.js';
 
 /**
  * Picks the storage driver from the environment, once, at startup.
  *
- * - `DATABASE_URL` is reserved for the Postgres driver. It does not exist yet, and a deploy that
- *   sets it clearly expects real persistence, so this fails at boot rather than quietly handing
- *   that deploy a store that forgets everything on restart.
+ * - `DATABASE_URL` is Postgres (`PostgresStore`): what production uses, and the only choice that
+ *   survives a host with no disk, like Cloud Run turning itself off when nobody plays.
  * - `STORE_FILE` is one JSON file on a local disk (`FileStore`).
  * - Nothing set means memory, which is right for development and the tests and wrong anywhere
  *   players expect to find their character tomorrow, hence the warning in production.
@@ -15,11 +15,7 @@ export function storeFromEnv(
   env: NodeJS.ProcessEnv = process.env,
   warn: (message: string) => void = console.warn,
 ): CharacterStore {
-  if (env.DATABASE_URL)
-    throw new Error(
-      'DATABASE_URL está definida pero el driver de Postgres todavía no existe. ' +
-        'Quitala para usar STORE_FILE o memoria, o implementá PostgresStore en packages/server/src/store.',
-    );
+  if (env.DATABASE_URL) return new PostgresStore(env.DATABASE_URL);
   if (env.STORE_FILE) return new FileStore(env.STORE_FILE);
   if (env.NODE_ENV === 'production')
     warn(
