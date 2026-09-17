@@ -42,6 +42,7 @@ import {
   type StatId,
 } from './rpg/progression.js';
 import {
+  AFFINITIES,
   AFFINITY_NAMES,
   ARCANE,
   MARTIAL,
@@ -118,6 +119,8 @@ export const INCANTATION_TIME = 0.45;
 const CORPSE_LIFE = 20;
 /** Seconds after a draining skill during which damage dealt heals the caster. */
 const DRAIN_WINDOW = 1.2;
+/** How long the impostor's eye stays open waiting for its owner to choose. */
+const STEAL_WINDOW = 20;
 /** A child who runs their mana dry widens their channels, at most this often. */
 const WIDENING_EVERY = 30;
 /** Seconds a fiery or bleeding imbued blow keeps hurting. */
@@ -154,6 +157,29 @@ export interface Refusal {
  * the windows that slide in: a skill levelled or evolved, an affinity ranked up, a refusal, a
  * stolen tree, a level gained, a node learned.
  */
+/** One thing the impostor's eye could take from what it is looking at. */
+export interface StealOption {
+  id: string;
+  kind: 'skill' | 'passive';
+  name: string;
+  text: string;
+  icon: string;
+  color: string;
+  rarity?: string;
+  /** The level the copy would start at, for a skill. */
+  level?: number;
+}
+
+/** What the eye found: who it is looking at and everything it could take from them. */
+export interface StealOffer {
+  target: string;
+  /** A monster gives its hidden tree; a character, what they know. */
+  kind: 'monstruo' | 'personaje';
+  options: StealOption[];
+  /** How long the offer stands before the eye closes without taking anything. */
+  seconds: number;
+}
+
 export interface Notice {
   id: string;
   kind:
@@ -264,6 +290,8 @@ export class World extends Duel {
   readonly sheetChanged = new Set<string>();
   /** Everything the System has to tell someone; the room drains it after every step. */
   readonly notices: Notice[] = [];
+  /** Steal offers waiting to be shown; the room sends each to its own character. */
+  readonly stealOffers: { id: string; offer: StealOffer }[] = [];
   /** Where monsters fell, for skills that devour. */
   readonly corpses: { x: number; y: number; left: number }[] = [];
   private requested: { id: string; slot: CastSlot; aim: Vec }[] = [];
@@ -292,6 +320,8 @@ export class World extends Duel {
   /** True while an imbue's own side effects resolve, so a burn or a push is never imbued again. */
   private pouring = false;
   private widened = new Map<string, number>();
+  /** The eye is open on a target, waiting for its owner to pick what to take. */
+  private stealing = new Map<string, { targetId: string; range: number; options: StealOption[]; left: number }>();
 
   constructor(zoneId: ZoneId = DEFAULT_ZONE) {
     super(DEFAULT_MAP, 'duel');
@@ -516,6 +546,7 @@ export class World extends Duel {
     this.buffs.delete(id);
     this.drains.delete(id);
     this.imbues.delete(id);
+    this.stealing.delete(id);
     this.burns.delete(id);
     this.opening.delete(id);
     this.poisons.delete(id);
@@ -749,6 +780,12 @@ export class World extends Duel {
       if (p) delete p.imbue;
     }
     this.stepBurns(dt);
+    for (const [id, open] of this.stealing) {
+      open.left -= dt;
+      if (open.left > 0) continue;
+      this.stealing.delete(id);
+      this.deny(id, 'Ojo del Impostor', 'Tardaste y el ojo se cerró. La carga sigue siendo tuya.');
+    }
     for (const map of [this.parries, this.buffs, this.drains, this.imbues] as Map<string, { left: number }>[]) {
       for (const [key, value] of map) {
         value.left -= dt;
@@ -799,7 +836,7 @@ export class World extends Duel {
     const effective = effectiveSkill(skill, progress);
     if (p.mana + 1e-6 < effective.mana)
       return this.deny(id, effective.name, `Maná insuficiente: necesitás ${Math.ceil(effective.mana)}.`);
-    const blocked = this.precheck(p, character, skill);
+    const blocked = this.precheck(p, character, skill, aim);
     if (blocked) return this.deny(id, effective.name, blocked);
     // Casting takes the hands off the chest.
     this.opening.delete(id);
@@ -832,7 +869,7 @@ export class World extends Duel {
   }
 
   /** Skills that need something to act on refuse before spending anything. */
-  private precheck(p: Player, character: Character, skill: WorldSkill): string | null {
+  private precheck(p: Player, character: Character, skill: WorldSkill, aim: Vec): string | null {
     if (skill.weapon && skill.weapon !== character.weapon)
       return `Esa habilidad vive en ${WEAPON_ARTICLE[skill.weapon]}. Con esto en la mano no responde.`;
     if (skill.effect.kind === 'raise') {
@@ -848,9 +885,10 @@ export class World extends Duel {
       return 'No hay nada que devorar cerca.';
     if (skill.effect.kind === 'steal') {
       if (character.copyCharges <= 0) return 'El ojo ya se cerró. No quedan cargas.';
-      const prey = this.stealTarget(p, skill.effect.range);
-      if (!prey) return 'No hay nada que robar al alcance.';
-      if (character.trees.includes(prey.family!)) return 'Ya le robaste todo lo que esa criatura podía darte.';
+      if (this.stealing.has(p.id)) return 'El ojo ya está abierto: elegí qué llevarte.';
+      const prey = this.stealTarget(p, skill.effect.range, aim);
+      if (!prey) return 'Apuntá a algo que esté al alcance.';
+      if (!this.stealOptions(character, prey).options.length) return 'No le queda nada que vos no tengas.';
     }
     return null;
   }
@@ -859,10 +897,117 @@ export class World extends Duel {
     return [...this.corpses, ...this.state.graves].find((c) => distance(p, c) <= radius);
   }
 
-  private stealTarget(p: Player, range: number) {
-    return this.state.zombies
-      .filter((z) => z.family && z.hp > 0 && distance(p, z) <= range)
-      .sort((a, b) => distance(p, a) - distance(p, b))[0];
+  /**
+   * What the eye is looking at: whatever lies closest to where the player aimed, within reach — a
+   * monster, or in the wild another character. Aiming, not the nearest body, so a player can pick
+   * the one creature in a pack whose tree they want.
+   */
+  private stealTarget(p: Player, range: number, aim?: Vec): Zombie | Player | undefined {
+    const at = aim ?? p;
+    const monsters = this.state.zombies.filter((z) => z.family && z.hp > 0 && distance(p, z) <= range);
+    const rivals = this.state.players.filter((q) => q !== p && q.hp > 0 && this.characters.has(q.id) && this.rivals(p, q) && distance(p, q) <= range);
+    return [...monsters, ...rivals].sort((a, b) => distance(at, a) - distance(at, b))[0];
+  }
+
+  /** Everything a target could hand over that the thief does not already have. */
+  private stealOptions(character: Character, target: Zombie | Player): StealOffer {
+    const options: StealOption[] = [];
+    const monster = (target as Zombie).family;
+    if (monster) {
+      const tree = MONSTER_TREES[monster];
+      const level = 1 + Math.floor(target.level / 5);
+      for (const skillId of tree.skills) {
+        const skill = SKILLS_WORLD[skillId];
+        if (character.skills[skillId]) continue;
+        options.push({
+          id: `skill:${skillId}`,
+          kind: 'skill',
+          name: skill.name,
+          text: skill.flavor,
+          icon: skill.icon,
+          color: skill.color,
+          rarity: skill.rarity,
+          level: Math.min(level, skill.maxLevel),
+        });
+      }
+      if (!character.passives.includes(tree.passive.id))
+        options.push({ id: `passive:${tree.passive.id}`, kind: 'passive', name: tree.passive.name, text: tree.passive.text, icon: 'el-sombra', color: '#ff6fb0', rarity: 'unica' });
+      return { target: formName(monster, target.level), kind: 'monstruo', options, seconds: STEAL_WINDOW };
+    }
+    const prey = this.characters.get(target.id)!;
+    for (const [skillId, progress] of Object.entries(prey.skills)) {
+      const skill = SKILLS_WORLD[skillId];
+      // The eye cannot copy itself, and never hands over what the thief already knows.
+      if (!skill || skill.effect.kind === 'steal' || character.skills[skillId]) continue;
+      options.push({
+        id: `skill:${skillId}`,
+        kind: 'skill',
+        name: skillName(skill, progress.level),
+        text: skill.flavor,
+        icon: skill.icon,
+        color: skill.color,
+        rarity: skill.rarity,
+        // Copied from a living owner it arrives two levels duller, never below one.
+        level: Math.max(1, progress.level - 2),
+      });
+    }
+    for (const id of prey.passives) {
+      if (character.passives.includes(id)) continue;
+      const passive = Object.values(MONSTER_TREES).find((tree) => tree.passive.id === id)?.passive;
+      if (passive) options.push({ id: `passive:${id}`, kind: 'passive', name: passive.name, text: passive.text, icon: 'el-sombra', color: '#ff6fb0', rarity: 'unica' });
+    }
+    return { target: prey.name, kind: 'personaje', options, seconds: STEAL_WINDOW };
+  }
+
+  /**
+   * The choice the eye asked for. Checked again here, not only when it opened: the charge is spent
+   * on what is actually taken, and a target that walked away or died takes its tree with it.
+   */
+  chooseSteal(id: string, optionId: string): boolean {
+    const open = this.stealing.get(id);
+    const p = this.state.players.find((q) => q.id === id);
+    const character = this.characters.get(id);
+    if (!open || !p || !character) return false;
+    const option = open.options.find((o) => o.id === optionId);
+    if (!option) return false;
+    const target = [...this.state.zombies, ...this.state.players].find((e) => e.id === open.targetId);
+    if (!target || target.hp <= 0 || distance(p, target) > open.range) {
+      this.stealing.delete(id);
+      this.deny(id, 'Ojo del Impostor', 'Se te fue de las manos. El ojo se cerró sin llevarse nada.');
+      return false;
+    }
+    if (character.copyCharges <= 0) {
+      this.stealing.delete(id);
+      return false;
+    }
+    this.stealing.delete(id);
+    character.copyCharges--;
+    const monster = (target as Zombie).family;
+    const [kind, what] = [option.id.slice(0, option.id.indexOf(':')), option.id.slice(option.id.indexOf(':') + 1)];
+    if (kind === 'passive') character.passives.push(what);
+    else {
+      const skill = SKILLS_WORLD[what];
+      // A monster's skill only answers to someone who carries its family's tree.
+      if (skill.school === 'monstruo' && monster && !character.trees.includes(monster)) character.trees.push(monster);
+      // Copying from a door you never opened opens it a crack, exactly like a tome would.
+      const school = skill.school as Affinity;
+      if (AFFINITIES.includes(school) && !character.affinities[school]) character.affinities[school] = { points: 1, xp: 0, cultivation: 1 };
+      character.skills[what] = { level: option.level ?? 1, uses: 0, nodes: [] };
+      const free = CAST_SLOTS.find((slot) => slotOpen(slot, character.level) && character.slots[slot] === null);
+      if (free) character.slots[free] = what;
+    }
+    this.notify(id, {
+      kind: 'steal',
+      title: `Robaste «${option.name}»`,
+      text: option.kind === 'passive' ? option.text : `Ahora es tuya, aunque nadie te la haya enseñado. ${option.text}`,
+      color: '#ff6fb0',
+      rarity: 'unica',
+    });
+    this.applyCharacter(p, character);
+    this.event('raise', target, p.team);
+    this.sheetChanged.add(id);
+    this.saveNow.add(id);
+    return true;
   }
 
   /** What a skill does once it leaves the caster's hands. */
@@ -966,8 +1111,20 @@ export class World extends Duel {
         return;
       }
       case 'steal': {
-        const prey = this.stealTarget(p, effect.range);
-        if (prey) this.steal(p, character, prey);
+        // The eye opens on what is aimed at and waits: the charge is spent on the choice, not here.
+        const prey = this.stealTarget(p, effect.range, { x: p.x + Math.cos(angle) * effect.range, y: p.y + Math.sin(angle) * effect.range });
+        if (!prey) return;
+        const offer = this.stealOptions(character, prey);
+        if (!offer.options.length) return;
+        this.event('cast', prey, p.team, angle, p.classId, 1);
+        this.state.events.at(-1)!.color = '#ff6fb0';
+        if (offer.options.length === 1) {
+          this.stealing.set(p.id, { targetId: prey.id, range: effect.range + 40, options: offer.options, left: STEAL_WINDOW });
+          this.chooseSteal(p.id, offer.options[0].id);
+          return;
+        }
+        this.stealing.set(p.id, { targetId: prey.id, range: effect.range + 40, options: offer.options, left: STEAL_WINDOW });
+        this.stealOffers.push({ id: p.id, offer });
         return;
       }
       case 'raise': {
@@ -1110,32 +1267,6 @@ export class World extends Duel {
    * The impostor's eye on a monster: its hidden tree opens, its passive becomes yours, and a
    * monster that has grown hands its skills over further along.
    */
-  private steal(p: Player, character: Character, prey: Zombie) {
-    const family = prey.family!;
-    const tree = MONSTER_TREES[family];
-    character.copyCharges--;
-    character.trees.push(family);
-    character.passives.push(tree.passive.id);
-    const start = 1 + Math.floor(prey.level / 5);
-    for (const skillId of tree.skills) {
-      const skill = SKILLS_WORLD[skillId];
-      if (!character.skills[skillId]) character.skills[skillId] = { level: Math.min(start, skill.maxLevel), uses: 0, nodes: [] };
-    }
-    const free = CAST_SLOTS.find((slot) => slotOpen(slot, character.level) && character.slots[slot] === null);
-    if (free) character.slots[free] = tree.skills[0];
-    const creature = formName(family, prey.level);
-    this.notify(p.id, {
-      kind: 'steal',
-      title: `Robaste «${tree.passive.name}»`,
-      text: `Se abrió el árbol oculto del ${creature}: ${tree.skills.map((id) => SKILLS_WORLD[id].name).join(', ')}. ${tree.passive.text}`,
-      color: '#ff6fb0',
-      rarity: 'unica',
-    });
-    this.applyCharacter(p, character);
-    this.event('raise', prey, p.team);
-    this.sheetChanged.add(p.id);
-  }
-
   /**
    * Every use counts, silently. At the threshold the System surprises the player: a level, or an
    * evolution that renames the skill. Casting an affinity's skill also cultivates that affinity —

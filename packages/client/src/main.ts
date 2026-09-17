@@ -46,7 +46,7 @@ import { AFFINITIES, AFFINITY_NAMES, AFFINITY_TEXT, RANKS, canSurf } from '@band
 import { AFFINITY_COLORS } from '@bandera/shared/rpg/colors';
 import { WEAPON_PROFILE } from '@bandera/shared/rpg/weapons';
 import { zone, type ZoneId } from '@bandera/shared/rpg/zones';
-import type { CastSlot, Character, ChestView, Creation, Notice } from '@bandera/shared/world';
+import type { CastSlot, Character, ChestView, Creation, Notice, StealOffer } from '@bandera/shared/world';
 
 function hudTeam(team: Team, right = false) {
   const label = right
@@ -115,6 +115,7 @@ const worldHud = new WorldHud($('stage'), {
   unequip: (slot) => room?.send('unequip', { slot }),
   use: (uid, skillId) => room?.send('useItem', skillId ? { uid, skillId } : { uid }),
   discard: (uid) => room?.send('discard', { uid }),
+  steal: (option) => room?.send('stealPick', { option }),
 });
 // Development only (stripped from production builds): lets a browser spec show a loot window
 // without walking a character across the valley to a guarded chest.
@@ -559,6 +560,7 @@ function bind(joined: Room) {
   room.onMessage('characters', (list: WorldCharacterList) => showCharacters(list));
   room.onMessage('sheet', (sheet: Character) => showSheet(sheet));
   room.onMessage('system', (notice: Notice) => worldHud.notice(notice));
+  room.onMessage('stealOffer', (offer: StealOffer) => worldHud.openSteal(offer));
   room.onMessage('idle', () => (idleKicked = true));
   room.onMessage('replaced', () => (replaced = true));
   room.onMessage('entered', ({ zoneId, characterId }: { zoneId: string; characterId: string }) => {

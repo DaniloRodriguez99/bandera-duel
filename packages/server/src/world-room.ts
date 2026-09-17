@@ -140,6 +140,15 @@ export class WorldRoom extends Room {
       this.queues.set(id, queue);
     });
 
+    // What the player chose to steal from the target the eye is open on.
+    this.onMessage('stealPick', (client, message: unknown) => {
+      const id = this.characterOf.get(client.sessionId);
+      this.touch(client);
+      const option = (message as { option?: unknown })?.option;
+      if (!id || typeof option !== 'string' || option.length > 80) return;
+      if (this.worldOf(id)?.chooseSteal(id, option)) this.sendSheet(client, id);
+    });
+
     this.onMessage('spendPoint', (client, message: unknown) => {
       const id = this.characterOf.get(client.sessionId);
       this.touch(client);
@@ -278,6 +287,8 @@ export class WorldRoom extends Room {
     }
     // What the System has to tell each character goes to that character alone.
     for (const notice of world.notices.splice(0)) this.clientOf(notice.id)?.send('system', notice);
+    // The impostor's eye asks its owner what to take; nobody else sees the list.
+    for (const { id, offer } of world.stealOffers.splice(0)) this.clientOf(id)?.send('stealOffer', offer);
     // Experience, levels and spent points change the private sheet; without this the client kept
     // showing its old level until it happened to resync.
     for (const id of world.sheetChanged) {

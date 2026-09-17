@@ -1633,3 +1633,16 @@ body.world-mode #clock-note{color:#7fd6ff;letter-spacing:3px}
 .overlay.world-select .overlay-card{width:min(720px,94%)}
 .overlay.world-select #overlay-kicker{color:#b9a4ff}
 .overlay.world-select .world-characters{grid-template-columns:repeat(auto-fit,minmax(118px,1fr))}
+
+/* El Ojo del Impostor: lo que se le puede sacar a lo que estás mirando. */
+.wh-creation.robando{background:radial-gradient(circle at 50% 42%,#1b0f1ccc 0,#07141aee 55%,#04080ef2 100%);color:#e6ecff;backdrop-filter:blur(2px)}
+.wh-steal{width:min(760px,100%);display:grid;justify-items:center;gap:8px;text-align:center}
+.wh-steal small{font:700 10px 'DM Sans',sans-serif;letter-spacing:3px;color:#ff6fb0}
+.wh-steal h2{margin:0;font:800 clamp(22px,3.2vw,34px) 'Barlow Condensed',Impact,sans-serif;color:#ffe6f2}
+.wh-steal .wh-god-line{color:#c8b6d8}
+.wh-steal-options{display:flex;flex-wrap:wrap;justify-content:center;gap:10px;margin-top:4px}
+.wh-steal-options .reward-card{--rarity:#b9c6cf;width:clamp(150px,17vw,190px);min-height:0;align-items:center;text-align:center;border-color:var(--rarity);background:linear-gradient(180deg,#0c2242f2,#050f20f5);box-shadow:0 0 22px color-mix(in srgb,var(--rarity) 45%,transparent);cursor:pointer;transition:transform .15s}
+.wh-steal-options .reward-card:hover{transform:translateY(-3px)}
+.wh-steal-options .reward-card small{color:var(--rarity);letter-spacing:2px}
+.wh-steal-options .reward-card p{font-size:10px;color:#b5d3e6}
+.wh-steal-cancel{margin-top:6px;padding:7px 14px;border:1px solid #6a5570;background:transparent;color:#b9a4c0;font-size:11px;letter-spacing:2px;text-transform:uppercase;cursor:pointer}

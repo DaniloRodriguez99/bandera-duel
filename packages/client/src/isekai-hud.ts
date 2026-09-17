@@ -53,6 +53,7 @@ import {
   type ChestView,
   type Creation,
   type Notice,
+  type StealOffer,
   type Weapon,
 } from '@bandera/shared/world';
 
@@ -74,6 +75,7 @@ export interface WorldHudActions {
   unequip(slot: EquipSlot): void;
   use(uid: string, skillId?: string): void;
   discard(uid: string): void;
+  steal(option: string): void;
 }
 
 const SLOT_LABEL: Record<EquipSlot, string> = { weapon: 'Arma', armor: 'Armadura', amulet: 'Amuleto' };
@@ -994,10 +996,59 @@ export class WorldHud {
   // ─── Birth ─────────────────────────────────────────────────────────────────────────────────
 
   /**
+   * The impostor's eye, open on something: everything it could take, to choose one. A monster
+   * hands over its hidden tree and its family's gift; a character, whatever they learned. The
+   * single charge is spent on what is picked, so nothing is lost by looking.
+   */
+  openSteal(offer: StealOffer) {
+    clearTimeout(this.stealTimer);
+    // The eye opens over the world, not in the Man-God's white void: the target stays visible.
+    this.creation.classList.add('robando');
+    this.creation.hidden = false;
+    this.creation.innerHTML = `
+      <div class="wh-steal" role="dialog" aria-label="Ojo del Impostor">
+        <small>OJO DEL IMPOSTOR · UNA SOLA CARGA</small>
+        <h2></h2>
+        <p class="wh-god-line">Elegí qué llevarte. Lo que dejes, lo dejás para siempre.</p>
+        <div class="wh-steal-options" id="wh-steal-options"></div>
+        <button type="button" class="wh-steal-cancel" id="wh-steal-cancel">No robar nada</button>
+      </div>`;
+    this.creation.querySelector('h2')!.textContent = `Mirás dentro de ${offer.target}`;
+    const grid = this.creation.querySelector('#wh-steal-options')!;
+    for (const option of offer.options) {
+      const card = el('button', `reward-card rarity-${option.rarity ?? 'rara'}`) as HTMLButtonElement;
+      card.type = 'button';
+      card.dataset.steal = option.id;
+      card.style.setProperty('--rarity', RARITY_COLOR[(option.rarity as Rarity) ?? 'rara']);
+      card.innerHTML = `<img class="reward-icon" src="${icon(option.icon)}" alt="" aria-hidden="true"><small>${option.kind === 'passive' ? 'PASIVA' : `HABILIDAD · NV ${option.level ?? 1}`}</small><strong></strong><p></p>`;
+      card.querySelector('strong')!.textContent = option.name;
+      card.querySelector('p')!.textContent = option.text;
+      card.onclick = () => {
+        this.closeSteal();
+        this.actions.steal(option.id);
+      };
+      grid.append(card);
+    }
+    (this.creation.querySelector('#wh-steal-cancel') as HTMLButtonElement).onclick = () => this.closeSteal();
+    // The world closes the eye on its own when the window runs out; this only takes the panel away.
+    this.stealTimer = window.setTimeout(() => this.closeSteal(), offer.seconds * 1000);
+  }
+  private stealTimer = 0;
+  closeSteal() {
+    clearTimeout(this.stealTimer);
+    if (this.creation.querySelector('.wh-steal')) {
+      this.creation.hidden = true;
+      this.creation.classList.remove('robando');
+      this.creation.replaceChildren();
+    }
+  }
+
+  /**
    * The Man-God's welcome. He has no class to give and grants nothing: the sparks are yours to
    * place, the weapon yours to pick, and the one skill fate hands over is not chosen by anyone.
    */
   openCreation(onBorn: (creation: Creation) => void) {
+    this.creation.classList.remove('robando');
     const sparks: Partial<Record<Affinity, number>> = {};
     let weapon: Weapon = 'espada';
     const left = () => SPARKS - Object.values(sparks).reduce((a, b) => a + (b ?? 0), 0);

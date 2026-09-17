@@ -195,36 +195,116 @@ describe('árboles y robo', () => {
     expect(world.setSlot('h', 'x', 'parada')).toBe(true);
   });
 
-  it('el Ojo del Impostor le roba al ghoul su árbol oculto y su pasiva, una sola vez', () => {
-    const world = new World('ceniza');
-    const ghoul = world.state.zombies.find((z) => z.family === 'ghoul')!;
+  /** A thief next to the first ghoul of the Ash Fields, with the eye in E. */
+  function thief(zoneId: ZoneId = 'ceniza', family = 'ghoul') {
+    const world = new World(zoneId);
+    const prey = world.state.zombies.find((z) => z.family === family)!;
     const character = newCharacter('h', 'c', 'Rentt', 'guardian', { sparks: { sigilo: 3 }, weapon: 'daga' }, {
       skillId: 'ojo_impostor',
       rarity: 'rara',
     });
-    character.x = ghoul.x + 40;
-    character.y = ghoul.y;
+    character.x = prey.x + 40;
+    character.y = prey.y;
     const p = world.join(character);
     p.invuln = 999;
-    world.cast('h', 'e', { x: ghoul.x, y: ghoul.y });
-    run(world, 1);
-    expect(character.trees).toContain('ghoul');
-    expect(character.passives).toContain('carne_ghoul');
-    expect(character.skills.devorar).toBeTruthy();
-    expect(character.skills.garras_ghoul.level).toBeGreaterThan(1);
-    expect(character.copyCharges).toBe(0);
-    expect(seen(world, 'steal').at(-1)!.title).toBe('Robaste «Carne de Ghoul»');
+    return { world, prey, character, p };
+  }
+  const offers = (world: World) => world.stealOffers;
 
-    // The stolen passive: something that is no longer entirely alive heals on its own.
-    p.hp = 1;
-    run(world, ticks(4));
-    expect(p.hp).toBeGreaterThan(1);
-
-    // The eye closes after its single use.
-    run(world, ticks(SKILLS_WORLD.ojo_impostor.cooldown + 0.5));
-    world.cast('h', 'e', { x: ghoul.x, y: ghoul.y });
+  it('el Ojo del Impostor abre lo que tiene el objetivo y no gasta la carga hasta elegir', () => {
+    const { world, prey, character } = thief();
+    world.cast('h', 'e', { x: prey.x, y: prey.y });
     run(world, 1);
-    expect(seen(world, 'denied').at(-1)!.text).toMatch(/ojo ya se cerró/);
+    const offer = offers(world).at(-1)!;
+    expect(offer.id).toBe('h');
+    expect(offer.offer.kind).toBe('monstruo');
+    // Everything the ghoul could give: its two hidden skills and the family's passive.
+    expect(offer.offer.options.map((o) => o.id).sort()).toEqual(['passive:carne_ghoul', 'skill:devorar', 'skill:garras_ghoul'].sort());
+    // Looking costs nothing: the single charge is still there.
+    expect(character.copyCharges).toBe(1);
+    expect(character.trees).toEqual([]);
+  });
+
+  it('elegir una habilidad del monstruo la trae con su árbol; elegir la pasiva, la pasiva', () => {
+    const conGarras = thief();
+    conGarras.world.cast('h', 'e', { x: conGarras.prey.x, y: conGarras.prey.y });
+    run(conGarras.world, 1);
+    expect(conGarras.world.chooseSteal('h', 'skill:garras_ghoul')).toBe(true);
+    expect(conGarras.character.skills.garras_ghoul.level).toBeGreaterThan(0);
+    expect(conGarras.character.trees).toContain('ghoul');
+    expect(conGarras.character.passives).toEqual([]);
+    expect(conGarras.character.copyCharges).toBe(0);
+    expect(seen(conGarras.world, 'steal').at(-1)!.title).toBe('Robaste «Garras de Ghoul»');
+
+    const conCarne = thief();
+    conCarne.world.cast('h', 'e', { x: conCarne.prey.x, y: conCarne.prey.y });
+    run(conCarne.world, 1);
+    expect(conCarne.world.chooseSteal('h', 'passive:carne_ghoul')).toBe(true);
+    expect(conCarne.character.passives).toContain('carne_ghoul');
+    expect(conCarne.character.skills.garras_ghoul).toBeUndefined();
+    // The stolen passive works: something no longer entirely alive heals on its own.
+    conCarne.p.hp = 1;
+    run(conCarne.world, ticks(4));
+    expect(conCarne.p.hp).toBeGreaterThan(1);
+  });
+
+  it('el ojo mira lo que apuntás, no lo que tenés más cerca', () => {
+    const { world, prey, p } = thief();
+    const lejos = world.state.zombies.find((z) => z.family && z.family !== prey.family && z.hp > 0)!;
+    Object.assign(lejos, { x: p.x + 90, y: p.y });
+    world.cast('h', 'e', { x: lejos.x, y: lejos.y });
+    run(world, 1);
+    expect(offers(world).at(-1)!.offer.target).toContain(lejos.name.split(' ')[0]);
+  });
+
+  it('sin elegir a tiempo el ojo se cierra y la carga sigue siendo tuya', () => {
+    const { world, prey, character } = thief();
+    world.cast('h', 'e', { x: prey.x, y: prey.y });
+    run(world, ticks(21));
+    expect(character.copyCharges).toBe(1);
+    expect(seen(world, 'denied').at(-1)!.text).toMatch(/el ojo se cerró/i);
+    expect(world.chooseSteal('h', 'passive:carne_ghoul')).toBe(false);
+  });
+
+  it('si el objetivo tiene una sola cosa, el ojo se la lleva sin preguntar', () => {
+    const world = new World('bosque');
+    const ladron = newCharacter('h', 'c', 'Rentt', 'guardian', { sparks: { sigilo: 3 }, weapon: 'daga' }, { skillId: 'ojo_impostor', rarity: 'rara' });
+    const victima = newCharacter('v', 'otra', 'Rudeus', 'guardian', { sparks: { fuego: 3 }, weapon: 'baston' }, { skillId: 'bola_fuego', rarity: 'rara' });
+    Object.assign(ladron, { x: 900, y: 1000 });
+    Object.assign(victima, { x: 960, y: 1000 });
+    const p = world.join(ladron);
+    world.join(victima);
+    p.invuln = 999;
+    world.cast('h', 'e', { x: victima.x, y: victima.y });
+    run(world, 1);
+    expect(world.stealOffers).toEqual([]);
+    expect(ladron.skills.bola_fuego).toBeTruthy();
+    expect(ladron.copyCharges).toBe(0);
+  });
+
+  it('a otro personaje en zona salvaje le copia una habilidad, dos niveles más floja', () => {
+    const world = new World('bosque');
+    const ladron = newCharacter('h', 'c', 'Rentt', 'guardian', { sparks: { sigilo: 3 }, weapon: 'daga' }, { skillId: 'ojo_impostor', rarity: 'rara' });
+    const victima = newCharacter('v', 'otra', 'Rudeus', 'guardian', { sparks: { fuego: 3 }, weapon: 'baston' }, { skillId: 'bola_fuego', rarity: 'rara' });
+    Object.assign(ladron, { x: 900, y: 1000 });
+    Object.assign(victima, { x: 960, y: 1000 });
+    const p = world.join(ladron);
+    world.join(victima);
+    p.invuln = 999;
+    victima.skills.bola_fuego.level = 5;
+    victima.skills.parada = { level: 1, uses: 0, nodes: [] };
+    world.cast('h', 'e', { x: victima.x, y: victima.y });
+    run(world, 1);
+    const offer = offers(world).at(-1)!.offer;
+    expect(offer.kind).toBe('personaje');
+    expect(offer.target).toBe('Rudeus');
+    expect(offer.options.find((o) => o.id === 'skill:bola_fuego')!.level).toBe(3);
+    // The eye never copies itself.
+    expect(offer.options.some((o) => o.id === 'skill:ojo_impostor')).toBe(false);
+    expect(world.chooseSteal('h', 'skill:bola_fuego')).toBe(true);
+    expect(ladron.skills.bola_fuego.level).toBe(3);
+    // Copying from a door never opened opens it a crack: fire was closed for a stealth thief.
+    expect(ladron.affinities.fuego?.points).toBe(1);
   });
 
   it('un monstruo que mata a un jugador sube de nivel', () => {
