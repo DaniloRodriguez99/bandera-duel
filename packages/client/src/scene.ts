@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { ELEMENT_COLORS, ELEMENT_CORES, hex } from '@bandera/shared/rpg/colors';
 import { Settlement, drawAltar, drawProp, drawSettlementGround } from './village';
+import { MONSTER_DISPLAY, MONSTER_ORIGIN_Y, makeMonsterTextures, monsterTexture } from './monsters';
 import {
   RULES,
   MOB_STATS,
@@ -187,6 +188,7 @@ export class Arena extends Phaser.Scene {
     for (const b of preview) this.drawPlayer(newPlayer(`preview-${b.team}`, '', b.team), false, 0);
   }
   private makeTextures() {
+    makeMonsterTextures(this);
     for (const team of TEAMS)
       for (const classId of CLASS_IDS)
         for (let frame = 0; frame < 2; frame++) {
@@ -1742,12 +1744,14 @@ export class Arena extends Phaser.Scene {
     const scale = MOB_FAMILY_SCALE[family] * (1 + Math.min(0.35, (z.level - 1) * 0.012));
     const bob = moving ? Math.abs(Math.sin(time * (family === 'espiritu_ceniza' ? 0.02 : 0.012) + z.slot)) * 2 : 0;
     const hover = family === 'espiritu_ceniza' ? Math.sin(time * 0.006 + z.slot) * 4 - 6 : 0;
+    const painted = scale * MONSTER_DISPLAY;
     v.body
       .setTexture(texture)
-      .setPosition(v.x, v.y + bob + hover + rising * 12)
+      .setOrigin(0.5, MONSTER_ORIGIN_Y)
+      .setPosition(v.x, v.y + 6 + bob + hover + rising * 12)
       .setFlipX(Math.cos(z.angle) < 0)
-      .setAngle(z.skill ? Math.sin(time * 0.05) * 6 : moving ? Math.sin(time * 0.01 + z.slot) * 4 : 0)
-      .setScale(scale, scale * (1 - rising * 0.75))
+      .setAngle(z.skill ? Math.sin(time * 0.05) * 6 : moving ? Math.sin(time * 0.01 + z.slot) * 3 : 0)
+      .setScale(painted, painted * (1 - rising * 0.75))
       .setAlpha(Math.min(1, z.life / 1.5) * (1 - rising * 0.45));
     const color = z.skill ? Phaser.Display.Color.HexStringToColor(z.skill.color).color : 0xffffff;
     if (z.frozenLeft > 0) v.body.setTint(0x9fe8ff);
@@ -1838,7 +1842,7 @@ export class Arena extends Phaser.Scene {
       : Math.sin(time * 0.003 + z.slot) * 2;
     const frame = moving ? Math.floor((time + z.slot * 90) / 170) % 2 : 0;
     const texture = z.family
-      ? `mob-${z.family}-${frame}`
+      ? monsterTexture(z.family, z.level, frame)
       : z.kind === 'hat'
         ? `${z.team}-hat-${frame}`
         : z.kind === 'thrall'
