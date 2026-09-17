@@ -1,4 +1,6 @@
+import { matchMaker } from '@colyseus/core';
 import { createServer } from './app.js';
+import { watchIdle } from './idle.js';
 import { createShutdown } from './store/shutdown.js';
 import { WorldRoom, characterStore } from './world-room.js';
 const server = createServer();
@@ -14,6 +16,17 @@ const shutdown = createShutdown({
   store: characterStore,
   deadline: DEADLINE_MS,
 });
+// Where the platform wakes the server on the next request (Cloud Run), an empty server turns off.
+const idleSeconds = Number(process.env.IDLE_SHUTDOWN_SECONDS);
+if (idleSeconds > 0)
+  watchIdle({
+    clients: () => matchMaker.stats.local.ccu,
+    idleMs: idleSeconds * 1000,
+    onIdle: () => {
+      console.info(JSON.stringify({ event: 'idle-shutdown', seconds: idleSeconds }));
+      void shutdown().then((ok) => process.exit(ok ? 0 : 1));
+    },
+  });
 for (const signal of ['SIGINT', 'SIGTERM'] as const)
   // `on`, not `once`: a second signal must not fall through to Node's default and kill the process
   // mid-write. It joins the shutdown already running instead.

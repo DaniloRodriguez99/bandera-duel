@@ -3,7 +3,7 @@ import { Client, type Room as ClientRoom } from '@colyseus/sdk';
 import { WebSocket } from 'ws';
 import { matchMaker } from '@colyseus/core';
 import { createServer } from '../packages/server/src/app.js';
-import { characterStore, type WorldRoom } from '../packages/server/src/world-room.js';
+import { WorldRoom, characterStore } from '../packages/server/src/world-room.js';
 import type { Character } from '@bandera/shared/world';
 import type { Snapshot } from '@bandera/shared';
 
@@ -275,6 +275,38 @@ describe('sala del mundo', () => {
     expect(bosque.damage(pb, bosque.state.players.find((p) => p.id === 'rival-a')!, 0, 999)).toBe(true);
     await until(() => b.system.some((n) => n.kind === 'death') && (b.sheet?.xp ?? 100) < 100);
     expect(a.system.some((n) => n.kind === 'kill')).toBe(true);
+  });
+
+  it('quien pasa quieto el tiempo de inactividad queda afuera, avisado y guardado; moverse lo evita', async () => {
+    const antes = WorldRoom.idleSeconds;
+    WorldRoom.idleSeconds = 1.5;
+    try {
+      const quieto = await connect({ account: 'Quieto', password: 'quieto12', create: true, characterId: 'quieto-1', name: 'Quieto', classId: 'guardian' });
+      const activo = await connect({ account: 'Activo', password: 'activo12', create: true, characterId: 'activo-1', name: 'Activo', classId: 'guardian' });
+      let avisado: { seconds: number } | null = null;
+      let afuera = false;
+      quieto.room.onMessage('idle', (m: { seconds: number }) => (avisado = m));
+      quieto.room.onLeave(() => (afuera = true));
+      await until(() => quieto.entered !== null && activo.entered !== null);
+      const valle = zoneWorld(quieto.room.roomId, 'umbral');
+      zoneWorld(quieto.room.roomId, 'umbral').grantXp('quieto-1', 500);
+      let seq = 0;
+      const paso = setInterval(() => activo.room.send('input', { seq: ++seq, x: seq % 2 ? 1 : -1, y: 0, angle: 0, aimX: 0, aimY: 0 }), 100);
+      try {
+        await until(() => afuera, 5000);
+        // Past another check of the idle clock: the one moving must still be there.
+        await sleep(1500);
+      } finally {
+        clearInterval(paso);
+      }
+      expect(avisado).toEqual({ seconds: 1.5 });
+      expect(valle.state.players.some((p) => p.id === 'quieto-1')).toBe(false);
+      expect(valle.state.players.some((p) => p.id === 'activo-1')).toBe(true);
+      const cuenta = await characterStore().verify('Quieto', 'quieto12');
+      expect((await characterStore().load(cuenta!, 'quieto-1'))!.level).toBeGreaterThan(1);
+    } finally {
+      WorldRoom.idleSeconds = antes;
+    }
   });
 
   it('la sala de duelo sigue funcionando igual al lado', async () => {

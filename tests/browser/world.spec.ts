@@ -92,3 +92,38 @@ test('entra al mundo: nace en el vacío blanco, aparece en el valle y el Sistema
   await expect(page.locator('#wh-panel')).toBeHidden();
   expect(errors).toEqual([]);
 });
+
+test('quien se queda quieto queda afuera con su personaje guardado, y vuelve con un clic', async ({ page }) => {
+  test.setTimeout(90000);
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  await page.goto('/');
+  await page.locator('#game-mode').selectOption('world');
+  await page.locator('#name').fill('Quieto');
+  await page.locator('#world-user').fill(`quieto${Date.now().toString(36).slice(-6)}`);
+  await page.locator('#world-pass').fill('mundo123');
+  await page.locator('#world-new').check();
+  await page.locator('#enter').click();
+  await page.locator('#world-create').click();
+  for (const affinity of ['fuerza', 'fuerza', 'destreza']) await page.locator(`[data-affinity=${affinity}]`).click();
+  await page.locator('#wh-born').click();
+  await expect(page.locator('#world-hud')).toBeVisible({ timeout: 15000 });
+  await expect(page.locator('#stage')).toHaveAttribute('data-x', /\d+/, { timeout: 15000 });
+
+  // The Playwright server disconnects after 12 s without moving (60 s in production).
+  await expect(page.locator('#overlay-title')).toHaveText('Te desconectamos por inactividad', { timeout: 30000 });
+  await expect(page.locator('#world-hud')).toBeHidden();
+  await page.screenshot({ path: test.info().outputPath('inactivo.png') });
+
+  await page.locator('#world-return').click();
+  await expect(page.locator('#overlay')).toBeHidden({ timeout: 15000 });
+  await expect(page.locator('#world-hud')).toBeVisible();
+  await expect(page.locator('#stage')).toHaveAttribute('data-zone', 'umbral');
+  // Moving again works: the connection is live, not a leftover screen.
+  const x = Number(await page.locator('#stage').getAttribute('data-x'));
+  await page.keyboard.down('KeyD');
+  await page.waitForTimeout(1500);
+  await page.keyboard.up('KeyD');
+  await expect.poll(async () => Number(await page.locator('#stage').getAttribute('data-x'))).toBeGreaterThan(x + 100);
+  expect(errors).toEqual([]);
+});

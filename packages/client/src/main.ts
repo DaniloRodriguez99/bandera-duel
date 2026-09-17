@@ -66,7 +66,7 @@ document.querySelector('#app')!.innerHTML = `
 <div id="stage" class="stage"><section id="pve-rewards" class="pve-rewards" hidden><header><span id="reward-wave"></span><b id="reward-time"></b></header><p>Elegí una recompensa. Si el tiempo termina, no recibirás ninguna.</p><div id="reward-cards"></div></section><label id="room-perspective-choice" hidden>PERSPECTIVA<select id="room-perspective"></select></label><div id="game"></div><div id="abilities" class="abilities" hidden aria-label="Habilidades"></div><div class="preview-tag" id="preview-tag">HASTA CUATRO ESTANDARTES. UNA SOLA GLORIA.</div>
 <button id="chat-toggle" class="chat-toggle" type="button" hidden aria-expanded="false" aria-controls="chat-panel"><span aria-hidden="true">◈</span><span class="chat-label">CHAT</span><b id="chat-unread" hidden></b></button>
 <aside id="chat-panel" class="chat-panel" hidden aria-label="Chat de sala"><header><div><span>CHAT DE SALA</span><small id="chat-players"></small></div><button id="chat-close" type="button" aria-label="Cerrar chat">×</button></header><ol id="chat-messages" role="log" aria-live="polite"></ol><p id="chat-status" role="status"></p><form id="chat-form"><input id="chat-input" maxlength="240" autocomplete="off" placeholder="Escribí un mensaje…" aria-label="Mensaje"><button id="chat-send" type="submit">Enviar</button></form></aside>
-<div id="overlay" class="overlay" hidden><div class="overlay-card"><span id="overlay-kicker" class="tiny">SALA</span><h2 id="overlay-title">Esperando jugadores</h2><p id="overlay-description"></p><p id="room-heading"></p><div id="roster" class="roster"></div><label id="team-choice" hidden>TU EQUIPO<select id="team-select"><option value="blue">Azul</option><option value="red">Carmesí</option></select></label><fieldset id="room-picker" class="class-picker compact"><legend>TU CLASE · PODÉS CAMBIAR ANTES DE JUGAR</legend><div id="room-classes" class="class-grid"></div></fieldset><p id="selection-status" role="status" hidden></p><div id="invitation"><label for="invite">LINK DE INVITACIÓN</label><div class="invite-row"><input id="invite" readonly aria-label="Link de invitación"><button id="copy" class="secondary">Copiar</button></div></div><button id="ready" class="primary">Estoy listo <span>⚔</span></button><button id="pve-start" class="primary" hidden>Comenzar expedición ↗</button><button id="leave" class="text-btn">Salir de la sala</button></div></div>
+<div id="overlay" class="overlay" hidden><div class="overlay-card"><span id="overlay-kicker" class="tiny">SALA</span><h2 id="overlay-title">Esperando jugadores</h2><p id="overlay-description"></p><p id="room-heading"></p><div id="roster" class="roster"></div><label id="team-choice" hidden>TU EQUIPO<select id="team-select"><option value="blue">Azul</option><option value="red">Carmesí</option></select></label><fieldset id="room-picker" class="class-picker compact"><legend>TU CLASE · PODÉS CAMBIAR ANTES DE JUGAR</legend><div id="room-classes" class="class-grid"></div></fieldset><p id="selection-status" role="status" hidden></p><div id="invitation"><label for="invite">LINK DE INVITACIÓN</label><div class="invite-row"><input id="invite" readonly aria-label="Link de invitación"><button id="copy" class="secondary">Copiar</button></div></div><button id="world-return" class="primary" type="button" hidden>Volver a entrar <span>↗</span></button><button id="ready" class="primary">Estoy listo <span>⚔</span></button><button id="pve-start" class="primary" hidden>Comenzar expedición ↗</button><button id="leave" class="text-btn">Salir de la sala</button></div></div>
 <div id="announcement" class="announcement" hidden aria-live="polite"></div>
 <div id="touch-controls"><div id="stick-move" class="stick" aria-label="Mover"><span></span><small>MOVER</small></div><div id="touch-actions" class="touch-actions" aria-label="Habilidades táctiles"></div></div></div>
 <div class="arena-bottom"><span id="arena-hint">Robá la bandera rival y traela a tu base. La tuya debe estar en casa.</span><div id="cooldowns" hidden><span id="health" aria-label="Vida"></span><span id="lives" aria-label="Muertes"></span><span id="stealth-state"></span><span id="cd-sword"></span><span id="cd-shot"></span><span id="cd-dash"></span><span id="cd-guard" hidden></span><span id="cd-trap" hidden></span><span id="cd-volley" hidden></span><span id="cd-summon" hidden></span></div><span class="corner-detail">◆ &nbsp; ✚ &nbsp; ▲ &nbsp; ●</span></div></section>
@@ -294,21 +294,34 @@ function setStatus(text: string, error = false) {
   $('status').textContent = text;
   $('status').classList.toggle('error', error);
 }
+/**
+ * Wakes the server before joining. With nobody playing it is turned off, so the first answer can
+ * take a few seconds; the message only appears if it does, so an awake server shows nothing.
+ */
 async function warmup() {
   const health = new URL(endpoint.replace(/^ws/, 'http'));
   health.pathname = '/health';
   const start = Date.now();
-  setStatus('Preparando servidor… El primer arranque puede tardar un minuto.');
-  while (Date.now() - start < 85000) {
-    try {
-      const res = await fetch(health, { signal: AbortSignal.timeout(6000) });
-      if (res.ok) return;
-    } catch {
-      /* Render may be asleep. */
+  const say = (text: string) => {
+    setStatus(text);
+    // Coming back from the overlay (after being idle), the entry form is hidden: speak there too.
+    if (!$('overlay').hidden) $('overlay-description').textContent = text;
+  };
+  const slow = setTimeout(() => say('Prendiendo el servidor… Si nadie estaba jugando, tarda unos segundos.'), 700);
+  try {
+    while (Date.now() - start < 85000) {
+      try {
+        const res = await fetch(health, { signal: AbortSignal.timeout(6000) });
+        if (res.ok) return;
+      } catch {
+        /* Still starting. */
+      }
+      await new Promise((r) => setTimeout(r, 1500));
     }
-    await new Promise((r) => setTimeout(r, 1500));
+    throw Error('El servidor no responde. Probá de nuevo en unos segundos.');
+  } finally {
+    clearTimeout(slow);
   }
-  throw Error('El servidor no responde. Probá de nuevo en unos segundos.');
 }
 let chatOpen = false;
 let chatUnread = 0;
@@ -505,6 +518,7 @@ function bind(joined: Room) {
   room.onMessage('characters', (list: WorldCharacterList) => showCharacters(list));
   room.onMessage('sheet', (sheet: Character) => showSheet(sheet));
   room.onMessage('system', (notice: Notice) => worldHud.notice(notice));
+  room.onMessage('idle', () => (idleKicked = true));
   room.onMessage('entered', ({ zoneId, characterId }: { zoneId: string; characterId: string }) => {
     worldCharacterId = characterId;
     $('overlay').hidden = true;
@@ -563,6 +577,22 @@ function bind(joined: Room) {
   room.onLeave(() => {
     online = false;
     sessionStorage.removeItem('bandera-token');
+    if (room === joined && idleKicked && worldCharacterId) {
+      // Not an ending: the character is saved where it stood, one click away.
+      arena.controls.enabled = false;
+      arena.controls.clear();
+      worldHud.hide();
+      $('overlay').hidden = false;
+      $('overlay-kicker').textContent = 'MUNDO';
+      $('overlay-title').textContent = 'Te desconectamos por inactividad';
+      $('overlay-description').textContent =
+        'Pasaste un minuto sin moverte. Tu personaje quedó guardado donde estaba.';
+      for (const id of ['ready', 'invitation', 'room-picker', 'roster', 'team-choice']) $(id).hidden = true;
+      $('world-return').hidden = false;
+      $('announcement').hidden = true;
+      $('connection-label').textContent = '● DESCONECTADO';
+      return;
+    }
     if (room === joined) {
       arena.controls.enabled = false;
       arena.controls.clear();
@@ -659,6 +689,8 @@ interface WorldCharacterList {
   max: number;
 }
 let chosenCharacter: string | null = null;
+/** Set when the world said we were idle, so the disconnection that follows is not a crash. */
+let idleKicked = false;
 /** The sparks and weapon placed in the Man-God's void, sent once with the new character. */
 let chosenCreation: Creation | null = null;
 /**
@@ -782,6 +814,14 @@ $('copy').onclick = async () => {
     $('copy').textContent = 'Seleccionado';
   }
   setTimeout(() => ($('copy').textContent = 'Copiar'), 1800);
+};
+$('world-return').onclick = () => {
+  // Same account fields, same character: just walk back in.
+  $('world-return').hidden = true;
+  idleKicked = false;
+  chosenCharacter = worldCharacterId;
+  chosenCreation = null;
+  $<HTMLButtonElement>('enter').click();
 };
 $('pve-start').onclick = () => {
   if (current?.phase === 'finished') room?.send('continuePve');

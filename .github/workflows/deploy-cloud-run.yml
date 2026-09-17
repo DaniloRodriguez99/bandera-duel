@@ -51,9 +51,11 @@ jobs:
           # characters over each other. No --min-instances on purpose: an always-on instance is
           # billed even when nobody plays. When the world empties it scales to zero, the shutdown
           # path saves everyone first, and zones repopulate from their data on the next start.
-          flags: --max-instances=1
+          # --timeout: Cloud Run cuts a request (a WebSocket included) after 5 minutes by default.
+          flags: --max-instances=1 --timeout=3600
           env_vars: |
             NODE_ENV=production
+            IDLE_SHUTDOWN_SECONDS=60
             ALLOWED_ORIGINS=${{ vars.ALLOWED_ORIGINS }}
 
       - name: Health check

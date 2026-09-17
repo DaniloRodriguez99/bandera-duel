@@ -14,6 +14,8 @@ export default defineConfig({
     {
       command: 'npm run start',
       url: 'http://127.0.0.1:2567/health',
+      // Short, so a spec can watch the world disconnect someone standing still.
+      env: { WORLD_IDLE_SECONDS: '12' },
       reuseExistingServer: !process.env.CI,
       timeout: 30000,
     },

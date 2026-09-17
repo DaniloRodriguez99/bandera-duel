@@ -33,6 +33,7 @@ const LEAVE_SCALE = 1.7;
 /** Everyone online is saved on this beat; travel, leaving and disposal save at once. */
 const SAVE_EVERY_SECONDS = 15;
 
+
 /**
  * The store outlives the room on purpose. It is the only thing meant to survive the process, so
  * it cannot be a room field: a disposed room, or a second one, would take every account and every
@@ -80,6 +81,15 @@ export class WorldRoom extends Room {
   /** Ids a client already knows about, so entities are not resent as new on every tick. */
   private known = new Map<string, Set<string>>();
   private saveClock = 0;
+  /**
+   * A character standing still this long is disconnected (and saved), so an idle tab cannot keep
+   * the server — and its bill — running. Choosing or creating a character gets more time.
+   */
+  static idleSeconds = Number(process.env.WORLD_IDLE_SECONDS) || 60;
+  static choosingIdleSeconds = 300;
+  /** Last time each connection did something: walked, struck, cast, learned. */
+  private lastActive = new Map<string, number>();
+  private touch = (client: Client) => this.lastActive.set(client.sessionId, Date.now());
 
   /** Every world room alive in this process, so shutdown can save them all before exiting. */
   private static live = new Set<WorldRoom>();
@@ -115,6 +125,8 @@ export class WorldRoom extends Room {
       if (!id) return;
       const input = sanitizeInput(message);
       if (!input) return;
+      // Only doing something counts; a mouse resting on the canvas still sends aim every tick.
+      if (input.x !== 0 || input.y !== 0 || input.sword || input.shot || input.charge) this.touch(client);
       const last = this.seen.get(id) ?? -1;
       if (input.seq <= last) return;
       this.seen.set(id, input.seq);
@@ -126,6 +138,7 @@ export class WorldRoom extends Room {
 
     this.onMessage('spendPoint', (client, message: unknown) => {
       const id = this.characterOf.get(client.sessionId);
+      this.touch(client);
       const stat = (message as { stat?: unknown })?.stat;
       if (!id || typeof stat !== 'string') return;
       if (this.worldOf(id)?.spendPoint(id, stat as never)) this.sendSheet(client, id);
@@ -134,6 +147,7 @@ export class WorldRoom extends Room {
     // A key pressed for a skill slot, aimed at a point of the world.
     this.onMessage('cast', (client, message: unknown) => {
       const id = this.characterOf.get(client.sessionId);
+      this.touch(client);
       const m = message as { slot?: unknown; aimX?: unknown; aimY?: unknown } | null;
       if (!id || !m || !CAST_SLOTS.includes(m.slot as CastSlot)) return;
       const x = Number(m.aimX);
@@ -144,6 +158,7 @@ export class WorldRoom extends Room {
 
     this.onMessage('learn', (client, message: unknown) => {
       const id = this.characterOf.get(client.sessionId);
+      this.touch(client);
       const m = message as { skillId?: unknown; nodeId?: unknown } | null;
       if (!id || typeof m?.skillId !== 'string' || typeof m.nodeId !== 'string') return;
       this.worldOf(id)?.learn(id, m.skillId, m.nodeId);
@@ -151,6 +166,7 @@ export class WorldRoom extends Room {
 
     this.onMessage('slot', (client, message: unknown) => {
       const id = this.characterOf.get(client.sessionId);
+      this.touch(client);
       const m = message as { slot?: unknown; skillId?: unknown } | null;
       if (!id || !CAST_SLOTS.includes(m?.slot as CastSlot)) return;
       const skillId = typeof m!.skillId === 'string' ? m!.skillId : null;
@@ -180,7 +196,9 @@ export class WorldRoom extends Room {
         world.step(inputs);
         this.drainBorders(world);
       }
-      if (this.tickCount() % 2 === 0) for (const client of this.clients) this.sendSnapshot(client);
+      const tick = this.tickCount();
+      if (tick % 2 === 0) for (const client of this.clients) this.sendSnapshot(client);
+      if (tick % 30 === 0) this.dropIdle();
       this.saveClock += RULES.tick;
       if (this.saveClock >= SAVE_EVERY_SECONDS) {
         this.saveClock = 0;
@@ -190,6 +208,20 @@ export class WorldRoom extends Room {
     }, 30);
     // Same reason as the duel room: disabling patches before the timer exists loses the clock.
     this.patchRate = null;
+  }
+
+  /** Says why, then disconnects; `onLeave` saves the character as for any other departure. */
+  private dropIdle() {
+    const now = Date.now();
+    for (const client of this.clients) {
+      const playing = this.characterOf.has(client.sessionId);
+      const seconds = playing ? WorldRoom.idleSeconds : Math.max(WorldRoom.idleSeconds, WorldRoom.choosingIdleSeconds);
+      const limit = seconds * 1000;
+      if (now - (this.lastActive.get(client.sessionId) ?? now) < limit) continue;
+      this.lastActive.delete(client.sessionId);
+      client.send('idle', { seconds });
+      client.leave(4000);
+    }
   }
 
   private ticks = 0;
@@ -271,6 +303,7 @@ export class WorldRoom extends Room {
 
   async onJoin(client: Client, options: Record<string, unknown>, auth: { account: AccountId }) {
     this.accounts.set(client.sessionId, auth.account);
+    this.touch(client);
     const saved = await store.listCharacters(auth.account);
     // Coming back with no character named means the client is still choosing one.
     const chosen = typeof options.characterId === 'string' ? options.characterId : null;
@@ -307,6 +340,7 @@ export class WorldRoom extends Room {
     const id = this.characterOf.get(client.sessionId);
     this.characterOf.delete(client.sessionId);
     this.accounts.delete(client.sessionId);
+    this.lastActive.delete(client.sessionId);
     this.known.delete(client.sessionId);
     if (!id) return;
     const world = this.worldOf(id);
