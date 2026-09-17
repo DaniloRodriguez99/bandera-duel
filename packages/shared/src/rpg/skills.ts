@@ -1,5 +1,7 @@
 import type { MobFamilyId } from './zones.js';
 import type { StatId, Stats } from './progression.js';
+import type { WeaponId } from './weapons.js';
+import { COMBO_SKILLS, comboId } from './combos.js';
 
 /**
  * The world's skills.
@@ -68,7 +70,24 @@ export type SkillEffect =
   | { kind: 'devour'; heal: number; radius: number }
   | { kind: 'steal'; range: number }
   /** Raises the character you killed, whose grave lies near, as a Sombra that fights for you. */
-  | { kind: 'raise' };
+  | { kind: 'raise' }
+  /**
+   * Pours the affinity into the weapon for a while: its blows deal `damage` more (a share) and
+   * carry what the element does. Built in rpg/combos.ts, one per weapon × affinity.
+   */
+  | {
+      kind: 'imbue';
+      element: Element;
+      duration: number;
+      damage: number;
+      stun?: number;
+      freeze?: number;
+      burn?: number;
+      drain?: number;
+      knock?: number;
+      backstab?: number;
+      holy?: number;
+    };
 
 /** What a node adds on top of the base effect when learned. All optional, all additive. */
 export interface NodeGrant {
@@ -86,6 +105,8 @@ export interface NodeGrant {
   drain?: number;
   pierce?: boolean;
   duration?: number;
+  /** Channels the skill's affinity into the weapon: teaches the combo of the weapon in hand. */
+  channel?: boolean;
 }
 
 export interface SkillNode {
@@ -116,6 +137,8 @@ export interface WorldSkill {
   id: string;
   name: string;
   school: SkillSchool;
+  /** A weapon × affinity combo: only castable with this weapon in hand. */
+  weapon?: WeaponId;
   rarity: Rarity;
   /** Its personality: one line, in its own voice. */
   flavor: string;
@@ -1105,6 +1128,26 @@ export const SKILLS_WORLD: Record<string, WorldSkill> = {
   },
 };
 
+/** Level at which an affinity skill offers to pour itself into the weapon. */
+export const CHANNEL_LEVEL = 3;
+
+Object.assign(SKILLS_WORLD, COMBO_SKILLS);
+// Every affinity skill can teach its affinity to the weapon: the tree half of "fate + tree".
+for (const skill of Object.values(SKILLS_WORLD)) {
+  if (skill.weapon || !AFFINITIES.includes(skill.school as Affinity)) continue;
+  skill.tree.push({
+    id: `${skill.id}:canalizar`,
+    name: 'Canalizar en el arma',
+    level: CHANNEL_LEVEL,
+    cost: 2,
+    text: 'Tu arma aprende esta afinidad: te enseña la habilidad que cruza el arma que tengas en la mano con este elemento.',
+    grants: { channel: true },
+  });
+}
+
+/** The combo a character would learn by channelling an affinity into the weapon in hand. */
+export const channelledCombo = (weapon: WeaponId, affinity: Affinity) => SKILLS_WORLD[comboId(weapon, affinity)];
+
 export interface Passive {
   id: string;
   name: string;
@@ -1199,14 +1242,16 @@ export interface DestinyChoice {
 }
 
 /**
- * How strongly fate leans towards a skill. The script: every spark in a skill's affinity pulls
- * hard, the weapon pulls a little, the body is always a possibility, and anything else keeps a
+ * How strongly fate leans towards a skill. The script: the combo of your weapon with an affinity
+ * you chose pulls hardest, every spark in a skill's affinity pulls hard, the weapon pulls a little, the body is always a possibility, and anything else keeps a
  * small chance, so a fire child with a staff usually gets fire and once in a while something
  * nobody expected.
  */
 export function destinyWeight(skill: WorldSkill, choice?: DestinyChoice) {
-  if (!choice) return 1;
+  if (!choice) return skill.weapon ? 0 : 1;
   const sparks = choice.sparks[skill.school as Affinity] ?? 0;
+  // A combo is the answer to "this weapon, this affinity": the stronger the affinity, the likelier.
+  if (skill.weapon) return skill.weapon === choice.weapon && sparks > 0 ? 7 * sparks + 4 : 0;
   const weapon = WEAPON_SCHOOLS[choice.weapon] ?? [];
   let weight = 0.25;
   if (sparks > 0) weight += 4 * sparks;
@@ -1219,7 +1264,9 @@ export function destinyWeight(skill: WorldSkill, choice?: DestinyChoice) {
 export function rollDestiny(random: () => number, choice?: DestinyChoice): { skillId: string; rarity: Rarity } {
   const r = random();
   const rarity: Exclude<Rarity, 'unica'> = r < 0.03 ? 'legendaria' : r < 0.13 ? 'epica' : r < 0.4 ? 'rara' : 'comun';
-  const pool = DESTINY_POOL[rarity];
+  // The combos of the chosen weapon join the common pool: long roads, like every common skill.
+  const combos = choice && rarity === 'comun' ? Object.values(COMBO_SKILLS).filter((c) => c.weapon === choice.weapon).map((c) => c.id) : [];
+  const pool = [...DESTINY_POOL[rarity], ...combos];
   const weights = pool.map((id) => destinyWeight(SKILLS_WORLD[id], choice));
   let roll = random() * weights.reduce((a, b) => a + b, 0);
   for (let i = 0; i < pool.length; i++) {
@@ -1429,6 +1476,53 @@ export const AFFINITY_NAMES: Record<Affinity, string> = {
   destreza: 'Destreza',
   sigilo: 'Sigilo',
 };
+
+const WEAPON_BLOWS: Record<WeaponId, string> = {
+  espada: 'tus espadazos',
+  baston: 'tus bastonazos y disparos',
+  arco: 'tus flechas',
+  daga: 'tus puñaladas',
+  escudo: 'tus mazazos',
+};
+
+const pct = (n: number) => `${Math.round(n * 100)} %`;
+const secs = (n: number) => `${Math.round(n * 10) / 10} s`;
+
+/** What a skill does, in one plain line of the System's voice, from its effect as the character has it. */
+export function describeEffect(skill: WorldSkill, effect: SkillEffect = skill.effect): string {
+  switch (effect.kind) {
+    case 'imbue': {
+      const parts = [`+${pct(effect.damage)} de daño`];
+      if (effect.stun) parts.push(`aturden ${secs(effect.stun)}`);
+      if (effect.freeze) parts.push(`congelan ${secs(effect.freeze)}`);
+      if (effect.burn) parts.push(`queman ${effect.burn} por segundo durante 3 s`);
+      if (effect.drain) parts.push(`te curan el ${pct(effect.drain)} de lo que pegan`);
+      if (effect.knock) parts.push('empujan');
+      if (effect.backstab) parts.push(`por la espalda, +${pct(effect.backstab)} más`);
+      if (effect.holy) parts.push(`a los no-muertos, +${pct(effect.holy)} más`);
+      const blows = skill.weapon ? WEAPON_BLOWS[skill.weapon] : 'tus golpes';
+      return `Durante ${secs(effect.duration)}, ${blows}: ${parts.join(', ')}. Cada golpe cargado entrena ${AFFINITY_NAMES[skill.school as Affinity] ?? 'la afinidad'}.`;
+    }
+    case 'bolt':
+      return `Proyectil de ${effect.damage.toFixed(1)} de daño${effect.pierce ? ' que atraviesa' : ''}${effect.freeze ? `, congela ${secs(effect.freeze)}` : ''}${effect.explode ? ', estalla al impactar' : ''}${effect.drain ? `, te cura el ${pct(effect.drain)}` : ''}.`;
+    case 'nova':
+      return `Golpea a todo lo que esté cerca: ${effect.damage.toFixed(1)} de daño${effect.freeze ? `, congela ${secs(effect.freeze)}` : ''}.`;
+    case 'heal':
+      return `Cura ${effect.amount.toFixed(1)} de vida a vos y a los aliados cerca.`;
+    case 'parry':
+      return `Durante ${secs(effect.window)} parás lo que llegue y lo devolvés ×${effect.reflect}.`;
+    case 'dash':
+      return `Un salto rápido hacia donde apuntás${effect.invulnerable ? ', intocable' : ''}.`;
+    case 'buff':
+      return `Durante ${secs(effect.duration)}: +${pct(effect.damage)} de daño y +${pct(effect.speed)} de velocidad.`;
+    case 'devour':
+      return `Devorás un cadáver cercano y recuperás ${effect.heal} de vida.`;
+    case 'steal':
+      return 'Gastás una carga para robarle a un monstruo su árbol y su pasiva.';
+    case 'raise':
+      return 'Levantás al que mataste como una Sombra que pelea para vos.';
+  }
+}
 
 /** What the System says when a closed school refuses a cast. */
 export function refusalFor(school: SkillSchool) {

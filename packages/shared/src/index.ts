@@ -631,6 +631,8 @@ export interface Player extends Vec {
   classId: ClassId;
   /** World only: how the bearer of its weapon looks, whatever engine class simulates it. */
   look?: string;
+  /** World only: the colour of the affinity the weapon carries right now, while imbued. */
+  imbue?: string;
   skinId: string;
   loadout: CharacterLoadout;
   profileRevision: number;
@@ -877,7 +879,8 @@ export interface GameEvent extends Vec {
     | 'mobSpawn'
     | 'mobAttack'
     | 'wave'
-    | 'upgrade';
+    | 'upgrade'
+    | 'imbue';
   team: Team;
   angle?: number;
   classId?: ClassId;
@@ -2176,6 +2179,10 @@ export class Duel {
     } else if (!options.pierce)
       translate(target, Math.cos(angle) * 24, Math.sin(angle) * 24, this.terrainFor(target));
     return true;
+  }
+  /** Reach, arc and damage of a player's swing. The world lets a weapon shape them; a match uses the class. */
+  protected meleeStats(p: Player): { meleeRange: number; meleeArc: number; meleeDamage: number; windup: number } {
+    return CLASSES[p.classId];
   }
   protected freeze(p: Player) {
     if (
@@ -3757,7 +3764,7 @@ export class Duel {
     }
     const hits: { target: Player; source: Player; angle: number; amount: number }[] = [];
     for (const p of swings) {
-      const stats = CLASSES[p.classId];
+      const stats = this.meleeStats(p);
       const power = p.swingPower,
         range = stats.meleeRange * (1 + 0.3 * power),
         arc = stats.meleeArc * (1 + 0.2 * power),

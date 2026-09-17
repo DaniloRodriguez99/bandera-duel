@@ -36,6 +36,22 @@ function glyphPaths(name) {
 }
 
 let written = 0;
+/** A combo: the weapon's glyph large, and the affinity's glyph in a badge over its corner. */
+function comboIcon(key, weaponGlyph, badgeGlyph, color) {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">` +
+    `<defs><radialGradient id="g" cx="50%" cy="35%" r="75%"><stop offset="0" stop-color="${shade(color, 1.15)}"/>` +
+    `<stop offset=".6" stop-color="${shade(color, 0.55)}"/><stop offset="1" stop-color="${shade(color, 0.22)}"/></radialGradient></defs>` +
+    `<rect width="512" height="512" rx="44" fill="#0a0806"/>` +
+    `<rect x="18" y="18" width="476" height="476" rx="34" fill="url(#g)"/>` +
+    `<rect x="18" y="18" width="476" height="476" rx="34" fill="none" stroke="${shade(color, 1.4)}" stroke-opacity=".55" stroke-width="10"/>` +
+    `<g transform="translate(46 86) scale(.68)" fill="#fff" stroke="#000" stroke-opacity=".45" stroke-width="18" paint-order="stroke">${glyphPaths(weaponGlyph)}</g>` +
+    `<circle cx="378" cy="134" r="104" fill="${shade(color, 0.35)}" stroke="${shade(color, 1.5)}" stroke-width="12"/>` +
+    `<g transform="translate(298 54) scale(.3125)" fill="${shade(color, 1.6)}">${glyphPaths(badgeGlyph)}</g>` +
+    `</svg>`;
+  writeFileSync(`${OUT}/${key}.svg`, svg);
+  written++;
+}
+
 function icon(key, glyph, color) {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">` +
     `<defs><radialGradient id="g" cx="50%" cy="35%" r="75%"><stop offset="0" stop-color="${shade(color, 1.15)}"/>` +
@@ -50,7 +66,17 @@ function icon(key, glyph, color) {
 }
 
 const affinityColor = (school) => AFFINITY_COLOR[school] ?? (school === 'monstruo' ? '#a05a4a' : '#9a8a70');
+const WEAPON_GLYPH = { espada: 'broadsword', baston: 'crescent-staff', arco: 'bow-arrow', daga: 'plain-dagger', escudo: 'spiked-shield' };
+const AFFINITY_BADGE = {
+  fuego: glyphs['el-fuego'], agua: glyphs['el-hielo'], tierra: glyphs['el-tierra'], viento: glyphs['el-viento'],
+  rayo: glyphs['el-rayo'], sombra: glyphs['el-sombra'], luz: glyphs['el-luz'],
+  fuerza: 'muscle-up', destreza: 'sprint', sigilo: 'cloak-dagger',
+};
 for (const skill of Object.values(SKILLS_WORLD)) {
+  if (skill.weapon) {
+    comboIcon(`skill-${skill.id}`, WEAPON_GLYPH[skill.weapon], AFFINITY_BADGE[skill.school], skill.color);
+    continue;
+  }
   const glyph = glyphs[skill.id];
   if (!glyph) throw new Error(`Sin glifo para la habilidad ${skill.id}`);
   icon(`skill-${skill.id}`, glyph, affinityColor(skill.school));

@@ -18,6 +18,7 @@ import {
   rankOf,
   skillName,
   usesToLevel,
+  describeEffect,
   type Affinity,
   type Rarity,
   type WorldSkill,
@@ -680,6 +681,7 @@ export class WorldHud {
         <span class="wh-meta">Nv ${progress.level}${maxed ? ' · máximo' : ''} · ${Math.ceil(effective.mana)} maná · ${effective.cooldown.toFixed(1)} s</span></div>
       </div>
       <div class="wh-progress" title="Usos hasta el próximo nivel"><i style="width:${maxed ? 100 : Math.min(100, (progress.uses / need) * 100)}%"></i></div>
+      <p class="wh-effect">${describeEffect(skill, effective.effect)}</p>
       <blockquote>${skill.flavor}</blockquote>
       ${skill.incantation ? `<p class="wh-chant">${skill.incantation}</p>` : ''}`;
     if (!withTree) return card;
@@ -1123,7 +1125,8 @@ export class WorldHud {
       <img src="${icon(skill.icon)}" alt="" aria-hidden="true">
       <h3>「${skill.name}」</h3>
       <span class="wh-rarity">${RARITY_NAMES[sheet.destiny.rarity]}</span>
-      <blockquote>${skill.flavor}</blockquote>`;
+      <blockquote>${skill.flavor}</blockquote>
+      <p class="wh-effect">${describeEffect(skill)}</p>`;
     this.root.append(card);
     setTimeout(() => card.classList.add('leaving'), 5200);
     setTimeout(() => card.remove(), 5800);

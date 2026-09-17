@@ -17,12 +17,15 @@ export interface WeaponProfile {
   attack: WeaponAttack;
   stat: StatId;
   look: WeaponLook;
+  /** A swing of its own, when the engine class's (an archer's backup knife) would not do it justice. */
+  melee?: { range: number; arc: number; damage: number };
 }
 
 export const WEAPON_PROFILE: Record<WeaponId, WeaponProfile> = {
   espada: { engineClass: 'guardian', attack: 'melee', stat: 'might', look: 'espadachin' },
   baston: { engineClass: 'mage', attack: 'spell', stat: 'spirit', look: 'mago' },
   arco: { engineClass: 'archer', attack: 'ranged', stat: 'agility', look: 'arquero' },
-  daga: { engineClass: 'archer', attack: 'melee', stat: 'agility', look: 'picaro' },
+  // Quick and close: twice the archer's knife in reach and bite, still the shortest blade there is.
+  daga: { engineClass: 'archer', attack: 'melee', stat: 'agility', look: 'picaro', melee: { range: 48, arc: Math.PI * 0.7, damage: 0.9 } },
   escudo: { engineClass: 'vanguard', attack: 'melee', stat: 'might', look: 'escudero' },
 };

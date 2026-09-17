@@ -840,7 +840,29 @@ export class Arena extends Phaser.Scene {
     });
   }
   private spellEffect(e: Snapshot['events'][number]) {
-    if (e.kind === 'explosion') {
+    if (e.kind === 'imbue') {
+      // An imbued weapon's blow: sparks of the affinity's colour, and a crackle over a stunned head.
+      const tint = e.color ? Phaser.Display.Color.HexStringToColor(e.color).color : 0xffe45c;
+      this.fade(this.add.circle(e.x, e.y - 4, 7).setStrokeStyle(2, tint, 0.95).setDepth(17), { scale: 3 }, 300);
+      for (let i = 0; i < 6; i++) {
+        const a = (e.angle ?? 0) + (i - 2.5) * 0.45;
+        const spark = this.add.graphics().setDepth(17);
+        spark.lineStyle(2, tint, 1);
+        spark.lineBetween(e.x, e.y - 4, e.x + Math.cos(a) * 9, e.y - 4 + Math.sin(a) * 9);
+        this.fade(spark, { x: Math.cos(a) * 14, y: Math.sin(a) * 14 }, 260);
+      }
+      if (e.power) {
+        const bolt = this.add.graphics().setDepth(18);
+        bolt.lineStyle(2, tint, 1);
+        bolt.beginPath();
+        bolt.moveTo(e.x - 8, e.y - 34);
+        [[-3, -28], [-6, -24], [2, -20], [-1, -16]].forEach(([dx, dy]) => bolt.lineTo(e.x + dx, e.y + dy));
+        bolt.moveTo(e.x + 8, e.y - 34);
+        [[4, -29], [8, -25], [2, -21]].forEach(([dx, dy]) => bolt.lineTo(e.x + dx, e.y + dy));
+        bolt.strokePath();
+        this.fade(bolt, { y: -4 }, 420);
+      }
+    } else if (e.kind === 'explosion') {
       const radius = RULES.explosionRadius * (0.6 + 0.4 * (e.power ?? 1));
       // A world skill brings its own colour: a lightning burst is not a fireball.
       const tint = e.color ? Phaser.Display.Color.HexStringToColor(e.color).color : 0xff7a2f;
@@ -951,11 +973,14 @@ export class Arena extends Phaser.Scene {
       this.fade(flash, { scaleX: 1.12, scaleY: 1.12 }, 220);
       this.fade(this.add.circle(e.x, e.y, 9, 0xffe5a0, 0.65).setDepth(17), { scale: 2.2 }, 190);
     } else if (e.kind === 'fury') {
-      this.fade(this.add.circle(e.x, e.y - 3, 17, 0x621522, 0.42).setDepth(9), { scale: 2.8 }, 520);
+      // A world skill brings its own colour: an electrified dagger is not a red rage.
+      const inner = e.color ? Phaser.Display.Color.HexStringToColor(e.color).darken(40).color : 0x621522;
+      const outer = e.color ? Phaser.Display.Color.HexStringToColor(e.color).color : 0xc83d43;
+      this.fade(this.add.circle(e.x, e.y - 3, 17, inner, 0.42).setDepth(9), { scale: 2.8 }, 520);
       this.fade(
         this.add
           .circle(e.x, e.y - 3, 18)
-          .setStrokeStyle(4, 0xc83d43, 0.85)
+          .setStrokeStyle(4, outer, 0.85)
           .setDepth(16),
         { scale: 3.2 },
         620,
@@ -964,7 +989,7 @@ export class Arena extends Phaser.Scene {
         const angle = (i * Math.PI) / 4;
         this.fade(
           this.add
-            .circle(e.x + Math.cos(angle) * 10, e.y + Math.sin(angle) * 10, 3, 0x9f2634, 0.8)
+            .circle(e.x + Math.cos(angle) * 10, e.y + Math.sin(angle) * 10, 3, e.color ? outer : 0x9f2634, 0.8)
             .setDepth(16),
           { x: e.x + Math.cos(angle) * 42, y: e.y + Math.sin(angle) * 42 - 8 },
           500,
@@ -1514,6 +1539,18 @@ export class Arena extends Phaser.Scene {
     w.clear();
     w.setPosition(v.x, v.y);
     w.setRotation(p.angle);
+    if (p.hp > 0 && p.imbue) {
+      // The weapon carries an affinity: a glow and a crackle along the blade, in its colour.
+      const tint = Phaser.Display.Color.HexStringToColor(p.imbue).color;
+      const reach = hand === 'dagger' ? 27 : hand === 'bow' || hand === 'shield' ? 24 : 34;
+      w.fillStyle(tint, 0.22 + 0.12 * Math.sin(time * 0.02));
+      w.fillCircle(reach * 0.65, 0, 10);
+      w.lineStyle(2, tint, 0.95);
+      w.beginPath();
+      w.moveTo(10, 0);
+      for (let i = 1; i <= 5; i++) w.lineTo(10 + ((reach - 10) * i) / 5, Math.sin(time * 0.05 + i * 2.3) * 4);
+      w.strokePath();
+    }
     if (p.hp > 0) {
       if (hand === 'dagger') {
         // A short blade held low: it lunges forward while the strike winds up.

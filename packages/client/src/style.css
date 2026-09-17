@@ -1331,6 +1331,7 @@ body.world-mode #clock-note{color:#7fd6ff;letter-spacing:3px}
 .wh-skill>header{color:var(--rarity)}
 .wh-progress{height:4px;background:#020a16;border:1px solid #1e3a55}.wh-progress i{display:block;height:100%;background:linear-gradient(90deg,var(--sys-dim),var(--sys))}
 .wh-skill blockquote{margin:0;padding-left:8px;border-left:2px solid var(--element);font-style:italic;font-size:11px;line-height:1.45;color:#e3eef6}
+.wh-effect{margin:0;font-size:11px;line-height:1.45;color:#cfe6f5}
 .wh-chant{margin:0;font-size:9px;font-style:italic;color:#8fb4cc}
 .wh-chant::before{content:'Conjuro · ';font-style:normal;letter-spacing:1px;color:#5d8aa8}
 

@@ -49,6 +49,7 @@ import {
   SILENT_CAST_RANK,
   SKILLS_WORLD,
   SURF_RANK,
+  channelledCombo,
   TOUKI_RANK,
   canSurf,
   primaryElement,
@@ -117,6 +118,21 @@ const CORPSE_LIFE = 20;
 const DRAIN_WINDOW = 1.2;
 /** A child who runs their mana dry widens their channels, at most this often. */
 const WIDENING_EVERY = 30;
+/** Seconds a fiery or bleeding imbued blow keeps hurting. */
+const BURN_TIME = 3;
+/** An imbued weapon cultivates its affinity at most once in this many seconds of blows. */
+const IMBUE_GROW_EVERY = 0.6;
+/** Families that light and consecrated weapons hurt twice. */
+const UNDEAD = new Set(['ghoul', 'esqueleto', 'nigromante']);
+/** How the System names the weapon a combo lives in. */
+const WEAPON_ARTICLE: Record<Character['weapon'], string> = {
+  espada: 'una espada',
+  baston: 'un bastón',
+  arco: 'un arco',
+  daga: 'una daga',
+  escudo: 'un escudo y maza',
+};
+type Imbue = Extract<SkillEffect, { kind: 'imbue' }>;
 
 export interface Travel {
   id: string;
@@ -267,6 +283,12 @@ export class World extends Duel {
   private parries = new Map<string, { left: number; reflect: number }>();
   private buffs = new Map<string, { left: number; damage: number; speed: number }>();
   private drains = new Map<string, { left: number; share: number }>();
+  /** Weapons carrying an affinity for a while, by character. */
+  private imbues = new Map<string, { left: number; skill: WorldSkill; effect: Imbue; grown: number }>();
+  /** Burns left by fiery or bleeding blows, by target (character or monster). */
+  private burns = new Map<string, { left: number; dps: number; tick: number; by: string }>();
+  /** True while an imbue's own side effects resolve, so a burn or a push is never imbued again. */
+  private pouring = false;
   private widened = new Map<string, number>();
 
   constructor(zoneId: ZoneId = DEFAULT_ZONE) {
@@ -485,6 +507,8 @@ export class World extends Duel {
     this.parries.delete(id);
     this.buffs.delete(id);
     this.drains.delete(id);
+    this.imbues.delete(id);
+    this.burns.delete(id);
     this.opening.delete(id);
     this.poisons.delete(id);
     for (const key of this.lootWarned) if (key.startsWith(`${id}|`)) this.lootWarned.delete(key);
@@ -558,8 +582,24 @@ export class World extends Duel {
     progress.nodes.push(nodeId);
     character.skillPoints -= node.cost;
     this.notify(id, { kind: 'learn', title: `Aprendiste «${node.name}»`, text: node.text, color: skill.color, skillId });
+    if (node.grants.channel) this.channel(id, character, skill.school as Affinity);
     this.sheetChanged.add(id);
     return check;
+  }
+
+  /** Pours an affinity into the weapon in hand: the character learns that crossing's combo. */
+  private channel(id: string, character: Character, affinity: Affinity) {
+    const combo = channelledCombo(character.weapon, affinity);
+    if (!combo || character.skills[combo.id]) return;
+    character.skills[combo.id] = { level: 1, uses: 0, nodes: [] };
+    this.notify(id, {
+      kind: 'learn',
+      title: `Tu ${WEAPONS[character.weapon].name.toLowerCase()} aprendió «${combo.name}»`,
+      text: combo.flavor,
+      color: combo.color,
+      rarity: combo.rarity,
+      skillId: combo.id,
+    });
   }
 
   private cooldownKey = (id: string, skillId: string) => `${id}:${skillId}`;
@@ -575,6 +615,14 @@ export class World extends Duel {
     const buff = this.buffs.get(id)?.damage ?? 0;
     const touki = MARTIAL.some((a) => rankOf(character.affinities[a]?.xp ?? 0) >= TOUKI_RANK) ? 0.15 : 0;
     return (1 + buff + this.bonusesOf(character).damage + touki) * this.attributeScale(character, this.castingSchool);
+  }
+
+  /** A weapon with a swing of its own swings it; otherwise the engine class's. */
+  protected override meleeStats(p: Player) {
+    const character = this.characters.get(p.id);
+    const melee = character ? WEAPON_PROFILE[character.weapon].melee : undefined;
+    const base = super.meleeStats(p);
+    return melee ? { ...base, meleeRange: melee.range, meleeArc: melee.arc, meleeDamage: melee.damage } : base;
   }
 
   /** The school of the skill resolving right now; undefined means the blow is the weapon's. */
@@ -680,7 +728,14 @@ export class World extends Duel {
         else map.set(key, left - dt);
       }
     }
-    for (const map of [this.parries, this.buffs, this.drains] as Map<string, { left: number }>[]) {
+    for (const imbue of this.imbues.values()) imbue.grown -= dt;
+    for (const [id, imbue] of this.imbues) {
+      if (imbue.left - dt > 0) continue;
+      const p = this.state.players.find((q) => q.id === id);
+      if (p) delete p.imbue;
+    }
+    this.stepBurns(dt);
+    for (const map of [this.parries, this.buffs, this.drains, this.imbues] as Map<string, { left: number }>[]) {
       for (const [key, value] of map) {
         value.left -= dt;
         if (value.left <= 0) map.delete(key);
@@ -764,6 +819,8 @@ export class World extends Duel {
 
   /** Skills that need something to act on refuse before spending anything. */
   private precheck(p: Player, character: Character, skill: WorldSkill): string | null {
+    if (skill.weapon && skill.weapon !== character.weapon)
+      return `Esa habilidad vive en ${WEAPON_ARTICLE[skill.weapon]}. Con esto en la mano no responde.`;
     if (skill.effect.kind === 'raise') {
       const s = this.state;
       if (p.raiseCast > 0 || this.raising.has(p.id)) return 'Ya estás alzando a alguien.';
@@ -903,6 +960,96 @@ export class World extends Duel {
         this.raise(p, { x: p.x + Math.cos(angle) * 26, y: p.y + Math.sin(angle) * 26 });
         return;
       }
+      case 'imbue': {
+        this.imbues.set(p.id, { left: effect.duration, skill, effect, grown: 0 });
+        p.imbue = skill.color;
+        this.event('fury', p, p.team, p.angle, p.classId);
+        this.state.events.at(-1)!.color = skill.color;
+        return;
+      }
+    }
+  }
+
+  // ─── Imbued weapons ───────────────────────────────────────────────────────────────────────────
+
+  /** The imbue shaping a blow a character deals right now — only a weapon's blow, never a spell's. */
+  private imbueFor(id: string | undefined) {
+    if (!id || this.castingSchool !== undefined || this.pouring || this.reflecting) return undefined;
+    return this.imbues.get(id);
+  }
+
+  /** A blow's amount once the weapon carries an affinity: from behind, or on the undead, more. */
+  private imbued(imbue: { effect: Imbue }, target: { angle: number; family?: string }, angle: number, amount: number) {
+    let share = imbue.effect.damage;
+    if (imbue.effect.backstab && Math.cos(target.angle - angle) > 0.5) share += imbue.effect.backstab;
+    if (imbue.effect.holy && target.family && UNDEAD.has(target.family)) share += imbue.effect.holy;
+    return amount * (1 + share);
+  }
+
+  /** What an imbued blow leaves behind once it landed: the element's effect, and a use of the affinity. */
+  private pour(attackerId: string, target: Player | Zombie, angle: number, dealt: number) {
+    const imbue = this.imbues.get(attackerId);
+    const attacker = this.state.players.find((q) => q.id === attackerId);
+    const character = this.characters.get(attackerId);
+    if (!imbue || !attacker || !character) return;
+    const e = imbue.effect;
+    const monster = 'family' in target && !!(target as Zombie).family;
+    this.pouring = true;
+    try {
+      if (target.hp > 0) {
+        if (e.stun) {
+          if (monster) (target as Zombie).frozenLeft = Math.max((target as Zombie).frozenLeft, e.stun);
+          else {
+            const q = target as Player;
+            q.stunLeft = Math.max(q.stunLeft, e.stun);
+            q.windup = 0;
+            q.shotCharge = 0;
+          }
+        }
+        if (e.freeze) {
+          if (monster) (target as Zombie).frozenLeft = Math.max((target as Zombie).frozenLeft, e.freeze);
+          else this.freeze(target as Player);
+          this.event('freeze', target, target.team);
+        }
+        if (e.burn) this.burns.set(target.id, { left: BURN_TIME, dps: e.burn, tick: 1, by: attackerId });
+        if (e.knock) translate(target, Math.cos(angle) * e.knock, Math.sin(angle) * e.knock, monster ? this.terrain : this.terrainFor(target as Player));
+      }
+      if (e.drain) attacker.hp = Math.min(attacker.maxHp, attacker.hp + dealt * e.drain);
+      this.event('imbue', target, attacker.team, angle, attacker.classId, e.stun || e.freeze ? 1 : 0);
+      this.state.events.at(-1)!.color = imbue.skill.color;
+      // Each imbued blow is a use of the affinity, at most one every short while.
+      if (imbue.grown <= 0) {
+        imbue.grown = IMBUE_GROW_EVERY;
+        this.grow(attacker, character, imbue.skill);
+      }
+    } finally {
+      this.pouring = false;
+    }
+  }
+
+  private stepBurns(dt: number) {
+    for (const [id, burn] of this.burns) {
+      const attacker = this.state.players.find((q) => q.id === burn.by);
+      const player = this.state.players.find((q) => q.id === id);
+      const monster = player ? undefined : this.state.zombies.find((z) => z.id === id);
+      const target = player ?? monster;
+      if (!attacker || !target || target.hp <= 0) {
+        this.burns.delete(id);
+        continue;
+      }
+      burn.left -= dt;
+      burn.tick -= dt;
+      if (burn.tick <= 0) {
+        burn.tick += 1;
+        this.pouring = true;
+        try {
+          if (player) this.damage(player, attacker, 0, burn.dps, { ignoreInvuln: true, pierce: true });
+          else this.damageZombie(monster!, attacker.team, burn.dps, undefined, attacker.id);
+        } finally {
+          this.pouring = false;
+        }
+      }
+      if (burn.left <= 0) this.burns.delete(id);
     }
   }
 
@@ -1095,13 +1242,16 @@ export class World extends Duel {
     const caster = (source as Partial<Player>).id;
     const howl = striker.family && striker.id ? (this.mobBuffs.get(striker.id)?.damage ?? 0) : 0;
     const attacker = caster ? this.characters.get(caster) : undefined;
+    const imbue = attacker && amount > 0 ? this.imbueFor(caster) : undefined;
+    const base = imbue ? this.imbued(imbue, target, angle, amount) : amount;
     const crit = !!attacker && this.random() < this.critChance(attacker);
-    const scaled = attacker ? amount * this.damageMultiplier(caster!) * (crit ? CRIT_MULTIPLIER : 1) : amount * (1 + howl);
+    const scaled = attacker ? base * this.damageMultiplier(caster!) * (crit ? CRIT_MULTIPLIER : 1) : amount * (1 + howl);
     const alive = target.hp > 0;
     const landed = super.damage(target, source, angle, scaled, options);
     // A blow that lands takes the hands off the chest.
     if (landed) this.opening.delete(target.id);
     if (landed && caster) this.heal(caster, scaled);
+    if (landed && imbue && alive) this.pour(caster!, target, angle, scaled);
     if (landed && alive && target.hp <= 0) this.onDeath(target, source);
     return landed;
   }
@@ -1193,9 +1343,14 @@ export class World extends Duel {
   override damageZombie(z: Zombie, team: Team, amount = 1, angle?: number, by?: string) {
     const alive = z.hp > 0;
     const credit = this.creditFor(z, by);
-    const scaled = credit.own && credit.killer ? amount * this.damageMultiplier(credit.killer.id) : amount;
+    const own = credit.own && credit.killer ? credit.killer : undefined;
+    const imbue = own && amount > 0 && alive ? this.imbueFor(own.id) : undefined;
+    const towards = angle ?? (own ? Math.atan2(z.y - own.y, z.x - own.x) : 0);
+    const base = imbue ? this.imbued(imbue, z, towards, amount) : amount;
+    const scaled = own ? base * this.damageMultiplier(own.id) : amount;
     super.damageZombie(z, team, scaled, angle, by);
-    if (credit.own && credit.killer && alive) this.heal(credit.killer.id, scaled);
+    if (own && alive) this.heal(own.id, scaled);
+    if (imbue && own) this.pour(own.id, z, towards, scaled);
     if (!alive || z.hp > 0 || !z.family) return;
     this.corpses.push({ x: z.x, y: z.y, left: CORPSE_LIFE });
     const killer = credit.killer ?? (by === undefined ? this.nearestRival(z, Infinity) : undefined);

@@ -120,7 +120,8 @@ const GRIMOIRE_LEVEL: Record<Rarity, number> = { comun: 1, rara: 1, epica: 8, le
 function grimoires(): Record<string, Def> {
   const out: Record<string, Def> = {};
   for (const skill of Object.values(SKILLS_WORLD)) {
-    if (skill.school === 'monstruo' || skill.effect.kind === 'steal') continue;
+    // Combos are not read: they are channelled, from a skill's tree or from fate.
+    if (skill.school === 'monstruo' || skill.effect.kind === 'steal' || skill.weapon) continue;
     out[`grimorio:${skill.id}`] = {
       name: `Grimorio: ${skill.name}`,
       kind: 'grimorio',
