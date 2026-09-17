@@ -629,6 +629,8 @@ export interface Player extends Vec {
   name: string;
   team: Team;
   classId: ClassId;
+  /** World only: how the bearer of its weapon looks, whatever engine class simulates it. */
+  look?: string;
   skinId: string;
   loadout: CharacterLoadout;
   profileRevision: number;

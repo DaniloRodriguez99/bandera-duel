@@ -3,6 +3,7 @@ import { DEFAULT_ZONE, zone, type ZoneId } from './zones.js';
 import { BASE_STATS, type Stats } from './progression.js';
 import { AFFINITIES, SKILLS_WORLD, type Affinity, type AffinityState, type Rarity, type SkillProgress } from './skills.js';
 import { STARTER_WEAPON, type Equipment, type ItemInstance } from './items.js';
+import { WEAPON_PROFILE, type WeaponId } from './weapons.js';
 
 /**
  * A character of the persistent world: what is saved, how it is born, and how its input is shaped.
@@ -12,14 +13,15 @@ import { STARTER_WEAPON, type Equipment, type ItemInstance } from './items.js';
  * the sword — and the sword trains Might, not fire — until a node imbues the blade.
  */
 
-export type Weapon = 'espada' | 'baston' | 'arco' | 'daga' | 'escudo';
+export type Weapon = WeaponId;
 
+/** Names and voice of each weapon; the engine class comes from its profile, never typed twice. */
 export const WEAPONS: Record<Weapon, { name: string; classId: ClassId; channel: 'marcial' | 'arcano'; text: string }> = {
-  espada: { name: 'Espada', classId: 'guardian', channel: 'marcial', text: 'Equilibrada. Abre los tres estilos de espada.' },
-  baston: { name: 'Bastón', classId: 'mage', channel: 'arcano', text: '+10 % de daño mágico. Sin afinidad, es un palo.' },
-  arco: { name: 'Arco', classId: 'archer', channel: 'marcial', text: 'Distancia. Castiga al que se acerca mal.' },
-  daga: { name: 'Daga', classId: 'archer', channel: 'marcial', text: 'Rápida y cercana. La mejor amiga del sigilo.' },
-  escudo: { name: 'Escudo y maza', classId: 'vanguard', channel: 'marcial', text: 'Lento y pesado. El camino más resistente.' },
+  espada: { name: 'Espada', classId: WEAPON_PROFILE.espada.engineClass, channel: 'marcial', text: 'Equilibrada. Abre los tres estilos de espada.' },
+  baston: { name: 'Bastón', classId: WEAPON_PROFILE.baston.engineClass, channel: 'arcano', text: '+10 % de daño mágico. Sin afinidad, es un palo.' },
+  arco: { name: 'Arco', classId: WEAPON_PROFILE.arco.engineClass, channel: 'marcial', text: 'Distancia. Castiga al que se acerca mal.' },
+  daga: { name: 'Daga', classId: WEAPON_PROFILE.daga.engineClass, channel: 'marcial', text: 'Rápida y cercana. La mejor amiga del sigilo.' },
+  escudo: { name: 'Escudo y maza', classId: WEAPON_PROFILE.escudo.engineClass, channel: 'marcial', text: 'Lento y pesado. El camino más resistente.' },
 };
 export const WEAPON_IDS = Object.keys(WEAPONS) as Weapon[];
 

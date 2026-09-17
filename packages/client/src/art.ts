@@ -1,5 +1,6 @@
 import { MAGE_SKINS, type ClassId, type MobKind } from '@bandera/shared';
 import type { MobFamilyId } from '@bandera/shared/rpg/zones';
+import type { WeaponLook } from '@bandera/shared/rpg/weapons';
 // Original pixel matrices: 0 outline, 1 steel, 2 shadow, 3 cloth, 4 highlight,
 // 5 leather, 6 blade, 7 skin, 8 boots. Shared by class cards and in-game sprites.
 export const CLASS_ART: Record<ClassId, string[]> = {
@@ -159,4 +160,25 @@ export const MOB_FAMILY_SCALE: Record<MobFamilyId, number> = {
   sapo: 1.15,
   esqueleto: 1,
   nigromante: 1.15,
+};
+
+/** A hooded rogue with a scarf over the face (2): the dagger is drawn in the hand, not in the sprite. */
+export const ROGUE_ART: string[] = [".....3333.......", "....333333......", "...33333333.....", "...33277233.....", "....327723......", "....022220......", "...33333333.....", "..3335555333....", "..7333555337....", "..77335553377...", "...33322333.....", "....332233......", "....332233......", "....55..55......", "....55..55......", "....88..88......"];
+
+/** Each weapon's bearer, whatever engine class simulates it. */
+export const LOOK_ART: Record<WeaponLook, string[]> = {
+  espadachin: CLASS_ART.vanguard,
+  mago: CLASS_ART.mage,
+  arquero: CLASS_ART.archer,
+  picaro: ROGUE_ART,
+  escudero: CLASS_ART.guardian,
+};
+
+/** Which hand-weapon drawing each look uses. */
+export const LOOK_WEAPON: Record<WeaponLook, 'sword' | 'staff' | 'bow' | 'dagger' | 'shield'> = {
+  espadachin: 'sword',
+  mago: 'staff',
+  arquero: 'bow',
+  picaro: 'dagger',
+  escudero: 'shield',
 };

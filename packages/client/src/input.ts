@@ -43,6 +43,11 @@ export class Controls {
    * slot. Null in every match, where the keys keep meaning what they always meant.
    */
   onCast: ((slot: 'e' | 'q' | 'space') => void) | null = null;
+  /**
+   * World only: what the equipped weapon's click is. A dagger aims a short cone, not the line of
+   * the archer class that simulates it. Null in matches, where the class decides.
+   */
+  attackKind: 'melee' | 'ranged' | 'spell' | null = null;
   classId: ClassId = DEFAULT_CLASS;
   bindings = { ...DEFAULT_BINDINGS[DEFAULT_CLASS] };
   loadout = { ...DEFAULT_LOADOUTS[DEFAULT_CLASS] };
@@ -76,7 +81,8 @@ export class Controls {
   get targetingAbility(): string | null {
     const touches = [...this.gestures.values()];
     if (touches.length) return touches.at(-1)!.slot.id;
-    if (this.chargeSources.has('mouse')) return primaryAbility(this.classId);
+    if (this.chargeSources.has('mouse'))
+      return this.attackKind ? (this.attackKind === 'melee' ? 'sword' : 'shot') : primaryAbility(this.classId);
     if (this.specialSources.has('key')) return CLASSES[this.classId].summon ? 'summon' : 'dash';
     if (this.guardSources.has('mouse')) return this.classId === 'mage' ? 'magic-shield' : 'guard';
     if (this.counterSources.has('key')) return 'counter';

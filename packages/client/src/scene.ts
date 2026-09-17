@@ -57,10 +57,13 @@ import {
   mageSkinArt,
   MOB_FAMILY_ART,
   MOB_FAMILY_SCALE,
+  LOOK_ART,
+  LOOK_WEAPON,
   mobFamilyPalette,
 } from './art.js';
 import { MOB_FAMILIES, formName } from '@bandera/shared/rpg/mobs';
 import type { MobFamilyId } from '@bandera/shared/rpg/zones';
+import type { WeaponLook } from '@bandera/shared/rpg/weapons';
 
 const GOLD = 0xf3ce86;
 const COLORS: Record<Team, number> = {
@@ -194,6 +197,17 @@ export class Arena extends Phaser.Scene {
             palette: palette(CLOTH[team], LIGHT[team]) as Phaser.Types.Create.Palette,
           });
         }
+    // World bearers: one sprite per weapon look, recoloured per team like the duel classes.
+    for (const team of TEAMS)
+      for (const look of Object.keys(LOOK_ART) as WeaponLook[])
+        for (let frame = 0; frame < 2; frame++)
+          this.textures.generate(`${team}-look-${look}-${frame}`, {
+            data: LOOK_ART[look].map((row, i) =>
+              frame === 1 && i >= 13 ? row.slice(0, 3) + row.slice(3, 13).split('').reverse().join('') + row.slice(13) : row,
+            ),
+            pixelWidth: 2,
+            palette: palette(CLOTH[team], LIGHT[team]) as Phaser.Types.Create.Palette,
+          });
     for (const team of TEAMS)
       for (const skin of MAGE_SKINS)
         for (let frame=0;frame<2;frame++) {
@@ -1423,7 +1437,26 @@ export class Arena extends Phaser.Scene {
     }
   }
   private drawPlayer(p: Player, local: boolean, time: number, delta = 16.67) {
-    const texture=(frame:number)=>p.classId==='mage'&&MAGE_SKINS.some(s=>s.id===p.skinId)?`${p.team}-mage-${p.skinId}-${frame}`:`${p.team}-${p.classId}-${frame}`;
+    const look = p.look as WeaponLook | undefined;
+    const texture = (frame: number) =>
+      look && LOOK_ART[look]
+        ? `${p.team}-look-${look}-${frame}`
+        : p.classId === 'mage' && MAGE_SKINS.some((s) => s.id === p.skinId)
+          ? `${p.team}-mage-${p.skinId}-${frame}`
+          : `${p.team}-${p.classId}-${frame}`;
+    // What is in the hand follows the weapon's look in the world, and the class in a match.
+    const hand =
+      look && LOOK_WEAPON[look]
+        ? LOOK_WEAPON[look]
+        : p.classId === 'archer'
+          ? 'bow'
+          : p.classId === 'necromancer'
+            ? 'skull'
+            : p.classId === 'mage'
+              ? 'staff'
+              : p.classId === 'guardian'
+                ? 'shield'
+                : 'sword';
     let v = this.visuals.get(p.id);
     if (!v) {
       v = {
@@ -1482,7 +1515,19 @@ export class Arena extends Phaser.Scene {
     w.setPosition(v.x, v.y);
     w.setRotation(p.angle);
     if (p.hp > 0) {
-      if (p.classId === 'archer') {
+      if (hand === 'dagger') {
+        // A short blade held low: it lunges forward while the strike winds up.
+        const wind = p.windup > 0 ? Math.min(1, p.windup / Math.max(0.01, stats.windup)) : 0;
+        const lunge = 6 * (1 - wind) * (p.windup > 0 ? 1 : 0);
+        w.fillStyle(0x3a2e22);
+        w.fillRect(6 + lunge, -2, 6, 4);
+        w.fillStyle(GOLD);
+        w.fillRect(11 + lunge, -5, 2, 10);
+        w.fillStyle(0xe3e5d5);
+        w.fillTriangle(13 + lunge, -2.5, 13 + lunge, 2.5, 26 + lunge, 0);
+        w.lineStyle(1, 0x9aa3ab);
+        w.lineBetween(14 + lunge, 0, 24 + lunge, 0);
+      } else if (hand === 'bow') {
         const charge = Math.min(1, Math.max(0, p.shotCharge / RULES.chargeTime));
         w.lineStyle(2, GOLD);
         w.beginPath();
@@ -1503,7 +1548,7 @@ export class Arena extends Phaser.Scene {
           w.fillStyle(0xe3e5d5);
           w.fillRect(12, -2, 14, 3);
         }
-      } else if (p.classId === 'necromancer') {
+      } else if (hand === 'skull') {
         w.lineStyle(3, 0x4a3a2b);
         w.lineBetween(6, 4, 28, -2);
         w.fillStyle(0xe8e2c8);
@@ -1515,7 +1560,7 @@ export class Arena extends Phaser.Scene {
           w.lineStyle(2, 0xa070e0, 0.7);
           w.strokeCircle(29, -3, 9);
         }
-      } else if (p.classId === 'mage') {
+      } else if (hand === 'staff') {
         w.lineStyle(4, 0x796452);
         w.lineBetween(8, 0, 30, 0);
         w.fillStyle(0x8edcff);
@@ -1530,12 +1575,13 @@ export class Arena extends Phaser.Scene {
         const wind = p.windup > 0 ? Math.min(1, p.windup / stats.windup) : 0;
         w.setRotation(p.angle - wind * 0.9);
         w.fillStyle(0xe3e5d5);
-        w.fillRect(11, -2, p.classId === 'vanguard' ? 43 : 23, p.classId === 'vanguard' ? 5 : 3);
+        const long = hand === 'sword' && (look === 'espadachin' || p.classId === 'vanguard');
+        w.fillRect(11, -2, long ? 43 : 23, long ? 5 : 3);
         w.fillStyle(GOLD);
         w.fillRect(12, -7, 3, 14);
         w.fillStyle(0x77634b);
         w.fillRect(6, -2, 7, 4);
-        if (p.classId === 'guardian') {
+        if (hand === 'shield') {
           w.setRotation(p.angle);
           w.fillStyle(p.guarding ? GOLD : 0x738b86);
           w.fillPoints(

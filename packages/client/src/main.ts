@@ -43,6 +43,7 @@ import { loadMageCustomization, mountMageCustomization } from './customization.j
 import { UPGRADE_META, UPGRADE_ORDER } from './pve-upgrades.js';
 import { WorldHud, hitogamiSvg } from './isekai-hud.js';
 import { canSurf } from '@bandera/shared/rpg/skills';
+import { WEAPON_PROFILE } from '@bandera/shared/rpg/weapons';
 import { zone, type ZoneId } from '@bandera/shared/rpg/zones';
 import type { CastSlot, Character, ChestView, Creation, Notice } from '@bandera/shared/world';
 
@@ -824,6 +825,7 @@ function showSheet(sheet: Character) {
   worldHud.setSheet(sheet);
   arena.weapon = sheet.weapon;
   arena.surfer = canSurf(sheet.affinities);
+  if (arena.controls) arena.controls.attackKind = WEAPON_PROFILE[sheet.weapon].attack;
   const stage = $('stage');
   stage.dataset.level = String(sheet.level);
   stage.dataset.xp = String(sheet.xp);
@@ -832,6 +834,7 @@ function showSheet(sheet: Character) {
   stage.dataset.skillPoints = String(sheet.skillPoints);
   stage.dataset.bag = String(sheet.inventory.length);
   stage.dataset.weaponItem = sheet.equipment.weapon.itemId;
+  stage.dataset.look = WEAPON_PROFILE[sheet.weapon].look;
 }
 
 $('new-instead').onclick = () => {

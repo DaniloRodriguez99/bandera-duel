@@ -29,6 +29,7 @@ import {
 import { DEFAULT_ZONE, ZONES, zone, type Spawner, type ZoneDefinition, type ZoneId } from './rpg/zones.js';
 import { MOB_FAMILIES, formName, mobStats, xpFor, type MobSkill } from './rpg/mobs.js';
 import { worldTerrain } from './rpg/terrain.js';
+import { WEAPON_PROFILE } from './rpg/weapons.js';
 import {
   BASE_STATS,
   POINTS_PER_LEVEL,
@@ -212,14 +213,6 @@ export const ATTRIBUTE_STEP = 0.06;
 export const CRIT_STEP = 0.03;
 export const CRIT_MULTIPLIER = 1.5;
 
-/** The attribute each weapon's plain attack grows with. */
-const WEAPON_STAT: Record<Character['weapon'], StatId> = {
-  espada: 'might',
-  escudo: 'might',
-  arco: 'agility',
-  daga: 'agility',
-  baston: 'spirit',
-};
 
 /** How close a character must stand to a chest to open it. */
 export const CHEST_REACH = 44;
@@ -421,6 +414,7 @@ export class World extends Duel {
   private applyCharacter(p: Player, character: Character) {
     const bonus = this.bonusesOf(character);
     p.level = character.level;
+    p.look = WEAPON_PROFILE[character.weapon].look;
     p.maxHp = Math.round(maxHpFor(statsWithEquipment(character)) * (1 + bonus.maxHp) * 10) / 10;
     p.hp = Math.min(p.hp > 0 ? p.hp : p.maxHp, p.maxHp);
     p.maxMana = this.maxManaOf(character);
@@ -594,7 +588,7 @@ export class World extends Duel {
     const stats = statsWithEquipment(character);
     const stat: StatId =
       school === undefined
-        ? WEAPON_STAT[character.weapon]
+        ? WEAPON_PROFILE[character.weapon].stat
         : ARCANE.includes(school as Affinity)
           ? 'spirit'
           : school === 'destreza' || school === 'sigilo'
