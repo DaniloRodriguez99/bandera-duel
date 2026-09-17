@@ -39,6 +39,34 @@ describe('habilidades del mundo', () => {
     }
   });
 
+  it('el destino sigue un guion: las chispas y el arma pesan, pero queda lugar para la sorpresa', () => {
+    let seed = 12345;
+    const random = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 2 ** 32);
+    const elegido = { sparks: { agua: 1, viento: 1, fuerza: 1 }, weapon: 'espada' };
+    const escuelas = new Map<string, number>();
+    const N = 4000;
+    for (let i = 0; i < N; i++) {
+      const school = SKILLS_WORLD[rollDestiny(random, elegido).skillId].school;
+      escuelas.set(school, (escuelas.get(school) ?? 0) + 1);
+    }
+    const propias = ['agua', 'viento', 'fuerza'].reduce((sum, a) => sum + (escuelas.get(a) ?? 0), 0);
+    expect(propias / N).toBeGreaterThan(0.65);
+    // The parry is a body skill: possible, never the likely answer to water, wind and strength.
+    expect((escuelas.get('cuerpo') ?? 0) / N).toBeLessThan(0.12);
+    const ajenas = [...escuelas].filter(([school]) => !['agua', 'viento', 'fuerza', 'cuerpo', 'destreza'].includes(school));
+    expect(ajenas.reduce((sum, [, n]) => sum + n, 0)).toBeGreaterThan(0);
+
+    const fuego = { sparks: { fuego: 3 }, weapon: 'baston' };
+    let deFuego = 0;
+    for (let i = 0; i < N; i++) if (SKILLS_WORLD[rollDestiny(random, fuego).skillId].school === 'fuego') deFuego++;
+    expect(deFuego / N).toBeGreaterThan(0.6);
+  });
+
+  it('cada afinidad tiene al menos una habilidad común con la que nacer', () => {
+    for (const affinity of ['fuego', 'agua', 'tierra', 'viento', 'rayo', 'sombra', 'luz', 'fuerza', 'destreza', 'sigilo'])
+      expect(DESTINY_POOL.comun.some((id) => SKILLS_WORLD[id].school === affinity), affinity).toBe(true);
+  });
+
   it('el destino nunca reparte árboles de monstruo', () => {
     for (const pool of Object.values(DESTINY_POOL))
       for (const id of pool) {

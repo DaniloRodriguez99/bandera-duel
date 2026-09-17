@@ -381,7 +381,7 @@ export class WorldRoom extends Room {
       const name = validName(options.name) ?? 'Alguien';
       // The dice are thrown here, on the server: a fated skill cannot be rerolled from a browser.
       const creation = validCreation(options.creation) ? options.creation : undefined;
-      const destiny = creation ? rollDestiny(Math.random) : undefined;
+      const destiny = creation ? rollDestiny(Math.random, creation) : undefined;
       character = newCharacter(chosen, auth.account, name, classId, creation, destiny);
       await store.createCharacter(auth.account, character);
     }

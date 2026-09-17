@@ -2,6 +2,8 @@ import type { Player } from '@bandera/shared';
 import {
   AFFINITIES,
   AFFINITY_NAMES,
+  AFFINITY_TEXT,
+  STAT_TEXT,
   ARCANE,
   MONSTER_TREES,
   RANKS,
@@ -99,6 +101,47 @@ const AFFINITY_COLOR: Record<Affinity, string> = {
 };
 
 const icon = (name: string) => `/assets/skills/${name}.png`;
+
+/**
+ * The Man-God as the books draw him: a slim, featureless white figure standing in the white void,
+ * his face hidden behind a flickering mosaic nobody can see through.
+ */
+export const hitogamiSvg = (key: string) => {
+  // Each copy owns its gradient and filter ids: a url(#id) resolving to a copy inside a hidden
+  // section paints nothing, which left the figure invisible in the birth screen.
+  let seed = 7;
+  const next = () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648);
+  const greys = ['#eef1f7', '#d6dce7', '#bcc5d4', '#a3adbf', '#8c97ab', '#e2e6ee'];
+  const tiles: string[] = [];
+  for (let row = 0; row < 8; row++)
+    for (let col = 0; col < 8; col++)
+      tiles.push(
+        `<rect class="mz" x="${44 + col * 4}" y="${17 + row * 4}" width="4" height="4" fill="${greys[Math.floor(next() * greys.length)]}" style="animation-delay:-${(next() * 1.6).toFixed(2)}s"/>`,
+      );
+  return `<svg class="hitogami" viewBox="0 0 120 200" role="img" aria-label="Hitogami">
+    <defs>
+      <radialGradient id="hg-glow"><stop offset="0" stop-color="#ffffff" stop-opacity=".95"/><stop offset=".55" stop-color="#dfe7f7" stop-opacity=".35"/><stop offset="1" stop-color="#dfe7f7" stop-opacity="0"/></radialGradient>
+      <clipPath id="hg-face"><circle cx="60" cy="33" r="15"/></clipPath>
+      <radialGradient id="hg-halo"><stop offset="0" stop-color="#c7d2e8" stop-opacity=".9"/><stop offset=".7" stop-color="#dfe6f3" stop-opacity=".45"/><stop offset="1" stop-color="#eef2f9" stop-opacity="0"/></radialGradient>
+      <linearGradient id="hg-body" x1="0" x2="1"><stop offset="0" stop-color="#e3e9f4"/><stop offset=".45" stop-color="#ffffff"/><stop offset="1" stop-color="#d7dfee"/></linearGradient>
+      <filter id="hg-soft" x="-40%" y="-40%" width="180%" height="180%"><feDropShadow dx="0" dy="2" stdDeviation="3.5" flood-color="#6c7fa6" flood-opacity=".75"/></filter>
+    </defs>
+    <ellipse cx="60" cy="96" rx="56" ry="92" fill="url(#hg-halo)"/>
+    <ellipse cx="60" cy="104" rx="58" ry="98" fill="url(#hg-glow)" opacity=".6"/>
+    <ellipse cx="60" cy="194" rx="30" ry="4" fill="#8c97ab" opacity=".35"/>
+    <g filter="url(#hg-soft)" fill="url(#hg-body)" stroke="#aeb9cf" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M45 62 Q34 90 36 121" fill="none" stroke="#aeb9cf" stroke-width="8.5"/>
+      <path d="M45 62 Q34 90 36 121" fill="none" stroke="#f7f9fd" stroke-width="6.5"/>
+      <path d="M75 62 Q86 90 84 121" fill="none" stroke="#aeb9cf" stroke-width="8.5"/>
+      <path d="M75 62 Q86 90 84 121" fill="none" stroke="#f7f9fd" stroke-width="6.5"/>
+      <rect x="55" y="45" width="10" height="11" rx="3"/>
+      <path d="M44 58 Q60 51 76 58 L73 112 Q66 119 60 117 Q54 119 47 112 Z"/>
+      <path d="M49 108 L47 192 L57 192 L60 134 L63 192 L73 192 L71 108 Z"/>
+      <circle cx="60" cy="33" r="15"/>
+    </g>
+    <g clip-path="url(#hg-face)">${tiles.join('')}</g>
+  </svg>`.replace(/hg-(glow|face|soft|halo|body)/g, `hg-${key}-$1`);
+};
 const el = <K extends keyof HTMLElementTagNameMap>(tag: K, className = '', text = '') => {
   const node = document.createElement(tag);
   if (className) node.className = className;
@@ -442,7 +485,9 @@ export class WorldHud {
     status.append(el('h5', '', `Atributos · ${sheet.unspent} por repartir`));
     for (const stat of STAT_IDS) {
       const row = el('div', 'wh-attribute');
-      row.append(el('span', '', STAT_NAMES[stat]), el('b', '', String(sheet.stats[stat])));
+      const label = el('span', '', STAT_NAMES[stat]);
+      label.append(el('small', '', STAT_TEXT[stat]));
+      row.append(label, el('b', '', String(sheet.stats[stat])));
       const plus = el('button', '', '+') as HTMLButtonElement;
       plus.type = 'button';
       plus.disabled = sheet.unspent <= 0;
@@ -458,6 +503,7 @@ export class WorldHud {
       if (!state) continue;
       const row = el('div', 'wh-affinity');
       row.style.setProperty('--element', AFFINITY_COLOR[affinity]);
+      row.title = AFFINITY_TEXT[affinity];
       row.append(el('span', '', AFFINITY_NAMES[affinity]), el('b', '', RANKS[rankOf(state.xp)]), el('small', '', '◆'.repeat(state.points)));
       affinities.append(row);
     }
@@ -721,13 +767,16 @@ export class WorldHud {
     this.creation.hidden = false;
     this.creation.innerHTML = `
       <div class="wh-birth" role="dialog" aria-label="Nacer">
-        <p class="wh-god">Una figura pequeña y blanca te sonríe como un viejo amigo.</p>
+        <div class="wh-hitogami">${hitogamiSvg('birth')}</div>
+        <p class="wh-god">Una figura blanca, sin rostro, te habla como un viejo amigo.</p>
         <h2>「Bienvenido a Aldrath.」</h2>
         <p class="wh-god-line">No, no soy tu dios. No tengo nada para darte. Solo vine a mirar.</p>
         <h5>Chispas de afinidad <b id="wh-sparks"></b></h5>
         <div class="wh-sparks" id="wh-spark-grid"></div>
         <h5>Tu arma</h5>
         <div class="wh-weapons" id="wh-weapon-grid"></div>
+        <h5>Atributos <b>crecen al subir de nivel</b></h5>
+        <dl class="wh-stat-legend">${STAT_IDS.map((stat) => `<div><dt>${STAT_NAMES[stat]}</dt><dd>${STAT_TEXT[stat]}</dd></div>`).join('')}</dl>
         <p class="wh-fate">La habilidad del destino se decide al nacer. Nadie la elige: ni vos, ni él.</p>
         <button type="button" id="wh-born" class="wh-born" disabled>Nacer ↗</button>
       </div>`;
@@ -749,7 +798,8 @@ export class WorldHud {
       chip.type = 'button';
       chip.dataset.affinity = affinity;
       chip.style.setProperty('--element', AFFINITY_COLOR[affinity]);
-      chip.innerHTML = `<b>${AFFINITY_NAMES[affinity]}</b><span class="count"></span>`;
+      chip.innerHTML = `<b>${AFFINITY_NAMES[affinity]}</b><span class="count"></span><small>${AFFINITY_TEXT[affinity]}</small>`;
+      chip.title = AFFINITY_TEXT[affinity];
       // Click adds a spark; right click takes one back.
       chip.onclick = () => {
         if (left() > 0) sparks[affinity] = (sparks[affinity] ?? 0) + 1;

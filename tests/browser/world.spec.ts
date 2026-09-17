@@ -5,17 +5,18 @@ test('entra al mundo: nace en el vacío blanco, aparece en el valle y el Sistema
   page.on('pageerror', (error) => errors.push(error.message));
   await page.goto('/');
 
-  await page.locator('#game-mode').selectOption('world');
-  // Choosing the world must not hide the mode selector, and the button must stop saying "duel".
-  await expect(page.locator('#game-mode')).toBeVisible();
-  await expect(page.locator('#enter')).toHaveText(/mundo/i);
+  // The world is not a match format: it has its own gate, not an option in the duel's list.
+  await expect(page.locator('#game-mode option[value=world]')).toHaveCount(0);
+  await expect(page.locator('#world-form')).toBeHidden();
+  await page.locator('#world-gate').screenshot({ path: test.info().outputPath('0-puerta.png') });
+  await page.locator('#world-open').click();
   await expect(page.locator('#world-account')).toBeVisible();
 
-  await page.locator('#name').fill('Noor');
+  await page.locator('#world-name').fill('Noor');
   await page.locator('#world-user').fill(`visual${Date.now().toString(36).slice(-6)}`);
   await page.locator('#world-pass').fill('mundo123');
   await page.locator('#world-new').check();
-  await page.locator('#enter').click();
+  await page.locator('#world-enter').click();
 
   // No character named yet: the server answers with the (empty) list and the create button.
   await expect(page.locator('#world-create')).toBeVisible({ timeout: 15000 });
@@ -98,12 +99,12 @@ test('quien se queda quieto queda afuera con su personaje guardado, y vuelve con
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
   await page.goto('/');
-  await page.locator('#game-mode').selectOption('world');
-  await page.locator('#name').fill('Quieto');
+  await page.locator('#world-open').click();
+  await page.locator('#world-name').fill('Quieto');
   await page.locator('#world-user').fill(`quieto${Date.now().toString(36).slice(-6)}`);
   await page.locator('#world-pass').fill('mundo123');
   await page.locator('#world-new').check();
-  await page.locator('#enter').click();
+  await page.locator('#world-enter').click();
   await page.locator('#world-create').click();
   for (const affinity of ['fuerza', 'fuerza', 'destreza']) await page.locator(`[data-affinity=${affinity}]`).click();
   await page.locator('#wh-born').click();
@@ -132,12 +133,12 @@ test('el Sistema muestra el equipo puesto, la bolsa y lo que da un cofre', async
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
   await page.goto('/');
-  await page.locator('#game-mode').selectOption('world');
-  await page.locator('#name').fill('Armero');
+  await page.locator('#world-open').click();
+  await page.locator('#world-name').fill('Armero');
   await page.locator('#world-user').fill(`armero${Date.now().toString(36).slice(-6)}`);
   await page.locator('#world-pass').fill('mundo123');
   await page.locator('#world-new').check();
-  await page.locator('#enter').click();
+  await page.locator('#world-enter').click();
   await page.locator('#world-create').click();
   for (const affinity of ['fuego', 'fuego', 'agua']) await page.locator(`[data-affinity=${affinity}]`).click();
   await page.locator('[data-weapon=baston]').click();

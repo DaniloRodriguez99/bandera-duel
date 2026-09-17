@@ -1395,6 +1395,7 @@ body.world-mode #clock-note{color:#7fd6ff;letter-spacing:3px}
 .wh-side h5:first-child{margin-top:0}
 .wh-attribute,.wh-affinity{display:grid;grid-template-columns:1fr auto auto;align-items:center;gap:6px;padding:3px 0;font-size:11px;border-bottom:1px solid #1a3450}
 .wh-attribute b{font:700 14px 'Barlow Condensed',Impact,sans-serif;color:#fff}
+.wh-attribute span{display:grid}.wh-attribute span small{font-size:8px;color:#6e93ad}
 .wh-attribute button{width:22px;height:22px;padding:0;border:1px solid #ffd76a88;background:#1f1a08;color:#ffd76a;cursor:pointer}
 .wh-attribute button:disabled{opacity:.25;cursor:default}
 .wh-affinity span{color:var(--element);text-shadow:0 0 6px color-mix(in srgb,var(--element) 40%,transparent)}
@@ -1474,18 +1475,26 @@ body.world-mode #clock-note{color:#7fd6ff;letter-spacing:3px}
 /* El vacío blanco del Hitogami */
 .wh-creation{position:fixed;inset:0;z-index:120;display:grid;place-items:center;overflow:auto;padding:16px;color:#1b2333;background:radial-gradient(circle at 50% 38%,#fff 0,#f1f3f8 38%,#d3d9e4 100%);animation:whFade .8s reverse}
 .wh-birth{width:min(700px,100%);display:grid;justify-items:center;gap:8px;text-align:center}
-.wh-birth::before{content:'';width:62px;height:96px;background:radial-gradient(ellipse at 50% 20%,#fff 0 17%,transparent 18%),radial-gradient(ellipse at 50% 68%,#fff 0 33%,transparent 34%);filter:blur(3px) drop-shadow(0 0 16px #8ea6cf) drop-shadow(0 0 2px #b8c6de);animation:whFloat 3.2s ease-in-out infinite}
+.wh-hitogami{width:clamp(96px,11vw,150px);animation:whFloat 3.6s ease-in-out infinite}
+.hitogami{display:block;width:100%;height:auto;overflow:visible}
+.hitogami .mz{animation:whMosaic 1.6s steps(1) infinite}
+@keyframes whMosaic{0%{opacity:1}33%{opacity:.55}66%{opacity:.85}}
 .wh-god{margin:0;font-size:12px;color:#6a7488}
 .wh-birth h2{margin:0;font:800 italic clamp(26px,4vw,40px) 'Barlow Condensed',Impact,sans-serif;color:#0f1729}
 .wh-god-line{margin:0 0 6px;font-style:italic;color:#3c465b}
 .wh-birth h5{margin:8px 0 2px;font:700 10px 'DM Sans',sans-serif;letter-spacing:3px;color:#56617a}
 .wh-birth h5 b{margin-left:6px;color:#0f1729}
 .wh-sparks{width:100%;display:grid;grid-template-columns:repeat(5,1fr);gap:6px}
-.wh-spark{--element:#888;display:grid;gap:2px;padding:8px 4px;border:1px solid #c7cfdc;border-bottom:3px solid var(--element);background:#ffffffcc;color:#1b2333;cursor:pointer;transition:transform .12s,box-shadow .2s}
+.wh-spark{--element:#888;display:grid;align-content:start;gap:2px;padding:8px 5px;border:1px solid #c7cfdc;border-bottom:3px solid var(--element);background:#ffffffcc;color:#1b2333;cursor:pointer;transition:transform .12s,box-shadow .2s}
 .wh-spark:hover{transform:translateY(-2px)}
 .wh-spark b{font:700 14px 'Barlow Condensed',Impact,sans-serif;letter-spacing:.5px}
 .wh-spark .count{font-size:11px;letter-spacing:2px;color:color-mix(in srgb,var(--element) 70%,#1b2333)}
+.wh-spark small{font-size:9px;line-height:1.3;color:#5b6479}
 .wh-spark.corporal{background:#f6f2eacc}
+.wh-stat-legend{width:100%;margin:0;display:grid;grid-template-columns:repeat(5,1fr);gap:6px}
+.wh-stat-legend div{padding:5px 6px;border:1px solid #d3d9e4;background:#ffffff99;text-align:center}
+.wh-stat-legend dt{font:700 13px 'Barlow Condensed',Impact,sans-serif;color:#1b2333}
+.wh-stat-legend dd{margin:0;font-size:9px;line-height:1.3;color:#5b6479}
 .wh-spark[data-count='1']{box-shadow:0 0 12px color-mix(in srgb,var(--element) 60%,transparent)}
 .wh-spark[data-count='2']{box-shadow:0 0 20px color-mix(in srgb,var(--element) 80%,transparent)}
 .wh-spark[data-count='3']{box-shadow:0 0 30px var(--element),inset 0 0 14px color-mix(in srgb,var(--element) 40%,transparent)}
@@ -1517,5 +1526,36 @@ body.world-mode #clock-note{color:#7fd6ff;letter-spacing:3px}
 @keyframes whGlow{50%{box-shadow:0 0 0 1px #02060e,0 0 70px var(--rarity),inset 0 0 40px color-mix(in srgb,var(--rarity) 30%,transparent)}}
 @keyframes whFade{to{opacity:0}}
 @keyframes whFloat{50%{transform:translateY(-6px)}}
-@media(max-width:760px){.wh-panel{position:fixed;inset:8px;z-index:130}.wh-panel-body{grid-template-columns:1fr}.wh-side{border-right:0;border-bottom:1px solid #63d9ff33}.wh-sparks,.wh-weapons{grid-template-columns:repeat(3,1fr)}.wh-notices{top:52px;width:min(230px,52%)}.wh-status{width:clamp(140px,34%,200px);padding:5px 7px}}
+@media(max-width:760px){.wh-stat-legend{grid-template-columns:repeat(2,1fr)}.wh-panel{position:fixed;inset:8px;z-index:130}.wh-panel-body{grid-template-columns:1fr}.wh-side{border-right:0;border-bottom:1px solid #63d9ff33}.wh-sparks,.wh-weapons{grid-template-columns:repeat(3,1fr)}.wh-notices{top:52px;width:min(230px,52%)}.wh-status{width:clamp(140px,34%,200px);padding:5px 7px}}
 @media(prefers-reduced-motion:reduce){.world-hud *,.wh-creation *,.wh-creation{animation-duration:.01ms!important;animation-iteration-count:1!important}}
+
+/* La puerta al mundo: arriba de todo, aparte de los duelos */
+.world-gate{position:relative;isolation:isolate;display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr) auto;align-items:center;gap:clamp(16px,3vw,40px);margin:24px 0 8px;padding:clamp(22px,4vw,48px);overflow:hidden;border:1px solid #6d86b8;background:radial-gradient(ellipse at 78% 50%,#f4f7ffcc 0,#b9c8ea55 18%,transparent 42%),linear-gradient(135deg,#0b1026 0%,#18214a 55%,#2c2657 100%);box-shadow:0 20px 60px #0009,inset 0 0 80px #5e7cc633}
+.world-gate[hidden]{display:none}
+.world-gate-sky{position:absolute;inset:0;z-index:-1;background-image:radial-gradient(1px 1px at 12% 22%,#fff,transparent),radial-gradient(1px 1px at 32% 70%,#fff,transparent),radial-gradient(1.5px 1.5px at 52% 18%,#dfe8ff,transparent),radial-gradient(1px 1px at 70% 80%,#fff,transparent),radial-gradient(1px 1px at 88% 30%,#fff,transparent),radial-gradient(1px 1px at 22% 88%,#cfe0ff,transparent),radial-gradient(1.5px 1.5px at 44% 44%,#fff,transparent),radial-gradient(1px 1px at 8% 60%,#fff,transparent);opacity:.8;animation:gateTwinkle 5s ease-in-out infinite alternate}
+.world-gate-copy{display:grid;gap:10px;color:#e6ecff}
+.world-gate-kicker{font:700 10px 'DM Sans',sans-serif;letter-spacing:4px;color:#9fc0ff}
+.world-gate h2{margin:0;font:800 clamp(30px,4.4vw,58px)/1 'Barlow Condensed',Impact,sans-serif;color:#fff;letter-spacing:.5px}
+.world-gate h2 em{display:block;font-style:italic;color:transparent;background:linear-gradient(90deg,#ffffff,#b9d4ff 60%,#e3c6ff);-webkit-background-clip:text;background-clip:text;text-shadow:0 0 30px #9fc0ff44}
+.world-gate p{margin:0;max-width:52ch;font-size:13px;line-height:1.6;color:#c3cdea}
+.world-gate-facts{display:flex;flex-wrap:wrap;gap:18px;margin:4px 0 6px;padding:0;list-style:none;font-size:11px;color:#9fb0da;letter-spacing:1px}
+.world-gate-facts b{margin-right:5px;font:800 22px 'Barlow Condensed',Impact,sans-serif;color:#fff}
+.world-gate-button{justify-self:start;display:inline-flex;align-items:center;gap:14px;padding:13px 22px;border:1px solid #ffffff;background:#ffffff;color:#0b1026;font:800 15px 'Barlow Condensed',Impact,sans-serif;letter-spacing:2.5px;text-transform:uppercase;cursor:pointer;box-shadow:0 0 0 0 #ffffff66;transition:box-shadow .25s,transform .15s}
+.world-gate-button:hover{box-shadow:0 0 0 6px #ffffff22,0 0 40px #b9d4ff88;transform:translateY(-1px)}
+.world-gate-button:disabled{opacity:.5;cursor:wait}
+.world-gate-god{width:clamp(90px,12vw,170px);align-self:end;animation:whFloat 4s ease-in-out infinite}
+.world-form{display:grid;gap:7px;padding:18px;border:1px solid #8aa2d655;background:#0a1030d9;color:#dfe7ff;backdrop-filter:blur(4px)}
+.world-form[hidden]{display:none}
+.world-form h3{margin:0 0 4px;font:700 20px 'Barlow Condensed',Impact,sans-serif;color:#fff}
+.world-form label{font-size:9px;letter-spacing:1.5px;color:#9fb0da}
+.world-form input:not([type=checkbox]){width:100%;padding:9px 10px;color:#fff;background:#060a1f;border:1px solid #3d4f86}
+.world-form .world-account{margin:4px 0 0;padding:0;border:0;display:grid;gap:7px}
+.world-form .world-account legend{display:none}
+.world-form .world-hint{margin:0;font-size:11px;color:#9fb0da}
+.world-form .check{display:flex;align-items:center;gap:8px;font-size:11px;letter-spacing:0;color:#dfe7ff}
+.world-form .world-gate-button{margin-top:6px}
+.world-status{min-height:14px;margin:0;font-size:11px;color:#b9d4ff}
+.world-status.error{color:#ff9aa6}
+.world-gate.open{grid-template-columns:minmax(0,1fr) minmax(260px,.9fr) auto}
+@keyframes gateTwinkle{to{opacity:.45}}
+@media(max-width:860px){.world-gate,.world-gate.open{grid-template-columns:1fr}.world-gate-god{position:absolute;right:12px;top:12px;width:70px;opacity:.7}}
