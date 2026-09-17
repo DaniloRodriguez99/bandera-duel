@@ -1455,6 +1455,50 @@ export const AFFINITY_TEXT: Record<Affinity, string> = {
   sigilo: 'Aparecer, pegar enorme y desaparecer.',
 };
 
+/** What one spark of an affinity adds, always, without spending anything from its tree. */
+export interface AffinityBonus {
+  damage?: number;
+  maxHp?: number;
+  speed?: number;
+  /** Health per second. */
+  regen?: number;
+  crit?: number;
+  /** Share of damage dealt that heals. */
+  lifesteal?: number;
+  /** Share added to mana regeneration. */
+  manaRegen?: number;
+  /** Share taken off every recharge. */
+  cooldown?: number;
+  /** Share taken off how far monsters notice you. */
+  stealth?: number;
+}
+
+export const AFFINITY_PASSIVES: Record<Affinity, { name: string; per: AffinityBonus; text: (points: number) => string }> = {
+  fuego: { name: 'Brasas', per: { damage: 0.04 }, text: (n) => `+${4 * n} % de daño` },
+  agua: { name: 'Manantial', per: { regen: 0.06 }, text: (n) => `regenerás ${(0.06 * n).toFixed(2)} de vida por segundo` },
+  tierra: { name: 'Raíces', per: { maxHp: 0.05 }, text: (n) => `+${5 * n} % de vida máxima` },
+  viento: { name: 'Pies Ligeros', per: { speed: 0.03 }, text: (n) => `+${3 * n} % de velocidad` },
+  rayo: { name: 'Reflejo Eléctrico', per: { crit: 0.03 }, text: (n) => `+${3 * n} % de probabilidad de crítico` },
+  sombra: { name: 'Sed', per: { lifesteal: 0.03 }, text: (n) => `robás el ${3 * n} % del daño como vida` },
+  luz: { name: 'Claridad', per: { manaRegen: 0.15 }, text: (n) => `+${15 * n} % de recuperación de maná` },
+  fuerza: { name: 'Cuerpo Curtido', per: { maxHp: 0.03, damage: 0.02 }, text: (n) => `+${3 * n} % de vida y +${2 * n} % de daño` },
+  destreza: { name: 'Manos Rápidas', per: { cooldown: 0.03 }, text: (n) => `recargas ${3 * n} % más cortas` },
+  sigilo: { name: 'Pasos Mudos', per: { stealth: 0.1 }, text: (n) => `los monstruos te notan ${10 * n} % más cerca` },
+};
+
+/** Every affinity's passive, scaled by its sparks and added together. */
+export function affinityBonus(affinities: Partial<Record<Affinity, AffinityState>>): Required<AffinityBonus> {
+  const total: Required<AffinityBonus> = { damage: 0, maxHp: 0, speed: 0, regen: 0, crit: 0, lifesteal: 0, manaRegen: 0, cooldown: 0, stealth: 0 };
+  for (const a of AFFINITIES) {
+    const points = affinities[a]?.points ?? 0;
+    if (points <= 0) continue;
+    for (const [key, value] of Object.entries(AFFINITY_PASSIVES[a].per) as [keyof AffinityBonus, number][]) total[key] += value * points;
+  }
+  total.stealth = Math.min(0.6, total.stealth);
+  total.cooldown = Math.min(0.4, total.cooldown);
+  return total;
+}
+
 /** What each attribute does, in one line. */
 export const STAT_TEXT: Record<StatId, string> = {
   might: 'Daño de espada, escudo y habilidades de fuerza.',

@@ -3,6 +3,7 @@ import {
   AFFINITIES,
   AFFINITY_NAMES,
   AFFINITY_TEXT,
+  AFFINITY_PASSIVES,
   STAT_TEXT,
   ARCANE,
   MONSTER_TREES,
@@ -785,6 +786,13 @@ export class WorldHud {
       row.title = AFFINITY_TEXT[affinity];
       row.append(el('span', '', AFFINITY_NAMES[affinity]), el('b', '', RANKS[rankOf(state.xp)]), el('small', '', '◆'.repeat(state.points)));
       affinities.append(row);
+      if (state.points > 0) {
+        const passive = AFFINITY_PASSIVES[affinity];
+        const line = el('p', 'wh-affinity-passive', `${passive.name}: ${passive.text(state.points)}`);
+        line.dataset.passive = affinity;
+        line.style.setProperty('--element', AFFINITY_COLOR[affinity]);
+        affinities.append(line);
+      }
     }
     if (sheet.passives.length) {
       affinities.append(el('h5', '', 'Pasivas robadas'));

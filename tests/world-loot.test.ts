@@ -284,7 +284,8 @@ describe('equipo', () => {
     run(world, 1);
     expect(p.pve.speed).toBeCloseTo(0.03);
     const multiplier = (world as unknown as { damageMultiplier(id: string): number }).damageMultiplier('h');
-    expect(multiplier).toBeCloseTo(1.08);
+    // The fang's 8 %, plus the 6 % three sparks of Fuerza always give.
+    expect(multiplier).toBeCloseTo(1.14);
   });
 
   it('equipar, sacar, usar y tirar nunca duplican: los uid son únicos y nada aparece de la nada', () => {

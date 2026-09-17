@@ -114,7 +114,8 @@ describe('los atributos cuentan', () => {
     Object.assign(victima, { x: 2040, y: 2000, invuln: 0 });
     const antes = victima.hp;
     world.damage(victima, atacante, 0, 1);
-    expect(antes - victima.hp).toBeCloseTo(1.5);
+    // A critical blow is half again; three sparks of Fuerza add their own 6 % on top.
+    expect(antes - victima.hp).toBeCloseTo(1.5 * 1.06);
   });
 });
 

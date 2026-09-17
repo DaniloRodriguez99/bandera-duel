@@ -50,6 +50,7 @@ import {
   SKILLS_WORLD,
   SURF_RANK,
   channelledCombo,
+  affinityBonus,
   TOUKI_RANK,
   canSurf,
   primaryElement,
@@ -123,7 +124,7 @@ const BURN_TIME = 3;
 /** An imbued weapon cultivates its affinity at most once in this many seconds of blows. */
 const IMBUE_GROW_EVERY = 0.6;
 /** Families that light and consecrated weapons hurt twice. */
-const UNDEAD = new Set(['ghoul', 'esqueleto', 'nigromante']);
+const UNDEAD = new Set(Object.values(MOB_FAMILIES).filter((f) => f.undead).map((f) => f.id as string));
 /** How the System names the weapon a combo lives in. */
 const WEAPON_ARTICLE: Record<Character['weapon'], string> = {
   espada: 'una espada',
@@ -414,13 +415,19 @@ export class World extends Duel {
   bonusesOf(character: Character) {
     const passive = this.passivesOf(character);
     const gear = equipmentBonus(character);
+    const spark = affinityBonus(character.affinities);
     return {
-      regen: passive.regen + gear.regen,
-      maxHp: passive.maxHp + gear.maxHp,
+      regen: passive.regen + gear.regen + spark.regen,
+      maxHp: passive.maxHp + gear.maxHp + spark.maxHp,
       // Heavy armor slows, but never to a crawl.
-      speed: Math.max(-0.2, passive.speed + gear.speed),
-      damage: passive.damage + gear.damage,
+      speed: Math.max(-0.2, passive.speed + gear.speed + spark.speed),
+      damage: passive.damage + gear.damage + spark.damage,
       xp: passive.xp + gear.xp,
+      crit: spark.crit,
+      lifesteal: spark.lifesteal,
+      manaRegen: spark.manaRegen,
+      cooldown: spark.cooldown,
+      stealth: spark.stealth,
     };
   }
 
@@ -617,6 +624,12 @@ export class World extends Duel {
     return (1 + buff + this.bonusesOf(character).damage + touki) * this.attributeScale(character, this.castingSchool);
   }
 
+  /** Stealth: monsters notice a quiet character closer — until it touches them. */
+  protected override noticeScale(id: string) {
+    const character = this.characters.get(id);
+    return character ? 1 - affinityBonus(character.affinities).stealth : 1;
+  }
+
   /** A weapon with a swing of its own swings it; otherwise the engine class's. */
   protected override meleeStats(p: Player) {
     const character = this.characters.get(p.id);
@@ -646,7 +659,7 @@ export class World extends Duel {
   }
 
   private critChance(character: Character) {
-    return Math.max(0, CRIT_STEP * (statsWithEquipment(character).perception - BASE_STATS.perception));
+    return Math.max(0, CRIT_STEP * (statsWithEquipment(character).perception - BASE_STATS.perception)) + affinityBonus(character.affinities).crit;
   }
 
   /** Where a character counts as standing for saving: its body, or the shrine if it lies dead. */
@@ -792,7 +805,7 @@ export class World extends Duel {
 
     p.mana -= effective.mana;
     // Agility shortens every recharge, never below half.
-    const quick = Math.max(0.5, 1 - 0.02 * (statsWithEquipment(character).agility - BASE_STATS.agility));
+    const quick = Math.max(0.5, 1 - 0.02 * (statsWithEquipment(character).agility - BASE_STATS.agility) - affinityBonus(character.affinities).cooldown);
     this.skillCd.set(this.cooldownKey(id, skill.id), effective.cooldown * quick);
     const school = skill.school as Affinity;
     const silent = !skill.incantation || rankOf(character.affinities[school]?.xp ?? 0) >= SILENT_CAST_RANK;
@@ -1319,10 +1332,11 @@ export class World extends Duel {
   }
 
   private heal(id: string, dealt: number) {
-    const drain = this.drains.get(id);
-    if (!drain) return;
+    const character = this.characters.get(id);
+    const share = (this.drains.get(id)?.share ?? 0) + (character ? affinityBonus(character.affinities).lifesteal : 0);
+    if (share <= 0) return;
     const p = this.state.players.find((q) => q.id === id);
-    if (p && p.hp > 0) p.hp = Math.min(p.maxHp, p.hp + dealt * drain.share);
+    if (p && p.hp > 0) p.hp = Math.min(p.maxHp, p.hp + dealt * share);
   }
 
   /** A monster that killed a player climbs a level, heals, and may change form. */
@@ -1998,7 +2012,8 @@ export class World extends Duel {
       const character = this.characters.get(p.id);
       if (!character || p.hp <= 0) continue;
       const max = this.maxManaOf(character);
-      p.mana = Math.min(max, (p.mana ?? max) + manaRegenFor(statsWithEquipment(character)) * dt);
+      const clarity = 1 + affinityBonus(character.affinities).manaRegen;
+      p.mana = Math.min(max, (p.mana ?? max) + manaRegenFor(statsWithEquipment(character)) * clarity * dt);
       p.maxMana = max;
     }
   }

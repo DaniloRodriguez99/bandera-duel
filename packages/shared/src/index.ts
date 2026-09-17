@@ -2180,6 +2180,10 @@ export class Duel {
       translate(target, Math.cos(angle) * 24, Math.sin(angle) * 24, this.terrainFor(target));
     return true;
   }
+  /** How far a monster notices someone, as a share of its aggro. The world lets stealth shrink it. */
+  protected noticeScale(_id: string) {
+    return 1;
+  }
   /** Reach, arc and damage of a player's swing. The world lets a weapon shape them; a match uses the class. */
   protected meleeStats(p: Player): { meleeRange: number; meleeArc: number; meleeDamage: number; windup: number } {
     return CLASSES[p.classId];
@@ -3002,7 +3006,7 @@ export class Duel {
         ? c.id === marked
         : mode === 'guard'
           ? distance(owner!, c.at) <= RULES.zombieGuardRadius
-          : distance(z, c.at) <= (z.family ? mobStats(z.family, z.level).aggro : RULES.zombieAggro),
+          : distance(z, c.at) <= (z.family ? mobStats(z.family, z.level).aggro : RULES.zombieAggro) * (c.id === z.target ? 1 : this.noticeScale(c.id)),
     );
     // Siblings already chasing a target make it less attractive, so a pack splits up.
     const score = (c: (typeof candidates)[number]) =>

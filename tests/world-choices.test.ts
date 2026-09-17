@@ -5,7 +5,7 @@ import { World, newCharacter, worldInput, type Creation } from '@bandera/shared/
 import { WEAPON_IDS } from '@bandera/shared/rpg/character';
 import { WEAPON_PROFILE } from '@bandera/shared/rpg/weapons';
 import { COMBO_SKILLS, comboId } from '@bandera/shared/rpg/combos';
-import { AFFINITIES, CHANNEL_LEVEL, SKILLS_WORLD, rollDestiny, type Affinity } from '@bandera/shared/rpg/skills';
+import { AFFINITIES, AFFINITY_PASSIVES, CHANNEL_LEVEL, SKILLS_WORLD, affinityBonus, rollDestiny, type Affinity } from '@bandera/shared/rpg/skills';
 import { ITEMS } from '@bandera/shared/rpg/items';
 import { MOB_FAMILIES } from '@bandera/shared/rpg/mobs';
 import { worldTerrain } from '@bandera/shared/rpg/terrain';
@@ -56,7 +56,8 @@ function born(creation: Creation, skillId: string) {
   p.invuln = 999;
   p.mana = p.maxMana = 100;
   const z = (world as unknown as { newZombie(o: object, at: object, f: object, extra: object): Zombie }).newZombie(
-    { id: 'wild:bosque:0', team: 'red', angle: Math.PI },
+    // Wild, but of no camp: a camp's leash would pull it home and make it forget every chase.
+    { id: 'wild:bosque:prueba', team: 'red', angle: Math.PI },
     { x: at.x + 30, y: at.y },
     { x: at.x + 30, y: at.y },
     { family: 'jabali', faction: 'monster', level: 1, hp: 50, maxHp: 50, name: MOB_FAMILIES.jabali.name },
@@ -189,7 +190,6 @@ describe('la Daga Electrizante electrifica lo que golpea', () => {
       aturdido = z.frozenLeft > 0;
       chispas ||= world.state.events.some((e) => e.kind === 'imbue' && e.color === SKILLS_WORLD.combo_daga_rayo.color);
     }
-    // Its health is not the proof: out of its camp's leash, the monster heals as it walks home.
     expect(aturdido).toBe(true);
     expect(chispas).toBe(true);
     expect(c.affinities.rayo!.xp).toBeGreaterThan(xp);
@@ -232,5 +232,41 @@ describe('Canalizar en el arma', () => {
     world.learn('h', 'chispazo', 'chispazo:canalizar');
     expect(c.skills.combo_arco_rayo).toBeTruthy();
     expect(c.skills.combo_daga_rayo).toBeUndefined();
+  });
+});
+
+describe('cada chispa deja una pasiva que siempre está', () => {
+  const sheet = (sparks: Creation['sparks']) => born({ sparks, weapon: 'espada' }, 'parada');
+
+  it('cada afinidad declara su pasiva, y cambia el número que dice cambiar', () => {
+    for (const a of AFFINITIES) {
+      const passive = AFFINITY_PASSIVES[a];
+      expect(passive.name, a).toBeTruthy();
+      const one = affinityBonus({ [a]: { points: 1, xp: 0, cultivation: 1 } });
+      const three = affinityBonus({ [a]: { points: 3, xp: 0, cultivation: 1 } });
+      const changed = (Object.keys(passive.per) as (keyof typeof one)[]).filter((k) => one[k] > 0);
+      expect(changed.length, a).toBeGreaterThan(0);
+      for (const k of changed) expect(three[k], `${a}.${k}`).toBeGreaterThan(one[k]);
+    }
+  });
+
+  it('Tierra da más vida y Fuego pega más que quien no las eligió', () => {
+    const tierra = sheet({ tierra: 3 });
+    const nada = sheet({ destreza: 3 });
+    expect(tierra.p.maxHp).toBeGreaterThan(nada.p.maxHp);
+    const fuego = sheet({ fuego: 3 });
+    expect(fuego.world.bonusesOf(fuego.c).damage).toBeGreaterThan(nada.world.bonusesOf(nada.c).damage);
+  });
+
+  it('Sigilo: el monstruo no te nota a una distancia a la que sí nota a otro', () => {
+    const noticed = (sparks: Creation['sparks']) => {
+      const { world, p, z } = sheet(sparks);
+      const aggro = MOB_FAMILIES.jabali.aggro;
+      Object.assign(z, { x: p.x + aggro * 0.8, y: p.y, target: null, retarget: 0, spawnLeft: 0 });
+      for (let i = 0; i < 10; i++) world.step(new Map());
+      return z.target === 'h';
+    };
+    expect(noticed({ fuerza: 3 })).toBe(true);
+    expect(noticed({ sigilo: 3 })).toBe(false);
   });
 });
