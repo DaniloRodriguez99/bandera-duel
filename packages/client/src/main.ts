@@ -99,7 +99,9 @@ if (import.meta.env.DEV) (window as unknown as { __worldHud: WorldHud }).__world
 window.addEventListener('keydown', (event) => {
   if (!worldCharacterId || (event.target as HTMLElement)?.matches?.('input, textarea, select')) return;
   if (event.code === 'KeyK' && !event.repeat) worldHud.togglePanel();
+  if (event.code === 'KeyM' && !event.repeat) worldHud.toggleMap();
   if (event.code === 'Escape' && worldHud.panelOpen) worldHud.togglePanel(false);
+  if (event.code === 'Escape' && worldHud.mapOpen) worldHud.toggleMap(false);
 });
 new Phaser.Game({
   type: Phaser.AUTO,
@@ -907,10 +909,11 @@ function renderWorldChrome(s: Snapshot, me: Snapshot['players'][number] | undefi
   const guide = $('control-guide');
   if (!guide.querySelector('[data-world]'))
     guide.innerHTML =
-      '<span data-world><span><kbd>WASD</kbd> Moverse</span><span><kbd>CLIC</kbd> Tu arma</span><span><kbd>E</kbd><kbd>Q</kbd><kbd>ESPACIO</kbd> Habilidades</span><span><kbd>K</kbd> Sistema</span></span>';
+      '<span data-world><span><kbd>WASD</kbd> Moverse</span><span><kbd>CLIC</kbd> Tu arma</span><span><kbd>E</kbd><kbd>Q</kbd><kbd>ESPACIO</kbd> Habilidades</span><span><kbd>K</kbd> Sistema</span><span><kbd>M</kbd> Mapa</span></span>';
   $('cooldowns').hidden = true;
   $('abilities').hidden = true;
   $('overlay').hidden = true;
+  if (zoneId) worldHud.setZone(zoneId);
   if (me) worldHud.setPlayer(me);
   worldHud.setChests((s as Snapshot & { chests?: ChestView[] }).chests ?? [], me);
 }

@@ -33,6 +33,8 @@ import {
   type ItemInstance,
 } from '@bandera/shared/rpg/items';
 import { CHEST_TIERS } from '@bandera/shared/rpg/loot';
+import { MOB_FAMILIES } from '@bandera/shared/rpg/mobs';
+import { ZONES, zone, type ZoneId } from '@bandera/shared/rpg/zones';
 import {
   CAST_SLOTS,
   SLOT_LEVEL,
@@ -180,6 +182,9 @@ export class WorldHud {
   /** Second click on "Tirar" within a few seconds actually throws it away. */
   private discardArmed: string | null = null;
   private channel: HTMLElement;
+  private map!: HTMLElement;
+  private zoneId: ZoneId | null = null;
+  private mapDot: SVGCircleElement | null = null;
   private lootStrip: HTMLElement;
 
   constructor(
@@ -195,7 +200,7 @@ export class WorldHud {
         <div class="wh-bar hp" title="Vida"><i id="wh-hp"></i><span id="wh-hp-text"></span></div>
         <div class="wh-bar mp" title="Maná"><i id="wh-mp"></i><span id="wh-mp-text"></span></div>
         <div class="wh-bar xp" title="Experiencia"><i id="wh-xp"></i></div>
-        <button type="button" id="wh-system" class="wh-system" aria-label="Abrir el Sistema">SISTEMA <kbd>K</kbd><b id="wh-owed" hidden></b></button>
+        <div class="wh-buttons"><button type="button" id="wh-system" class="wh-system" aria-label="Abrir el Sistema">SISTEMA <kbd>K</kbd><b id="wh-owed" hidden></b></button><button type="button" id="wh-map-open" class="wh-system" aria-label="Abrir el mapa">MAPA <kbd>M</kbd></button></div>
       </div>
       <div id="wh-channel" class="wh-channel" hidden><span></span><i></i></div>
       <div id="skillbar" class="skillbar" aria-label="Habilidades"></div>
@@ -205,7 +210,8 @@ export class WorldHud {
         <small id="wh-incantation"></small><strong id="wh-callout-name"></strong>
       </div>
       <div id="wh-tooltip" class="wh-tooltip" hidden></div>
-      <section id="wh-panel" class="wh-panel" hidden aria-label="Sistema"></section>`;
+      <section id="wh-panel" class="wh-panel" hidden aria-label="Sistema"></section>
+      <section id="wh-map" class="wh-panel wh-map" hidden aria-label="Mapa"></section>`;
     stage.append(this.root);
     this.callout = this.root.querySelector('#wh-callout')!;
     this.notices = this.root.querySelector('#wh-notices')!;
@@ -215,6 +221,9 @@ export class WorldHud {
     this.panel = this.root.querySelector('#wh-panel')!;
     // The HUD is a stacking context under the chat button; the System window must open above it.
     stage.append(this.panel);
+    this.map = this.root.querySelector('#wh-map')!;
+    stage.append(this.map);
+    this.root.querySelector<HTMLButtonElement>('#wh-map-open')!.onclick = () => this.toggleMap();
     this.root.querySelector<HTMLButtonElement>('#wh-system')!.onclick = () => this.togglePanel();
 
     this.creation = el('div', 'wh-creation');
@@ -239,6 +248,122 @@ export class WorldHud {
   hide() {
     this.root.hidden = true;
     this.togglePanel(false);
+    this.toggleMap(false);
+  }
+
+  get mapOpen() {
+    return !this.map.hidden;
+  }
+
+  /** The zone being played, so the map knows what to draw. */
+  setZone(zoneId: ZoneId) {
+    if (this.zoneId === zoneId) return;
+    this.zoneId = zoneId;
+    if (this.mapOpen) this.renderMap();
+  }
+
+  toggleMap(open = this.map.hidden) {
+    this.map.hidden = !open;
+    if (open) {
+      this.togglePanel(false);
+      this.renderMap();
+    }
+  }
+
+  /**
+   * The world's map: the zone you stand in, drawn to scale with everything worth walking to, and
+   * beside it the road between zones with the level each border asks for.
+   */
+  private renderMap() {
+    const sheet = this.sheet;
+    const here = this.zoneId ? zone(this.zoneId) : null;
+    if (!sheet || !here) return;
+    this.map.replaceChildren();
+    const head = el('header', 'wh-panel-head');
+    head.innerHTML = `<span>MAPA</span><b>${here.name}</b><small>${here.pvp === 'safe' ? 'Santuario' : `Zona salvaje · Nv ${here.minLevel}+`} · ${here.description}</small>`;
+    const close = el('button', 'wh-close', '✕') as HTMLButtonElement;
+    close.type = 'button';
+    close.setAttribute('aria-label', 'Cerrar');
+    close.onclick = () => this.toggleMap(false);
+    head.append(close);
+
+    const b = here.terrain.bounds;
+    const width = b.maxX + b.minX;
+    const height = b.maxY + b.minY;
+    const NS = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(NS, 'svg');
+    svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+    svg.setAttribute('class', 'wh-map-zone');
+    svg.dataset.zone = here.id;
+    const add = (tag: string, attrs: Record<string, string | number>, parent: Element = svg) => {
+      const node = document.createElementNS(NS, tag);
+      for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, String(v));
+      parent.append(node);
+      return node;
+    };
+    add('rect', { x: 0, y: 0, width, height, class: 'ground' });
+    for (const w of here.terrain.walls) add('rect', { x: w.x, y: w.y, width: w.w, height: w.h, class: 'wall' });
+    for (const portal of here.portals) {
+      const target = ZONES[portal.to];
+      const locked = !target || sheet.level < portal.minLevel;
+      const a = portal.area;
+      const g = add('g', { class: `portal${locked ? ' locked' : ''}`, 'data-portal': portal.to });
+      add('rect', { x: a.x, y: a.y, width: a.w, height: a.h }, g);
+      // A portal on the edge labels itself inwards, or the name runs off the map.
+      const centre = a.x + a.w / 2;
+      const anchor = centre > width * 0.8 ? 'end' : centre < width * 0.2 ? 'start' : 'middle';
+      const lx = anchor === 'end' ? a.x - 10 : anchor === 'start' ? a.x + a.w + 10 : centre;
+      const label = add('text', { x: lx, y: a.y + a.h / 2, 'text-anchor': anchor, 'dominant-baseline': 'middle' }, g);
+      label.textContent = `${target?.name ?? 'Sin explorar'} · Nv ${portal.minLevel}${locked ? ' · cerrado' : ''}`;
+    }
+    here.spawners.forEach((camp) => {
+      const gap = camp.level - sheet.level;
+      const danger = gap >= 4 ? 'deadly' : gap >= 1 ? 'hard' : gap >= -3 ? 'even' : 'easy';
+      const g = add('g', { class: `camp ${danger}` });
+      add('circle', { cx: camp.at.x, cy: camp.at.y, r: camp.radius }, g);
+      const label = add('text', { x: camp.at.x, y: camp.at.y + 8, 'text-anchor': 'middle' }, g);
+      label.textContent = `${MOB_FAMILIES[camp.familyId].name} ${camp.level}`;
+      if (camp.chest) {
+        const chest = add('g', { class: `chest ${camp.chest.tier}` });
+        add('rect', { x: camp.at.x - 26, y: camp.at.y - 70, width: 52, height: 36, rx: 6 }, chest);
+        const t = add('text', { x: camp.at.x, y: camp.at.y - 80, 'text-anchor': 'middle' }, chest);
+        t.textContent = CHEST_TIERS[camp.chest.tier].name;
+      }
+    });
+    const shrine = add('g', { class: 'shrine' });
+    add('circle', { cx: here.shrine.x, cy: here.shrine.y, r: 44 }, shrine);
+    const st = add('text', { x: here.shrine.x, y: here.shrine.y + 90, 'text-anchor': 'middle' }, shrine);
+    st.textContent = 'Altar';
+    this.mapDot = add('circle', { cx: this.player?.x ?? 0, cy: this.player?.y ?? 0, r: 38, class: 'me' }) as SVGCircleElement;
+
+    const road = el('aside', 'wh-map-road');
+    road.append(el('h5', '', 'Camino'));
+    const seen = new Set<string>();
+    const walk = (id: ZoneId, depth: number) => {
+      if (seen.has(id)) return;
+      seen.add(id);
+      const def = ZONES[id];
+      const row = el('div', 'wh-map-stop');
+      row.dataset.stop = id;
+      row.dataset.current = String(id === here.id);
+      row.dataset.open = String(!!def);
+      row.style.setProperty('--depth', String(depth));
+      const minLevel = def?.minLevel ?? 0;
+      row.append(el('b', '', def?.name ?? 'Tierra sin explorar'), el('small', '', def ? `${def.pvp === 'safe' ? 'Santuario' : 'Salvaje'} · Nv ${minLevel}+` : 'Todavía no existe'));
+      if (def && sheet.level < minLevel) row.dataset.locked = 'true';
+      road.append(row);
+      for (const portal of def?.portals ?? []) walk(portal.to, depth + 1);
+    };
+    walk('umbral', 0);
+    const legend = el('div', 'wh-map-legend');
+    legend.innerHTML = '<span class="easy">Fácil</span><span class="even">Parejo</span><span class="hard">Difícil</span><span class="deadly">Mortal</span>';
+    road.append(legend);
+
+    const body = el('div', 'wh-map-body');
+    const frame = el('div', 'wh-map-frame');
+    frame.append(svg);
+    body.append(frame, road);
+    this.map.append(head, body);
   }
 
   get panelOpen() {
@@ -269,6 +394,10 @@ export class WorldHud {
 
   setPlayer(p: Player) {
     this.player = p;
+    if (this.mapDot && this.mapOpen) {
+      this.mapDot.setAttribute('cx', String(p.x));
+      this.mapDot.setAttribute('cy', String(p.y));
+    }
     const hp = this.root.querySelector('#wh-hp') as HTMLElement;
     const mp = this.root.querySelector('#wh-mp') as HTMLElement;
     hp.style.width = `${Math.max(0, Math.min(100, (p.hp / Math.max(1, p.maxHp)) * 100))}%`;
