@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { RULES, idleInput, type Input } from '@bandera/shared';
 import {
+  COPY_CHARGES_LIMITED,
   INCANTATION_TIME,
   World,
   newCharacter,
@@ -233,7 +234,8 @@ describe('árboles y robo', () => {
     expect(conGarras.character.skills.garras_ghoul.level).toBeGreaterThan(0);
     expect(conGarras.character.trees).toContain('ghoul');
     expect(conGarras.character.passives).toEqual([]);
-    expect(conGarras.character.copyCharges).toBe(0);
+    // While the world is tested the eye costs nothing; with COPY_CHARGES_LIMITED it would be 0.
+    expect(conGarras.character.copyCharges).toBe(COPY_CHARGES_LIMITED ? 0 : 1);
     expect(seen(conGarras.world, 'steal').at(-1)!.title).toBe('Robaste «Garras de Ghoul»');
 
     const conCarne = thief();
@@ -279,7 +281,23 @@ describe('árboles y robo', () => {
     run(world, 1);
     expect(world.stealOffers).toEqual([]);
     expect(ladron.skills.bola_fuego).toBeTruthy();
-    expect(ladron.copyCharges).toBe(0);
+    expect(ladron.copyCharges).toBe(COPY_CHARGES_LIMITED ? 0 : 1);
+  });
+
+  it('sin límite de cargas, el ojo se puede volver a usar sobre otra criatura', () => {
+    const { world, prey, character } = thief();
+    world.cast('h', 'e', { x: prey.x, y: prey.y });
+    run(world, 1);
+    expect(world.chooseSteal('h', 'skill:garras_ghoul')).toBe(true);
+    run(world, ticks(SKILLS_WORLD.ojo_impostor.cooldown + 0.5));
+    world.cast('h', 'e', { x: prey.x, y: prey.y });
+    run(world, 1);
+    const otra = world.stealOffers.at(-1);
+    expect(COPY_CHARGES_LIMITED ? !otra : !!otra).toBe(true);
+    if (otra) {
+      expect(world.chooseSteal('h', 'passive:carne_ghoul')).toBe(true);
+      expect(character.passives).toContain('carne_ghoul');
+    }
   });
 
   it('a otro personaje en zona salvaje le copia una habilidad, dos niveles más floja', () => {

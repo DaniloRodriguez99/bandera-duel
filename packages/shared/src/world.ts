@@ -119,6 +119,11 @@ export const INCANTATION_TIME = 0.45;
 const CORPSE_LIFE = 20;
 /** Seconds after a draining skill during which damage dealt heals the caster. */
 const DRAIN_WINDOW = 1.2;
+/**
+ * While the world is being tested the impostor's eye never runs out: it opens as many times as
+ * anyone wants and spends no charge. Set it back to true to return to the one charge of the design.
+ */
+export const COPY_CHARGES_LIMITED = false;
 /** How long the impostor's eye stays open waiting for its owner to choose. */
 const STEAL_WINDOW = 20;
 /** A child who runs their mana dry widens their channels, at most this often. */
@@ -178,6 +183,8 @@ export interface StealOffer {
   options: StealOption[];
   /** How long the offer stands before the eye closes without taking anything. */
   seconds: number;
+  /** False while the eye is being tested without charges. */
+  costsCharge: boolean;
 }
 
 export interface Notice {
@@ -884,7 +891,7 @@ export class World extends Duel {
     if (skill.effect.kind === 'devour' && !this.devourTarget(p, skill.effect.radius))
       return 'No hay nada que devorar cerca.';
     if (skill.effect.kind === 'steal') {
-      if (character.copyCharges <= 0) return 'El ojo ya se cerró. No quedan cargas.';
+      if (COPY_CHARGES_LIMITED && character.copyCharges <= 0) return 'El ojo ya se cerró. No quedan cargas.';
       if (this.stealing.has(p.id)) return 'El ojo ya está abierto: elegí qué llevarte.';
       const prey = this.stealTarget(p, skill.effect.range, aim);
       if (!prey) return 'Apuntá a algo que esté al alcance.';
@@ -932,7 +939,7 @@ export class World extends Duel {
       }
       if (!character.passives.includes(tree.passive.id))
         options.push({ id: `passive:${tree.passive.id}`, kind: 'passive', name: tree.passive.name, text: tree.passive.text, icon: 'el-sombra', color: '#ff6fb0', rarity: 'unica' });
-      return { target: formName(monster, target.level), kind: 'monstruo', options, seconds: STEAL_WINDOW };
+      return { target: formName(monster, target.level), kind: 'monstruo', options, seconds: STEAL_WINDOW, costsCharge: COPY_CHARGES_LIMITED };
     }
     const prey = this.characters.get(target.id)!;
     for (const [skillId, progress] of Object.entries(prey.skills)) {
@@ -956,7 +963,7 @@ export class World extends Duel {
       const passive = Object.values(MONSTER_TREES).find((tree) => tree.passive.id === id)?.passive;
       if (passive) options.push({ id: `passive:${id}`, kind: 'passive', name: passive.name, text: passive.text, icon: 'el-sombra', color: '#ff6fb0', rarity: 'unica' });
     }
-    return { target: prey.name, kind: 'personaje', options, seconds: STEAL_WINDOW };
+    return { target: prey.name, kind: 'personaje', options, seconds: STEAL_WINDOW, costsCharge: COPY_CHARGES_LIMITED };
   }
 
   /**
@@ -976,12 +983,12 @@ export class World extends Duel {
       this.deny(id, 'Ojo del Impostor', 'Se te fue de las manos. El ojo se cerró sin llevarse nada.');
       return false;
     }
-    if (character.copyCharges <= 0) {
+    if (COPY_CHARGES_LIMITED && character.copyCharges <= 0) {
       this.stealing.delete(id);
       return false;
     }
     this.stealing.delete(id);
-    character.copyCharges--;
+    if (COPY_CHARGES_LIMITED) character.copyCharges--;
     const monster = (target as Zombie).family;
     const [kind, what] = [option.id.slice(0, option.id.indexOf(':')), option.id.slice(option.id.indexOf(':') + 1)];
     if (kind === 'passive') character.passives.push(what);

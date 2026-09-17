@@ -1007,9 +1007,9 @@ export class WorldHud {
     this.creation.hidden = false;
     this.creation.innerHTML = `
       <div class="wh-steal" role="dialog" aria-label="Ojo del Impostor">
-        <small>OJO DEL IMPOSTOR · UNA SOLA CARGA</small>
+        <small>OJO DEL IMPOSTOR · ${offer.costsCharge ? 'UNA SOLA CARGA' : 'SIN LÍMITE, POR AHORA'}</small>
         <h2></h2>
-        <p class="wh-god-line">Elegí qué llevarte. Lo que dejes, lo dejás para siempre.</p>
+        <p class="wh-god-line">${offer.costsCharge ? 'Elegí qué llevarte. Lo que dejes, lo dejás para siempre.' : 'Elegí qué llevarte. Mientras se prueba el mundo, el ojo no se gasta.'}</p>
         <div class="wh-steal-options" id="wh-steal-options"></div>
         <button type="button" class="wh-steal-cancel" id="wh-steal-cancel">No robar nada</button>
       </div>`;
