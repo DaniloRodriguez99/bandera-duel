@@ -37,6 +37,11 @@ const SCHEMA = `
     updated_at timestamptz not null default now(),
     primary key (account_id, id)
   );
+  create table if not exists bandera_parties (
+    id text primary key,
+    data jsonb not null,
+    updated_at timestamptz not null default now()
+  );
 `;
 
 const FOREIGN_KEY_VIOLATION = '23503';
@@ -153,6 +158,44 @@ export class PostgresStore implements CharacterStore {
         throw new StoreError('no-existe', 'No existe la cuenta');
       throw error;
     }
+  }
+
+  async saveMany(characters: Character[]): Promise<void> {
+    await this.open();
+    const client = await this.pool.connect();
+    try {
+      await client.query('begin');
+      for (const character of characters)
+        await client.query(
+          `insert into bandera_characters (account_id, id, data) values ($1, $2, $3)
+           on conflict (account_id, id) do update set data = excluded.data, updated_at = now()`,
+          [character.accountId, character.id, JSON.stringify(envelope(character))],
+        );
+      await client.query('commit');
+    } catch (error) { await client.query('rollback').catch(() => {}); throw error; }
+    finally { client.release(); }
+  }
+
+  async partyFor(characterId: CharacterId): Promise<import('@bandera/shared/world').Party | null> {
+    await this.open();
+    const { rows } = await this.pool.query<{ data: import('@bandera/shared/world').Party }>(
+      `select data from bandera_parties where data->'members' @> $1::jsonb limit 1`,
+      [JSON.stringify([{ id: characterId }])],
+    );
+    return rows[0]?.data ?? null;
+  }
+
+  async saveParty(party: import('@bandera/shared/world').Party): Promise<void> {
+    await this.open();
+    await this.pool.query(
+      `insert into bandera_parties (id, data) values ($1, $2)
+       on conflict (id) do update set data = excluded.data, updated_at = now()`,
+      [party.id, JSON.stringify(party)],
+    );
+  }
+
+  async deleteParty(id: string): Promise<void> {
+    await this.open(); await this.pool.query('delete from bandera_parties where id = $1', [id]);
   }
 
   /** Waits for queries in flight, then drops the pool. Safe to call twice. */

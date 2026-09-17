@@ -177,6 +177,46 @@ describe('hostilidad en el mundo', () => {
   });
 });
 
+describe('party y duelos del mundo', () => {
+  it('reparte toda la experiencia del mob entre miembros vivos de la zona', () => {
+    const solo = new World('bosque');
+    const mobSolo = solo.state.zombies.find((z) => z.family)!;
+    const cs = character({ id: 'solo' }); Object.assign(cs, { x: mobSolo.x, y: mobSolo.y }); solo.join(cs);
+    solo.damageZombie(mobSolo, 'blue', 999, 0, 'solo');
+    const total = cs.xp;
+
+    const party = new World('bosque');
+    const mob = party.state.zombies.find((z) => z.family)!;
+    const ca = character({ id: 'a' }), cb = character({ id: 'b' }), cc = character({ id: 'c' });
+    Object.assign(ca, { x: mob.x, y: mob.y }); Object.assign(cb, { x: mob.x + 500, y: mob.y }); Object.assign(cc, { x: mob.x + 700, y: mob.y });
+    party.join(ca); party.join(cb); party.join(cc); party.partyRecipients = () => ['a', 'b', 'c'];
+    party.damageZombie(mob, 'blue', 999, 0, 'a');
+    expect(ca.xp + cb.xp + cc.xp).toBeCloseTo(total, 3);
+    expect(ca.xp).toBeCloseTo(cb.xp, 3);
+    expect(cb.xp).toBeCloseTo(cc.xp, 3);
+  });
+
+  it('aísla, delimita y restaura un duelo sin tumba ni penalización', () => {
+    const { world, ca, cb, pa, pb } = arena('bosque', { id: 'a' }, { id: 'b' });
+    const cc = character({ id: 'c' }); Object.assign(cc, { x: pa.x + 20, y: pa.y }); const pc = world.join(cc); pc.invuln = 0;
+    Object.assign(pa, { hp: pa.maxHp - 1, mana: 2 });
+    const before = { x: pa.x, y: pa.y, hp: pa.hp, mana: pa.mana, bx: pb.x, by: pb.y };
+    expect(world.startDuel('a', 'b')).toBe(true);
+    expect(world.damage(pb, pa, 0, 1)).toBe(false);
+    run(world, ticks(3.1));
+    expect(world.damage(pb, pc, 0, 1)).toBe(false);
+    pa.x += 1000; run(world, 1);
+    const duel = world.duelOf('a')!;
+    expect(Math.hypot(pa.x - duel.view.x, pa.y - duel.view.y)).toBeLessThanOrEqual(360);
+    expect(world.damage(pb, pa, 0, 999)).toBe(true);
+    expect(world.duelOf('a')).toBeUndefined();
+    expect(pa).toMatchObject({ x: before.x, y: before.y, hp: before.hp, mana: before.mana });
+    expect(pb).toMatchObject({ x: before.bx, y: before.by });
+    expect(world.state.graves.some((g) => g.name === pb.name)).toBe(false);
+    expect(ca.xp).toBe(0); expect(cb.xp).toBe(0);
+  });
+});
+
 describe('morir', () => {
   it('morir en zona salvaje cuesta el 10 % del nivel sin bajar de nivel, y avisa cuánto', () => {
     const { world, cb, pa, pb } = arena('bosque', { id: 'a' }, { id: 'b' });

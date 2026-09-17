@@ -4,6 +4,7 @@ import {
   Duel,
   RULES,
   distance,
+  idleInput,
   newPlayer,
   projectileStats,
   translate,
@@ -26,7 +27,14 @@ import {
   type Vec,
   type Zombie,
 } from './index.js';
-import { DEFAULT_ZONE, ZONES, zone, type Spawner, type ZoneDefinition, type ZoneId } from './rpg/zones.js';
+import {
+  DEFAULT_ZONE,
+  ZONES,
+  zone,
+  type Spawner,
+  type ZoneDefinition,
+  type ZoneId,
+} from './rpg/zones.js';
 import { MOB_FAMILIES, formName, mobStats, xpFor, type MobSkill } from './rpg/mobs.js';
 import { worldTerrain } from './rpg/terrain.js';
 import { WEAPON_PROFILE } from './rpg/weapons.js';
@@ -133,7 +141,11 @@ const BURN_TIME = 3;
 /** An imbued weapon cultivates its affinity at most once in this many seconds of blows. */
 const IMBUE_GROW_EVERY = 0.6;
 /** Families that light and consecrated weapons hurt twice. */
-const UNDEAD = new Set(Object.values(MOB_FAMILIES).filter((f) => f.undead).map((f) => f.id as string));
+const UNDEAD = new Set(
+  Object.values(MOB_FAMILIES)
+    .filter((f) => f.undead)
+    .map((f) => f.id as string),
+);
 /** How the System names the weapon a combo lives in. */
 const WEAPON_ARTICLE: Record<Character['weapon'], string> = {
   espada: 'una espada',
@@ -203,7 +215,8 @@ export interface Notice {
     | 'kill'
     | 'raise'
     | 'loot'
-    | 'item';
+    | 'item'
+    | 'social';
   title: string;
   text: string;
   color?: string;
@@ -236,6 +249,46 @@ export interface WorldSnapshot extends Snapshot {
   chests: ChestView[];
   /** What monsters throw: stones, webs, embers, spit. */
   mobShots: MobShot[];
+  /** Active open-world duels visible in this zone. */
+  duels: DuelView[];
+}
+
+export type SocialInviteKind = 'party' | 'trade' | 'duel';
+export interface SocialInvite {
+  id: string;
+  kind: SocialInviteKind;
+  from: { id: string; name: string };
+  expiresAt: number;
+}
+export interface PartyMember {
+  id: string;
+  name: string;
+  joinedAt: number;
+  online?: boolean;
+  zoneId?: ZoneId;
+}
+export interface Party {
+  id: string;
+  leaderId: string;
+  members: PartyMember[];
+}
+export interface TradeView {
+  id: string;
+  partner: { id: string; name: string };
+  own: ItemInstance[];
+  theirs: ItemInstance[];
+  accepted: boolean;
+  partnerAccepted: boolean;
+}
+export interface DuelView {
+  id: string;
+  players: [string, string];
+  names: [string, string];
+  x: number;
+  y: number;
+  radius: number;
+  phase: 'countdown' | 'fighting';
+  countdown: number;
 }
 
 export interface MobShot extends Vec {
@@ -264,21 +317,21 @@ export const ATTRIBUTE_STEP = 0.06;
 export const CRIT_STEP = 0.03;
 export const CRIT_MULTIPLIER = 1.5;
 
-
 /** How close a character must stand to a chest to open it. */
 export const CHEST_REACH = 44;
 
 /** Which engine projectile carries each element, so existing renderers draw it for free. */
-const BOLT_LOOK: Record<Element, { classId: ClassId; element?: Arrow['element']; wind?: boolean }> = {
-  fuego: { classId: 'mage', element: 'fire' },
-  hielo: { classId: 'mage', element: 'ice' },
-  viento: { classId: 'archer', wind: true },
-  rayo: { classId: 'archer' },
-  sombra: { classId: 'necromancer' },
-  luz: { classId: 'mage' },
-  tierra: { classId: 'archer' },
-  fisico: { classId: 'archer' },
-};
+const BOLT_LOOK: Record<Element, { classId: ClassId; element?: Arrow['element']; wind?: boolean }> =
+  {
+    fuego: { classId: 'mage', element: 'fire' },
+    hielo: { classId: 'mage', element: 'ice' },
+    viento: { classId: 'archer', wind: true },
+    rayo: { classId: 'archer' },
+    sombra: { classId: 'necromancer' },
+    luz: { classId: 'mage' },
+    tierra: { classId: 'archer' },
+    fisico: { classId: 'archer' },
+  };
 
 export class World extends Duel {
   /** Everything persistent, keyed by character id, which is also the player entity id. */
@@ -321,14 +374,29 @@ export class World extends Duel {
   private buffs = new Map<string, { left: number; damage: number; speed: number }>();
   private drains = new Map<string, { left: number; share: number }>();
   /** Weapons carrying an affinity for a while, by character. */
-  private imbues = new Map<string, { left: number; skill: WorldSkill; effect: Imbue; grown: number }>();
+  private imbues = new Map<
+    string,
+    { left: number; skill: WorldSkill; effect: Imbue; grown: number }
+  >();
   /** Burns left by fiery or bleeding blows, by target (character or monster). */
   private burns = new Map<string, { left: number; dps: number; tick: number; by: string }>();
   /** True while an imbue's own side effects resolve, so a burn or a push is never imbued again. */
   private pouring = false;
   private widened = new Map<string, number>();
   /** The eye is open on a target, waiting for its owner to pick what to take. */
-  private stealing = new Map<string, { targetId: string; range: number; options: StealOption[]; left: number }>();
+  private stealing = new Map<
+    string,
+    { targetId: string; range: number; options: StealOption[]; left: number }
+  >();
+  /** Supplied by the room because parties span zones and survive this World instance. */
+  partyRecipients: (killerId: string) => string[] = (id) => [id];
+  private activeDuels = new Map<
+    string,
+    {
+      view: DuelView;
+      saved: Map<string, { x: number; y: number; hp: number; mana: number }>;
+    }
+  >();
 
   constructor(zoneId: ZoneId = DEFAULT_ZONE) {
     super(DEFAULT_MAP, 'duel');
@@ -343,6 +411,7 @@ export class World extends Duel {
     s.flags = [];
     s.chests = [];
     s.mobShots = [];
+    s.duels = [];
     this.populate();
   }
 
@@ -410,7 +479,9 @@ export class World extends Duel {
   /** Someone who rides water or wind crosses lakes; everyone else walks around them. */
   protected override terrainFor(p: Player): Rect[] | Terrain {
     const character = this.characters.get(p.id);
-    return character && canSurf(character.affinities) ? worldTerrain(this.zoneId, true) : this.terrain;
+    return character && canSurf(character.affinities)
+      ? worldTerrain(this.zoneId, true)
+      : this.terrain;
   }
 
   /** Everyone revives at the zone's shrine. */
@@ -518,7 +589,9 @@ export class World extends Duel {
     this.characters.set(character.id, character);
     this.applyCharacter(p, character);
     // The bond survives the trip; the body stayed behind. Alzar brings it back without a grave.
-    p.thrall = character.thrall ? { classId: character.thrall.classId, name: character.thrall.name } : null;
+    p.thrall = character.thrall
+      ? { classId: character.thrall.classId, name: character.thrall.name }
+      : null;
     // A fresh entity carries its class's health; a character walks in whole.
     p.hp = p.maxHp;
     p.mana = p.maxMana;
@@ -567,7 +640,10 @@ export class World extends Duel {
     this.sheetChanged.add(id);
     const bonus = 1 + this.bonusesOf(character).xp;
     const before = character.level;
-    const result = applyXp(character.level, character.xp, Math.round(amount * bonus));
+    // Party shares can be fractional. Do not round each recipient independently: doing so would
+    // create or destroy XP when a reward does not divide into whole numbers.
+    const adjusted = amount * bonus;
+    const result = applyXp(character.level, character.xp, adjusted);
     character.level = result.level;
     character.xp = result.xp;
     character.unspent += result.unspent;
@@ -575,13 +651,17 @@ export class World extends Duel {
     if (result.gained <= 0) return null;
     const p = this.state.players.find((player) => player.id === id);
     if (p) this.applyCharacter(p, character);
-    const opened = CAST_SLOTS.filter((slot) => SLOT_LEVEL[slot] > before && SLOT_LEVEL[slot] <= result.level);
+    const opened = CAST_SLOTS.filter(
+      (slot) => SLOT_LEVEL[slot] > before && SLOT_LEVEL[slot] <= result.level,
+    );
     this.notify(id, {
       kind: 'level',
       title: `Subiste a nivel ${result.level}`,
       text:
         `+${result.unspent} puntos de atributo · +${result.gained} de habilidad` +
-        (opened.length ? ` · Se abrió la ranura ${opened.map((s) => SLOT_NAMES[s]).join(' y ')}` : ''),
+        (opened.length
+          ? ` · Se abrió la ranura ${opened.map((s) => SLOT_NAMES[s]).join(' y ')}`
+          : ''),
       color: '#7fd8ff',
     });
     return { level: result.level, gained: result.gained };
@@ -589,6 +669,144 @@ export class World extends Duel {
 
   private notify(id: string, notice: Omit<Notice, 'id'>) {
     this.notices.push({ id, ...notice });
+  }
+
+  duelOf(id: string) {
+    return [...this.activeDuels.values()].find((d) => d.view.players.includes(id));
+  }
+
+  startDuel(aId: string, bId: string): boolean {
+    const a = this.state.players.find((p) => p.id === aId && p.hp > 0);
+    const b = this.state.players.find((p) => p.id === bId && p.hp > 0);
+    if (!a || !b || a === b || this.duelOf(aId) || this.duelOf(bId)) return false;
+    const id = `d:${this.zoneId}:${this.state.tick}:${aId}:${bId}`;
+    const view: DuelView = {
+      id,
+      players: [aId, bId],
+      names: [a.name, b.name],
+      x: (a.x + b.x) / 2,
+      y: (a.y + b.y) / 2,
+      radius: 360,
+      phase: 'countdown',
+      countdown: 3,
+    };
+    const saved = new Map([
+      [aId, { x: a.x, y: a.y, hp: a.hp, mana: a.mana }],
+      [bId, { x: b.x, y: b.y, hp: b.hp, mana: b.mana }],
+    ]);
+    for (const p of [a, b]) {
+      p.hp = p.maxHp;
+      p.mana = p.maxMana;
+      p.invuln = 3;
+      p.windup = p.shotCharge = p.specialCharge = 0;
+    }
+    this.clearDuelEffects([aId, bId]);
+    this.activeDuels.set(id, { view, saved });
+    (this.state as WorldSnapshot).duels = [...this.activeDuels.values()].map((d) => d.view);
+    return true;
+  }
+
+  abandonDuel(id: string) {
+    const duel = this.duelOf(id);
+    if (!duel) return false;
+    const winner = duel.view.players.find((p) => p !== id)!;
+    this.finishDuel(duel, winner, 'abandono');
+    return true;
+  }
+
+  private clearDuelEffects(ids: string[]) {
+    const set = new Set(ids);
+    this.state.arrows = this.state.arrows.filter((a) => !set.has(String(a.owner)));
+    this.state.traps = this.state.traps.filter((t) => !set.has(String(t.owner)));
+    for (const id of ids) {
+      this.incantations.delete(id);
+      this.buffs.delete(id);
+      this.drains.delete(id);
+      this.parries.delete(id);
+      this.imbues.delete(id);
+      this.burns.delete(id);
+      this.poisons.delete(id);
+    }
+  }
+
+  private finishDuel(
+    duel: {
+      view: DuelView;
+      saved: Map<string, { x: number; y: number; hp: number; mana: number }>;
+    },
+    winnerId: string,
+    reason: string,
+  ) {
+    const winner = this.characters.get(winnerId)?.name ?? 'Alguien';
+    for (const id of duel.view.players) {
+      const p = this.state.players.find((q) => q.id === id);
+      const saved = duel.saved.get(id);
+      if (p && saved)
+        Object.assign(p, {
+          ...saved,
+          respawnLeft: 0,
+          invuln: 0,
+          windup: 0,
+          shotCharge: 0,
+          specialCharge: 0,
+        });
+      this.notify(id, {
+        kind: 'social',
+        title: `${winner} ganó el duelo`,
+        text:
+          reason === 'abandono'
+            ? 'El rival abandonó el combate.'
+            : 'El combate terminó sin pérdidas.',
+        color: '#ffd36a',
+      });
+    }
+    for (const [id, character] of this.characters) {
+      if (duel.view.players.includes(id)) continue;
+      const p = this.state.players.find((q) => q.id === id);
+      if (p && distance(p, duel.view) <= 800)
+        this.notify(id, {
+          kind: 'social',
+          title: `${winner} ganó el duelo`,
+          text: `${duel.view.names.join(' contra ')}.`,
+          color: '#ffd36a',
+        });
+    }
+    this.clearDuelEffects(duel.view.players);
+    this.state.graves = this.state.graves.filter(
+      (g) => !duel.view.players.includes(g.victim ?? ''),
+    );
+    this.activeDuels.delete(duel.view.id);
+    (this.state as WorldSnapshot).duels = [...this.activeDuels.values()].map((d) => d.view);
+  }
+
+  private stepDuels(dt: number) {
+    for (const duel of this.activeDuels.values()) {
+      if (duel.view.phase === 'countdown') {
+        duel.view.countdown = Math.max(0, duel.view.countdown - dt);
+        if (duel.view.countdown <= 0) {
+          duel.view.phase = 'fighting';
+          for (const id of duel.view.players) {
+            const p = this.state.players.find((q) => q.id === id);
+            if (p) p.invuln = 0;
+          }
+        }
+      }
+      for (const id of duel.view.players) {
+        const p = this.state.players.find((q) => q.id === id);
+        if (!p) continue;
+        const dx = p.x - duel.view.x,
+          dy = p.y - duel.view.y;
+        const length = Math.hypot(dx, dy);
+        if (length > duel.view.radius - RULES.radius) {
+          const scale = (duel.view.radius - RULES.radius) / length;
+          p.x = duel.view.x + dx * scale;
+          p.y = duel.view.y + dy * scale;
+        }
+      }
+    }
+    (this.state as WorldSnapshot).duels = [...this.activeDuels.values()].map((d) => ({
+      ...d.view,
+    }));
   }
 
   // ─── Skills ───────────────────────────────────────────────────────────────────────────────────
@@ -605,8 +823,14 @@ export class World extends Duel {
     if (!character || !CAST_SLOTS.includes(slot) || !slotOpen(slot, character.level)) return false;
     if (skillId !== null) {
       const skill = SKILLS_WORLD[skillId];
-      if (!skill || !character.skills[skillId] || !schoolOpen(skill, character.affinities, character.trees)) return false;
-      for (const other of CAST_SLOTS) if (character.slots[other] === skillId) character.slots[other] = null;
+      if (
+        !skill ||
+        !character.skills[skillId] ||
+        !schoolOpen(skill, character.affinities, character.trees)
+      )
+        return false;
+      for (const other of CAST_SLOTS)
+        if (character.slots[other] === skillId) character.slots[other] = null;
     }
     character.slots[slot] = skillId;
     this.sheetChanged.add(id);
@@ -618,7 +842,8 @@ export class World extends Duel {
     const character = this.characters.get(id);
     const skill = SKILLS_WORLD[skillId];
     const progress = character?.skills[skillId];
-    if (!character || !skill || !progress) return { ok: false, reason: 'No conocés esa habilidad.' };
+    if (!character || !skill || !progress)
+      return { ok: false, reason: 'No conocés esa habilidad.' };
     const check = canLearn(skill, progress, nodeId, character.skillPoints, character.stats);
     if (!check.ok) {
       this.notify(id, { kind: 'denied', title: skill.name, text: check.reason!, color: '#ff8a7a' });
@@ -627,7 +852,13 @@ export class World extends Duel {
     const node = skill.tree.find((n) => n.id === nodeId)!;
     progress.nodes.push(nodeId);
     character.skillPoints -= node.cost;
-    this.notify(id, { kind: 'learn', title: `Aprendiste «${node.name}»`, text: node.text, color: skill.color, skillId });
+    this.notify(id, {
+      kind: 'learn',
+      title: `Aprendiste «${node.name}»`,
+      text: node.text,
+      color: skill.color,
+      skillId,
+    });
     if (node.grants.channel) this.channel(id, character, skill.school as Affinity);
     this.sheetChanged.add(id);
     return check;
@@ -659,8 +890,13 @@ export class World extends Duel {
     const character = this.characters.get(id);
     if (!character) return 1;
     const buff = this.buffs.get(id)?.damage ?? 0;
-    const touki = MARTIAL.some((a) => rankOf(character.affinities[a]?.xp ?? 0) >= TOUKI_RANK) ? 0.15 : 0;
-    return (1 + buff + this.bonusesOf(character).damage + touki) * this.attributeScale(character, this.castingSchool);
+    const touki = MARTIAL.some((a) => rankOf(character.affinities[a]?.xp ?? 0) >= TOUKI_RANK)
+      ? 0.15
+      : 0;
+    return (
+      (1 + buff + this.bonusesOf(character).damage + touki) *
+      this.attributeScale(character, this.castingSchool)
+    );
   }
 
   /** Stealth: monsters notice a quiet character closer — until it touches them. */
@@ -674,7 +910,9 @@ export class World extends Duel {
     const character = this.characters.get(p.id);
     const melee = character ? WEAPON_PROFILE[character.weapon].melee : undefined;
     const base = super.meleeStats(p);
-    return melee ? { ...base, meleeRange: melee.range, meleeArc: melee.arc, meleeDamage: melee.damage } : base;
+    return melee
+      ? { ...base, meleeRange: melee.range, meleeArc: melee.arc, meleeDamage: melee.damage }
+      : base;
   }
 
   /** The school of the skill resolving right now; undefined means the blow is the weapon's. */
@@ -698,7 +936,10 @@ export class World extends Duel {
   }
 
   private critChance(character: Character) {
-    return Math.max(0, CRIT_STEP * (statsWithEquipment(character).perception - BASE_STATS.perception)) + affinityBonus(character.affinities).crit;
+    return (
+      Math.max(0, CRIT_STEP * (statsWithEquipment(character).perception - BASE_STATS.perception)) +
+      affinityBonus(character.affinities).crit
+    );
   }
 
   /** Where a character counts as standing for saving: its body, or the shrine if it lies dead. */
@@ -728,11 +969,27 @@ export class World extends Duel {
   }
 
   private warded(x: Allegiant) {
-    return x.x !== undefined && x.y !== undefined && distance(x as Vec, this.definition.shrine) <= SHRINE_WARD;
+    return (
+      x.x !== undefined &&
+      x.y !== undefined &&
+      distance(x as Vec, this.definition.shrine) <= SHRINE_WARD
+    );
   }
 
   /** Sanctuaries refuse player against player; so does the ring around a wild zone's shrine. */
   protected override hostile(a: Allegiant, b: Allegiant) {
+    const aid = String((a as { id?: unknown }).id ?? '');
+    const bid = String((b as { id?: unknown }).id ?? '');
+    const ad = aid ? this.duelOf(aid) : undefined;
+    const bd = bid ? this.duelOf(bid) : undefined;
+    if (ad || bd)
+      return (
+        !!ad &&
+        ad === bd &&
+        ad.view.phase === 'fighting' &&
+        ad.view.players.includes(aid) &&
+        ad.view.players.includes(bid)
+      );
     if (!this.rivals(a, b)) return false;
     const monster = this.side(a) === 'monster' || this.side(b) === 'monster';
     return monster || (!this.warded(a) && !this.warded(b));
@@ -750,7 +1007,10 @@ export class World extends Duel {
 
   private nearestRival(z: Zombie, reach = 520) {
     return this.state.players
-      .filter((p) => p.hp > 0 && this.characters.has(p.id) && this.rivals(p, z) && distance(p, z) <= reach)
+      .filter(
+        (p) =>
+          p.hp > 0 && this.characters.has(p.id) && this.rivals(p, z) && distance(p, z) <= reach,
+      )
       .sort((a, b) => distance(a, z) - distance(b, z))[0];
   }
 
@@ -768,7 +1028,9 @@ export class World extends Duel {
     const player = s.players.find((p) => p.id === by && this.characters.has(p.id));
     if (player) return { killer: player, own: true };
     const minion = s.zombies.find((q) => q.id === by);
-    const owner = minion ? s.players.find((p) => p.id === minion.owner && this.characters.has(p.id)) : undefined;
+    const owner = minion
+      ? s.players.find((p) => p.id === minion.owner && this.characters.has(p.id))
+      : undefined;
     return { killer: owner, own: false };
   }
 
@@ -793,7 +1055,10 @@ export class World extends Duel {
       this.stealing.delete(id);
       this.deny(id, 'Ojo del Impostor', 'Tardaste y el ojo se cerró. La carga sigue siendo tuya.');
     }
-    for (const map of [this.parries, this.buffs, this.drains, this.imbues] as Map<string, { left: number }>[]) {
+    for (const map of [this.parries, this.buffs, this.drains, this.imbues] as Map<
+      string,
+      { left: number }
+    >[]) {
       for (const [key, value] of map) {
         value.left -= dt;
         if (value.left <= 0) map.delete(key);
@@ -810,7 +1075,8 @@ export class World extends Duel {
       if (bonus.regen > 0) p.hp = Math.min(p.maxHp, p.hp + bonus.regen * dt);
       // Speed rides on the upgrade state `movePlayer` already reads, so prediction stays honest.
       const agility = statsWithEquipment(character).agility - BASE_STATS.agility;
-      p.pve.speed = (this.buffs.get(p.id)?.speed ?? 0) + bonus.speed + Math.max(-0.1, 0.015 * agility);
+      p.pve.speed =
+        (this.buffs.get(p.id)?.speed ?? 0) + bonus.speed + Math.max(-0.1, 0.015 * agility);
     }
     for (const [id, spell] of this.incantations) {
       spell.left -= dt;
@@ -818,9 +1084,11 @@ export class World extends Duel {
       this.incantations.delete(id);
       const p = this.state.players.find((q) => q.id === id);
       const character = this.characters.get(id);
-      if (p && character && p.hp > 0) this.resolve(p, character, SKILLS_WORLD[spell.skillId], spell.aim);
+      if (p && character && p.hp > 0)
+        this.resolve(p, character, SKILLS_WORLD[spell.skillId], spell.aim);
     }
-    for (const request of this.requested.splice(0)) this.request(request.id, request.slot, request.aim);
+    for (const request of this.requested.splice(0))
+      this.request(request.id, request.slot, request.aim);
   }
 
   private deny(id: string, title: string, text: string) {
@@ -832,17 +1100,26 @@ export class World extends Duel {
     const character = this.characters.get(id);
     if (!p || !character || p.hp <= 0 || this.incantations.has(id)) return;
     if (!slotOpen(slot, character.level))
-      return this.deny(id, `Ranura ${SLOT_NAMES[slot]}`, `Se abre en el nivel ${SLOT_LEVEL[slot]}.`);
+      return this.deny(
+        id,
+        `Ranura ${SLOT_NAMES[slot]}`,
+        `Se abre en el nivel ${SLOT_LEVEL[slot]}.`,
+      );
     const skillId = character.slots[slot];
     const skill = skillId ? SKILLS_WORLD[skillId] : undefined;
     const progress = skillId ? character.skills[skillId] : undefined;
-    if (!skill || !progress) return this.deny(id, `Ranura ${SLOT_NAMES[slot]}`, 'No tenés nada ahí todavía.');
+    if (!skill || !progress)
+      return this.deny(id, `Ranura ${SLOT_NAMES[slot]}`, 'No tenés nada ahí todavía.');
     if (!schoolOpen(skill, character.affinities, character.trees))
       return this.deny(id, skillName(skill, progress.level), refusalFor(skill.school));
     if (this.cooldownLeft(id, skill.id) > 0) return;
     const effective = effectiveSkill(skill, progress);
     if (p.mana + 1e-6 < effective.mana)
-      return this.deny(id, effective.name, `Maná insuficiente: necesitás ${Math.ceil(effective.mana)}.`);
+      return this.deny(
+        id,
+        effective.name,
+        `Maná insuficiente: necesitás ${Math.ceil(effective.mana)}.`,
+      );
     const blocked = this.precheck(p, character, skill, aim);
     if (blocked) return this.deny(id, effective.name, blocked);
     // Casting takes the hands off the chest.
@@ -850,10 +1127,16 @@ export class World extends Duel {
 
     p.mana -= effective.mana;
     // Agility shortens every recharge, never below half.
-    const quick = Math.max(0.5, 1 - 0.02 * (statsWithEquipment(character).agility - BASE_STATS.agility) - affinityBonus(character.affinities).cooldown);
+    const quick = Math.max(
+      0.5,
+      1 -
+        0.02 * (statsWithEquipment(character).agility - BASE_STATS.agility) -
+        affinityBonus(character.affinities).cooldown,
+    );
     this.skillCd.set(this.cooldownKey(id, skill.id), effective.cooldown * quick);
     const school = skill.school as Affinity;
-    const silent = !skill.incantation || rankOf(character.affinities[school]?.xp ?? 0) >= SILENT_CAST_RANK;
+    const silent =
+      !skill.incantation || rankOf(character.affinities[school]?.xp ?? 0) >= SILENT_CAST_RANK;
     this.notify(id, {
       kind: 'callout',
       title: effective.name,
@@ -886,16 +1169,19 @@ export class World extends Duel {
         return 'Tu Sombra ya camina a tu lado.';
       const grave = s.graves.some((g) => this.canRaise(p, g) && distance(p, g) <= RULES.raiseRange);
       if (!grave && !p.thrall) return 'No hay nadie que hayas matado cerca.';
-      if (!grave && p.thrallCd > 0) return `Tu Sombra se está rearmando: ${Math.ceil(p.thrallCd)} s.`;
+      if (!grave && p.thrallCd > 0)
+        return `Tu Sombra se está rearmando: ${Math.ceil(p.thrallCd)} s.`;
     }
     if (skill.effect.kind === 'devour' && !this.devourTarget(p, skill.effect.radius))
       return 'No hay nada que devorar cerca.';
     if (skill.effect.kind === 'steal') {
-      if (COPY_CHARGES_LIMITED && character.copyCharges <= 0) return 'El ojo ya se cerró. No quedan cargas.';
+      if (COPY_CHARGES_LIMITED && character.copyCharges <= 0)
+        return 'El ojo ya se cerró. No quedan cargas.';
       if (this.stealing.has(p.id)) return 'El ojo ya está abierto: elegí qué llevarte.';
       const prey = this.stealTarget(p, skill.effect.range, aim);
       if (!prey) return 'Apuntá a algo que esté al alcance.';
-      if (!this.stealOptions(character, prey).options.length) return 'No le queda nada que vos no tengas.';
+      if (!this.stealOptions(character, prey).options.length)
+        return 'No le queda nada que vos no tengas.';
     }
     return null;
   }
@@ -911,8 +1197,17 @@ export class World extends Duel {
    */
   private stealTarget(p: Player, range: number, aim?: Vec): Zombie | Player | undefined {
     const at = aim ?? p;
-    const monsters = this.state.zombies.filter((z) => z.family && z.hp > 0 && distance(p, z) <= range);
-    const rivals = this.state.players.filter((q) => q !== p && q.hp > 0 && this.characters.has(q.id) && this.rivals(p, q) && distance(p, q) <= range);
+    const monsters = this.state.zombies.filter(
+      (z) => z.family && z.hp > 0 && distance(p, z) <= range,
+    );
+    const rivals = this.state.players.filter(
+      (q) =>
+        q !== p &&
+        q.hp > 0 &&
+        this.characters.has(q.id) &&
+        this.rivals(p, q) &&
+        distance(p, q) <= range,
+    );
     return [...monsters, ...rivals].sort((a, b) => distance(at, a) - distance(at, b))[0];
   }
 
@@ -938,8 +1233,22 @@ export class World extends Duel {
         });
       }
       if (!character.passives.includes(tree.passive.id))
-        options.push({ id: `passive:${tree.passive.id}`, kind: 'passive', name: tree.passive.name, text: tree.passive.text, icon: 'el-sombra', color: '#ff6fb0', rarity: 'unica' });
-      return { target: formName(monster, target.level), kind: 'monstruo', options, seconds: STEAL_WINDOW, costsCharge: COPY_CHARGES_LIMITED };
+        options.push({
+          id: `passive:${tree.passive.id}`,
+          kind: 'passive',
+          name: tree.passive.name,
+          text: tree.passive.text,
+          icon: 'el-sombra',
+          color: '#ff6fb0',
+          rarity: 'unica',
+        });
+      return {
+        target: formName(monster, target.level),
+        kind: 'monstruo',
+        options,
+        seconds: STEAL_WINDOW,
+        costsCharge: COPY_CHARGES_LIMITED,
+      };
     }
     const prey = this.characters.get(target.id)!;
     for (const [skillId, progress] of Object.entries(prey.skills)) {
@@ -961,9 +1270,24 @@ export class World extends Duel {
     for (const id of prey.passives) {
       if (character.passives.includes(id)) continue;
       const passive = Object.values(MONSTER_TREES).find((tree) => tree.passive.id === id)?.passive;
-      if (passive) options.push({ id: `passive:${id}`, kind: 'passive', name: passive.name, text: passive.text, icon: 'el-sombra', color: '#ff6fb0', rarity: 'unica' });
+      if (passive)
+        options.push({
+          id: `passive:${id}`,
+          kind: 'passive',
+          name: passive.name,
+          text: passive.text,
+          icon: 'el-sombra',
+          color: '#ff6fb0',
+          rarity: 'unica',
+        });
     }
-    return { target: prey.name, kind: 'personaje', options, seconds: STEAL_WINDOW, costsCharge: COPY_CHARGES_LIMITED };
+    return {
+      target: prey.name,
+      kind: 'personaje',
+      options,
+      seconds: STEAL_WINDOW,
+      costsCharge: COPY_CHARGES_LIMITED,
+    };
   }
 
   /**
@@ -977,10 +1301,16 @@ export class World extends Duel {
     if (!open || !p || !character) return false;
     const option = open.options.find((o) => o.id === optionId);
     if (!option) return false;
-    const target = [...this.state.zombies, ...this.state.players].find((e) => e.id === open.targetId);
+    const target = [...this.state.zombies, ...this.state.players].find(
+      (e) => e.id === open.targetId,
+    );
     if (!target || target.hp <= 0 || distance(p, target) > open.range) {
       this.stealing.delete(id);
-      this.deny(id, 'Ojo del Impostor', 'Se te fue de las manos. El ojo se cerró sin llevarse nada.');
+      this.deny(
+        id,
+        'Ojo del Impostor',
+        'Se te fue de las manos. El ojo se cerró sin llevarse nada.',
+      );
       return false;
     }
     if (COPY_CHARGES_LIMITED && character.copyCharges <= 0) {
@@ -990,23 +1320,33 @@ export class World extends Duel {
     this.stealing.delete(id);
     if (COPY_CHARGES_LIMITED) character.copyCharges--;
     const monster = (target as Zombie).family;
-    const [kind, what] = [option.id.slice(0, option.id.indexOf(':')), option.id.slice(option.id.indexOf(':') + 1)];
+    const [kind, what] = [
+      option.id.slice(0, option.id.indexOf(':')),
+      option.id.slice(option.id.indexOf(':') + 1),
+    ];
     if (kind === 'passive') character.passives.push(what);
     else {
       const skill = SKILLS_WORLD[what];
       // A monster's skill only answers to someone who carries its family's tree.
-      if (skill.school === 'monstruo' && monster && !character.trees.includes(monster)) character.trees.push(monster);
+      if (skill.school === 'monstruo' && monster && !character.trees.includes(monster))
+        character.trees.push(monster);
       // Copying from a door you never opened opens it a crack, exactly like a tome would.
       const school = skill.school as Affinity;
-      if (AFFINITIES.includes(school) && !character.affinities[school]) character.affinities[school] = { points: 1, xp: 0, cultivation: 1 };
+      if (AFFINITIES.includes(school) && !character.affinities[school])
+        character.affinities[school] = { points: 1, xp: 0, cultivation: 1 };
       character.skills[what] = { level: option.level ?? 1, uses: 0, nodes: [] };
-      const free = CAST_SLOTS.find((slot) => slotOpen(slot, character.level) && character.slots[slot] === null);
+      const free = CAST_SLOTS.find(
+        (slot) => slotOpen(slot, character.level) && character.slots[slot] === null,
+      );
       if (free) character.slots[free] = what;
     }
     this.notify(id, {
       kind: 'steal',
       title: `Robaste «${option.name}»`,
-      text: option.kind === 'passive' ? option.text : `Ahora es tuya, aunque nadie te la haya enseñado. ${option.text}`,
+      text:
+        option.kind === 'passive'
+          ? option.text
+          : `Ahora es tuya, aunque nadie te la haya enseñado. ${option.text}`,
       color: '#ff6fb0',
       rarity: 'unica',
     });
@@ -1022,7 +1362,8 @@ export class World extends Duel {
     const progress = character.skills[skill.id];
     if (!progress) return;
     const { effect } = effectiveSkill(skill, progress);
-    const angle = Math.hypot(aim.x - p.x, aim.y - p.y) > 1 ? Math.atan2(aim.y - p.y, aim.x - p.x) : p.angle;
+    const angle =
+      Math.hypot(aim.x - p.x, aim.y - p.y) > 1 ? Math.atan2(aim.y - p.y, aim.x - p.x) : p.angle;
     const arcane = ARCANE.includes(skill.school as Affinity);
     const staff = arcane && character.weapon === 'baston' ? 1.1 : 1;
     this.castingSchool = skill.school;
@@ -1033,7 +1374,14 @@ export class World extends Duel {
     }
   }
 
-  private apply(p: Player, character: Character, skill: WorldSkill, effect: SkillEffect, angle: number, staff: number) {
+  private apply(
+    p: Player,
+    character: Character,
+    skill: WorldSkill,
+    effect: SkillEffect,
+    angle: number,
+    staff: number,
+  ) {
     const s = this.state;
     switch (effect.kind) {
       case 'bolt': {
@@ -1051,7 +1399,9 @@ export class World extends Duel {
           angle,
           life: effect.range / speed,
           // The arrow lands later, counted as a weapon blow; the skill's own attribute travels in it.
-          damageScale: (effect.damage * staff * this.attributeScale(character, skill.school)) / this.attributeScale(character),
+          damageScale:
+            (effect.damage * staff * this.attributeScale(character, skill.school)) /
+            this.attributeScale(character),
           worldElement: effect.element,
           ...(look.element ? { element: look.element } : {}),
           ...(effect.freeze && !look.element ? { element: 'ice' as const } : {}),
@@ -1067,15 +1417,25 @@ export class World extends Duel {
       case 'nova': {
         for (const z of s.zombies) {
           if (!this.hostile(p, z) || z.hp <= 0 || distance(p, z) > effect.radius) continue;
-          this.damageZombie(z, p.team, effect.damage * staff, Math.atan2(z.y - p.y, z.x - p.x), p.id);
+          this.damageZombie(
+            z,
+            p.team,
+            effect.damage * staff,
+            Math.atan2(z.y - p.y, z.x - p.x),
+            p.id,
+          );
           if (effect.freeze && z.hp > 0) {
             z.frozenLeft = Math.max(z.frozenLeft, effect.freeze);
             this.event('freeze', z, z.team);
           }
         }
         for (const q of s.players) {
-          if (q === p || q.hp <= 0 || !this.hostile(p, q) || distance(p, q) > effect.radius) continue;
-          if (this.damage(q, p, Math.atan2(q.y - p.y, q.x - p.x), effect.damage * staff) && effect.freeze)
+          if (q === p || q.hp <= 0 || !this.hostile(p, q) || distance(p, q) > effect.radius)
+            continue;
+          if (
+            this.damage(q, p, Math.atan2(q.y - p.y, q.x - p.x), effect.damage * staff) &&
+            effect.freeze
+          )
             this.freeze(q);
         }
         this.event('explosion', p, p.team, angle, p.classId, 1);
@@ -1096,7 +1456,12 @@ export class World extends Duel {
         return;
       }
       case 'dash': {
-        translate(p, Math.cos(angle) * effect.distance, Math.sin(angle) * effect.distance, this.terrainFor(p));
+        translate(
+          p,
+          Math.cos(angle) * effect.distance,
+          Math.sin(angle) * effect.distance,
+          this.terrainFor(p),
+        );
         p.invuln = Math.max(p.invuln, 0.25);
         this.event('dash', p, p.team, angle, p.classId, 1);
         return;
@@ -1119,18 +1484,31 @@ export class World extends Duel {
       }
       case 'steal': {
         // The eye opens on what is aimed at and waits: the charge is spent on the choice, not here.
-        const prey = this.stealTarget(p, effect.range, { x: p.x + Math.cos(angle) * effect.range, y: p.y + Math.sin(angle) * effect.range });
+        const prey = this.stealTarget(p, effect.range, {
+          x: p.x + Math.cos(angle) * effect.range,
+          y: p.y + Math.sin(angle) * effect.range,
+        });
         if (!prey) return;
         const offer = this.stealOptions(character, prey);
         if (!offer.options.length) return;
         this.event('cast', prey, p.team, angle, p.classId, 1);
         this.state.events.at(-1)!.color = '#ff6fb0';
         if (offer.options.length === 1) {
-          this.stealing.set(p.id, { targetId: prey.id, range: effect.range + 40, options: offer.options, left: STEAL_WINDOW });
+          this.stealing.set(p.id, {
+            targetId: prey.id,
+            range: effect.range + 40,
+            options: offer.options,
+            left: STEAL_WINDOW,
+          });
           this.chooseSteal(p.id, offer.options[0].id);
           return;
         }
-        this.stealing.set(p.id, { targetId: prey.id, range: effect.range + 40, options: offer.options, left: STEAL_WINDOW });
+        this.stealing.set(p.id, {
+          targetId: prey.id,
+          range: effect.range + 40,
+          options: offer.options,
+          left: STEAL_WINDOW,
+        });
         this.stealOffers.push({ id: p.id, offer });
         return;
       }
@@ -1152,14 +1530,21 @@ export class World extends Duel {
 
   /** The imbue shaping a blow a character deals right now — only a weapon's blow, never a spell's. */
   private imbueFor(id: string | undefined) {
-    if (!id || this.castingSchool !== undefined || this.pouring || this.reflecting) return undefined;
+    if (!id || this.castingSchool !== undefined || this.pouring || this.reflecting)
+      return undefined;
     return this.imbues.get(id);
   }
 
   /** A blow's amount once the weapon carries an affinity: from behind, or on the undead, more. */
-  private imbued(imbue: { effect: Imbue }, target: { angle: number; family?: string }, angle: number, amount: number) {
+  private imbued(
+    imbue: { effect: Imbue },
+    target: { angle: number; family?: string },
+    angle: number,
+    amount: number,
+  ) {
     let share = imbue.effect.damage;
-    if (imbue.effect.backstab && Math.cos(target.angle - angle) > 0.5) share += imbue.effect.backstab;
+    if (imbue.effect.backstab && Math.cos(target.angle - angle) > 0.5)
+      share += imbue.effect.backstab;
     if (imbue.effect.holy && target.family && UNDEAD.has(target.family)) share += imbue.effect.holy;
     return amount * (1 + share);
   }
@@ -1176,7 +1561,8 @@ export class World extends Duel {
     try {
       if (target.hp > 0) {
         if (e.stun) {
-          if (monster) (target as Zombie).frozenLeft = Math.max((target as Zombie).frozenLeft, e.stun);
+          if (monster)
+            (target as Zombie).frozenLeft = Math.max((target as Zombie).frozenLeft, e.stun);
           else {
             const q = target as Player;
             q.stunLeft = Math.max(q.stunLeft, e.stun);
@@ -1185,15 +1571,30 @@ export class World extends Duel {
           }
         }
         if (e.freeze) {
-          if (monster) (target as Zombie).frozenLeft = Math.max((target as Zombie).frozenLeft, e.freeze);
+          if (monster)
+            (target as Zombie).frozenLeft = Math.max((target as Zombie).frozenLeft, e.freeze);
           else this.freeze(target as Player);
           this.event('freeze', target, target.team);
         }
-        if (e.burn) this.burns.set(target.id, { left: BURN_TIME, dps: e.burn, tick: 1, by: attackerId });
-        if (e.knock) translate(target, Math.cos(angle) * e.knock, Math.sin(angle) * e.knock, monster ? this.terrain : this.terrainFor(target as Player));
+        if (e.burn)
+          this.burns.set(target.id, { left: BURN_TIME, dps: e.burn, tick: 1, by: attackerId });
+        if (e.knock)
+          translate(
+            target,
+            Math.cos(angle) * e.knock,
+            Math.sin(angle) * e.knock,
+            monster ? this.terrain : this.terrainFor(target as Player),
+          );
       }
       if (e.drain) attacker.hp = Math.min(attacker.maxHp, attacker.hp + dealt * e.drain);
-      this.event('imbue', target, attacker.team, angle, attacker.classId, e.stun || e.freeze ? 1 : 0);
+      this.event(
+        'imbue',
+        target,
+        attacker.team,
+        angle,
+        attacker.classId,
+        e.stun || e.freeze ? 1 : 0,
+      );
       this.state.events.at(-1)!.color = imbue.skill.color;
       // Each imbued blow is a use of the affinity, at most one every short while.
       if (imbue.grown <= 0) {
@@ -1221,7 +1622,8 @@ export class World extends Duel {
         burn.tick += 1;
         this.pouring = true;
         try {
-          if (player) this.damage(player, attacker, 0, burn.dps, { ignoreInvuln: true, pierce: true });
+          if (player)
+            this.damage(player, attacker, 0, burn.dps, { ignoreInvuln: true, pierce: true });
           else this.damageZombie(monster!, attacker.team, burn.dps, undefined, attacker.id);
         } finally {
           this.pouring = false;
@@ -1280,6 +1682,7 @@ export class World extends Duel {
    * fast while the character is a child, slowly as a youth, never again as an adult.
    */
   private grow(p: Player, character: Character, skill: WorldSkill) {
+    if (this.duelOf(p.id)) return;
     const progress = character.skills[skill.id];
     progress.uses++;
     if (progress.level < skill.maxLevel && progress.uses >= usesToLevel(skill, progress.level))
@@ -1302,10 +1705,10 @@ export class World extends Duel {
                 ? 'El agua ya no te frena: la caminás como si fuera tierra.'
                 : 'El viento te sostiene: cruzás el agua sin hundirte.'
               : arcane && after === SILENT_CAST_RANK
-              ? 'Ya no necesitás palabras: la magia te responde en silencio.'
-              : !arcane && after === TOUKI_RANK
-                ? 'Algo arde bajo tu piel. Es Touki, y nadie te lo enseñó.'
-                : 'Tu afinidad se volvió más profunda.',
+                ? 'Ya no necesitás palabras: la magia te responde en silencio.'
+                : !arcane && after === TOUKI_RANK
+                  ? 'Algo arde bajo tu piel. Es Touki, y nadie te lo enseñó.'
+                  : 'Tu afinidad se volvió más profunda.',
           color: skill.color,
         });
       }
@@ -1372,8 +1775,21 @@ export class World extends Duel {
     // A reflected blow cannot be parried back, or two parries would bounce it forever.
     if (parry && target.hp > 0 && !this.reflecting) {
       if (striker.family && (striker.hp ?? 0) > 0) {
-        this.damageZombie(striker as Zombie, target.team, amount * parry.reflect, angle + Math.PI, target.id);
-        this.event('counter', target, target.team, angle + Math.PI, target.classId, parry.reflect >= 2 ? 1 : 0);
+        this.damageZombie(
+          striker as Zombie,
+          target.team,
+          amount * parry.reflect,
+          angle + Math.PI,
+          target.id,
+        );
+        this.event(
+          'counter',
+          target,
+          target.team,
+          angle + Math.PI,
+          target.classId,
+          parry.reflect >= 2 ? 1 : 0,
+        );
         return false;
       }
       const attacker = this.state.players.find((q) => q.id === (source as Partial<Player>).id);
@@ -1387,7 +1803,14 @@ export class World extends Duel {
             this.reflecting = false;
           }
         }
-        this.event('counter', target, target.team, angle + Math.PI, target.classId, parry.reflect >= 2 ? 1 : 0);
+        this.event(
+          'counter',
+          target,
+          target.team,
+          angle + Math.PI,
+          target.classId,
+          parry.reflect >= 2 ? 1 : 0,
+        );
         return false;
       }
     }
@@ -1397,14 +1820,25 @@ export class World extends Duel {
     const imbue = attacker && amount > 0 ? this.imbueFor(caster) : undefined;
     const base = imbue ? this.imbued(imbue, target, angle, amount) : amount;
     const crit = !!attacker && this.random() < this.critChance(attacker);
-    const scaled = attacker ? base * this.damageMultiplier(caster!) * (crit ? CRIT_MULTIPLIER : 1) : amount * (1 + howl);
+    const scaled = attacker
+      ? base * this.damageMultiplier(caster!) * (crit ? CRIT_MULTIPLIER : 1)
+      : amount * (1 + howl);
     const alive = target.hp > 0;
     const landed = super.damage(target, source, angle, scaled, options);
     // A blow that lands takes the hands off the chest.
     if (landed) this.opening.delete(target.id);
     if (landed && caster) this.heal(caster, scaled);
     if (landed && imbue && alive) this.pour(caster!, target, angle, scaled);
-    if (landed && alive && target.hp <= 0) this.onDeath(target, source);
+    if (landed && alive && target.hp <= 0) {
+      const duel = this.duelOf(target.id);
+      if (duel) {
+        const winner = duel.view.players.find((id) => id !== target.id)!;
+        this.state.graves = this.state.graves.filter(
+          (g) => !(g.name === target.name && distance(g, target) < 2),
+        );
+        this.finishDuel(duel, winner, 'ko');
+      } else this.onDeath(target, source);
+    }
     return landed;
   }
 
@@ -1418,12 +1852,20 @@ export class World extends Duel {
     const striker = source as Partial<Zombie & Player>;
     if (striker.family) this.evolveMonster(striker as Zombie);
     const killerId =
-      striker.id !== undefined && !striker.family && striker.id !== target.id && this.characters.has(String(striker.id))
+      striker.id !== undefined &&
+      !striker.family &&
+      striker.id !== target.id &&
+      this.characters.has(String(striker.id))
         ? String(striker.id)
         : undefined;
     const grave = this.state.graves.at(-1);
     if (grave && grave.name === target.name && grave.victim === undefined)
-      Object.assign(grave, { victim: target.id, killer: killerId, level: target.level, maxHp: target.maxHp });
+      Object.assign(grave, {
+        victim: target.id,
+        killer: killerId,
+        level: target.level,
+        maxHp: target.maxHp,
+      });
     this.incantations.delete(target.id);
     this.buffs.delete(target.id);
     this.drains.delete(target.id);
@@ -1444,7 +1886,9 @@ export class World extends Duel {
         title: 'Caíste',
         text:
           (by ? `${by} te mató. ` : '') +
-          (lost > 0 ? `Perdiste ${lost} de experiencia; lo que llevás es tuyo.` : 'Acá no se pierde nada. Volvés al altar.'),
+          (lost > 0
+            ? `Perdiste ${lost} de experiencia; lo que llevás es tuyo.`
+            : 'Acá no se pierde nada. Volvés al altar.'),
         color: '#ff5a6e',
       });
     }
@@ -1452,13 +1896,24 @@ export class World extends Duel {
     const killer = killerId ? this.characters.get(killerId) : undefined;
     if (!killer || !character) return;
     // Killing another player gives no experience, or two browsers could farm each other.
-    const awakens = this.definition.pvp === 'wild' && (killer.affinities.sombra?.points ?? 0) > 0 && !killer.skills.alzar;
+    const awakens =
+      this.definition.pvp === 'wild' &&
+      (killer.affinities.sombra?.points ?? 0) > 0 &&
+      !killer.skills.alzar;
     if (awakens) {
       killer.skills.alzar = { level: 1, uses: 0, nodes: [] };
-      const free = CAST_SLOTS.find((slot) => slotOpen(slot, killer.level) && killer.slots[slot] === null);
+      const free = CAST_SLOTS.find(
+        (slot) => slotOpen(slot, killer.level) && killer.slots[slot] === null,
+      );
       if (free) killer.slots[free] = 'alzar';
       this.sheetChanged.add(killer.id);
-      this.notify(killer.id, { kind: 'learn', title: 'Un muerto te mira', text: '«Alzar» despertó en vos.', color: AFFINITY_COLORS.sombra, skillId: 'alzar' });
+      this.notify(killer.id, {
+        kind: 'learn',
+        title: 'Un muerto te mira',
+        text: '«Alzar» despertó en vos.',
+        color: AFFINITY_COLORS.sombra,
+        skillId: 'alzar',
+      });
     }
     this.notify(killer.id, {
       kind: 'kill',
@@ -1472,7 +1927,9 @@ export class World extends Duel {
 
   private heal(id: string, dealt: number) {
     const character = this.characters.get(id);
-    const share = (this.drains.get(id)?.share ?? 0) + (character ? affinityBonus(character.affinities).lifesteal : 0);
+    const share =
+      (this.drains.get(id)?.share ?? 0) +
+      (character ? affinityBonus(character.affinities).lifesteal : 0);
     if (share <= 0) return;
     const p = this.state.players.find((q) => q.id === id);
     if (p && p.hp > 0) p.hp = Math.min(p.maxHp, p.hp + dealt * share);
@@ -1494,6 +1951,7 @@ export class World extends Duel {
    * bystander in the wild must not collect someone else's kill, buffs or drain.
    */
   override damageZombie(z: Zombie, team: Team, amount = 1, angle?: number, by?: string) {
+    if (by && this.duelOf(by)) return;
     const alive = z.hp > 0;
     const credit = this.creditFor(z, by);
     const own = credit.own && credit.killer ? credit.killer : undefined;
@@ -1510,10 +1968,23 @@ export class World extends Duel {
     if (!killer) return;
     const character = this.characters.get(killer.id)!;
     const won = xpFor(z.family, z.level, character.level);
-    const subida = this.grantXp(killer.id, won);
+    const eligible = [...new Set(this.partyRecipients(killer.id))]
+      .filter(
+        (id) =>
+          this.characters.has(id) && (this.state.players.find((p) => p.id === id)?.hp ?? 0) > 0,
+      )
+      .sort();
+    if (!eligible.includes(killer.id)) eligible.push(killer.id);
+    const share = won / eligible.length;
+    let subidaLevel: number | null = null;
+    eligible.forEach((id) => {
+      const result = this.grantXp(id, share);
+      if (id === killer.id && result) subidaLevel = result.level;
+    });
     // Announced only when a level is actually gained, and on the one who gained it: emitting it on
     // every kill with power 0 painted "NV 0" over each dead monster.
-    if (subida) this.event('levelup', killer, team, undefined, killer.classId, subida.level);
+    if (subidaLevel !== null)
+      this.event('levelup', killer, team, undefined, killer.classId, subidaLevel);
   }
 
   // ─── The loop ─────────────────────────────────────────────────────────────────────────────────
@@ -1530,10 +2001,17 @@ export class World extends Duel {
     const shaped = new Map<string, Input>();
     for (const [id, input] of inputs) {
       const character = this.characters.get(id);
-      shaped.set(id, worldInput(input, character?.weapon ?? 'espada', this.incantations.has(id)));
+      const duel = this.duelOf(id);
+      shaped.set(
+        id,
+        duel?.view.phase === 'countdown'
+          ? idleInput(input.seq, input.angle)
+          : worldInput(input, character?.weapon ?? 'espada', this.incantations.has(id)),
+      );
     }
     const firstArrow = this.arrowId;
     const placements = this.stepPlayers(shaped, dt);
+    this.stepDuels(dt);
     this.tagWeaponShots(firstArrow);
     // A parry is the engine's counter window, set after movement so no class kit can clear it.
     for (const p of s.players) {
@@ -1566,7 +2044,7 @@ export class World extends Duel {
       else this.portalCd.set(id, left - dt);
     }
     for (const p of this.state.players) {
-      if (p.hp <= 0 || this.portalCd.has(p.id)) continue;
+      if (p.hp <= 0 || this.portalCd.has(p.id) || this.duelOf(p.id)) continue;
       const character = this.characters.get(p.id);
       if (!character) continue;
       for (const portal of this.definition.portals) {
@@ -1686,7 +2164,7 @@ export class World extends Duel {
     }
     for (const p of s.players) {
       const character = this.characters.get(p.id);
-      if (!character || p.hp <= 0) {
+      if (!character || p.hp <= 0 || this.duelOf(p.id)) {
         this.opening.delete(p.id);
         continue;
       }
@@ -1694,7 +2172,8 @@ export class World extends Duel {
         .filter((c) => c.ready && distance(p, c) <= CHEST_REACH)
         .sort((a, b) => distance(p, a) - distance(p, b))[0];
       const warned = chest ? `${p.id}|${chest.id}` : '';
-      for (const key of this.lootWarned) if (key.startsWith(`${p.id}|`) && key !== warned) this.lootWarned.delete(key);
+      for (const key of this.lootWarned)
+        if (key.startsWith(`${p.id}|`) && key !== warned) this.lootWarned.delete(key);
       const current = this.opening.get(p.id);
       if (!chest || (current && current.chestId !== chest.id)) this.opening.delete(p.id);
       if (!chest) continue;
@@ -1702,7 +2181,11 @@ export class World extends Duel {
       if (INVENTORY_SIZE - character.inventory.length < rules.maxDrops) {
         if (!this.lootWarned.has(warned)) {
           this.lootWarned.add(warned);
-          this.deny(p.id, rules.name, `Tu bolsa no tiene lugar: hacé espacio para ${rules.maxDrops} objetos.`);
+          this.deny(
+            p.id,
+            rules.name,
+            `Tu bolsa no tiene lugar: hacé espacio para ${rules.maxDrops} objetos.`,
+          );
         }
         continue;
       }
@@ -1714,7 +2197,8 @@ export class World extends Duel {
     for (const chest of s.chests) {
       let lead: { id: string; elapsed: number } | null = null;
       for (const [id, entry] of this.opening)
-        if (entry.chestId === chest.id && (!lead || entry.elapsed > lead.elapsed)) lead = { id, elapsed: entry.elapsed };
+        if (entry.chestId === chest.id && (!lead || entry.elapsed > lead.elapsed))
+          lead = { id, elapsed: entry.elapsed };
       chest.opener = lead?.id ?? null;
       chest.progress = lead ? Math.min(1, lead.elapsed / CHEST_TIERS[chest.tier].openSeconds) : 0;
     }
@@ -1723,7 +2207,12 @@ export class World extends Duel {
   private loot(p: Player, character: Character, chest: ChestView) {
     const rules = CHEST_TIERS[chest.tier];
     const camp = this.definition.spawners[this.chestCamp.get(chest.id)!];
-    const drops = rollLoot({ tier: chest.tier, campLevel: camp.level, character, random: this.random });
+    const drops = rollLoot({
+      tier: chest.tier,
+      campLevel: camp.level,
+      character,
+      random: this.random,
+    });
     const items = drops.flatMap((itemId) => this.give(p.id, itemId) ?? []);
     chest.ready = false;
     chest.respawnLeft = rules.respawnSeconds;
@@ -1743,7 +2232,8 @@ export class World extends Duel {
       rarity: best,
       tier: chest.tier,
       items,
-      color: chest.tier === 'legendario' ? '#ffc84d' : chest.tier === 'raro' ? '#56b8ff' : '#c9a36b',
+      color:
+        chest.tier === 'legendario' ? '#ffc84d' : chest.tier === 'raro' ? '#56b8ff' : '#c9a36b',
     });
     this.event('pickup', chest, p.team, undefined, undefined, 1);
   }
@@ -1776,7 +2266,8 @@ export class World extends Duel {
     const item = ITEMS[instance.itemId];
     const refuse = (text: string) => (this.deny(id, item?.name ?? 'Objeto', text), false);
     if (!item?.slot) return refuse('Eso no se equipa.');
-    if (character.level < item.level) return refuse(`Necesitás nivel ${item.level} para «${item.name}».`);
+    if (character.level < item.level)
+      return refuse(`Necesitás nivel ${item.level} para «${item.name}».`);
     if (p.hp <= 0) return refuse('Los caídos no se cambian de equipo.');
     if (this.incantations.has(id)) return refuse('No en medio de un conjuro.');
     const previous = character.equipment[item.slot];
@@ -1808,11 +2299,19 @@ export class World extends Duel {
     const character = this.characters.get(id);
     const p = this.state.players.find((q) => q.id === id);
     if (!character || !p) return false;
-    if (slot === 'weapon') return (this.deny(id, 'Arma', 'Las manos no quedan vacías: cambiá el arma por otra.'), false);
+    if (slot === 'weapon')
+      return (this.deny(id, 'Arma', 'Las manos no quedan vacías: cambiá el arma por otra.'), false);
     const instance = character.equipment[slot];
     if (!instance) return false;
     if (character.inventory.length >= INVENTORY_SIZE)
-      return (this.deny(id, ITEMS[instance.itemId]?.name ?? 'Objeto', `Tu bolsa está llena (${INVENTORY_SIZE}/${INVENTORY_SIZE}).`), false);
+      return (
+        this.deny(
+          id,
+          ITEMS[instance.itemId]?.name ?? 'Objeto',
+          `Tu bolsa está llena (${INVENTORY_SIZE}/${INVENTORY_SIZE}).`,
+        ),
+        false
+      );
     character.equipment[slot] = null;
     character.inventory.push(instance);
     this.applyCharacter(p, character);
@@ -1842,13 +2341,15 @@ export class World extends Duel {
     const item = ITEMS[character.inventory[index].itemId];
     const effect = item?.grimoire;
     const refuse = (text: string) => (this.deny(id, item?.name ?? 'Objeto', text), false);
-    if (!effect) return refuse(item?.slot ? 'Eso no se lee: se equipa.' : 'No sabés qué hacer con esto.');
+    if (!effect)
+      return refuse(item?.slot ? 'Eso no se lee: se equipa.' : 'No sabés qué hacer con esto.');
     if (p.hp <= 0) return refuse('Los caídos no leen.');
     const consume = () => {
       character.inventory.splice(index, 1);
       this.bagChanged(id);
     };
-    const tell = (title: string, text: string, color = '#9fd8ff') => this.notify(id, { kind: 'item', title, text, color });
+    const tell = (title: string, text: string, color = '#9fd8ff') =>
+      this.notify(id, { kind: 'item', title, text, color });
 
     switch (effect.kind) {
       case 'teach': {
@@ -1856,7 +2357,8 @@ export class World extends Duel {
         if (!skill) return refuse('Las páginas están en blanco.');
         const known = character.skills[skill.id];
         if (known) {
-          if (known.level >= skill.maxLevel) return refuse(`«${skillName(skill, known.level)}» ya está en su nivel máximo.`);
+          if (known.level >= skill.maxLevel)
+            return refuse(`«${skillName(skill, known.level)}» ya está en su nivel máximo.`);
           consume();
           this.raiseSkillLevel(id, skill, known);
           return true;
@@ -1864,11 +2366,15 @@ export class World extends Duel {
         consume();
         character.skills[skill.id] = { level: 1, uses: 0, nodes: [] };
         const open = schoolOpen(skill, character.affinities, character.trees);
-        const free = CAST_SLOTS.find((slot) => slotOpen(slot, character.level) && character.slots[slot] === null);
+        const free = CAST_SLOTS.find(
+          (slot) => slotOpen(slot, character.level) && character.slots[slot] === null,
+        );
         if (open && free) character.slots[free] = skill.id;
         tell(
           `Aprendiste «${skill.name}»`,
-          open ? skill.flavor : 'La conocés, pero tu cuerpo todavía no reconoce su flujo. Abrí esa afinidad para usarla.',
+          open
+            ? skill.flavor
+            : 'La conocés, pero tu cuerpo todavía no reconoce su flujo. Abrí esa afinidad para usarla.',
           skill.color,
         );
         return true;
@@ -1876,11 +2382,15 @@ export class World extends Duel {
       case 'affinity': {
         const state = character.affinities[effect.affinity];
         const name = AFFINITY_NAMES[effect.affinity];
-        if (state && state.points >= AFFINITY_POINT_CAP) return refuse(`${name} ya llegó a su tope de ${AFFINITY_POINT_CAP} puntos.`);
+        if (state && state.points >= AFFINITY_POINT_CAP)
+          return refuse(`${name} ya llegó a su tope de ${AFFINITY_POINT_CAP} puntos.`);
         consume();
         if (state) state.points++;
         else character.affinities[effect.affinity] = { points: 1, xp: 0, cultivation: 1 };
-        tell(state ? `${name} se profundiza` : `Se abrió ${name}`, state ? `Ahora tenés ${state.points} puntos.` : 'Una puerta que no sabías que existía.');
+        tell(
+          state ? `${name} se profundiza` : `Se abrió ${name}`,
+          state ? `Ahora tenés ${state.points} puntos.` : 'Una puerta que no sabías que existía.',
+        );
         return true;
       }
       case 'train': {
@@ -1893,10 +2403,15 @@ export class World extends Duel {
         return true;
       }
       case 'copy': {
-        if (character.copyCharges >= COPY_CHARGE_CAP) return refuse(`El ojo no aguanta más de ${COPY_CHARGE_CAP} cargas.`);
+        if (character.copyCharges >= COPY_CHARGE_CAP)
+          return refuse(`El ojo no aguanta más de ${COPY_CHARGE_CAP} cargas.`);
         consume();
         character.copyCharges++;
-        tell('El ojo se abre otra vez', `Cargas del Ojo del Impostor: ${character.copyCharges}.`, '#ff6fb0');
+        tell(
+          'El ojo se abre otra vez',
+          `Cargas del Ojo del Impostor: ${character.copyCharges}.`,
+          '#ff6fb0',
+        );
         return true;
       }
     }
@@ -1918,7 +2433,8 @@ export class World extends Duel {
       }
       for (const key of Object.keys(cds)) cds[key] = Math.max(0, cds[key] - dt);
     }
-    for (const [id, buff] of this.mobBuffs) if ((buff.left -= dt) <= 0 || !alive.has(id)) this.mobBuffs.delete(id);
+    for (const [id, buff] of this.mobBuffs)
+      if ((buff.left -= dt) <= 0 || !alive.has(id)) this.mobBuffs.delete(id);
     for (const id of this.mobCasting.keys()) if (!alive.has(id)) this.mobCasting.delete(id);
 
     for (const z of s.zombies) {
@@ -1939,7 +2455,8 @@ export class World extends Duel {
         z.y = casting.at.y;
         z.attackCd = Math.max(z.attackCd, 0.2);
         casting.left -= dt;
-        const where = casting.skill.kind === 'nova' && casting.skill.at === 'self' ? casting.at : casting.aim;
+        const where =
+          casting.skill.kind === 'nova' && casting.skill.at === 'self' ? casting.at : casting.aim;
         z.skill = {
           name: casting.skill.name,
           kind: casting.skill.kind,
@@ -1968,17 +2485,37 @@ export class World extends Duel {
         if ((cds[k.id] ?? 0) > 0 || gap < k.min || gap > k.max) return false;
         if (k.kind === 'bolt' && !lineClear(z, prey, this.terrain)) return false;
         if (k.kind === 'heal')
-          return s.zombies.some((q) => q.faction === 'monster' && q.hp > 0 && q.hp < q.maxHp * 0.7 && distance(z, q) <= (k.radius ?? 0));
+          return s.zombies.some(
+            (q) =>
+              q.faction === 'monster' &&
+              q.hp > 0 &&
+              q.hp < q.maxHp * 0.7 &&
+              distance(z, q) <= (k.radius ?? 0),
+          );
         if (k.kind === 'summon') return this.summonsOf(z).length < (k.summon?.max ?? 0);
         return true;
       });
       if (!skill) continue;
       cds[skill.id] = skill.cooldown;
-      this.mobCasting.set(z.id, { skill, left: skill.windup, aim: { x: prey.x, y: prey.y }, at: { x: z.x, y: z.y } });
+      this.mobCasting.set(z.id, {
+        skill,
+        left: skill.windup,
+        aim: { x: prey.x, y: prey.y },
+        at: { x: z.x, y: z.y },
+      });
       z.angle = Math.atan2(prey.y - z.y, prey.x - z.x);
       // The warning goes out the same tick the wind-up starts: the whole windup is time to react.
       const where = skill.kind === 'nova' && skill.at === 'self' ? z : prey;
-      z.skill = { name: skill.name, kind: skill.kind, left: skill.windup, total: skill.windup, x: where.x, y: where.y, radius: skill.radius ?? 0, color: skill.color };
+      z.skill = {
+        name: skill.name,
+        kind: skill.kind,
+        left: skill.windup,
+        total: skill.windup,
+        x: where.x,
+        y: where.y,
+        radius: skill.radius ?? 0,
+        color: skill.color,
+      };
       this.event('cast', z, z.team, z.angle, undefined, 0);
     }
 
@@ -1992,7 +2529,11 @@ export class World extends Duel {
       poison.tick -= dt;
       if (poison.tick <= 0) {
         poison.tick += 1;
-        const source = s.zombies.find((z) => z.id === poison.source) ?? { team: 'red' as Team, faction: 'monster' as const, id: poison.source };
+        const source = s.zombies.find((z) => z.id === poison.source) ?? {
+          team: 'red' as Team,
+          faction: 'monster' as const,
+          id: poison.source,
+        };
         this.damage(p, source, 0, poison.dps, { ignoreInvuln: true, pierce: true });
       }
       if (poison.left <= 0) this.poisons.delete(id);
@@ -2000,11 +2541,19 @@ export class World extends Duel {
   }
 
   private summonsOf(z: Zombie) {
-    return this.state.zombies.filter((q) => q.owner === `wild:${this.zoneId}:summon:${z.id}` && q.hp > 0);
+    return this.state.zombies.filter(
+      (q) => q.owner === `wild:${this.zoneId}:summon:${z.id}` && q.hp > 0,
+    );
   }
 
   /** A blow from a monster's skill, with whatever it carries: a web that holds, a poison that stays. */
-  private monsterHit(p: Player, source: Allegiant & Partial<Zombie>, angle: number, amount: number, skill: Pick<MobSkill, 'freeze' | 'poison'>) {
+  private monsterHit(
+    p: Player,
+    source: Allegiant & Partial<Zombie>,
+    angle: number,
+    amount: number,
+    skill: Pick<MobSkill, 'freeze' | 'poison'>,
+  ) {
     const landed = this.damage(p, source as Pick<Player, 'team'>, angle, amount);
     if (!landed || p.hp <= 0) return landed;
     if (skill.freeze) {
@@ -2014,9 +2563,19 @@ export class World extends Duel {
     }
     if (skill.poison) {
       const fresh = !this.poisons.has(p.id);
-      this.poisons.set(p.id, { left: skill.poison.seconds, dps: skill.poison.dps * amount, tick: 1, source: String(source.id) });
+      this.poisons.set(p.id, {
+        left: skill.poison.seconds,
+        dps: skill.poison.dps * amount,
+        tick: 1,
+        source: String(source.id),
+      });
       if (fresh && this.characters.has(p.id))
-        this.notify(p.id, { kind: 'denied', title: 'Envenenado', text: `Perdés vida durante ${skill.poison.seconds} s.`, color: '#b6e05a' });
+        this.notify(p.id, {
+          kind: 'denied',
+          title: 'Envenenado',
+          text: `Perdés vida durante ${skill.poison.seconds} s.`,
+          color: '#b6e05a',
+        });
     }
     return landed;
   }
@@ -2024,7 +2583,8 @@ export class World extends Duel {
   private resolveMonsterSkill(z: Zombie, skill: MobSkill, aim: Vec) {
     const s = this.state as WorldSnapshot;
     const stats = mobStats(z.family!, z.level);
-    const amount = stats.damage * (skill.damage ?? 1) * (1 + (this.mobBuffs.get(z.id)?.damage ?? 0));
+    const amount =
+      stats.damage * (skill.damage ?? 1) * (1 + (this.mobBuffs.get(z.id)?.damage ?? 0));
     const angle = Math.atan2(aim.y - z.y, aim.x - z.x);
     switch (skill.kind) {
       case 'bolt': {
@@ -2053,7 +2613,12 @@ export class World extends Duel {
           if (p.hp > 0 && this.hostile(z, p) && distance(p, centre) <= radius + RULES.radius)
             this.monsterHit(p, z, Math.atan2(p.y - centre.y, p.x - centre.x), amount, skill);
         for (const q of s.zombies)
-          if (q !== z && q.hp > 0 && this.hostile(z, q) && distance(q, centre) <= radius + RULES.zombieRadius)
+          if (
+            q !== z &&
+            q.hp > 0 &&
+            this.hostile(z, q) &&
+            distance(q, centre) <= radius + RULES.zombieRadius
+          )
             this.damageZombie(q, z.team, amount, Math.atan2(q.y - centre.y, q.x - centre.x), z.id);
         this.event('explosion', centre, z.team, angle, undefined, 1);
         this.state.events.at(-1)!.color = skill.color;
@@ -2066,7 +2631,12 @@ export class World extends Duel {
           const before = { x: z.x, y: z.y };
           translate(z, Math.cos(angle) * 10, Math.sin(angle) * 10, this.terrain);
           for (const p of s.players)
-            if (!struck.has(p.id) && p.hp > 0 && this.hostile(z, p) && distance(p, z) <= RULES.radius + stats.radius + 4) {
+            if (
+              !struck.has(p.id) &&
+              p.hp > 0 &&
+              this.hostile(z, p) &&
+              distance(p, z) <= RULES.radius + stats.radius + 4
+            ) {
               struck.add(p.id);
               this.monsterHit(p, z, angle, amount, skill);
             }
@@ -2077,7 +2647,13 @@ export class World extends Duel {
       }
       case 'howl': {
         for (const q of s.zombies)
-          if (q.faction === 'monster' && q.hp > 0 && q.owner === z.owner && distance(q, z) <= (skill.radius ?? 200) && skill.buff)
+          if (
+            q.faction === 'monster' &&
+            q.hp > 0 &&
+            q.owner === z.owner &&
+            distance(q, z) <= (skill.radius ?? 200) &&
+            skill.buff
+          )
             this.mobBuffs.set(q.id, { left: skill.buff.seconds, damage: skill.buff.damage });
         this.event('fury', z, z.team, angle);
         return;
@@ -2096,16 +2672,24 @@ export class World extends Duel {
         for (let i = 0; i < Math.min(summon.count, room); i++) {
           const level = Math.max(1, z.level - 1);
           const minion = mobStats(summon.familyId, level);
-          const spot = { x: z.x + Math.cos(angle + (i - 0.5) * 1.6) * 40, y: z.y + Math.sin(angle + (i - 0.5) * 1.6) * 40 };
-          const risen = this.newZombie({ id: `wild:${this.zoneId}:summon:${z.id}`, team: 'red', angle }, spot, z, {
-            family: summon.familyId,
-            faction: 'monster',
-            level,
-            hp: minion.hp,
-            maxHp: minion.hp,
-            life: summon.seconds,
-            name: MOB_FAMILIES[summon.familyId].name,
-          });
+          const spot = {
+            x: z.x + Math.cos(angle + (i - 0.5) * 1.6) * 40,
+            y: z.y + Math.sin(angle + (i - 0.5) * 1.6) * 40,
+          };
+          const risen = this.newZombie(
+            { id: `wild:${this.zoneId}:summon:${z.id}`, team: 'red', angle },
+            spot,
+            z,
+            {
+              family: summon.familyId,
+              faction: 'monster',
+              level,
+              hp: minion.hp,
+              maxHp: minion.hp,
+              life: summon.seconds,
+              name: MOB_FAMILIES[summon.familyId].name,
+            },
+          );
           s.zombies.push(risen);
           this.event('raise', risen, z.team);
         }
@@ -2121,13 +2705,20 @@ export class World extends Duel {
       shot.life -= dt;
       if (shot.life <= 0) return false;
       const thrower = s.zombies.find((z) => z.id === shot.owner);
-      const source: Allegiant & Partial<Zombie> = thrower ?? { team: 'red', faction: 'monster', id: shot.owner };
+      const source: Allegiant & Partial<Zombie> = thrower ?? {
+        team: 'red',
+        faction: 'monster',
+        id: shot.owner,
+      };
       const steps = Math.max(1, Math.ceil((shot.speed * dt) / 6));
       for (let i = 0; i < steps; i++) {
         shot.x += (Math.cos(shot.angle) * shot.speed * dt) / steps;
         shot.y += (Math.sin(shot.angle) * shot.speed * dt) / steps;
         if (blocked(shot.x, shot.y, 2, this.terrain)) return false;
-        const p = s.players.find((q) => q.hp > 0 && this.hostile(source, q) && distance(q, shot) < RULES.radius + shot.radius);
+        const p = s.players.find(
+          (q) =>
+            q.hp > 0 && this.hostile(source, q) && distance(q, shot) < RULES.radius + shot.radius,
+        );
         if (p) {
           if (p.counterLeft > 0 && thrower && thrower.hp > 0) {
             this.damageZombie(thrower, p.team, shot.damage, shot.angle + Math.PI, p.id);
@@ -2135,7 +2726,12 @@ export class World extends Duel {
           } else this.monsterHit(p, source, shot.angle, shot.damage, shot);
           return false;
         }
-        const q = s.zombies.find((z) => z.hp > 0 && this.hostile(source, z) && distance(z, shot) < RULES.zombieRadius + shot.radius);
+        const q = s.zombies.find(
+          (z) =>
+            z.hp > 0 &&
+            this.hostile(source, z) &&
+            distance(z, shot) < RULES.zombieRadius + shot.radius,
+        );
         if (q) {
           this.damageZombie(q, 'red', shot.damage, shot.angle, shot.owner);
           return false;
@@ -2152,7 +2748,10 @@ export class World extends Duel {
       if (!character || p.hp <= 0) continue;
       const max = this.maxManaOf(character);
       const clarity = 1 + affinityBonus(character.affinities).manaRegen;
-      p.mana = Math.min(max, (p.mana ?? max) + manaRegenFor(statsWithEquipment(character)) * clarity * dt);
+      p.mana = Math.min(
+        max,
+        (p.mana ?? max) + manaRegenFor(statsWithEquipment(character)) * clarity * dt,
+      );
       p.maxMana = max;
     }
   }

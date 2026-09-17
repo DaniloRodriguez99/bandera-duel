@@ -47,7 +47,7 @@ if (testDatabase)
       abiertos.push(store);
       await store.listCharacters('nadie');
       await (store as unknown as { pool: { query(sql: string): Promise<unknown> } }).pool.query(
-        'truncate bandera_characters, bandera_accounts',
+        'truncate bandera_parties, bandera_characters, bandera_accounts',
       );
       return store;
     },
@@ -84,6 +84,17 @@ describe.each(drivers)('contrato del guardado: %s', (_nombre, crear) => {
     const recuperado = await store.load(cuenta, 'p1');
     expect(recuperado).toMatchObject({ id: 'p1', name: 'Noor', level: 1 });
     expect(recuperado?.zoneId).toBe(personaje.zoneId);
+  });
+
+  it('guarda y elimina un party persistente por cualquiera de sus miembros', async () => {
+    const store = await crear();
+    const party = { id: 'party-1', leaderId: 'p1', members: [
+      { id: 'p1', name: 'Noor', joinedAt: 1 }, { id: 'p2', name: 'Rudeus', joinedAt: 2 },
+    ] };
+    await store.saveParty(party);
+    expect(await store.partyFor('p2')).toEqual(party);
+    await store.deleteParty(party.id);
+    expect(await store.partyFor('p1')).toBe(null);
   });
 
   it('la lista muestra nivel y zona, que es lo que ve el jugador al volver', async () => {

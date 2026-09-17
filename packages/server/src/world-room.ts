@@ -1,5 +1,5 @@
 import { Client, Room, ServerError } from '@colyseus/core';
-import { RULES, sanitizeInput, validClass, validName, type Input, type Player, type Zombie } from '@bandera/shared';
+import { RULES, distance, sanitizeInput, validClass, validName, type Input, type Player, type Zombie } from '@bandera/shared';
 import {
   CAST_SLOTS,
   World,
@@ -7,6 +7,9 @@ import {
   validCreation,
   type CastSlot,
   type Character,
+  type Party,
+  type SocialInviteKind,
+  type TradeView,
   type WorldSnapshot,
 } from '@bandera/shared/world';
 import { rollDestiny } from '@bandera/shared/rpg/skills';
@@ -32,6 +35,9 @@ const ENTER_SCALE = 1.3;
 const LEAVE_SCALE = 1.7;
 /** Everyone online is saved on this beat; travel, leaving and disposal save at once. */
 const SAVE_EVERY_SECONDS = 15;
+const INTERACTION_RANGE = 180;
+const INVITE_LIFE = 15_000;
+const PARTY_LIMIT = 4;
 
 
 /**
@@ -90,6 +96,10 @@ export class WorldRoom extends Room {
   /** Last time each connection did something: walked, struck, cast, learned. */
   private lastActive = new Map<string, number>();
   private lastAngle = new Map<string, number>();
+  private parties = new Map<string, Party>();
+  private invites = new Map<string, { id: string; kind: SocialInviteKind; from: string; to: string; expiresAt: number }>();
+  private trades = new Map<string, { id: string; players: [string, string]; offers: Map<string, Set<string>>; accepted: Set<string> }>();
+  private socialSerial = 0;
   private touch = (client: Client) => this.lastActive.set(client.sessionId, Date.now());
 
   /** Every world room alive in this process, so shutdown can save them all before exiting. */
@@ -103,6 +113,10 @@ export class WorldRoom extends Room {
     let world = this.worlds.get(id);
     if (!world) {
       world = new World(id);
+      world.partyRecipients = (killerId) => {
+        const party = this.partyOf(killerId);
+        return party ? party.members.map((m) => m.id).filter((member) => this.zoneOf.get(member) === id) : [killerId];
+      };
       this.worlds.set(id, world);
     }
     return world;
@@ -115,6 +129,101 @@ export class WorldRoom extends Room {
 
   private clientOf(characterId: string): Client | undefined {
     return this.clients.find((c) => this.characterOf.get(c.sessionId) === characterId);
+  }
+
+  private partyOf(id: string) {
+    return [...this.parties.values()].find((p) => p.members.some((m) => m.id === id));
+  }
+
+  private playerPair(aId: string, bId: string) {
+    const world = this.worldOf(aId);
+    if (!world || world !== this.worldOf(bId)) return null;
+    const a = world.state.players.find((p) => p.id === aId);
+    const b = world.state.players.find((p) => p.id === bId);
+    return a && b ? { world, a, b } : null;
+  }
+
+  private canInteract(aId: string, bId: string) {
+    const pair = this.playerPair(aId, bId);
+    return !!pair && aId !== bId && pair.a.hp > 0 && pair.b.hp > 0 && distance(pair.a, pair.b) <= INTERACTION_RANGE;
+  }
+
+  private social(client: Client | undefined, text: string, kind = 'info') { client?.send('socialResult', { kind, text }); }
+
+  private async loadParty(id: string) {
+    const party = await store.partyFor(id);
+    if (party) this.parties.set(party.id, party);
+    if (party) this.sendParty(party);
+    else this.clientOf(id)?.send('party', null);
+  }
+
+  private partyView(party: Party) {
+    return { ...party, members: party.members.map((m) => ({
+      ...m, online: this.zoneOf.has(m.id), zoneId: this.zoneOf.get(m.id),
+    })) };
+  }
+
+  private sendParty(party: Party | null) {
+    if (!party) return;
+    const view = this.partyView(party);
+    for (const member of party.members) this.clientOf(member.id)?.send('party', view);
+  }
+
+  private tradeOf(id: string) { return [...this.trades.values()].find((t) => t.players.includes(id)); }
+
+  private sendTrade(trade: ReturnType<WorldRoom['tradeOf']>) {
+    if (!trade) return;
+    for (const id of trade.players) {
+      const other = trade.players.find((p) => p !== id)!;
+      const mine = this.worldOf(id)?.characters.get(id);
+      const theirs = this.worldOf(other)?.characters.get(other);
+      if (!mine || !theirs) continue;
+      const offered = (who: string, c: Character) => [...(trade.offers.get(who) ?? [])].flatMap((uid) => {
+        const item = c.inventory.find((i) => i.uid === uid); return item ? [item] : [];
+      });
+      const view: TradeView = {
+        id: trade.id, partner: { id: other, name: theirs.name },
+        own: offered(id, mine), theirs: offered(other, theirs),
+        accepted: trade.accepted.has(id), partnerAccepted: trade.accepted.has(other),
+      };
+      this.clientOf(id)?.send('trade', view);
+    }
+  }
+
+  private cancelTrade(id: string, text = 'El comercio fue cancelado.') {
+    const trade = this.tradeOf(id); if (!trade) return;
+    this.trades.delete(trade.id);
+    for (const player of trade.players) { this.clientOf(player)?.send('trade', null); this.social(this.clientOf(player), text, 'trade'); }
+  }
+
+  private async completeTrade(trade: NonNullable<ReturnType<WorldRoom['tradeOf']>>) {
+    const [aId, bId] = trade.players;
+    if (!this.canInteract(aId, bId)) return this.cancelTrade(aId, 'El comercio se canceló porque se alejaron.');
+    const world = this.worldOf(aId)!;
+    const a = world.characters.get(aId)!, b = world.characters.get(bId)!;
+    const aUids = [...(trade.offers.get(aId) ?? [])], bUids = [...(trade.offers.get(bId) ?? [])];
+    const aItems = aUids.map((uid) => a.inventory.find((i) => i.uid === uid)).filter(Boolean) as Character['inventory'];
+    const bItems = bUids.map((uid) => b.inventory.find((i) => i.uid === uid)).filter(Boolean) as Character['inventory'];
+    if (aItems.length !== aUids.length || bItems.length !== bUids.length) return this.cancelTrade(aId, 'La oferta dejó de ser válida.');
+    if (a.inventory.length - aItems.length + bItems.length > 20 || b.inventory.length - bItems.length + aItems.length > 20)
+      return this.cancelTrade(aId, 'Una de las mochilas no tiene espacio suficiente.');
+    const beforeA = structuredClone(a), beforeB = structuredClone(b);
+    a.inventory = a.inventory.filter((i) => !aUids.includes(i.uid));
+    b.inventory = b.inventory.filter((i) => !bUids.includes(i.uid));
+    for (const item of bItems) a.inventory.push({ uid: `i${a.itemSerial++}`, itemId: item.itemId });
+    for (const item of aItems) b.inventory.push({ uid: `i${b.itemSerial++}`, itemId: item.itemId });
+    try {
+      await store.saveMany([a, b]);
+      world.sheetChanged.add(aId); world.sheetChanged.add(bId);
+      this.trades.delete(trade.id);
+      for (const id of trade.players) { this.clientOf(id)?.send('trade', null); this.social(this.clientOf(id), 'Comercio completado.', 'trade'); }
+    } catch (error) {
+      Object.assign(a, beforeA); Object.assign(b, beforeB);
+      // FileStore updates its in-memory book before the durable rename. Put that book back too;
+      // a later successful flush must never resurrect the failed transfer.
+      await store.saveMany([beforeA, beforeB]).catch(() => {});
+      this.cancelTrade(aId, 'No se pudo guardar el comercio; ningún objeto cambió de dueño.');
+    }
   }
 
   onCreate() {
@@ -195,7 +304,7 @@ export class WorldRoom extends Room {
       this.touch(client);
       const id = this.characterOf.get(client.sessionId);
       const uid = uidOf(message);
-      if (id && uid) this.worldOf(id)?.equip(id, uid);
+      if (id && uid && !this.tradeOf(id)?.offers.get(id)?.has(uid)) this.worldOf(id)?.equip(id, uid);
     });
     this.onMessage('unequip', (client, message: unknown) => {
       this.touch(client);
@@ -208,15 +317,107 @@ export class WorldRoom extends Room {
       const id = this.characterOf.get(client.sessionId);
       const uid = uidOf(message);
       const skillId = (message as { skillId?: unknown } | null)?.skillId;
-      if (!id || !uid || (skillId !== undefined && (typeof skillId !== 'string' || skillId.length > 40))) return;
+      if (!id || !uid || this.tradeOf(id)?.offers.get(id)?.has(uid) || (skillId !== undefined && (typeof skillId !== 'string' || skillId.length > 40))) return;
       this.worldOf(id)?.useItem(id, uid, skillId as string | undefined);
     });
     this.onMessage('discard', (client, message: unknown) => {
       this.touch(client);
       const id = this.characterOf.get(client.sessionId);
       const uid = uidOf(message);
-      if (id && uid) this.worldOf(id)?.discard(id, uid);
+      if (id && uid && !this.tradeOf(id)?.offers.get(id)?.has(uid)) this.worldOf(id)?.discard(id, uid);
     });
+
+    this.onMessage('socialInvite', (client, message: unknown) => {
+      const from = this.characterOf.get(client.sessionId);
+      const targetId = (message as { targetId?: unknown } | null)?.targetId;
+      const kind = (message as { kind?: unknown } | null)?.kind as SocialInviteKind;
+      if (!from || typeof targetId !== 'string' || !['party', 'trade', 'duel'].includes(kind)) return;
+      if (!this.canInteract(from, targetId)) return this.social(client, 'Ese jugador ya no está suficientemente cerca.', 'error');
+      if ((kind === 'trade' || kind === 'duel') && (this.tradeOf(from) || this.tradeOf(targetId) || this.worldOf(from)?.duelOf(from) || this.worldOf(targetId)?.duelOf(targetId)))
+        return this.social(client, 'Uno de los jugadores ya está ocupado.', 'error');
+      if (kind === 'party') {
+        const party = this.partyOf(from);
+        if (this.partyOf(targetId)) return this.social(client, 'Ese jugador ya pertenece a un party.', 'error');
+        if (party && (party.leaderId !== from || party.members.length >= PARTY_LIMIT))
+          return this.social(client, party.leaderId !== from ? 'Solo el líder puede invitar.' : 'El party ya está completo.', 'error');
+      }
+      const id = `s${++this.socialSerial}`;
+      const invite = { id, kind, from, to: targetId, expiresAt: Date.now() + INVITE_LIFE };
+      this.invites.set(id, invite);
+      const source = this.worldOf(from)?.characters.get(from)!;
+      this.clientOf(targetId)?.send('socialInvite', { id, kind, from: { id: from, name: source.name }, expiresAt: invite.expiresAt });
+      this.social(client, `Invitación de ${kind === 'party' ? 'party' : kind === 'trade' ? 'comercio' : 'duelo'} enviada.`, kind);
+    });
+
+    this.onMessage('socialRespond', async (client, message: unknown) => {
+      const id = this.characterOf.get(client.sessionId);
+      const inviteId = (message as { inviteId?: unknown } | null)?.inviteId;
+      const accept = (message as { accept?: unknown } | null)?.accept === true;
+      if (!id || typeof inviteId !== 'string') return;
+      const invite = this.invites.get(inviteId);
+      if (!invite || invite.to !== id) return;
+      this.invites.delete(inviteId);
+      if (!accept) return this.social(this.clientOf(invite.from), 'Tu invitación fue rechazada.', invite.kind);
+      if (invite.expiresAt <= Date.now() || !this.canInteract(invite.from, invite.to)) {
+        this.social(client, 'La invitación ya no es válida.', 'error');
+        return this.social(this.clientOf(invite.from), 'La invitación venció.', 'error');
+      }
+      if (invite.kind === 'party') {
+        if (this.partyOf(invite.to)) return this.social(client, 'Ya pertenecés a un party.', 'error');
+        let party = this.partyOf(invite.from);
+        if (!party) {
+          const leader = this.worldOf(invite.from)!.characters.get(invite.from)!;
+          party = { id: `p:${Date.now()}:${invite.from}`, leaderId: invite.from, members: [{ id: invite.from, name: leader.name, joinedAt: Date.now() }] };
+        }
+        if (party.leaderId !== invite.from || party.members.length >= PARTY_LIMIT) return this.social(client, 'El party ya no puede aceptar miembros.', 'error');
+        const target = this.worldOf(id)!.characters.get(id)!;
+        party.members.push({ id, name: target.name, joinedAt: Date.now() });
+        this.parties.set(party.id, party); await store.saveParty(party); this.sendParty(party);
+        return;
+      }
+      if (invite.kind === 'trade') {
+        if (this.tradeOf(invite.from) || this.tradeOf(invite.to) || this.worldOf(invite.from)?.duelOf(invite.from) || this.worldOf(invite.to)?.duelOf(invite.to)) return this.social(client, 'Uno de los jugadores ya está ocupado.', 'error');
+        const trade = { id: `t:${Date.now()}:${invite.from}`, players: [invite.from, invite.to] as [string, string], offers: new Map<string, Set<string>>([[invite.from, new Set()], [invite.to, new Set()]]), accepted: new Set<string>() };
+        this.trades.set(trade.id, trade); this.sendTrade(trade); return;
+      }
+      this.cancelTrade(invite.from, 'El comercio se cerró para iniciar el duelo.');
+      this.cancelTrade(invite.to, 'El comercio se cerró para iniciar el duelo.');
+      if (!this.worldOf(invite.from)?.startDuel(invite.from, invite.to)) return this.social(client, 'No se pudo iniciar el duelo.', 'error');
+      for (const player of [invite.from, invite.to]) this.social(this.clientOf(player), 'El duelo comienza en 3…', 'duel');
+    });
+
+    this.onMessage('partyLeave', async (client) => {
+      const id = this.characterOf.get(client.sessionId); const party = id ? this.partyOf(id) : undefined;
+      if (!id || !party) return;
+      party.members = party.members.filter((m) => m.id !== id);
+      client.send('party', null);
+      if (!party.members.length) { this.parties.delete(party.id); await store.deleteParty(party.id); return; }
+      if (party.leaderId === id) party.leaderId = [...party.members].sort((a, b) => a.joinedAt - b.joinedAt)[0].id;
+      await store.saveParty(party); this.sendParty(party);
+    });
+
+    this.onMessage('partyKick', async (client, message: unknown) => {
+      const id = this.characterOf.get(client.sessionId); const targetId = (message as { targetId?: unknown } | null)?.targetId;
+      const party = id ? this.partyOf(id) : undefined;
+      if (!id || !party || party.leaderId !== id || typeof targetId !== 'string' || targetId === id) return;
+      if (!party.members.some((m) => m.id === targetId)) return;
+      party.members = party.members.filter((m) => m.id !== targetId); this.clientOf(targetId)?.send('party', null);
+      await store.saveParty(party); this.sendParty(party);
+    });
+
+    this.onMessage('tradeOffer', (client, message: unknown) => {
+      const id = this.characterOf.get(client.sessionId); const uid = (message as { uid?: unknown } | null)?.uid;
+      const trade = id ? this.tradeOf(id) : undefined; const character = id ? this.worldOf(id)?.characters.get(id) : undefined;
+      if (!id || !trade || typeof uid !== 'string' || !character?.inventory.some((i) => i.uid === uid)) return;
+      const offer = trade.offers.get(id)!; offer.has(uid) ? offer.delete(uid) : offer.add(uid); trade.accepted.clear(); this.sendTrade(trade);
+    });
+    this.onMessage('tradeAccept', async (client) => {
+      const id = this.characterOf.get(client.sessionId); const trade = id ? this.tradeOf(id) : undefined;
+      if (!id || !trade) return; trade.accepted.add(id); this.sendTrade(trade);
+      if (trade.players.every((p) => trade.accepted.has(p))) await this.completeTrade(trade);
+    });
+    this.onMessage('tradeCancel', (client) => { const id = this.characterOf.get(client.sessionId); if (id) this.cancelTrade(id); });
+    this.onMessage('duelAbandon', (client) => { const id = this.characterOf.get(client.sessionId); if (id) this.worldOf(id)?.abandonDuel(id); });
 
     // Colyseus closes the connection (code 4002) on any message type the room did not register.
     // The client pings every two seconds, and the shared bind() can send duel messages too, so
@@ -244,6 +445,7 @@ export class WorldRoom extends Room {
       const tick = this.tickCount();
       if (tick % 2 === 0) for (const client of this.clients) this.sendSnapshot(client);
       if (tick % 30 === 0) this.dropIdle();
+      if (tick % 15 === 0) this.expireSocial();
       this.saveClock += RULES.tick;
       if (this.saveClock >= SAVE_EVERY_SECONDS) {
         this.saveClock = 0;
@@ -273,6 +475,18 @@ export class WorldRoom extends Room {
   private ticks = 0;
   private tickCount() {
     return this.ticks++;
+  }
+
+  private expireSocial() {
+    const now = Date.now();
+    for (const [id, invite] of this.invites) {
+      if (invite.expiresAt > now) continue;
+      this.invites.delete(id);
+      this.social(this.clientOf(invite.from), 'La invitación venció.', invite.kind);
+      this.clientOf(invite.to)?.send('socialInviteExpired', { id });
+    }
+    for (const trade of [...this.trades.values()])
+      if (!this.canInteract(...trade.players)) this.cancelTrade(trade.players[0], 'El comercio se canceló porque se alejaron.');
   }
 
   /** Carries out the trips a zone asked for, and tells the refused why they were turned back. */
@@ -312,6 +526,7 @@ export class WorldRoom extends Room {
    * instances the day one process stops holding the whole world.
    */
   async travel(characterId: string, to: ZoneId, arrive: { x: number; y: number }) {
+    this.cancelTrade(characterId, 'El comercio se canceló al cambiar de zona.');
     const from = this.worldOf(characterId);
     const character = from?.characters.get(characterId);
     if (!from || !character || !ZONES[to]) return;
@@ -329,6 +544,7 @@ export class WorldRoom extends Room {
       this.sendSheet(client, characterId);
       this.sendSnapshot(client);
     }
+    const party = this.partyOf(characterId); if (party) this.sendParty(party);
     // Called with `void` from the tick: a failed save must be logged here, not become an
     // unhandled rejection that takes the whole process down.
     await store.save(character).catch((error) => logSaveError(characterId, error));
@@ -414,10 +630,15 @@ export class WorldRoom extends Room {
     client.send('entered', { characterId: character.id, zoneId: character.zoneId });
     this.sendSheet(client, character.id);
     this.sendSnapshot(client);
+    void this.loadParty(character.id).catch((error) => logSaveError(character.id, error));
   }
 
   async onLeave(client: Client) {
     const id = this.characterOf.get(client.sessionId);
+    if (id) {
+      this.cancelTrade(id, 'El comercio se canceló por desconexión.');
+      this.worldOf(id)?.abandonDuel(id);
+    }
     this.characterOf.delete(client.sessionId);
     this.accounts.delete(client.sessionId);
     this.lastActive.delete(client.sessionId);
@@ -431,6 +652,7 @@ export class WorldRoom extends Room {
     this.zoneOf.delete(id);
     this.queues.delete(id);
     this.seen.delete(id);
+    const currentParty = this.partyOf(id); if (currentParty) this.sendParty(currentParty);
     if (character) await store.save(character);
   }
 

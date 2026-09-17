@@ -1,6 +1,6 @@
 import { randomBytes, scrypt, timingSafeEqual } from 'node:crypto';
 import { promisify } from 'node:util';
-import type { Character } from '@bandera/shared/world';
+import type { Character, Party } from '@bandera/shared/world';
 
 /**
  * Where characters live between sessions.
@@ -63,6 +63,10 @@ export interface CharacterStore {
   createCharacter(account: AccountId, character: Character): Promise<void>;
   load(account: AccountId, id: CharacterId): Promise<Character | null>;
   save(character: Character): Promise<void>;
+  saveMany(characters: Character[]): Promise<void>;
+  partyFor(characterId: CharacterId): Promise<Party | null>;
+  saveParty(party: Party): Promise<void>;
+  deleteParty(id: string): Promise<void>;
   close(): Promise<void>;
 }
 
@@ -107,6 +111,7 @@ interface Account {
 export interface BookData {
   nextId: number;
   accounts: { id: AccountId; name: string; password: string; characters: Record<CharacterId, unknown> }[];
+  parties?: Party[];
 }
 
 export const envelope = (character: Character): SavedCharacter => ({
@@ -125,6 +130,7 @@ export class AccountBook {
   private byName = new Map<string, Account>();
   private byId = new Map<AccountId, Account>();
   private nextId = 1;
+  private parties = new Map<string, Party>();
 
   /** `read` turns a stored entry into a current save; persistent drivers pass `migrate`. */
   constructor(private readonly read: (raw: unknown) => SavedCharacter = (raw) => raw as SavedCharacter) {}
@@ -139,6 +145,7 @@ export class AccountBook {
       const n = Number(/^a(\d+)$/.exec(entry.id)?.[1] ?? 0);
       highest = Math.max(highest, n);
     }
+    for (const party of data.parties ?? []) book.parties.set(party.id, structuredClone(party));
     // Never hand out an id that already exists, even if the counter in the file is stale.
     book.nextId = Math.max(data.nextId, highest + 1);
     return book;
@@ -153,6 +160,7 @@ export class AccountBook {
         password: a.password,
         characters: Object.fromEntries(a.characters),
       })),
+      parties: [...this.parties.values()].map((p) => structuredClone(p)),
     };
   }
 
@@ -229,6 +237,22 @@ export class AccountBook {
   save(character: Character): void {
     this.owner(character.accountId).characters.set(character.id, envelope(character));
   }
+
+  saveMany(characters: Character[]): void {
+    for (const character of characters) this.owner(character.accountId);
+    for (const character of characters) this.save(character);
+  }
+
+  partyFor(characterId: CharacterId): Party | null {
+    const party = [...this.parties.values()].find((p) => p.members.some((m) => m.id === characterId));
+    return party ? structuredClone(party) : null;
+  }
+
+  saveParty(party: Party): void {
+    this.parties.set(party.id, structuredClone(party));
+  }
+
+  deleteParty(id: string): void { this.parties.delete(id); }
 }
 
 /**
@@ -261,6 +285,11 @@ export class MemoryStore implements CharacterStore {
   async save(character: Character) {
     this.book.save(character);
   }
+
+  async saveMany(characters: Character[]) { this.book.saveMany(characters); }
+  async partyFor(characterId: CharacterId) { return this.book.partyFor(characterId); }
+  async saveParty(party: Party) { this.book.saveParty(party); }
+  async deleteParty(id: string) { this.book.deleteParty(id); }
 
   async close(): Promise<void> {}
 }

@@ -88,6 +88,7 @@ const CLOTH: Record<Team, string> = {
   violet: '#8062a8',
 };
 export class Arena extends Phaser.Scene {
+  onPlayerContext: ((player: Player, clientX: number, clientY: number) => void) | null = null;
   controls!: Controls;
   localId = '';
   snapshot?: Snapshot;
@@ -146,6 +147,8 @@ export class Arena extends Phaser.Scene {
   /** The moving life of the zone's settlement (villagers, fire, altar glow), when it has one. */
   private settlement?: Settlement;
   private mapObjects: Phaser.GameObjects.GameObject[] = [];
+  private duelRings!: Phaser.GameObjects.Graphics;
+  private longPress?: { timer: number; x: number; y: number; pointer: number };
   private cameraKey = '';
   constructor() {
     super('arena');
@@ -159,6 +162,7 @@ export class Arena extends Phaser.Scene {
     this.arrows = this.add.graphics().setDepth(9);
     this.mobs = this.add.graphics().setDepth(8);
     this.aim = this.add.graphics().setDepth(4);
+    this.duelRings = this.add.graphics().setDepth(3);
     this.controls = new Controls();
     this.input.mouse?.disableContextMenu();
     this.input.on('pointermove', (p: Phaser.Input.Pointer) => {
@@ -174,8 +178,28 @@ export class Arena extends Phaser.Scene {
       // Use the button that triggered this event. `rightButtonDown()` also stays true
       // while a left click is pressed during guard and would swallow that attack.
       if (p.button === 1) this.controls.tertiary();
+      else if (p.button === 2 && this.currentZoneId && this.contextPlayer(p)) {
+        const target = this.contextPlayer(p)!;
+        this.onPlayerContext?.(target, (p.event as MouseEvent).clientX, (p.event as MouseEvent).clientY);
+      }
       else if (p.button === 2) this.controls.secondary(true);
       else this.controls.primary();
+    });
+    this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
+      if (!p.wasTouch || !this.currentZoneId) return;
+      this.longPress = { pointer: p.id, x: p.x, y: p.y, timer: window.setTimeout(() => {
+        const target = this.contextPlayer(p);
+        if (target) this.onPlayerContext?.(target, (p.event as PointerEvent).clientX, (p.event as PointerEvent).clientY);
+        this.longPress = undefined;
+      }, 500) };
+    });
+    this.input.on('pointermove', (p: Phaser.Input.Pointer) => {
+      if (this.longPress?.pointer === p.id && Math.hypot(p.x - this.longPress.x, p.y - this.longPress.y) > 10) {
+        clearTimeout(this.longPress.timer); this.longPress = undefined;
+      }
+    });
+    this.input.on('pointerup', (p: Phaser.Input.Pointer) => {
+      if (this.longPress?.pointer === p.id) { clearTimeout(this.longPress.timer); this.longPress = undefined; }
     });
     const preview = layout(['blue', 'red'], this.currentMapId, 'duel');
     this.drawBases(preview);
@@ -319,6 +343,23 @@ export class Arena extends Phaser.Scene {
   viewRect() {
     const view = this.cameras?.main?.worldView;
     return view ? { x: view.x, y: view.y, w: view.width, h: view.height } : null;
+  }
+
+  private contextPlayer(pointer: Phaser.Input.Pointer) {
+    if (!this.snapshot) return undefined;
+    return this.snapshot.players
+      .filter((p) => p.id !== this.localId && p.hp > 0 && distance(p, { x: pointer.worldX, y: pointer.worldY }) <= 30)
+      .sort((a, b) => distance(a, { x: pointer.worldX, y: pointer.worldY }) - distance(b, { x: pointer.worldX, y: pointer.worldY }))[0];
+  }
+
+  private paintDuels(snapshot: Snapshot) {
+    this.duelRings.clear();
+    const duels = (snapshot as Snapshot & { duels?: { x: number; y: number; radius: number; phase: string; countdown: number }[] }).duels ?? [];
+    for (const duel of duels) {
+      this.duelRings.lineStyle(4, duel.phase === 'countdown' ? 0xffd36a : 0xff5a6e, 0.8);
+      this.duelRings.strokeCircle(duel.x, duel.y, duel.radius);
+      this.duelRings.fillStyle(0xff5a6e, 0.035); this.duelRings.fillCircle(duel.x, duel.y, duel.radius);
+    }
   }
 
   /** The play area: the arena's fixed rectangle, or the bounds of the zone being played. */
@@ -742,6 +783,7 @@ export class Arena extends Phaser.Scene {
     const was = this.snapshot,
       first = !was;
     this.snapshot = snapshot;
+    this.paintDuels(snapshot);
     this.localId = id;
     this.receivedAt = performance.now();
     this.drawBases(snapshot.bases);

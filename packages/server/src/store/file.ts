@@ -203,6 +203,20 @@ export class FileStore implements CharacterStore {
     await this.persist(book);
   }
 
+  async saveMany(characters: Character[]): Promise<void> {
+    const book = await this.open();
+    book.saveMany(characters);
+    await this.persist(book);
+  }
+
+  async partyFor(characterId: CharacterId) { return (await this.open()).partyFor(characterId); }
+  async saveParty(party: import('@bandera/shared/world').Party) {
+    const book = await this.open(); book.saveParty(party); await this.persist(book);
+  }
+  async deleteParty(id: string) {
+    const book = await this.open(); book.deleteParty(id); await this.persist(book);
+  }
+
   /** Waits for the pending write; if the last one failed, tries once more before giving up. */
   close(): Promise<void> {
     this.closing ??= (async () => {

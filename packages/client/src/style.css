@@ -1030,6 +1030,29 @@ select:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
 /* Mobile combat surface: the arena owns the visual viewport and the HUD floats above it. */
 .touch-actions { display: none; }
 #mobile-player-status { display: none; }
+
+/* Social interactions in the persistent world. */
+.social-menu{position:fixed;z-index:120;display:grid;min-width:180px;padding:8px;border:1px solid #c9a85d;background:#101b1beF;box-shadow:0 12px 32px #000a;color:#f2dfaa}.social-menu[hidden]{display:none}.social-menu>b{padding:6px 8px;color:#ffd36a}.social-menu button,.party-panel button,.trade-panel button,.social-invite button,.duel-abandon{padding:8px 10px;border:1px solid #647066;background:#182a28;color:#eee3c7;cursor:pointer}.social-menu button:hover,.trade-panel button:hover{border-color:#d2b66c;background:#263b35}
+.social-invites{position:absolute;z-index:115;top:52px;left:50%;display:grid;gap:8px;width:min(360px,90%);transform:translateX(-50%);pointer-events:none}.social-invite,.social-toast{display:grid;gap:6px;padding:12px 14px;border:1px solid #b89a55;background:#101b1bf2;box-shadow:0 8px 25px #0009;color:#e9dfc7;pointer-events:auto}.social-invite div{display:flex;justify-content:flex-end;gap:8px}.social-invite b{color:#ffd36a}.social-toast{text-align:center}
+.party-panel{position:absolute;z-index:45;top:58px;left:10px;width:210px;padding:10px;border:1px solid #657064;background:#10201de8;color:#e9dfc7}.party-panel[hidden]{display:none}.party-panel header{display:flex;justify-content:space-between;color:#ffd36a}.party-member{display:flex;align-items:center;gap:7px;margin:8px 0}.party-member>i{width:7px;height:7px;border-radius:50%;background:#6b6b6b}.party-member>i.online{background:#65d58a}.party-member>span{display:grid;flex:1}.party-member small{font-size:8px;color:#9aa99f}.party-member button{padding:4px;font-size:8px}
+.trade-panel{position:absolute;z-index:100;inset:35px max(10px,calc(50% - 330px));display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:15px;border:1px solid #c6a65b;background:#0d1817f5;color:#eee3c7;overflow:auto}.trade-panel[hidden]{display:none}.trade-panel header,.trade-panel footer{grid-column:1/-1;display:flex;justify-content:space-between;gap:10px}.trade-panel h4{margin:5px 0;color:#d7bd78;font-size:10px}.trade-offer,.trade-bag{min-height:90px;padding:10px;border:1px solid #47554f;background:#142522}.trade-bag{grid-column:1/-1}.trade-item{margin:3px;font-size:9px}.trade-item.offered{border-color:#ffd36a;background:#3d3420}.trade-panel footer{justify-content:flex-end}.duel-abandon{position:absolute;z-index:60;right:12px;top:60px;border-color:#ba5555}.duel-abandon[hidden]{display:none}
+@media(max-width:650px){.trade-panel{inset:8px;grid-template-columns:1fr}.trade-panel header,.trade-panel footer,.trade-bag{grid-column:1}.party-panel{top:42px;width:180px}.social-menu{min-width:160px}}
+.trade-offer,.trade-bag{display:flex;align-content:flex-start;flex-wrap:wrap;gap:6px}
+.trade-offer h4,.trade-bag h4{flex-basis:100%}
+.trade-item.wh-bag-cell{position:relative;width:72px;height:72px;aspect-ratio:auto;grid-template-rows:44px 1fr;padding:3px;margin:0}
+.trade-item.wh-bag-cell img{width:38px;height:38px}
+.trade-item small{width:100%;overflow:hidden;color:#dce8e1;font-size:7px;line-height:1.1;text-overflow:ellipsis;white-space:nowrap}
+.trade-item.offered{border-color:#ffd36a;background:radial-gradient(circle at 50% 35%,#665329,#17130a 80%);box-shadow:0 0 10px #ffd36a66}
+.trade-description{grid-column:1/-1}
+.trade-description .wh-skill-head{display:flex;align-items:center;gap:9px}
+.party-panel{top:145px;left:10px}
+.party-panel header{align-items:center;gap:7px}
+.party-panel header b{flex:1}
+.party-panel header kbd{margin-left:4px;padding:1px 4px;border:1px solid #657064;background:#081210;color:#d7bd78;font-size:8px}
+.party-panel .party-minimize{padding:1px 7px;font-size:13px;line-height:1.2}
+.party-panel.minimized{width:145px;padding:7px 9px}
+.party-panel.minimized>:not(header){display:none}
+@media(max-width:650px){.party-panel{top:120px;left:8px}}
 @media (pointer: coarse) and (orientation: landscape) {
   body.in-room { overflow: hidden; overscroll-behavior: none; }
   .in-room .arena-section {

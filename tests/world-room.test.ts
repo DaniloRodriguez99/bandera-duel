@@ -30,6 +30,9 @@ interface Session {
   entered: { characterId: string; zoneId: string } | null;
   refused: { to: string; minLevel: number; open: boolean } | null;
   system: { kind: string; title: string; text: string; incantation?: string }[];
+  socialInvites: { id: string; kind: string; from: { id: string; name: string } }[];
+  socialResults: string[];
+  party: { id: string; leaderId: string; members: { id: string }[] } | null;
 }
 
 /** The zone worlds inside the room, for tests that need to move or level a character by hand. */
@@ -44,13 +47,16 @@ const zoneWorld = (roomId: string, zoneId: string) =>
 async function connect(options: Record<string, unknown>): Promise<Session> {
   const room = await sdk.joinOrCreate('world', options);
   sessions.push(room);
-  const session: Session = { room, snapshots: [], characters: null, sheet: null, entered: null, refused: null, system: [] };
+  const session: Session = { room, snapshots: [], characters: null, sheet: null, entered: null, refused: null, system: [], socialInvites: [], socialResults: [], party: null };
   room.onMessage('system', (m: Session['system'][number]) => session.system.push(m));
   room.onMessage('refused', (m: Session['refused']) => (session.refused = m));
   room.onMessage('snapshot', (s: Snapshot) => session.snapshots.push(s));
   room.onMessage('characters', (m: Session['characters']) => (session.characters = m));
   room.onMessage('sheet', (m: Character) => (session.sheet = m));
   room.onMessage('entered', (m: { characterId: string; zoneId: string }) => (session.entered = m));
+  room.onMessage('socialInvite', (m: Session['socialInvites'][number]) => session.socialInvites.push(m));
+  room.onMessage('socialResult', (m: { text: string }) => session.socialResults.push(m.text));
+  room.onMessage('party', (m: Session['party']) => (session.party = m));
   return session;
 }
 
@@ -69,6 +75,22 @@ afterAll(async () => {
 });
 
 describe('sala del mundo', () => {
+  it('invita, rechaza y forma un party persistente con aceptación explícita', async () => {
+    const a = await connect({ account: 'SocialA', password: 'social12', create: true, characterId: 'social-a', name: 'Social A', classId: 'guardian' });
+    const b = await connect({ account: 'SocialB', password: 'social12', create: true, characterId: 'social-b', name: 'Social B', classId: 'guardian' });
+    await until(() => a.entered !== null && b.entered !== null);
+    a.room.send('socialInvite', { targetId: 'social-b', kind: 'trade' });
+    await until(() => b.socialInvites.some((i) => i.kind === 'trade'));
+    b.room.send('socialRespond', { inviteId: b.socialInvites.find((i) => i.kind === 'trade')!.id, accept: false });
+    await until(() => a.socialResults.some((m) => /rechazada/.test(m)));
+
+    a.room.send('socialInvite', { targetId: 'social-b', kind: 'party' });
+    await until(() => b.socialInvites.some((i) => i.kind === 'party'));
+    b.room.send('socialRespond', { inviteId: b.socialInvites.find((i) => i.kind === 'party')!.id, accept: true });
+    await until(() => (a.party?.members.length ?? 0) === 2 && (b.party?.members.length ?? 0) === 2);
+    expect(a.party?.leaderId).toBe('social-a');
+    expect((await characterStore().partyFor('social-b'))?.id).toBe(a.party?.id);
+  });
   it('sin personaje elegido devuelve la lista para elegir', async () => {
     const s = await connect({ account: 'Rudeus', password: 'roxy1234', create: true });
     await until(() => s.characters !== null);

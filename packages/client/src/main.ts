@@ -42,11 +42,12 @@ import { Practice, PRACTICE_PLAYER } from './practice.js';
 import { loadMageCustomization, mountMageCustomization } from './customization.js';
 import { UPGRADE_META, UPGRADE_ORDER } from './pve-upgrades.js';
 import { WorldHud } from './isekai-hud.js';
-import { AFFINITIES, AFFINITY_NAMES, AFFINITY_TEXT, RANKS, canSurf } from '@bandera/shared/rpg/skills';
+import { AFFINITIES, AFFINITY_NAMES, AFFINITY_TEXT, RANKS, RARITY_NAMES, canSurf } from '@bandera/shared/rpg/skills';
 import { AFFINITY_COLORS } from '@bandera/shared/rpg/colors';
 import { WEAPON_PROFILE } from '@bandera/shared/rpg/weapons';
+import { ITEMS, describeBonus, describeGrimoire } from '@bandera/shared/rpg/items';
 import { zone, type ZoneId } from '@bandera/shared/rpg/zones';
-import type { CastSlot, Character, ChestView, Creation, Notice, StealOffer } from '@bandera/shared/world';
+import type { CastSlot, Character, ChestView, Creation, Notice, Party, SocialInvite, StealOffer, TradeView, WorldSnapshot } from '@bandera/shared/world';
 
 function hudTeam(team: Team, right = false) {
   const label = right
@@ -72,6 +73,11 @@ document.querySelector('#app')!.innerHTML = `
 <aside id="chat-panel" class="chat-panel" hidden aria-label="Chat de sala"><header><div><span>CHAT DE SALA</span><small id="chat-players"></small></div><button id="chat-close" type="button" aria-label="Cerrar chat">×</button></header><ol id="chat-messages" role="log" aria-live="polite"></ol><p id="chat-status" role="status"></p><form id="chat-form"><input id="chat-input" maxlength="240" autocomplete="off" placeholder="Escribí un mensaje…" aria-label="Mensaje"><button id="chat-send" type="submit">Enviar</button></form></aside>
 <div id="overlay" class="overlay" hidden><div class="overlay-card"><span id="overlay-kicker" class="tiny">SALA</span><h2 id="overlay-title">Esperando jugadores</h2><p id="overlay-description"></p><p id="room-heading"></p><div id="roster" class="roster"></div><label id="team-choice" hidden>TU EQUIPO<select id="team-select"><option value="blue">Azul</option><option value="red">Carmesí</option></select></label><fieldset id="room-picker" class="class-picker compact"><legend>TU CLASE · PODÉS CAMBIAR ANTES DE JUGAR</legend><div id="room-classes" class="class-grid"></div></fieldset><p id="selection-status" role="status" hidden></p><div id="invitation"><label for="invite">LINK DE INVITACIÓN</label><div class="invite-row"><input id="invite" readonly aria-label="Link de invitación"><button id="copy" class="secondary">Copiar</button></div></div><button id="world-return" class="primary" type="button" hidden>Volver a entrar <span>↗</span></button><button id="ready" class="primary">Estoy listo <span>⚔</span></button><button id="pve-start" class="primary" hidden>Comenzar expedición ↗</button><button id="leave" class="text-btn">Salir de la sala</button></div></div>
 <div id="announcement" class="announcement" hidden aria-live="polite"></div>
+<div id="social-menu" class="social-menu" hidden role="menu"></div>
+<div id="social-invites" class="social-invites" aria-live="polite"></div>
+<aside id="party-panel" class="party-panel" hidden aria-label="Party"></aside>
+<section id="trade-panel" class="trade-panel" hidden aria-label="Comercio"></section>
+<button id="duel-abandon" class="duel-abandon" type="button" hidden>Abandonar duelo</button>
 <div id="touch-controls"><div id="stick-move" class="stick" aria-label="Mover"><span></span><small>MOVER</small></div><div id="touch-actions" class="touch-actions" aria-label="Habilidades táctiles"></div></div></div>
 <div class="arena-bottom"><span id="arena-hint">Robá la bandera rival y traela a tu base. La tuya debe estar en casa.</span><div id="cooldowns" hidden><span id="health" aria-label="Vida"></span><span id="lives" aria-label="Muertes"></span><span id="stealth-state"></span><span id="cd-sword"></span><span id="cd-shot"></span><span id="cd-dash"></span><span id="cd-guard" hidden></span><span id="cd-trap" hidden></span><span id="cd-volley" hidden></span><span id="cd-summon" hidden></span></div><span class="corner-detail">◆ &nbsp; ✚ &nbsp; ▲ &nbsp; ●</span></div></section>
 <section id="guide" class="guide"><article><span class="step">01 / ROBÁ</span><h3>Entrá en terreno rival.</h3><p>Tocá su bandera para llevarla. Podés pelear mientras la transportás.</p></article><article><span class="step">02 / RESISTÍ</span><h3>Un golpe cambia todo.</h3><p>Si te hieren, soltás la bandera. Recuperá la tuya con solo tocarla.</p></article><article><span class="step">03 / VOLVÉ</span><h3>Tu base. Tu victoria.</h3><p>Capturá con tu bandera en casa. Tres capturas deciden la partida; las reapariciones son ilimitadas.</p></article></section>
@@ -117,6 +123,113 @@ const worldHud = new WorldHud($('stage'), {
   discard: (uid) => room?.send('discard', { uid }),
   steal: (option) => room?.send('stealPick', { option }),
 });
+let worldSheet: Character | null = null;
+let partyState: Party | null = null;
+let partyMinimized = false;
+let tradeState: TradeView | null = null;
+let tradeSelected: { uid: string; itemId: string; side: 'own' | 'theirs' } | null = null;
+const inviteEls = new Map<string, HTMLElement>();
+const TRADE_RARITY: Record<string, string> = { comun: '#b9c6cf', rara: '#56b8ff', epica: '#b877ff', legendaria: '#ffc84d', unica: '#ff4f7a' };
+const TRADE_KIND: Record<string, string> = { arma: 'Arma', armadura: 'Armadura', amuleto: 'Amuleto', grimorio: 'Grimorio' };
+
+function socialMessage(text: string) {
+  const node = document.createElement('div'); node.className = 'social-toast'; node.textContent = text;
+  $('social-invites').append(node); window.setTimeout(() => node.remove(), 3500);
+}
+
+function renderParty(party: Party | null) {
+  partyState = party; const panel = $('party-panel'); panel.replaceChildren(); panel.hidden = !party;
+  if (!party) return;
+  panel.classList.toggle('minimized', partyMinimized);
+  const head = document.createElement('header'); head.innerHTML = `<b>PARTY <kbd>P</kbd></b><span>${party.members.length}/4</span>`;
+  const minimize = document.createElement('button'); minimize.type = 'button'; minimize.className = 'party-minimize';
+  minimize.textContent = partyMinimized ? '▣' : '—'; minimize.title = partyMinimized ? 'Mostrar party (P)' : 'Minimizar party (P)';
+  minimize.setAttribute('aria-label', minimize.title); minimize.onclick = () => { partyMinimized = !partyMinimized; renderParty(partyState); };
+  head.append(minimize); panel.append(head);
+  for (const member of party.members) {
+    const row = document.createElement('div'); row.className = 'party-member';
+    row.innerHTML = `<i class="${member.online ? 'online' : ''}"></i><span>${member.name}${member.id === party.leaderId ? ' ◆' : ''}<small>${member.online ? member.zoneId ?? 'En línea' : 'Desconectado'}</small></span>`;
+    if (party.leaderId === worldCharacterId && member.id !== worldCharacterId) {
+      const kick = document.createElement('button'); kick.textContent = 'Expulsar'; kick.onclick = () => room?.send('partyKick', { targetId: member.id }); row.append(kick);
+    }
+    panel.append(row);
+  }
+  const leave = document.createElement('button'); leave.textContent = 'Salir del party'; leave.onclick = () => room?.send('partyLeave'); panel.append(leave);
+}
+
+function itemChip(instance: { uid: string; itemId: string }, side: 'own' | 'theirs', active = false, offerable = true) {
+  const button = document.createElement('button'); const item = ITEMS[instance.itemId];
+  button.className = `trade-item wh-bag-cell${active ? ' offered' : ''}`;
+  button.dataset.rarity = item?.rarity ?? ''; button.style.setProperty('--rarity', TRADE_RARITY[item?.rarity ?? 'comun']);
+  button.setAttribute('aria-pressed', String(tradeSelected?.uid === instance.uid && tradeSelected.side === side));
+  button.innerHTML = `<img src="/assets/icons/${item?.icon ?? 'vanguard-counter'}.svg" alt=""><small></small>`;
+  button.querySelector('small')!.textContent = item?.name ?? 'Objeto desconocido';
+  button.title = `${item?.name ?? 'Objeto desconocido'} · clic para ver${offerable ? ' y cambiar la oferta' : ''}`;
+  button.onclick = () => {
+    tradeSelected = { ...instance, side };
+    if (offerable) room?.send('tradeOffer', { uid: instance.uid });
+    renderTrade(tradeState);
+  };
+  return button;
+}
+
+function tradeDescription() {
+  const selected = tradeSelected; if (!selected) return null;
+  const item = ITEMS[selected.itemId]; const card = document.createElement('article');
+  card.className = `trade-description wh-item rarity-${item?.rarity ?? 'comun'}`;
+  card.style.setProperty('--rarity', TRADE_RARITY[item?.rarity ?? 'comun']);
+  if (!item) { card.innerHTML = '<h4>Objeto desconocido</h4><p>Este objeto ya no existe en el catálogo.</p>'; return card; }
+  const effects = item.grimoire ? [describeGrimoire(item.grimoire)] : describeBonus(item.bonus);
+  card.innerHTML = `<header>${selected.side === 'theirs' ? 'OFERTA DEL OTRO JUGADOR' : 'TU OBJETO'} · ${RARITY_NAMES[item.rarity].toUpperCase()} · ${TRADE_KIND[item.kind]} · Nv ${item.level}</header><div class="wh-skill-head"><img src="/assets/icons/${item.icon}.svg" alt=""><div><h4></h4></div></div><ul class="wh-item-lines"></ul><blockquote></blockquote>`;
+  card.querySelector('h4')!.textContent = item.name;
+  const list = card.querySelector('ul')!;
+  for (const line of effects) { const li = document.createElement('li'); li.textContent = line; list.append(li); }
+  if (!effects.length) { const li = document.createElement('li'); li.textContent = 'Sin bonificaciones.'; list.append(li); }
+  card.querySelector('blockquote')!.textContent = item.flavor;
+  return card;
+}
+
+function renderTrade(trade: TradeView | null) {
+  tradeState = trade; const panel = $('trade-panel'); panel.replaceChildren(); panel.hidden = !trade;
+  if (!trade || !worldSheet) { if (!trade) tradeSelected = null; return; }
+  if (tradeSelected) {
+    const available = tradeSelected.side === 'theirs' ? trade.theirs : worldSheet.inventory;
+    if (!available.some((i) => i.uid === tradeSelected!.uid && i.itemId === tradeSelected!.itemId)) tradeSelected = null;
+  }
+  const title = document.createElement('header'); title.innerHTML = `<b>COMERCIO CON ${trade.partner.name.toUpperCase()}</b><button aria-label="Cancelar">×</button>`;
+  title.querySelector('button')!.onclick = () => room?.send('tradeCancel'); panel.append(title);
+  const theirs = document.createElement('div'); theirs.className = 'trade-offer'; theirs.innerHTML = `<h4>OFERTA DE ${trade.partner.name}${trade.partnerAccepted ? ' · ACEPTADA' : ''}</h4>`;
+  trade.theirs.forEach((item) => theirs.append(itemChip(item, 'theirs', false, false))); panel.append(theirs);
+  const own = document.createElement('div'); own.className = 'trade-offer'; own.innerHTML = `<h4>TU OFERTA${trade.accepted ? ' · ACEPTADA' : ''}</h4>`;
+  trade.own.forEach((item) => own.append(itemChip(item, 'own', true))); panel.append(own);
+  const bag = document.createElement('div'); bag.className = 'trade-bag'; bag.innerHTML = '<h4>MOCHILA</h4>';
+  const offered = new Set(trade.own.map((i) => i.uid)); worldSheet.inventory.forEach((item) => bag.append(itemChip(item, 'own', offered.has(item.uid)))); panel.append(bag);
+  const description = tradeDescription();
+  if (description) panel.append(description);
+  else { const hint = document.createElement('p'); hint.className = 'trade-description wh-hint'; hint.textContent = 'Elegí un objeto para ver su descripción y sus bonificaciones.'; panel.append(hint); }
+  const actions = document.createElement('footer'); actions.innerHTML = '<button data-cancel>Cancelar</button><button data-accept>Aceptar</button>';
+  actions.querySelector<HTMLElement>('[data-cancel]')!.onclick = () => room?.send('tradeCancel');
+  actions.querySelector<HTMLElement>('[data-accept]')!.onclick = () => room?.send('tradeAccept'); panel.append(actions);
+}
+
+function showInvite(invite: SocialInvite) {
+  const card = document.createElement('div'); card.className = 'social-invite';
+  const label = invite.kind === 'party' ? 'unirte a su party' : invite.kind === 'trade' ? 'comerciar' : 'un duelo';
+  card.innerHTML = `<b>${invite.from.name}</b><span>te invita a ${label}</span><div><button data-no>No</button><button data-yes>Sí</button></div>`;
+  const answer = (accept: boolean) => { room?.send('socialRespond', { inviteId: invite.id, accept }); card.remove(); inviteEls.delete(invite.id); };
+  card.querySelector<HTMLElement>('[data-no]')!.onclick = () => answer(false); card.querySelector<HTMLElement>('[data-yes]')!.onclick = () => answer(true);
+  inviteEls.set(invite.id, card); $('social-invites').append(card);
+}
+
+arena.onPlayerContext = (player, x, y) => {
+  if (!worldCharacterId) return; const menu = $('social-menu'); menu.replaceChildren();
+  const actions: [string, string][] = [['party', 'Invitar al party'], ['duel', 'Invitar a un duelo'], ['trade', 'Comerciar']];
+  const title = document.createElement('b'); title.textContent = player.name; menu.append(title);
+  for (const [kind, label] of actions) { const button = document.createElement('button'); button.textContent = label; button.onclick = () => { room?.send('socialInvite', { targetId: player.id, kind }); menu.hidden = true; }; menu.append(button); }
+  menu.style.left = `${Math.min(innerWidth - 190, x)}px`; menu.style.top = `${Math.min(innerHeight - 170, y)}px`; menu.hidden = false;
+};
+document.addEventListener('pointerdown', (event) => { if (!(event.target as HTMLElement).closest('#social-menu')) $('social-menu').hidden = true; });
+$('duel-abandon').onclick = () => room?.send('duelAbandon');
 // Development only (stripped from production builds): lets a browser spec show a loot window
 // without walking a character across the valley to a guarded chest.
 if (import.meta.env.DEV) (window as unknown as { __worldHud: WorldHud }).__worldHud = worldHud;
@@ -124,6 +237,10 @@ window.addEventListener('keydown', (event) => {
   if (!worldCharacterId || (event.target as HTMLElement)?.matches?.('input, textarea, select')) return;
   if (event.code === 'KeyK' && !event.repeat) worldHud.togglePanel();
   if (event.code === 'KeyM' && !event.repeat) worldHud.toggleMap();
+  if (event.code === 'KeyP' && !event.repeat && partyState) {
+    partyMinimized = !partyMinimized;
+    renderParty(partyState);
+  }
   if (event.code === 'Escape' && worldHud.panelOpen) worldHud.togglePanel(false);
   if (event.code === 'Escape' && worldHud.mapOpen) worldHud.toggleMap(false);
 });
@@ -561,6 +678,11 @@ function bind(joined: Room) {
   room.onMessage('sheet', (sheet: Character) => showSheet(sheet));
   room.onMessage('system', (notice: Notice) => worldHud.notice(notice));
   room.onMessage('stealOffer', (offer: StealOffer) => worldHud.openSteal(offer));
+  room.onMessage('socialInvite', (invite: SocialInvite) => showInvite(invite));
+  room.onMessage('socialInviteExpired', ({ id }: { id: string }) => { inviteEls.get(id)?.remove(); inviteEls.delete(id); });
+  room.onMessage('socialResult', ({ text }: { text: string }) => socialMessage(text));
+  room.onMessage('party', (party: Party | null) => renderParty(party));
+  room.onMessage('trade', (trade: TradeView | null) => renderTrade(trade));
   room.onMessage('idle', () => (idleKicked = true));
   room.onMessage('replaced', () => (replaced = true));
   room.onMessage('entered', ({ zoneId, characterId }: { zoneId: string; characterId: string }) => {
@@ -590,6 +712,12 @@ function bind(joined: Room) {
         stage.dataset.aim = String(Math.round((self.angle * 180) / Math.PI));
         stage.dataset.windup = String(self.windup > 0 || self.shotCharge > 0);
       }
+      const duel = (s as WorldSnapshot).duels?.find((d) => d.players.includes(worldCharacterId!));
+      $('duel-abandon').hidden = !duel;
+      if (duel?.phase === 'countdown') {
+        $('announcement').hidden = false;
+        $('announcement').textContent = String(Math.max(1, Math.ceil(duel.countdown)));
+      } else if (/^[123]$/.test($('announcement').textContent ?? '')) $('announcement').hidden = true;
     }
     render(s);
   });
@@ -868,6 +996,7 @@ function showCharacters(list: WorldCharacterList) {
 }
 
 function showSheet(sheet: Character) {
+  worldSheet = sheet;
   worldHud.setSheet(sheet);
   arena.weapon = sheet.weapon;
   arena.surfer = canSurf(sheet.affinities);
@@ -881,6 +1010,7 @@ function showSheet(sheet: Character) {
   stage.dataset.bag = String(sheet.inventory.length);
   stage.dataset.weaponItem = sheet.equipment.weapon.itemId;
   stage.dataset.look = WEAPON_PROFILE[sheet.weapon].look;
+  if (tradeState) renderTrade(tradeState);
 }
 
 $('new-instead').onclick = () => {
