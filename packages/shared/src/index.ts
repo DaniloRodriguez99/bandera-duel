@@ -838,6 +838,11 @@ export interface Zombie extends Vec {
   counterLeft: number;
   /** Thrall that summoned or raised this zombie; its own caps count by it. */
   summoner?: string;
+  /**
+   * World monsters: the skill being wound up, so every client can draw the warning where it will
+   * land before it does. Absent in matches.
+   */
+  skill?: { name: string; kind: string; left: number; total: number; x: number; y: number; radius: number; color: string };
 }
 export interface GameEvent extends Vec {
   id: number;

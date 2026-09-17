@@ -142,8 +142,9 @@ describe('cofres', () => {
     run(world, ticks(CHEST_TIERS.comun.openSeconds) + 1);
     expect(chest.ready).toBe(false);
     p.x += 400; // out of reach, so it is not opened again the moment it returns
-    const guardias = world.state.zombies.filter((z) => z.owner === 'wild:umbral:3');
-    world.state.zombies = world.state.zombies.filter((z) => z.owner !== 'wild:umbral:3');
+    const camp = chest.id.replace('chest:', 'wild:');
+    const guardias = world.state.zombies.filter((z) => z.owner === camp);
+    world.state.zombies = world.state.zombies.filter((z) => z.owner !== camp);
     chest.respawnLeft = 0;
     run(world, 1);
     expect(chest.ready).toBe(false);

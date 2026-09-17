@@ -1,4 +1,5 @@
 import { MAGE_SKINS, type ClassId, type MobKind } from '@bandera/shared';
+import type { MobFamilyId } from '@bandera/shared/rpg/zones';
 // Original pixel matrices: 0 outline, 1 steel, 2 shadow, 3 cloth, 4 highlight,
 // 5 leather, 6 blade, 7 skin, 8 boots. Shared by class cards and in-game sprites.
 export const CLASS_ART: Record<ClassId, string[]> = {
@@ -95,3 +96,67 @@ export function hatPalette(cloth: string, light: string): Record<string,string> 
 export function undeadPalette(cloth: string, light: string): Record<string,string> {
   return {...palette(cloth, light), 2:'#141c17', 4:'#c47bff', 5:'#4d4238', 7:'#8a9a86', 8:'#2a2622'};
 }
+
+/** World monsters that no class sprite fits. Same 16×16 grammar: 0 outline, 3 body, 4 light, 5 foliage or mane, 6 tusk or bone, 8 feet, 9 eyes. */
+const BOAR_ART: string[] = ["................", "................", "................", "....00000000....", "..003333333300..", ".0333433333333..", "033344433333330.", "0333333333333390", "03333333333336..", ".033333333333360", "..0333333333300.", "...0330000330...", "...030....030...", "...88.....88....", "................", "................"];
+const SPIDER_ART: string[] = ["................", "..0....0..0...0.", "...0...0..0..0..", "....0..0000.0...", ".00..00333300.00", "...0033333330...", "....0339933300..", "..0003333333000.", ".0...03333330..0", "....0.033330.0..", "...0..0.00.0..0.", "..0...0....0...0", "................", "................", "................", "................"];
+const TREE_ART: string[] = ["....00000000....", "..005555555500..", ".05554455555550.", "0555555555445550", "0555555555555550", ".05555555555550.", "..000533335000..", "....033333330...", "...0339333930...", "..0333333333330.", ".033033333303330", ".030.033330.030.", "....03333330....", "...0330..0330...", "..088......880..", "................"];
+const FLAME_ART: string[] = [".......0........", "......040.......", ".....04440......", "....0434440.....", "...043344440....", "...0433334440...", "..04333333440...", "..043399339440..", "..04333333340...", "..04433333440...", "...044333440....", "....0443440.....", ".....04440......", "......040.......", "................", "................"];
+const TOAD_ART: string[] = ["................", "................", "................", "....00....00....", "...0990000990...", "..033333333330..", ".03333333333330.", "0333344444433330", "0333444444443330", "0333344444433330", ".03333333333330.", "..003300003300..", "..0330....0330..", ".0880......0880.", "................", "................"];
+
+/** Every world family, drawn from its own art or a recoloured one it resembles. */
+export const MOB_FAMILY_ART: Record<MobFamilyId, string[]> = {
+  lobezno: PVE_MOB_ART.wolf,
+  jabali: BOAR_ART,
+  duende: CLASS_ART.archer,
+  arana: SPIDER_ART,
+  saqueador: CLASS_ART.vanguard,
+  ent: TREE_ART,
+  ghoul: ZOMBIE_ART,
+  espiritu_ceniza: FLAME_ART,
+  sapo: TOAD_ART,
+  esqueleto: PVE_MOB_ART.skeleton,
+  nigromante: CLASS_ART.necromancer,
+};
+
+export function mobFamilyPalette(id: MobFamilyId): Record<string, string> {
+  switch (id) {
+    case 'lobezno':
+      return { ...palette('#4a4f55', '#9aa3ab'), 0: '#15181b', 2: '#2a2e33', 7: '#6b737b', 9: '#ffd24d' };
+    case 'jabali':
+      return { ...palette('#5a3a26', '#8a6040'), 0: '#1a100a', 3: '#5a3a26', 4: '#8a6040', 6: '#f0e6c8', 8: '#2a1a10', 9: '#ff4a3d' };
+    case 'duende':
+      return { ...palette('#6b4a2a', '#a57a45'), 0: '#14200e', 2: '#1e2a14', 7: '#6fbf3a', 8: '#3a2a18' };
+    case 'arana':
+      return { 0: '#0b0b10', 3: '#2a2233', 4: '#5a4a6b', 9: '#ff3b4f', 8: '#000000' };
+    case 'saqueador':
+      return { ...palette('#6e2b2b', '#b04a3a'), 0: '#1a0f0c', 1: '#5a5550', 2: '#241814', 7: '#c49a70' };
+    case 'ent':
+      return { 0: '#10180c', 3: '#5a4430', 4: '#7a6040', 5: '#2f6b2c', 8: '#3a2a18', 9: '#b6ff5a' };
+    case 'ghoul':
+      return { ...zombiePalette('#3a4a3a', '#6b7f5a'), 7: '#a8b890', 9: '#ffe15a' };
+    case 'espiritu_ceniza':
+      return { 0: '#3a1206', 3: '#ff7a2f', 4: '#ffd27a', 9: '#fff6d8' };
+    case 'sapo':
+      return { 0: '#10180c', 3: '#8fae5a', 4: '#d6e8a0', 8: '#4a5a2a', 9: '#ffe15a' };
+    case 'esqueleto':
+      return { ...pveMobPalette('skeleton'), 3: '#3a4a3a', 4: '#6b7f5a', 9: '#7fd8ff' };
+    case 'nigromante':
+      return { ...palette('#3a2450', '#7a4aa0'), 0: '#0e0816', 2: '#1a1026', 4: '#b06cff', 7: '#9aa890', 9: '#b6ff5a' };
+  }
+}
+
+/** How big each family stands next to a person. */
+export const MOB_FAMILY_SCALE: Record<MobFamilyId, number> = {
+  lobezno: 1,
+  jabali: 1.25,
+  duende: 0.8,
+  arana: 0.95,
+  saqueador: 1.05,
+  ent: 1.7,
+  ghoul: 1,
+  espiritu_ceniza: 1,
+  sapo: 1.15,
+  esqueleto: 1,
+  nigromante: 1.15,
+};

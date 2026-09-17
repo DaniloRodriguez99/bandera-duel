@@ -459,6 +459,7 @@ export class WorldRoom extends Room {
       graves: source.graves.filter((g) => inside(leave, g)),
       traps: source.traps.filter((t) => inside(leave, t)),
       chests: (source.chests ?? []).filter((c) => inside(leave, c)),
+      mobShots: (source.mobShots ?? []).filter((m) => inside(leave, m)),
       events: source.events.filter((e) => inside(leave, e)).slice(-24),
     };
   }

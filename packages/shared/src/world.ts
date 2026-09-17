@@ -7,6 +7,8 @@ import {
   newPlayer,
   projectileStats,
   translate,
+  lineClear,
+  blocked,
   activePreset,
   defaultCustomization,
   type Allegiant,
@@ -24,7 +26,7 @@ import {
   type Zombie,
 } from './index.js';
 import { DEFAULT_ZONE, ZONES, zone, type Spawner, type ZoneDefinition, type ZoneId } from './rpg/zones.js';
-import { MOB_FAMILIES, formName, mobStats, xpFor } from './rpg/mobs.js';
+import { MOB_FAMILIES, formName, mobStats, xpFor, type MobSkill } from './rpg/mobs.js';
 import {
   POINTS_PER_LEVEL,
   applyXp,
@@ -173,6 +175,21 @@ export interface WorldSnapshot extends Snapshot {
   /** The zone this view belongs to. `mapId` stays a valid arena id so the shared types hold. */
   zoneId: ZoneId;
   chests: ChestView[];
+  /** What monsters throw: stones, webs, embers, spit. */
+  mobShots: MobShot[];
+}
+
+export interface MobShot extends Vec {
+  id: number;
+  owner: string;
+  angle: number;
+  speed: number;
+  damage: number;
+  life: number;
+  radius: number;
+  color: string;
+  freeze?: number;
+  poison?: { dps: number; seconds: number };
 }
 
 /** Around a wild zone's shrine nobody hurts anybody: the place you revive is not a place to camp. */
@@ -225,6 +242,11 @@ export class World extends Duel {
   /** `${player}|${chest}` already told their bag is too full, until they step away. */
   private lootWarned = new Set<string>();
   private chestCamp = new Map<string, number>();
+  private mobSkillCd = new Map<string, Record<string, number>>();
+  private mobCasting = new Map<string, { skill: MobSkill; left: number; aim: Vec; at: Vec }>();
+  private mobBuffs = new Map<string, { left: number; damage: number }>();
+  private poisons = new Map<string, { left: number; dps: number; tick: number; source: string }>();
+  private mobShotId = 0;
   private incantations = new Map<string, { skillId: string; aim: Vec; left: number }>();
   private skillCd = new Map<string, number>();
   private parries = new Map<string, { left: number; reflect: number }>();
@@ -244,6 +266,7 @@ export class World extends Duel {
     s.bases = [];
     s.flags = [];
     s.chests = [];
+    s.mobShots = [];
     this.populate();
   }
 
@@ -435,6 +458,7 @@ export class World extends Duel {
     this.buffs.delete(id);
     this.drains.delete(id);
     this.opening.delete(id);
+    this.poisons.delete(id);
     for (const key of this.lootWarned) if (key.startsWith(`${id}|`)) this.lootWarned.delete(key);
   }
 
@@ -1002,7 +1026,8 @@ export class World extends Duel {
       }
     }
     const caster = (source as Partial<Player>).id;
-    const scaled = caster && this.characters.has(caster) ? amount * this.damageMultiplier(caster) : amount;
+    const howl = striker.family && striker.id ? (this.mobBuffs.get(striker.id)?.damage ?? 0) : 0;
+    const scaled = caster && this.characters.has(caster) ? amount * this.damageMultiplier(caster) : amount * (1 + howl);
     const alive = target.hp > 0;
     const landed = super.damage(target, source, angle, scaled, options);
     // A blow that lands takes the hands off the chest.
@@ -1140,6 +1165,8 @@ export class World extends Duel {
     }
     this.stepArrows(dt);
     this.stepZombies(dt);
+    this.stepMonsters(dt);
+    this.stepMobShots(dt);
     this.stepTraps(placements, dt);
     // After every blow of the tick has had its chance to interrupt; before a portal can take the
     // opener to another zone.
@@ -1472,6 +1499,248 @@ export class World extends Duel {
         return true;
       }
     }
+  }
+
+  // ─── Monster skills ─────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Monsters with a kit pick a skill by how far their prey is, stop, show where it will land, and
+   * only then let it go. Frozen, they lose the cast. Poison ticks here too, once a second.
+   */
+  private stepMonsters(dt: number) {
+    const s = this.state as WorldSnapshot;
+    const alive = new Set(s.zombies.map((z) => z.id));
+    for (const [id, cds] of this.mobSkillCd) {
+      if (!alive.has(id)) {
+        this.mobSkillCd.delete(id);
+        continue;
+      }
+      for (const key of Object.keys(cds)) cds[key] = Math.max(0, cds[key] - dt);
+    }
+    for (const [id, buff] of this.mobBuffs) if ((buff.left -= dt) <= 0 || !alive.has(id)) this.mobBuffs.delete(id);
+    for (const id of this.mobCasting.keys()) if (!alive.has(id)) this.mobCasting.delete(id);
+
+    for (const z of s.zombies) {
+      const family = z.family ? MOB_FAMILIES[z.family] : undefined;
+      if (!family?.kit.length || z.hp <= 0) {
+        z.skill = undefined;
+        continue;
+      }
+      const casting = this.mobCasting.get(z.id);
+      if (casting) {
+        if (z.frozenLeft > 0) {
+          this.mobCasting.delete(z.id);
+          z.skill = undefined;
+          continue;
+        }
+        // Rooted while it winds up: whatever the walking brain decided this tick is undone.
+        z.x = casting.at.x;
+        z.y = casting.at.y;
+        z.attackCd = Math.max(z.attackCd, 0.2);
+        casting.left -= dt;
+        const where = casting.skill.kind === 'nova' && casting.skill.at === 'self' ? casting.at : casting.aim;
+        z.skill = {
+          name: casting.skill.name,
+          kind: casting.skill.kind,
+          left: Math.max(0, casting.left),
+          total: casting.skill.windup,
+          x: where.x,
+          y: where.y,
+          radius: casting.skill.radius ?? 0,
+          color: casting.skill.color,
+        };
+        if (casting.left <= 0) {
+          this.mobCasting.delete(z.id);
+          z.skill = undefined;
+          this.resolveMonsterSkill(z, casting.skill, casting.aim);
+        }
+        continue;
+      }
+      if (z.frozenLeft > 0 || !z.target) continue;
+      const prey: (Vec & { hp: number }) | undefined =
+        s.players.find((p) => p.id === z.target) ?? s.zombies.find((q) => q.id === z.target);
+      if (!prey || prey.hp <= 0) continue;
+      const cds = this.mobSkillCd.get(z.id) ?? {};
+      this.mobSkillCd.set(z.id, cds);
+      const gap = distance(z, prey);
+      const skill = family.kit.find((k) => {
+        if ((cds[k.id] ?? 0) > 0 || gap < k.min || gap > k.max) return false;
+        if (k.kind === 'bolt' && !lineClear(z, prey, this.terrain)) return false;
+        if (k.kind === 'heal')
+          return s.zombies.some((q) => q.faction === 'monster' && q.hp > 0 && q.hp < q.maxHp * 0.7 && distance(z, q) <= (k.radius ?? 0));
+        if (k.kind === 'summon') return this.summonsOf(z).length < (k.summon?.max ?? 0);
+        return true;
+      });
+      if (!skill) continue;
+      cds[skill.id] = skill.cooldown;
+      this.mobCasting.set(z.id, { skill, left: skill.windup, aim: { x: prey.x, y: prey.y }, at: { x: z.x, y: z.y } });
+      z.angle = Math.atan2(prey.y - z.y, prey.x - z.x);
+      // The warning goes out the same tick the wind-up starts: the whole windup is time to react.
+      const where = skill.kind === 'nova' && skill.at === 'self' ? z : prey;
+      z.skill = { name: skill.name, kind: skill.kind, left: skill.windup, total: skill.windup, x: where.x, y: where.y, radius: skill.radius ?? 0, color: skill.color };
+      this.event('cast', z, z.team, z.angle, undefined, 0);
+    }
+
+    for (const [id, poison] of this.poisons) {
+      const p = s.players.find((q) => q.id === id);
+      if (!p || p.hp <= 0) {
+        this.poisons.delete(id);
+        continue;
+      }
+      poison.left -= dt;
+      poison.tick -= dt;
+      if (poison.tick <= 0) {
+        poison.tick += 1;
+        const source = s.zombies.find((z) => z.id === poison.source) ?? { team: 'red' as Team, faction: 'monster' as const, id: poison.source };
+        this.damage(p, source, 0, poison.dps, { ignoreInvuln: true, pierce: true });
+      }
+      if (poison.left <= 0) this.poisons.delete(id);
+    }
+  }
+
+  private summonsOf(z: Zombie) {
+    return this.state.zombies.filter((q) => q.owner === `wild:${this.zoneId}:summon:${z.id}` && q.hp > 0);
+  }
+
+  /** A blow from a monster's skill, with whatever it carries: a web that holds, a poison that stays. */
+  private monsterHit(p: Player, source: Allegiant & Partial<Zombie>, angle: number, amount: number, skill: Pick<MobSkill, 'freeze' | 'poison'>) {
+    const landed = this.damage(p, source as Pick<Player, 'team'>, angle, amount);
+    if (!landed || p.hp <= 0) return landed;
+    if (skill.freeze) {
+      this.freeze(p);
+      p.stunLeft = Math.max(p.stunLeft, skill.freeze);
+      p.frozenLeft = Math.max(p.frozenLeft, skill.freeze);
+    }
+    if (skill.poison) {
+      const fresh = !this.poisons.has(p.id);
+      this.poisons.set(p.id, { left: skill.poison.seconds, dps: skill.poison.dps * amount, tick: 1, source: String(source.id) });
+      if (fresh && this.characters.has(p.id))
+        this.notify(p.id, { kind: 'denied', title: 'Envenenado', text: `Perdés vida durante ${skill.poison.seconds} s.`, color: '#b6e05a' });
+    }
+    return landed;
+  }
+
+  private resolveMonsterSkill(z: Zombie, skill: MobSkill, aim: Vec) {
+    const s = this.state as WorldSnapshot;
+    const stats = mobStats(z.family!, z.level);
+    const amount = stats.damage * (skill.damage ?? 1) * (1 + (this.mobBuffs.get(z.id)?.damage ?? 0));
+    const angle = Math.atan2(aim.y - z.y, aim.x - z.x);
+    switch (skill.kind) {
+      case 'bolt': {
+        const speed = skill.speed ?? 320;
+        s.mobShots.push({
+          id: ++this.mobShotId,
+          owner: z.id,
+          x: z.x,
+          y: z.y,
+          angle,
+          speed,
+          damage: amount,
+          life: (skill.max + 80) / speed,
+          radius: 7,
+          color: skill.color,
+          ...(skill.freeze ? { freeze: skill.freeze } : {}),
+          ...(skill.poison ? { poison: skill.poison } : {}),
+        });
+        this.event('shot', z, z.team, angle);
+        return;
+      }
+      case 'nova': {
+        const centre = skill.at === 'target' ? aim : { x: z.x, y: z.y };
+        const radius = skill.radius ?? 80;
+        for (const p of s.players)
+          if (p.hp > 0 && this.hostile(z, p) && distance(p, centre) <= radius + RULES.radius)
+            this.monsterHit(p, z, Math.atan2(p.y - centre.y, p.x - centre.x), amount, skill);
+        for (const q of s.zombies)
+          if (q !== z && q.hp > 0 && this.hostile(z, q) && distance(q, centre) <= radius + RULES.zombieRadius)
+            this.damageZombie(q, z.team, amount, Math.atan2(q.y - centre.y, q.x - centre.x), z.id);
+        this.event('explosion', centre, z.team, angle, undefined, 1);
+        return;
+      }
+      case 'charge': {
+        const reach = Math.min(320, distance(z, aim) + 40);
+        const struck = new Set<string>();
+        for (let run = 0; run < reach; run += 10) {
+          const before = { x: z.x, y: z.y };
+          translate(z, Math.cos(angle) * 10, Math.sin(angle) * 10, this.terrain);
+          for (const p of s.players)
+            if (!struck.has(p.id) && p.hp > 0 && this.hostile(z, p) && distance(p, z) <= RULES.radius + stats.radius + 4) {
+              struck.add(p.id);
+              this.monsterHit(p, z, angle, amount, skill);
+            }
+          if (Math.hypot(z.x - before.x, z.y - before.y) < 1) break;
+        }
+        this.event('dash', z, z.team, angle, undefined, 1);
+        return;
+      }
+      case 'howl': {
+        for (const q of s.zombies)
+          if (q.faction === 'monster' && q.hp > 0 && q.owner === z.owner && distance(q, z) <= (skill.radius ?? 200) && skill.buff)
+            this.mobBuffs.set(q.id, { left: skill.buff.seconds, damage: skill.buff.damage });
+        this.event('fury', z, z.team, angle);
+        return;
+      }
+      case 'heal': {
+        for (const q of s.zombies)
+          if (q.faction === 'monster' && q.hp > 0 && distance(q, z) <= (skill.radius ?? 200)) {
+            q.hp = Math.min(q.maxHp, q.hp + q.maxHp * (skill.heal ?? 0.2));
+            this.event('heal', q, q.team);
+          }
+        return;
+      }
+      case 'summon': {
+        const summon = skill.summon!;
+        const room = summon.max - this.summonsOf(z).length;
+        for (let i = 0; i < Math.min(summon.count, room); i++) {
+          const level = Math.max(1, z.level - 1);
+          const minion = mobStats(summon.familyId, level);
+          const spot = { x: z.x + Math.cos(angle + (i - 0.5) * 1.6) * 40, y: z.y + Math.sin(angle + (i - 0.5) * 1.6) * 40 };
+          const risen = this.newZombie({ id: `wild:${this.zoneId}:summon:${z.id}`, team: 'red', angle }, spot, z, {
+            family: summon.familyId,
+            faction: 'monster',
+            level,
+            hp: minion.hp,
+            maxHp: minion.hp,
+            life: summon.seconds,
+            name: MOB_FAMILIES[summon.familyId].name,
+          });
+          s.zombies.push(risen);
+          this.event('raise', risen, z.team);
+        }
+        return;
+      }
+    }
+  }
+
+  /** Stones, webs and spit in flight. A raised parry swats them back into their thrower. */
+  private stepMobShots(dt: number) {
+    const s = this.state as WorldSnapshot;
+    s.mobShots = s.mobShots.filter((shot) => {
+      shot.life -= dt;
+      if (shot.life <= 0) return false;
+      const thrower = s.zombies.find((z) => z.id === shot.owner);
+      const source: Allegiant & Partial<Zombie> = thrower ?? { team: 'red', faction: 'monster', id: shot.owner };
+      const steps = Math.max(1, Math.ceil((shot.speed * dt) / 6));
+      for (let i = 0; i < steps; i++) {
+        shot.x += (Math.cos(shot.angle) * shot.speed * dt) / steps;
+        shot.y += (Math.sin(shot.angle) * shot.speed * dt) / steps;
+        if (blocked(shot.x, shot.y, 2, this.terrain)) return false;
+        const p = s.players.find((q) => q.hp > 0 && this.hostile(source, q) && distance(q, shot) < RULES.radius + shot.radius);
+        if (p) {
+          if (p.counterLeft > 0 && thrower && thrower.hp > 0) {
+            this.damageZombie(thrower, p.team, shot.damage, shot.angle + Math.PI, p.id);
+            this.event('counter', p, p.team, shot.angle + Math.PI, p.classId, 0);
+          } else this.monsterHit(p, source, shot.angle, shot.damage, shot);
+          return false;
+        }
+        const q = s.zombies.find((z) => z.hp > 0 && this.hostile(source, z) && distance(z, shot) < RULES.zombieRadius + shot.radius);
+        if (q) {
+          this.damageZombie(q, 'red', shot.damage, shot.angle, shot.owner);
+          return false;
+        }
+      }
+      return true;
+    });
   }
 
   /** Mana ticks back for anyone who has a pool at all. */

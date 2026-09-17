@@ -26,6 +26,8 @@ export const TILES = [
   'ash',
   'ashDark',
   'ember',
+  'mud',
+  'bog',
   'obstacle',
 ] as const;
 export type TileKind = (typeof TILES)[number];
@@ -136,6 +138,11 @@ function paint(def: ZoneDefinition): TileMap {
           if (detail > 0.985) kind = 'flowers';
           if (wet > 0.74 && !nearMark(cx, cy, 260)) kind = wet > 0.8 ? 'waterDeep' : 'water';
           break;
+        case 'cienaga':
+          kind = ground > 0.58 ? 'mud' : ground < 0.3 ? 'moss' : 'grassDark';
+          if (wet > 0.58 && !nearMark(cx, cy, 240)) kind = wet > 0.7 ? 'waterDeep' : 'bog';
+          if (detail > 0.99) kind = 'flowers';
+          break;
         case 'ceniza':
           kind = ground > 0.6 ? 'ashDark' : ground < 0.28 ? 'dirt' : 'ash';
           if (detail > 0.992) kind = 'ember';
@@ -156,6 +163,7 @@ function paint(def: ZoneDefinition): TileMap {
     for (let col = 1; col < cols - 1; col++) {
       const here = at(col, row);
       if (here === T.water || here === T.waterDeep) continue;
+      if (here === T.bog) continue;
       const wetNear = [at(col + 1, row), at(col - 1, row), at(col, row + 1), at(col, row - 1)].some(
         (t) => t === T.water || t === T.waterDeep,
       );
@@ -205,12 +213,14 @@ export const TILE_COLORS: Record<ZoneDefinition['theme'], Partial<Record<TileKin
     ash: 0x5c5650,
     ashDark: 0x45403b,
     ember: 0x8f3b24,
+    mud: 0x4a4230,
+    bog: 0x3d5446,
     obstacle: 0x23261f,
   },
   valle: {},
   bosque: { grass: 0x2f6128, grassDark: 0x1f4a1f, grassLight: 0x3f7a35, road: 0x6e5838, water: 0x2f6a78, waterDeep: 0x205461, obstacle: 0x14301a },
   ceniza: { dirt: 0x6e5a44, obstacle: 0x2a2320 },
-  cienaga: {},
+  cienaga: { grassDark: 0x34452e, moss: 0x2f3f2a, waterDeep: 0x24403a, sand: 0x57503a, road: 0x5a4d36, flowers: 0x6d7a45, obstacle: 0x1b1f1a },
   ruinas: {},
   fuego: {},
   hielo: {},

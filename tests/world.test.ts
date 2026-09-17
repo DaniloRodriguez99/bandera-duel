@@ -219,7 +219,7 @@ describe('mundo', () => {
   });
 
   it('un portal hacia una zona que todavía no existe avisa que no está abierta', () => {
-    const world = new World('ceniza');
+    const world = new World('cienaga');
     const character = newCharacter('c9', 'cuenta9', 'Rudeus', 'mage');
     character.level = 60;
     const p = world.join(character);

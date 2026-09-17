@@ -76,12 +76,22 @@ test('entra al mundo: nace en el vacío blanco, aparece en el valle y el Sistema
   // voice explaining why not (a thief's eye with nobody to steal from, say).
   const box = (await page.locator('#game canvas').boundingBox())!;
   await page.mouse.move(box.x + box.width * 0.75, box.y + box.height * 0.45);
+  // A short skill (Chispa recharges in about a second) can be ready again before a poll looks, so
+  // the page itself records whether the slot ever went into cooldown.
+  await page.evaluate(() => {
+    const slot = document.querySelector('#skillbar [data-slot=e]')!;
+    const w = window as unknown as { __cooled?: boolean };
+    w.__cooled = false;
+    new MutationObserver(() => {
+      if (slot.getAttribute('data-cooling') === 'true') w.__cooled = true;
+    }).observe(slot, { attributes: true, attributeFilter: ['data-cooling'] });
+  });
   await page.keyboard.press('KeyE');
   await expect(page.locator('#wh-callout:visible, .wh-notice[data-kind=denied]').first()).toBeVisible({ timeout: 5000 });
+  if (await page.locator('#wh-callout').isVisible())
+    await expect.poll(() => page.evaluate(() => (window as unknown as { __cooled?: boolean }).__cooled)).toBe(true);
   await page.waitForTimeout(250);
   await page.screenshot({ path: test.info().outputPath('5-grito.png') });
-  if (await page.locator('#wh-callout').isVisible())
-    await expect(page.locator('#skillbar [data-slot=e]')).toHaveAttribute('data-cooling', 'true');
 
   // K opens the System: attributes, affinities, and every skill with its own tree.
   await page.keyboard.press('KeyK');

@@ -21,7 +21,18 @@ export type ZoneId =
   | 'aguja';
 
 /** Families of world monsters. The stats and skill kit of each one live in `mobs.ts`. */
-export type MobFamilyId = 'lobezno' | 'jabali' | 'arana' | 'saqueador' | 'ghoul';
+export type MobFamilyId =
+  | 'lobezno'
+  | 'jabali'
+  | 'duende'
+  | 'arana'
+  | 'saqueador'
+  | 'ent'
+  | 'ghoul'
+  | 'espiritu_ceniza'
+  | 'sapo'
+  | 'esqueleto'
+  | 'nigromante';
 
 /** How good a guarded chest is: how long it takes to open, what it drops, how long it takes to return. */
 export type ChestTier = 'comun' | 'raro' | 'legendario';
@@ -125,6 +136,21 @@ const bosqueWalls: Rect[] = [
   { x: 3940, y: 140, w: 60, h: 440 },
 ];
 
+const CIENAGA_WIDTH = 4400;
+const CIENAGA_HEIGHT = 2600;
+/** Ciénaga Pálida: dead trees, sunken ruins, and a necromancer's island in the middle of the mire. */
+const cienagaWalls: Rect[] = [
+  { x: 800, y: 500, w: 220, h: 200 },
+  { x: 1300, y: 1800, w: 260, h: 220 },
+  { x: 2000, y: 300, w: 200, h: 260 },
+  // The island's broken wall, open towards the west.
+  { x: 2500, y: 1000, w: 500, h: 50 },
+  { x: 2950, y: 1000, w: 50, h: 500 },
+  { x: 2500, y: 1450, w: 500, h: 50 },
+  { x: 3500, y: 600, w: 240, h: 220 },
+  { x: 3700, y: 1900, w: 260, h: 200 },
+];
+
 const CENIZA_WIDTH = 4000;
 const CENIZA_HEIGHT = 2400;
 /** Campos de Ceniza: burned farmhouses and the collapsed corner of a barn. */
@@ -153,6 +179,8 @@ export const ZONES: Partial<Record<ZoneId, ZoneDefinition>> = {
       { familyId: 'lobezno', level: 1, at: { x: 1440, y: 700 }, radius: 220, count: 3, respawnSeconds: 25 },
       { familyId: 'lobezno', level: 2, at: { x: 2180, y: 1180 }, radius: 240, count: 4, respawnSeconds: 30 },
       { familyId: 'jabali', level: 2, at: { x: 1180, y: 1560 }, radius: 200, count: 3, respawnSeconds: 30 },
+      // Stone-throwing goblins on the hill past the spine: the first thing that hits from afar.
+      { familyId: 'duende', level: 3, at: { x: 2650, y: 420 }, radius: 180, count: 4, respawnSeconds: 35 },
       {
         familyId: 'jabali',
         level: 4,
@@ -200,6 +228,9 @@ export const ZONES: Partial<Record<ZoneId, ZoneDefinition>> = {
       },
       { familyId: 'lobezno', level: 8, at: { x: 2700, y: 1300 }, radius: 260, count: 5, respawnSeconds: 40 },
       { familyId: 'saqueador', level: 9, at: { x: 3300, y: 2000 }, radius: 220, count: 3, respawnSeconds: 45 },
+      // A grove that walks: young ents root whoever comes close and heal one another.
+      { familyId: 'ent', level: 9, at: { x: 1800, y: 2050 }, radius: 200, count: 3, respawnSeconds: 50 },
+      { familyId: 'duende', level: 6, at: { x: 1250, y: 820 }, radius: 180, count: 5, respawnSeconds: 35 },
     ],
     portals: [
       { to: 'umbral', area: { x: 20, y: 880, w: 50, h: 400 }, minLevel: 1, arrive: { x: 3640, y: 1080 } },
@@ -226,6 +257,8 @@ export const ZONES: Partial<Record<ZoneId, ZoneDefinition>> = {
       { familyId: 'jabali', level: 11, at: { x: 1000, y: 1200 }, radius: 260, count: 4, respawnSeconds: 40 },
       { familyId: 'saqueador', level: 12, at: { x: 2200, y: 900 }, radius: 220, count: 4, respawnSeconds: 45 },
       { familyId: 'arana', level: 13, at: { x: 3000, y: 2000 }, radius: 200, count: 5, respawnSeconds: 40 },
+      // What burned in the farms did not go out: it learned to move.
+      { familyId: 'espiritu_ceniza', level: 12, at: { x: 1650, y: 1250 }, radius: 220, count: 4, respawnSeconds: 45 },
       // Ghouls wandered out of the swamp beyond the eastern portal. Stealing from one opens the
       // hidden road that ends in the vampire.
       { familyId: 'ghoul', level: 14, at: { x: 3650, y: 1900 }, radius: 200, count: 4, respawnSeconds: 45 },
@@ -257,8 +290,42 @@ export const ZONES: Partial<Record<ZoneId, ZoneDefinition>> = {
         to: 'cienaga',
         area: { x: CENIZA_WIDTH - 90, y: 1000, w: 70, h: 400 },
         minLevel: 15,
-        arrive: { x: 160, y: 1200 },
+        arrive: { x: 160, y: 1300 },
       },
+    ],
+  },
+  cienaga: {
+    id: 'cienaga',
+    name: 'Ciénaga Pálida',
+    description: 'Agua quieta, árboles muertos y algo que levanta a los que se hunden.',
+    theme: 'cienaga',
+    terrain: { walls: cienagaWalls, bounds: zoneBounds(CIENAGA_WIDTH, CIENAGA_HEIGHT) },
+    pvp: 'wild',
+    minLevel: 15,
+    entry: { x: 160, y: 1300 },
+    shrine: { x: 380, y: 1300 },
+    roofed: false,
+    spawners: [
+      { familyId: 'sapo', level: 15, at: { x: 1100, y: 1200 }, radius: 220, count: 4, respawnSeconds: 40 },
+      { familyId: 'ghoul', level: 16, at: { x: 1700, y: 700 }, radius: 220, count: 5, respawnSeconds: 45 },
+      { familyId: 'esqueleto', level: 17, at: { x: 1900, y: 1950 }, radius: 220, count: 5, respawnSeconds: 40 },
+      { familyId: 'sapo', level: 18, at: { x: 3300, y: 2150 }, radius: 220, count: 5, respawnSeconds: 45 },
+      // The island: the swamp necromancer and his dead, sitting on the zone's best chest.
+      {
+        familyId: 'nigromante',
+        level: 19,
+        at: { x: 2750, y: 1250 },
+        radius: 150,
+        count: 2,
+        respawnSeconds: 90,
+        guards: 'chest',
+        chest: { tier: 'legendario' },
+      },
+      { familyId: 'esqueleto', level: 18, at: { x: 3700, y: 1250 }, radius: 200, count: 4, respawnSeconds: 40, guards: 'chest', chest: { tier: 'raro' } },
+    ],
+    portals: [
+      { to: 'ceniza', area: { x: 20, y: 1100, w: 50, h: 400 }, minLevel: 10, arrive: { x: 3780, y: 1200 } },
+      { to: 'kaelun', area: { x: CIENAGA_WIDTH - 90, y: 1100, w: 70, h: 400 }, minLevel: 20, arrive: { x: 160, y: 1200 } },
     ],
   },
 };

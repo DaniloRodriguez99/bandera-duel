@@ -53,7 +53,12 @@ import {
   undeadPalette,
   pveMobPalette,
   mageSkinArt,
+  MOB_FAMILY_ART,
+  MOB_FAMILY_SCALE,
+  mobFamilyPalette,
 } from './art.js';
+import { MOB_FAMILIES, formName } from '@bandera/shared/rpg/mobs';
+import type { MobFamilyId } from '@bandera/shared/rpg/zones';
 
 const GOLD = 0xf3ce86;
 const COLORS: Record<Team, number> = {
@@ -210,6 +215,13 @@ export class Arena extends Phaser.Scene {
           ? row.slice(0, 3) + row.slice(3, 13).split('').reverse().join('') + row.slice(13)
           : row,
       );
+    for (const family of Object.keys(MOB_FAMILY_ART) as MobFamilyId[])
+      for (let frame = 0; frame < 2; frame++)
+        this.textures.generate(`mob-${family}-${frame}`, {
+          data: stride(MOB_FAMILY_ART[family], 12, frame),
+          pixelWidth: 2,
+          palette: mobFamilyPalette(family) as Phaser.Types.Create.Palette,
+        });
     for (const kind of Object.keys(PVE_MOB_ART) as MobKind[])
       for (let frame = 0; frame < 2; frame++)
         this.textures.generate(`pve-${kind}-${frame}`, {
@@ -391,6 +403,7 @@ export class Arena extends Phaser.Scene {
     for (const w of definition.terrain.walls) {
       if (theme === 'bosque') this.grove(g, w.x, w.y, w.w, w.h);
       else if (theme === 'ceniza') this.ruin(g, w.x, w.y, w.w, w.h);
+      else if (theme === 'cienaga') this.deadGrove(g, w.x, w.y, w.w, w.h);
       else this.boulder(g, w.x, w.y, w.w, w.h);
     }
     const edge = b.minX;
@@ -438,6 +451,24 @@ export class Arena extends Phaser.Scene {
         g.fillCircle(tx, ty, r);
         g.fillStyle(0x4a8f3e, 0.55);
         g.fillCircle(tx - r * 0.3, ty - r * 0.35, r * 0.45);
+      }
+  }
+
+  /** The swamp's obstacle: grey, leafless trees standing in black water. */
+  private deadGrove(g: Phaser.GameObjects.Graphics, x: number, y: number, w: number, h: number) {
+    g.fillStyle(0x0f1712, 0.9);
+    g.fillRoundedRect(x - 4, y - 4, w + 8, h + 8, 16);
+    const step = 38;
+    for (let ty = y + 14; ty < y + h; ty += step)
+      for (let tx = x + 14 + (((ty - y) / step) % 2) * 18; tx < x + w; tx += step) {
+        const seed = ((tx * 13 + ty * 7) >>> 0) % 5;
+        g.lineStyle(7, 0x4a4a40);
+        g.lineBetween(tx, ty + 14, tx + seed - 2, ty - 16);
+        g.lineStyle(3, 0x5c5a4e);
+        g.lineBetween(tx + seed - 2, ty - 6, tx + 12, ty - 18);
+        g.lineBetween(tx, ty - 2, tx - 11, ty - 14);
+        g.lineStyle(2, 0x6b695c);
+        g.lineBetween(tx + 12, ty - 18, tx + 16, ty - 26);
       }
   }
 
@@ -1485,6 +1516,81 @@ export class Arena extends Phaser.Scene {
       v.name.setText(p.eliminated ? `☠ ${p.name}` : `${p.name} · ${Math.ceil(p.respawnLeft)}`);
     }
   }
+  /**
+   * A world monster: its own sprite and size, one health bar with its name and level, and the sign
+   * of whatever it is winding up drawn on the ground where it will land.
+   */
+  private drawMonster(
+    z: Zombie,
+    v: { body: Phaser.GameObjects.Sprite; hp: Phaser.GameObjects.Graphics; fx: Phaser.GameObjects.Graphics; label?: Phaser.GameObjects.Text; aura: Phaser.GameObjects.Graphics; x: number; y: number },
+    texture: string,
+    moving: boolean,
+    time: number,
+    rising: number,
+  ) {
+    const family = z.family!;
+    const scale = MOB_FAMILY_SCALE[family] * (1 + Math.min(0.35, (z.level - 1) * 0.012));
+    const bob = moving ? Math.abs(Math.sin(time * (family === 'espiritu_ceniza' ? 0.02 : 0.012) + z.slot)) * 2 : 0;
+    const hover = family === 'espiritu_ceniza' ? Math.sin(time * 0.006 + z.slot) * 4 - 6 : 0;
+    v.body
+      .setTexture(texture)
+      .setPosition(v.x, v.y + bob + hover + rising * 12)
+      .setFlipX(Math.cos(z.angle) < 0)
+      .setAngle(z.skill ? Math.sin(time * 0.05) * 6 : moving ? Math.sin(time * 0.01 + z.slot) * 4 : 0)
+      .setScale(scale, scale * (1 - rising * 0.75))
+      .setAlpha(Math.min(1, z.life / 1.5) * (1 - rising * 0.45));
+    const color = z.skill ? Phaser.Display.Color.HexStringToColor(z.skill.color).color : 0xffffff;
+    if (z.frozenLeft > 0) v.body.setTint(0x9fe8ff);
+    else if (z.skill) v.body.setTint(Math.floor(time / 90) % 2 ? color : 0xffffff);
+    else if (z.windup > 0) v.body.setTint(0xff6b5e);
+    else v.body.clearTint();
+    const top = v.y - 22 * scale - 14;
+    v.label
+      ?.setText(z.skill ? z.skill.name : `${formName(family, z.level)} ${z.level}`)
+      .setColor(z.skill ? z.skill.color : '#ffe2c8')
+      .setPosition(v.x, top - 8);
+    v.aura.clear();
+    v.aura.fillStyle(0x000000, 0.28);
+    v.aura.fillEllipse(v.x, v.y + 8 * scale, 30 * scale, 10 * scale);
+    if (family === 'espiritu_ceniza') {
+      v.aura.fillStyle(0xff7a2f, 0.18 + Math.sin(time * 0.01) * 0.06);
+      v.aura.fillCircle(v.x, v.y - 4, 22);
+    }
+    v.hp.clear();
+    if (rising <= 0) {
+      const width = 34 * Math.max(1, scale * 0.9);
+      v.hp.fillStyle(0x140a08, 0.9);
+      v.hp.fillRect(v.x - width / 2 - 1, top - 1, width + 2, 5);
+      v.hp.fillStyle(MOB_FAMILIES[family].undead ? 0x9fbf5a : 0xd9453a);
+      v.hp.fillRect(v.x - width / 2, top, width * Math.max(0, Math.min(1, z.hp / z.maxHp)), 3);
+    }
+    v.fx.clear();
+    const sign = z.skill;
+    if (!sign) return;
+    const progress = 1 - sign.left / Math.max(0.01, sign.total);
+    const pulse = 0.5 + Math.sin(time * 0.02) * 0.5;
+    if (sign.kind === 'nova') {
+      v.fx.fillStyle(color, 0.12 + 0.1 * pulse);
+      v.fx.fillCircle(sign.x, sign.y, sign.radius);
+      v.fx.fillStyle(color, 0.28);
+      v.fx.fillCircle(sign.x, sign.y, sign.radius * progress);
+      v.fx.lineStyle(3, color, 0.85);
+      v.fx.strokeCircle(sign.x, sign.y, sign.radius);
+    } else if (sign.kind === 'bolt' || sign.kind === 'charge') {
+      const width = sign.kind === 'charge' ? 26 : 4;
+      v.fx.lineStyle(width, color, 0.18 + 0.12 * pulse);
+      v.fx.lineBetween(v.x, v.y, sign.x, sign.y);
+      v.fx.lineStyle(2, color, 0.9);
+      v.fx.lineBetween(v.x, v.y, v.x + (sign.x - v.x) * progress, v.y + (sign.y - v.y) * progress);
+      v.fx.strokeCircle(sign.x, sign.y, 10 + 6 * pulse);
+    } else {
+      v.fx.lineStyle(3, color, 0.9);
+      v.fx.strokeCircle(v.x, v.y, 18 + progress * 30);
+      v.fx.lineStyle(1, color, 0.5);
+      v.fx.strokeCircle(v.x, v.y, 10 + progress * 50);
+    }
+  }
+
   private drawZombie(z: Zombie, time: number, delta: number) {
     let v = this.zombieVisuals.get(z.id);
     if (!v) {
@@ -1493,13 +1599,13 @@ export class Arena extends Phaser.Scene {
         hp: this.add.graphics().setDepth(13),
         fx: this.add.graphics().setDepth(14),
         label:
-          z.kind === 'thrall'
+          z.kind === 'thrall' || z.family
             ? this.add
-                .text(z.x, z.y - 34, `☠ ${z.name ?? ''}`, {
+                .text(z.x, z.y - 34, z.family ? '' : `☠ ${z.name ?? ''}`, {
                   fontFamily: 'monospace',
                   fontSize: '10px',
-                  color: '#c9ffd8',
-                  stroke: '#10241a',
+                  color: z.family ? '#ffe2c8' : '#c9ffd8',
+                  stroke: z.family ? '#2a0e08' : '#10241a',
                   strokeThickness: 3,
                 })
                 .setOrigin(0.5)
@@ -1521,12 +1627,14 @@ export class Arena extends Phaser.Scene {
       ? Math.sin(time * 0.009 + z.slot * 1.7) * 7 + Math.sin(time * 0.023 + z.slot) * 3
       : Math.sin(time * 0.003 + z.slot) * 2;
     const frame = moving ? Math.floor((time + z.slot * 90) / 170) % 2 : 0;
-    const texture =
-      z.kind === 'hat'
+    const texture = z.family
+      ? `mob-${z.family}-${frame}`
+      : z.kind === 'hat'
         ? `${z.team}-hat-${frame}`
         : z.kind === 'thrall'
           ? `${z.team}-${z.classId ?? 'guardian'}-undead-${frame}`
           : `${z.team}-zombie-${frame}`;
+    if (z.family) return this.drawMonster(z, v, texture, moving, time, rising);
     v.body
       .setPosition(
         v.x,
@@ -1881,6 +1989,20 @@ export class Arena extends Phaser.Scene {
     for (const z of s.zombies) this.drawZombie(z, time, delta);
     this.mobs.clear();
     for (const mob of s.mobs) this.drawPveMob(mob, time, delta);
+    // Monster projectiles of the world: a glowing orb in its skill's colour, with a short tail.
+    for (const shot of (s as Snapshot & { mobShots?: { x: number; y: number; angle: number; color: string; radius: number }[] }).mobShots ?? []) {
+      const color = Phaser.Display.Color.HexStringToColor(shot.color).color;
+      const dx = Math.cos(shot.angle);
+      const dy = Math.sin(shot.angle);
+      this.mobs.lineStyle(shot.radius, color, 0.25);
+      this.mobs.lineBetween(shot.x - dx * 26, shot.y - dy * 26, shot.x, shot.y);
+      this.mobs.fillStyle(color, 0.35);
+      this.mobs.fillCircle(shot.x, shot.y, shot.radius + 4);
+      this.mobs.fillStyle(color, 1);
+      this.mobs.fillCircle(shot.x, shot.y, shot.radius * 0.7);
+      this.mobs.fillStyle(0xffffff, 0.8);
+      this.mobs.fillCircle(shot.x - dx * 1.5, shot.y - dy * 1.5, shot.radius * 0.3);
+    }
     for(const shot of s.mobProjectiles){const dx=Math.cos(shot.angle),dy=Math.sin(shot.angle);this.mobs.lineStyle(3,0xe9e4cf,.9);this.mobs.lineBetween(shot.x-dx*10,shot.y-dy*10,shot.x,shot.y);this.mobs.fillStyle(0xd25d45);this.mobs.fillTriangle(shot.x+dx*4,shot.y+dy*4,shot.x-dy*3,shot.y+dx*3,shot.x+dy*3,shot.y-dx*3);}
     for (const [id, v] of this.mobVisuals) {
       if (s.mobs.some((mob) => mob.id === id)) continue;
