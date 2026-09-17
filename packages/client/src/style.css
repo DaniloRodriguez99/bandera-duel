@@ -1477,10 +1477,6 @@ body.world-mode #clock-note{color:#7fd6ff;letter-spacing:3px}
 /* El vacío blanco del Hitogami */
 .wh-creation{position:fixed;inset:0;z-index:120;display:grid;place-items:center;overflow:auto;padding:16px;color:#1b2333;background:radial-gradient(circle at 50% 38%,#fff 0,#f1f3f8 38%,#d3d9e4 100%);animation:whFade .8s reverse}
 .wh-birth{width:min(700px,100%);display:grid;justify-items:center;gap:8px;text-align:center}
-.wh-hitogami{width:clamp(96px,11vw,150px);animation:whFloat 3.6s ease-in-out infinite}
-.hitogami{display:block;width:100%;height:auto;overflow:visible}
-.hitogami .mz{animation:whMosaic 1.6s steps(1) infinite}
-@keyframes whMosaic{0%{opacity:1}33%{opacity:.55}66%{opacity:.85}}
 .wh-god{margin:0;font-size:12px;color:#6a7488}
 .wh-birth h2{margin:0;font:800 italic clamp(26px,4vw,40px) 'Barlow Condensed',Impact,sans-serif;color:#0f1729}
 .wh-god-line{margin:0 0 6px;font-style:italic;color:#3c465b}
@@ -1532,38 +1528,51 @@ body.world-mode #clock-note{color:#7fd6ff;letter-spacing:3px}
 @media(prefers-reduced-motion:reduce){.world-hud *,.wh-creation *,.wh-creation{animation-duration:.01ms!important;animation-iteration-count:1!important}}
 
 /* La puerta al mundo: arriba de todo, aparte de los duelos */
-.world-gate{position:relative;isolation:isolate;display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr) auto;align-items:center;gap:clamp(16px,3vw,40px);margin:24px 0 8px;padding:clamp(22px,4vw,48px);overflow:hidden;border:1px solid #d7dbe4;color:#1c2233;background:radial-gradient(ellipse at 76% 70%,#ffffff 0,#f7f8fa 30%,#e6e9ef 70%,#d3d8e2 100%);box-shadow:0 20px 60px #0007,inset 0 0 120px #ffffff}
+/* La puerta al mundo, con los colores de la casa: acero, oro y una nota violeta del otro lado. */
+.world-gate{position:relative;isolation:isolate;display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,.85fr);align-items:start;gap:clamp(16px,3vw,34px);margin:0 0 28px;padding:24px 30px;overflow:hidden;border:1px solid var(--line);border-left:3px solid #7c5cff;background:linear-gradient(135deg,#17252a 0%,#17252a 55%,#1b2438 100%);border-radius:4px;color:#e6e8d9}
 .world-gate[hidden]{display:none}
-/* The white void: no stars, only a far horizon where the light fades. */
-.world-gate-sky{position:absolute;inset:0;z-index:-1;background:linear-gradient(180deg,transparent 0 64%,#c9cfdb55 64.2%,transparent 76%),radial-gradient(ellipse at 76% 92%,#b8bfcc66,transparent 45%);animation:gateBreathe 7s ease-in-out infinite alternate}
-.world-gate-copy{display:grid;gap:10px;color:#2a3144}
-.world-gate-kicker{font:700 10px 'DM Sans',sans-serif;letter-spacing:4px;color:#7b84a0}
-.world-gate h2{margin:0;font:800 clamp(30px,4.4vw,58px)/1 'Barlow Condensed',Impact,sans-serif;color:#1c2233;letter-spacing:.5px}
-.world-gate h2 em{display:block;font-style:italic;color:transparent;background:linear-gradient(90deg,#2b3a7a,#6a4fb8 60%,#9a6ad8);-webkit-background-clip:text;background-clip:text}
-.world-gate p{margin:0;max-width:46ch;font-size:14px;line-height:1.6;color:#4a5268}
-.world-gate-facts{display:flex;flex-wrap:wrap;gap:18px;margin:4px 0 6px;padding:0;list-style:none;font-size:11px;color:#5a6380;letter-spacing:1px}
-.world-gate-facts b{margin-right:5px;font:800 22px 'Barlow Condensed',Impact,sans-serif;color:#1c2233}
-.world-gate-button{justify-self:start;display:inline-flex;align-items:center;gap:14px;padding:13px 22px;border:1px solid #1c2233;background:#1c2233;color:#ffffff;font:800 15px 'Barlow Condensed',Impact,sans-serif;letter-spacing:2.5px;text-transform:uppercase;cursor:pointer;box-shadow:0 0 0 0 #1c223366;transition:box-shadow .25s,transform .15s}
-.world-gate-button:hover{box-shadow:0 0 0 6px #1c22331a,0 10px 30px #1c223344;transform:translateY(-1px)}
+.world-gate-sky{position:absolute;inset:0;z-index:-1;background:radial-gradient(ellipse at 88% 18%,#7c5cff26,transparent 55%),radial-gradient(1px 1px at 72% 38%,#cdbcff88,transparent),radial-gradient(1px 1px at 84% 66%,#eac78766,transparent);animation:gateBreathe 7s ease-in-out infinite alternate}
+.world-gate-copy{display:grid;gap:10px}
+.world-gate-kicker{font:700 10px 'DM Sans',sans-serif;letter-spacing:3px;color:var(--gold)}
+.world-gate h2{margin:0;font:800 clamp(26px,3.4vw,42px)/1 'Barlow Condensed',Impact,sans-serif;color:#e6e8d9;letter-spacing:.5px}
+.world-gate h2 em{font-style:italic;color:transparent;background:linear-gradient(90deg,#b9a4ff,#cdbcff 50%,#eac787);-webkit-background-clip:text;background-clip:text}
+.world-gate p{margin:0;max-width:56ch;font-size:13px;line-height:1.65;color:var(--muted)}
+/* Lo que promete el mundo: las diez puertas y la escalera de siete rangos. */
+.gate-showcase{display:grid;gap:8px;margin:4px 0 2px}
+.gate-showcase h3{margin:0;font:700 10px 'DM Sans',sans-serif;letter-spacing:2.5px;text-transform:uppercase;color:#8ea0a4}
+.gate-doors{display:grid;grid-template-columns:repeat(auto-fit,minmax(116px,1fr));gap:6px;margin:0;padding:0;list-style:none}
+.gate-doors li{--element:#888;display:grid;gap:1px;padding:7px 9px;border:1px solid var(--line);border-left:3px solid var(--element);background:linear-gradient(90deg,color-mix(in srgb,var(--element) 16%,#1b2b30),#1b2b30 70%);transition:transform .15s,box-shadow .15s}
+.gate-doors li:hover{transform:translateY(-2px);box-shadow:0 6px 18px #0006}
+.gate-doors b{font:800 14px 'Barlow Condensed',Impact,sans-serif;letter-spacing:.6px;color:color-mix(in srgb,var(--element) 55%,#e6e8d9)}
+.gate-doors span{font-size:9.5px;line-height:1.35;color:#94a4a6}
+.gate-ranks{display:grid;grid-template-columns:repeat(7,1fr);align-items:end;gap:5px;margin:0;padding:0;list-style:none}
+.gate-ranks li{position:relative;display:grid;justify-items:center;gap:4px;font:700 8.5px 'DM Sans',sans-serif;letter-spacing:.6px;text-align:center;text-transform:uppercase;color:color-mix(in srgb,var(--gold) calc(var(--step) * 100%),#7e8f92)}
+.gate-ranks i{display:block;width:100%;height:calc(3px + var(--step) * 13px);border-radius:2px;background:linear-gradient(180deg,color-mix(in srgb,#b9a4ff calc(var(--step) * 100%),#3a4a4e),color-mix(in srgb,#7c5cff calc(var(--step) * 100%),#2a383c))}
+.gate-ranks li:last-child{color:var(--gold)}
+.gate-ranks li:last-child i{box-shadow:0 0 14px #7c5cffaa}
+.gate-paths{margin:2px 0 0;max-width:56ch;font-size:11.5px;line-height:1.6;color:#94a4a6}
+.gate-paths b{margin-right:6px;font:800 20px 'Barlow Condensed',Impact,sans-serif;color:var(--gold);vertical-align:-2px}
+.world-gate-button{justify-self:start;display:inline-flex;align-items:center;gap:14px;padding:12px 20px;border:1px solid var(--gold);background:var(--gold);color:#101b21;font:800 14px 'Barlow Condensed',Impact,sans-serif;letter-spacing:2.5px;text-transform:uppercase;cursor:pointer;transition:box-shadow .25s,transform .15s}
+.world-gate-button:hover{box-shadow:0 0 0 4px #eac78722,0 10px 26px #0007;transform:translateY(-1px)}
 .world-gate-button:disabled{opacity:.5;cursor:wait}
-.world-gate-god{width:clamp(96px,12vw,170px);align-self:end}
-.world-form{display:grid;gap:7px;padding:18px;border:1px solid #cfd4de;background:#ffffffd9;color:#1c2233;backdrop-filter:blur(4px);box-shadow:0 10px 30px #1c22331f}
+.world-form{display:grid;gap:7px;padding:18px;border:1px solid var(--line);background:#132025;color:#e6e8d9}
 .world-form[hidden]{display:none}
-.world-form h3{margin:0 0 4px;font:700 20px 'Barlow Condensed',Impact,sans-serif;color:#1c2233}
-.world-form label{font-size:9px;letter-spacing:1.5px;color:#6a7390}
-.world-form input:not([type=checkbox]){width:100%;padding:9px 10px;color:#1c2233;background:#ffffff;border:1px solid #c3c9d6}
-.world-form input:not([type=checkbox]):focus{outline:2px solid #6a4fb8;outline-offset:0}
+.world-form h3{margin:0 0 4px;font:700 20px 'Barlow Condensed',Impact,sans-serif;color:#e6e8d9}
+.world-form label{font-size:9px;letter-spacing:1.5px;color:#8ea0a4}
+.world-form input:not([type=checkbox]){width:100%;padding:9px 10px;color:#e6e8d9;background:#0d181c;border:1px solid var(--line)}
+.world-form input:not([type=checkbox]):focus{outline:2px solid var(--gold);outline-offset:0}
 .world-form .world-account{margin:4px 0 0;padding:0;border:0;display:grid;gap:7px}
 .world-form .world-account legend{display:none}
-.world-form .world-hint{margin:0;font-size:11px;color:#6a7390}
-.world-form .check{display:inline-flex;align-items:center;justify-self:start;gap:9px;margin-top:2px;font-size:12px;letter-spacing:0;color:#2a3144;cursor:pointer}
-.world-form .check input[type=checkbox]{flex:none;width:16px;height:16px;margin:0;padding:0;border:0;box-shadow:none;accent-color:#6a4fb8;cursor:pointer}
+.world-form .world-hint{margin:0;font-size:11px;color:#8ea0a4}
+.world-form .check{display:inline-flex;align-items:center;justify-self:start;gap:9px;margin-top:2px;font-size:12px;letter-spacing:0;color:#cfd8d6;cursor:pointer}
+.world-form .check input[type=checkbox]{flex:none;width:16px;height:16px;margin:0;padding:0;border:0;box-shadow:none;accent-color:var(--gold);cursor:pointer}
 .world-form .world-gate-button{margin-top:6px}
-.world-status{min-height:14px;margin:0;font-size:11px;color:#4a5a9a}
-.world-status.error{color:#c0354a}
-.world-gate.open{grid-template-columns:minmax(0,1fr) minmax(260px,.9fr) auto}
-@keyframes gateBreathe{to{opacity:.7}}
-@media(max-width:860px){.world-gate,.world-gate.open{grid-template-columns:1fr}.world-gate-god{position:absolute;right:12px;top:12px;width:70px;opacity:.7}}
+.world-status{min-height:14px;margin:0;font-size:11px;color:#b9a4ff}
+.world-status.error{color:#ff9aa6}
+.world-gate.open{grid-template-columns:minmax(0,1fr) minmax(280px,.8fr)}
+@keyframes gateBreathe{to{opacity:.65}}
+@media(max-width:860px){.world-gate,.world-gate.open{grid-template-columns:1fr}}
+@media(max-width:560px){.gate-ranks{grid-template-columns:repeat(4,1fr);gap:8px 5px}}
 
 /* Mapa del mundo (M) */
 .wh-buttons{display:flex;gap:6px;flex-wrap:wrap}
@@ -1613,26 +1622,14 @@ body.world-mode #clock-note{color:#7fd6ff;letter-spacing:3px}
 .overlay.world-select :is(#room-heading,#roster,#team-choice,#room-picker,#selection-status,#invitation,#ready,#pve-start,#world-return){display:none!important}
 .world-characters{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin:14px 0}
 .world-characters[hidden]{display:none}
-.world-character{display:grid;gap:4px;align-content:center;min-height:96px;padding:14px;text-align:left;border:1px solid #6a7aa0;background:linear-gradient(160deg,#1b2440,#10162a);color:#e6ecff;cursor:pointer;transition:transform .15s,border-color .15s,box-shadow .15s}
-.world-character:hover{transform:translateY(-2px);border-color:#b9c8ff;box-shadow:0 8px 24px #0008}
-.world-character b{font:800 22px 'Barlow Condensed',Impact,sans-serif;letter-spacing:.5px;color:#fff}
-.world-character span{font-size:12px;color:#aebbd8}
-.world-character small{margin-top:6px;font-size:10px;letter-spacing:2px;color:#e3c6ff}
-.world-character.new{place-items:center;text-align:center;border-style:dashed;border-color:#4a5578;background:#0c1122;color:#8f9bb8}
-.world-character.new b{font-size:30px;color:#b9c8ff}
-/* While choosing, the stage is the white void, not a duel arena waiting for players. */
-body.world-choosing :is(#hud,#control-guide,#arena-label,#arena-hint,#chat-toggle){visibility:hidden}
+.world-character{display:grid;gap:4px;align-content:center;min-height:96px;padding:14px;text-align:left;border:1px solid var(--line);background:linear-gradient(160deg,#1b2b30,#132025);color:#e6e8d9;cursor:pointer;transition:transform .15s,border-color .15s,box-shadow .15s}
+.world-character:hover{transform:translateY(-2px);border-color:var(--gold);box-shadow:0 8px 24px #0008}
+.world-character b{font:800 22px 'Barlow Condensed',Impact,sans-serif;letter-spacing:.5px;color:#e6e8d9}
+.world-character span{font-size:12px;color:var(--muted)}
+.world-character small{margin-top:6px;font-size:10px;letter-spacing:2px;color:var(--gold)}
+.world-character.new{place-items:center;text-align:center;border-style:dashed;color:#7e8f92;background:#101b21}
+.world-character.new b{font-size:30px;color:#b9a4ff}
+.overlay.world-select{background:#07141aee;backdrop-filter:blur(3px)}
+.overlay.world-select .overlay-card{width:min(720px,94%)}
+.overlay.world-select #overlay-kicker{color:#b9a4ff}
 .overlay.world-select .world-characters{grid-template-columns:repeat(auto-fit,minmax(118px,1fr))}
-.overlay.world-select{background:radial-gradient(ellipse at 50% 70%,#ffffff 0,#eef0f4 45%,#d3d8e2 100%);backdrop-filter:none}
-.overlay.world-select .overlay-card{width:min(720px,94%);border:1px solid #cfd4de;background:#ffffffe6;color:#1c2233;box-shadow:0 20px 60px #1c223333}
-.overlay.world-select #overlay-kicker{color:#6a4fb8}
-.overlay.world-select #overlay-title{color:#1c2233}
-.overlay.world-select #overlay-description{color:#4a5268}
-.overlay.world-select #leave{color:#4a5268}
-.overlay.world-select .world-character{border-color:#c3c9d6;background:linear-gradient(160deg,#ffffff,#f1f3f7);color:#1c2233}
-.overlay.world-select .world-character:hover{border-color:#6a4fb8;box-shadow:0 10px 26px #1c223326}
-.overlay.world-select .world-character b{color:#1c2233}
-.overlay.world-select .world-character span{color:#5a6380}
-.overlay.world-select .world-character small{color:#6a4fb8}
-.overlay.world-select .world-character.new{border-color:#b8bfcc;background:#f7f8fa;color:#6a7390}
-.overlay.world-select .world-character.new b{color:#6a4fb8}
