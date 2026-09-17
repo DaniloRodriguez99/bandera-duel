@@ -1,11 +1,25 @@
 import { describe, it, expect } from 'vitest';
-import { RULES, blocked, type Zombie } from '@bandera/shared';
+import { RULES, blocked, solid, type Zombie } from '@bandera/shared';
+import { worldTerrain } from '@bandera/shared/rpg/terrain';
 import { World, newCharacter, type WorldSnapshot } from '@bandera/shared/world';
 import { MOB_FAMILIES, mobStats } from '@bandera/shared/rpg/mobs';
 import { MONSTER_TREES, SKILLS_WORLD } from '@bandera/shared/rpg/skills';
 import { ZONE_IDS, zone, type MobFamilyId, type ZoneId } from '@bandera/shared/rpg/zones';
 
 const ticks = (seconds: number) => Math.ceil(seconds / RULES.tick);
+
+/** A stretch of dry, open ground long enough for a fight: no wall and no water on it or around. */
+function dryGround(zoneId: ZoneId, length: number) {
+  const ground = worldTerrain(zoneId);
+  const clear = (x: number, y: number) => !solid(x, y, 40, ground);
+  for (let y = 400; y < ground.bounds.maxY - 400; y += 40)
+    for (let x = 600; x < ground.bounds.maxX - length - 200; x += 40) {
+      let ok = true;
+      for (let d = 0; d <= length && ok; d += 20) ok = clear(x + d, y) && clear(x + d, y - 140) && clear(x + d, y + 140);
+      if (ok) return { x, y };
+    }
+  throw new Error(`sin terreno seco en ${zoneId}`);
+}
 
 /**
  * One character and one monster alone in a quiet corner of a zone, the monster already hunting.
@@ -14,7 +28,7 @@ const ticks = (seconds: number) => Math.ceil(seconds / RULES.tick);
 function duel(familyId: MobFamilyId, gap: number, zoneId: ZoneId = 'umbral', level = 10) {
   const world = new World(zoneId);
   world.state.zombies = [];
-  const at = { x: 1300, y: 1000 };
+  const at = dryGround(zoneId, gap + 200);
   const c = newCharacter('h', 'cuenta', 'Noor', 'guardian');
   c.level = level;
   Object.assign(c, at);

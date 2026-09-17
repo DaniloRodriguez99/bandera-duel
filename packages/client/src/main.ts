@@ -42,6 +42,7 @@ import { Practice, PRACTICE_PLAYER } from './practice.js';
 import { loadMageCustomization, mountMageCustomization } from './customization.js';
 import { UPGRADE_META, UPGRADE_ORDER } from './pve-upgrades.js';
 import { WorldHud, hitogamiSvg } from './isekai-hud.js';
+import { canSurf } from '@bandera/shared/rpg/skills';
 import { zone, type ZoneId } from '@bandera/shared/rpg/zones';
 import type { CastSlot, Character, ChestView, Creation, Notice } from '@bandera/shared/world';
 
@@ -822,6 +823,7 @@ function showCharacters(list: WorldCharacterList) {
 function showSheet(sheet: Character) {
   worldHud.setSheet(sheet);
   arena.weapon = sheet.weapon;
+  arena.surfer = canSurf(sheet.affinities);
   const stage = $('stage');
   stage.dataset.level = String(sheet.level);
   stage.dataset.xp = String(sheet.xp);

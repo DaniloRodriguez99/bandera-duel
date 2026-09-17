@@ -7,6 +7,7 @@ import {
   newPlayer,
   projectileStats,
   translate,
+  solid,
   lineClear,
   blocked,
   activePreset,
@@ -27,7 +28,9 @@ import {
 } from './index.js';
 import { DEFAULT_ZONE, ZONES, zone, type Spawner, type ZoneDefinition, type ZoneId } from './rpg/zones.js';
 import { MOB_FAMILIES, formName, mobStats, xpFor, type MobSkill } from './rpg/mobs.js';
+import { worldTerrain } from './rpg/terrain.js';
 import {
+  BASE_STATS,
   POINTS_PER_LEVEL,
   applyXp,
   deathPenalty,
@@ -44,7 +47,10 @@ import {
   RANKS,
   SILENT_CAST_RANK,
   SKILLS_WORLD,
+  SURF_RANK,
   TOUKI_RANK,
+  canSurf,
+  primaryElement,
   affinityGain,
   canLearn,
   cultivate,
@@ -60,6 +66,7 @@ import {
   type Passive,
   type SkillEffect,
   type SkillProgress,
+  type SkillSchool,
   type WorldSkill,
 } from './rpg/skills.js';
 import {
@@ -199,6 +206,21 @@ export const THRALL_HP_SHARE = 0.6;
 /** A parry turns a player's blow back only on someone standing close enough to have struck it. */
 const PARRY_REACH = 90;
 
+/** Each attribute point above the starting value adds this much to what it scales. */
+export const ATTRIBUTE_STEP = 0.06;
+/** Chance of a critical blow per point of Perception above the starting value. */
+export const CRIT_STEP = 0.03;
+export const CRIT_MULTIPLIER = 1.5;
+
+/** The attribute each weapon's plain attack grows with. */
+const WEAPON_STAT: Record<Character['weapon'], StatId> = {
+  espada: 'might',
+  escudo: 'might',
+  arco: 'agility',
+  daga: 'agility',
+  baston: 'spirit',
+};
+
 /** How close a character must stand to a chest to open it. */
 export const CHEST_REACH = 44;
 
@@ -326,8 +348,15 @@ export class World extends Duel {
   }
 
   /** The whole point of the Fase 0 seam: real bounds for a zone far larger than an arena. */
+  /** Walls, bounds and water: water stops bodies but not arrows, which only check walls. */
   protected override get terrain(): Rect[] | Terrain {
-    return this.definition.terrain;
+    return worldTerrain(this.zoneId);
+  }
+
+  /** Someone who rides water or wind crosses lakes; everyone else walks around them. */
+  protected override terrainFor(p: Player): Rect[] | Terrain {
+    const character = this.characters.get(p.id);
+    return character && canSurf(character.affinities) ? worldTerrain(this.zoneId, true) : this.terrain;
   }
 
   /** Everyone revives at the zone's shrine. */
@@ -432,6 +461,11 @@ export class World extends Duel {
     // A fresh entity carries its class's health; a character walks in whole.
     p.hp = p.maxHp;
     p.mana = p.maxMana;
+    // A save from before lakes blocked the way can stand in water it can no longer leave.
+    if (solid(p.x, p.y, RULES.radius, this.terrainFor(p))) {
+      p.x = this.definition.entry.x;
+      p.y = this.definition.entry.y;
+    }
     this.state.players.push(p);
     return p;
   }
@@ -546,7 +580,31 @@ export class World extends Duel {
     if (!character) return 1;
     const buff = this.buffs.get(id)?.damage ?? 0;
     const touki = MARTIAL.some((a) => rankOf(character.affinities[a]?.xp ?? 0) >= TOUKI_RANK) ? 0.15 : 0;
-    return 1 + buff + this.bonusesOf(character).damage + touki;
+    return (1 + buff + this.bonusesOf(character).damage + touki) * this.attributeScale(character, this.castingSchool);
+  }
+
+  /** The school of the skill resolving right now; undefined means the blow is the weapon's. */
+  private castingSchool: SkillSchool | undefined;
+
+  /**
+   * What an attribute adds: Might for swords, shields and strength skills, Agility for bows,
+   * daggers and dexterity or stealth skills, Magic for staves and every arcane spell.
+   */
+  attributeScale(character: Character, school?: SkillSchool) {
+    const stats = statsWithEquipment(character);
+    const stat: StatId =
+      school === undefined
+        ? WEAPON_STAT[character.weapon]
+        : ARCANE.includes(school as Affinity)
+          ? 'spirit'
+          : school === 'destreza' || school === 'sigilo'
+            ? 'agility'
+            : 'might';
+    return Math.max(0.5, 1 + ATTRIBUTE_STEP * (stats[stat] - BASE_STATS[stat]));
+  }
+
+  private critChance(character: Character) {
+    return Math.max(0, CRIT_STEP * (statsWithEquipment(character).perception - BASE_STATS.perception));
   }
 
   /** Where a character counts as standing for saving: its body, or the shrine if it lies dead. */
@@ -644,7 +702,8 @@ export class World extends Duel {
       const bonus = this.bonusesOf(character);
       if (bonus.regen > 0) p.hp = Math.min(p.maxHp, p.hp + bonus.regen * dt);
       // Speed rides on the upgrade state `movePlayer` already reads, so prediction stays honest.
-      p.pve.speed = (this.buffs.get(p.id)?.speed ?? 0) + bonus.speed;
+      const agility = statsWithEquipment(character).agility - BASE_STATS.agility;
+      p.pve.speed = (this.buffs.get(p.id)?.speed ?? 0) + bonus.speed + Math.max(-0.1, 0.015 * agility);
     }
     for (const [id, spell] of this.incantations) {
       spell.left -= dt;
@@ -683,7 +742,9 @@ export class World extends Duel {
     this.opening.delete(id);
 
     p.mana -= effective.mana;
-    this.skillCd.set(this.cooldownKey(id, skill.id), effective.cooldown);
+    // Agility shortens every recharge, never below half.
+    const quick = Math.max(0.5, 1 - 0.02 * (statsWithEquipment(character).agility - BASE_STATS.agility));
+    this.skillCd.set(this.cooldownKey(id, skill.id), effective.cooldown * quick);
     const school = skill.school as Affinity;
     const silent = !skill.incantation || rankOf(character.affinities[school]?.xp ?? 0) >= SILENT_CAST_RANK;
     this.notify(id, {
@@ -747,7 +808,12 @@ export class World extends Duel {
     const angle = Math.hypot(aim.x - p.x, aim.y - p.y) > 1 ? Math.atan2(aim.y - p.y, aim.x - p.x) : p.angle;
     const arcane = ARCANE.includes(skill.school as Affinity);
     const staff = arcane && character.weapon === 'baston' ? 1.1 : 1;
-    this.apply(p, character, skill, effect, angle, staff);
+    this.castingSchool = skill.school;
+    try {
+      this.apply(p, character, skill, effect, angle, staff);
+    } finally {
+      this.castingSchool = undefined;
+    }
   }
 
   private apply(p: Player, character: Character, skill: WorldSkill, effect: SkillEffect, angle: number, staff: number) {
@@ -767,7 +833,9 @@ export class World extends Duel {
           y: p.y,
           angle,
           life: effect.range / speed,
-          damageScale: effect.damage * staff,
+          // The arrow lands later, counted as a weapon blow; the skill's own attribute travels in it.
+          damageScale: (effect.damage * staff * this.attributeScale(character, skill.school)) / this.attributeScale(character),
+          worldElement: effect.element,
           ...(look.element ? { element: look.element } : {}),
           ...(effect.freeze && !look.element ? { element: 'ice' as const } : {}),
           ...(look.wind || effect.pierce ? { hits: [] } : {}),
@@ -794,6 +862,7 @@ export class World extends Duel {
             this.freeze(q);
         }
         this.event('explosion', p, p.team, angle, p.classId, 1);
+        this.state.events.at(-1)!.color = skill.color;
         return;
       }
       case 'heal': {
@@ -810,7 +879,7 @@ export class World extends Duel {
         return;
       }
       case 'dash': {
-        translate(p, Math.cos(angle) * effect.distance, Math.sin(angle) * effect.distance, this.terrain);
+        translate(p, Math.cos(angle) * effect.distance, Math.sin(angle) * effect.distance, this.terrainFor(p));
         p.invuln = Math.max(p.invuln, 0.25);
         this.event('dash', p, p.team, angle, p.classId, 1);
         return;
@@ -935,7 +1004,11 @@ export class World extends Duel {
           kind: 'rank',
           title: `${AFFINITY_NAMES[school]}: rango ${RANKS[after]}`,
           text:
-            arcane && after === SILENT_CAST_RANK
+            (school === 'agua' || school === 'viento') && after === SURF_RANK
+              ? school === 'agua'
+                ? 'El agua ya no te frena: la caminás como si fuera tierra.'
+                : 'El viento te sostiene: cruzás el agua sin hundirte.'
+              : arcane && after === SILENT_CAST_RANK
               ? 'Ya no necesitás palabras: la magia te responde en silencio.'
               : !arcane && after === TOUKI_RANK
                 ? 'Algo arde bajo tu piel. Es Touki, y nadie te lo enseñó.'
@@ -1027,7 +1100,9 @@ export class World extends Duel {
     }
     const caster = (source as Partial<Player>).id;
     const howl = striker.family && striker.id ? (this.mobBuffs.get(striker.id)?.damage ?? 0) : 0;
-    const scaled = caster && this.characters.has(caster) ? amount * this.damageMultiplier(caster) : amount * (1 + howl);
+    const attacker = caster ? this.characters.get(caster) : undefined;
+    const crit = !!attacker && this.random() < this.critChance(attacker);
+    const scaled = attacker ? amount * this.damageMultiplier(caster!) * (crit ? CRIT_MULTIPLIER : 1) : amount * (1 + howl);
     const alive = target.hp > 0;
     const landed = super.damage(target, source, angle, scaled, options);
     // A blow that lands takes the hands off the chest.
@@ -1155,7 +1230,9 @@ export class World extends Duel {
       const character = this.characters.get(id);
       shaped.set(id, worldInput(input, character?.weapon ?? 'espada', this.incantations.has(id)));
     }
+    const firstArrow = this.arrowId;
     const placements = this.stepPlayers(shaped, dt);
+    this.tagWeaponShots(firstArrow);
     // A parry is the engine's counter window, set after movement so no class kit can clear it.
     for (const p of s.players) {
       if (!this.characters.has(p.id)) continue;
@@ -1261,6 +1338,28 @@ export class World extends Duel {
       name: MOB_FAMILIES[camp.familyId].name,
     });
     this.state.zombies.push(z);
+  }
+
+  /**
+   * A staff's plain shot carries the character's strongest arcane affinity: a lightning child
+   * throws lightning, not the duel mage's fireball. With no arcane door open it is a stick, and
+   * hits like one.
+   */
+  private tagWeaponShots(after: number) {
+    for (const a of this.state.arrows) {
+      if (a.id <= after || a.worldElement) continue;
+      const character = this.characters.get(a.owner);
+      if (!character || character.weapon !== 'baston') continue;
+      const element = primaryElement(character.affinities);
+      a.worldElement = element ?? 'fisico';
+      if (!element) a.damageScale = (a.damageScale ?? 1) * 0.5;
+    }
+  }
+
+  /** Only fire bursts. A charged bolt of lightning or ice hits hard, but does not explode. */
+  protected override explode(a: Arrow, owner: Player, amount: number, skip?: string) {
+    if (a.worldElement && a.worldElement !== 'fuego') return;
+    super.explode(a, owner, amount, skip);
   }
 
   // ─── Chests ───────────────────────────────────────────────────────────────────────────────────
@@ -1655,6 +1754,7 @@ export class World extends Duel {
           if (q !== z && q.hp > 0 && this.hostile(z, q) && distance(q, centre) <= radius + RULES.zombieRadius)
             this.damageZombie(q, z.team, amount, Math.atan2(q.y - centre.y, q.x - centre.x), z.id);
         this.event('explosion', centre, z.team, angle, undefined, 1);
+        this.state.events.at(-1)!.color = skill.color;
         return;
       }
       case 'charge': {

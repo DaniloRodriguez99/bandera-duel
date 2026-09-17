@@ -734,6 +734,8 @@ export interface Arrow extends Vec {
   damageScale?: number;
   speedScale?: number;
   element?: 'fire' | 'ice';
+  /** World only: the affinity it carries, which decides how it looks (a lightning bolt, an ember). */
+  worldElement?: string;
   /** Wind arrow: pierces every target once, crosses knight guard and breaks magic shields. */
   wind?: boolean;
   /** Rivals and zombies this arrow already went through. */
@@ -879,6 +881,8 @@ export interface GameEvent extends Vec {
   classId?: ClassId;
   skillId?: SkillId;
   power?: number;
+  /** World only: the colour of the element or skill behind it, so an explosion of lightning is not fire. */
+  color?: string;
 }
 /** Zombies from the charged summon (hat, its minions, thrall) never use the normal cap. */
 export const countsTowardLimit = (z: Zombie) => !z.bonus;
@@ -992,6 +996,11 @@ export interface Bounds {
 export interface Terrain {
   walls: Rect[];
   bounds: Bounds;
+  /**
+   * World only: deep water. It stops bodies (walking, knockback, paths) but not what flies over it
+   * (arrows, sight), which is why it is not a wall. The arenas have none.
+   */
+  water?: Rect[];
 }
 export const ARENA_BOUNDS: Bounds = {
   minX: 20,
@@ -1034,11 +1043,25 @@ export function blocked(
     return dx * dx + dy * dy < radius * radius;
   });
 }
+/** Whether a body of this radius would stand in deep water. Always false in the arenas. */
+export function wet(x: number, y: number, radius: number, source: Rect[] | Terrain): boolean {
+  const water = terrainOf(source).water;
+  if (!water) return false;
+  return water.some((w) => {
+    const dx = x - Math.max(w.x, Math.min(x, w.x + w.w));
+    const dy = y - Math.max(w.y, Math.min(y, w.y + w.h));
+    return dx * dx + dy * dy < radius * radius;
+  });
+}
+/** Where a body cannot be: inside a wall, outside the bounds, or in deep water. */
+export function solid(x: number, y: number, radius: number, source: Rect[] | Terrain): boolean {
+  return blocked(x, y, radius, source) || wet(x, y, radius, source);
+}
 export function translate(p: Vec, dx: number, dy: number, walls: Rect[] | Terrain = WALLS) {
   const steps = Math.max(1, Math.ceil(Math.hypot(dx, dy) / 6));
   for (let i = 0; i < steps; i++) {
-    if (!blocked(p.x + dx / steps, p.y, RULES.radius, walls)) p.x += dx / steps;
-    if (!blocked(p.x, p.y + dy / steps, RULES.radius, walls)) p.y += dy / steps;
+    if (!solid(p.x + dx / steps, p.y, RULES.radius, walls)) p.x += dx / steps;
+    if (!solid(p.x, p.y + dy / steps, RULES.radius, walls)) p.y += dy / steps;
   }
 }
 export function lineClear(a: Vec, b: Vec, walls: Rect[] | Terrain = WALLS): boolean {
@@ -1137,7 +1160,7 @@ export function bodyClear(
 ): boolean {
   const steps = Math.max(1, Math.ceil(distance(a, b) / 5));
   for (let i = 1; i <= steps; i++)
-    if (blocked(a.x + ((b.x - a.x) * i) / steps, a.y + ((b.y - a.y) * i) / steps, radius, walls))
+    if (solid(a.x + ((b.x - a.x) * i) / steps, a.y + ((b.y - a.y) * i) / steps, radius, walls))
       return false;
   return true;
 }
@@ -1177,7 +1200,7 @@ export function findPath(
   if (!open) {
     open = Array.from({ length: COLS * ROWS }, (_, i) => {
       const c = cellCenter(i);
-      return !blocked(c.x, c.y, RULES.zombieRadius, terrain);
+      return !solid(c.x, c.y, RULES.zombieRadius, terrain);
     });
     walkableByTerrain.set(terrain, open);
   }
@@ -2149,7 +2172,7 @@ export class Duel {
       target.deaths++;
       this.event('death', target, target.team);
     } else if (!options.pierce)
-      translate(target, Math.cos(angle) * 24, Math.sin(angle) * 24, this.terrain);
+      translate(target, Math.cos(angle) * 24, Math.sin(angle) * 24, this.terrainFor(target));
     return true;
   }
   protected freeze(p: Player) {
@@ -2192,6 +2215,10 @@ export class Duel {
    */
   protected hostile(a: Allegiant, b: Allegiant): boolean {
     return a.team !== b.team;
+  }
+  /** The ground a player's body moves on. The world lets some characters cross water. */
+  protected terrainFor(_p: Player): Rect[] | Terrain {
+    return this.terrain;
   }
   /** Whether this grave is one `raiser` may raise. */
   protected canRaise(raiser: Pick<Player, 'team' | 'id'>, g: Grave): boolean {
@@ -3449,7 +3476,7 @@ export class Duel {
         const input = movementInput(inputs.get(p.id) ?? idleInput(p.ack, p.angle));
         p.ack = Math.max(p.ack, input.seq);
         p.revealLeft = Math.max(0, p.revealLeft - dt);
-        movePlayer(p, input, false, dt, this.terrain);
+        movePlayer(p, input, false, dt, this.terrainFor(p));
         p.bushId = pointBush(this.map, p);
       }
       if(s.pve){s.pve.rewardLeft=Math.max(0,s.pve.rewardLeft-dt);if(s.pve.rewardLeft<=1e-8)this.beginPveWave(s.pve.wave+1);}
@@ -3567,7 +3594,7 @@ export class Duel {
         resolvedInput,
         s.flags.some((f) => f.carrier === p.id),
         dt,
-        this.terrain,
+        this.terrainFor(p),
       );
       p.bushId = pointBush(this.map, p);
       if (

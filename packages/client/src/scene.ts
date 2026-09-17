@@ -21,12 +21,14 @@ import {
   resolveSlotInput,
   newPlayer,
   lineClear,
+  wet,
   type Snapshot,
   type Player,
   type Team,
   type Base,
   type Bounds,
   type Rect,
+  type Vec,
   type Terrain,
   type Zombie,
   type Input,
@@ -35,7 +37,7 @@ import {
   type MobKind,
 } from '@bandera/shared';
 import { zone, type ZoneId } from '@bandera/shared/rpg/zones';
-import { TILE, TILES, roadPaths, tileColor, tileMap, type TileKind } from '@bandera/shared/rpg/terrain';
+import { TILE, TILES, roadPaths, tileColor, tileMap, worldTerrain, type TileKind } from '@bandera/shared/rpg/terrain';
 import { SHRINE_WARD, worldInput, type ChestView, type Weapon } from '@bandera/shared/world';
 
 const CHEST_COLOR: Record<ChestView['tier'], number> = { comun: 0xc9a36b, raro: 0x56b8ff, legendario: 0xffc84d };
@@ -87,6 +89,8 @@ export class Arena extends Phaser.Scene {
   localStep?: (input: Input) => void;
   /** The world character's weapon, from its sheet. It decides what a click predicts. */
   weapon: Weapon | null = null;
+  /** Whether the world character can ride water, from its sheet; prediction must agree with the server. */
+  surfer = false;
   send: (input: Input) => void = () => {};
   private visuals = new Map<
     string,
@@ -306,7 +310,8 @@ export class Arena extends Phaser.Scene {
   /** What bodies collide with: the zone's terrain in the world, the map's walls in a match. */
   private terrain(): Rect[] | Terrain {
     const zoneId = (this.snapshot as (Snapshot & { zoneId?: ZoneId }) | undefined)?.zoneId;
-    return zoneId ? zone(zoneId).terrain : MAPS[this.snapshot?.mapId ?? this.currentMapId].walls;
+    // The same ground the server moves this body on: water included, unless the character surfs.
+    return zoneId ? worldTerrain(zoneId, this.surfer) : MAPS[this.snapshot?.mapId ?? this.currentMapId].walls;
   }
 
   /**
@@ -471,6 +476,97 @@ export class Arena extends Phaser.Scene {
         g.fillStyle(0x4a8f3e, 0.55);
         g.fillCircle(tx - r * 0.3, ty - r * 0.35, r * 0.45);
       }
+  }
+
+  /** A world projectile drawn as its element, whatever engine class carries it. */
+  private drawElementShot(p: Vec, angle: number, element: string, grow: number, time: number) {
+    const g = this.arrows;
+    const dx = Math.cos(angle);
+    const dy = Math.sin(angle);
+    const nx = -dy;
+    const ny = dx;
+    switch (element) {
+      case 'rayo': {
+        // A jagged bolt that flickers: never the same zigzag two frames in a row.
+        g.lineStyle(6 * grow, 0xf4f07a, 0.25);
+        g.lineBetween(p.x - dx * 30, p.y - dy * 30, p.x, p.y);
+        g.lineStyle(2.5 * grow, 0xfffbd0, 1);
+        g.beginPath();
+        g.moveTo(p.x - dx * 30, p.y - dy * 30);
+        for (let i = 1; i <= 4; i++) {
+          const jitter = (Math.sin(time * 0.09 + i * 12.9) * 6) * grow;
+          g.lineTo(p.x - dx * (30 - i * 7.5) + nx * jitter, p.y - dy * (30 - i * 7.5) + ny * jitter);
+        }
+        g.strokePath();
+        g.fillStyle(0xffffff, 1);
+        g.fillCircle(p.x, p.y, 3.5 * grow);
+        return;
+      }
+      case 'hielo': {
+        g.fillStyle(0x7dd8ff, 0.3);
+        g.fillCircle(p.x, p.y, 9 * grow);
+        g.fillStyle(0xdff8ff, 1);
+        g.fillTriangle(p.x + dx * 10 * grow, p.y + dy * 10 * grow, p.x + nx * 5 * grow, p.y + ny * 5 * grow, p.x - nx * 5 * grow, p.y - ny * 5 * grow);
+        g.fillStyle(0x7dd8ff, 1);
+        g.fillTriangle(p.x - dx * 8 * grow, p.y - dy * 8 * grow, p.x + nx * 5 * grow, p.y + ny * 5 * grow, p.x - nx * 5 * grow, p.y - ny * 5 * grow);
+        return;
+      }
+      case 'tierra': {
+        g.fillStyle(0x000000, 0.25);
+        g.fillCircle(p.x + 3, p.y + 4, 7 * grow);
+        g.fillStyle(0x8a6a44, 1);
+        g.fillCircle(p.x, p.y, 7 * grow);
+        g.fillStyle(0xb8966a, 1);
+        g.fillCircle(p.x - 2, p.y - 2, 3 * grow);
+        return;
+      }
+      case 'viento': {
+        g.lineStyle(3 * grow, 0xd8fbff, 0.7);
+        for (const side of [-1, 1]) {
+          g.beginPath();
+          g.arc(p.x - dx * 8, p.y - dy * 8, 12 * grow, angle + side * 0.9 - 0.5, angle + side * 0.9 + 0.5);
+          g.strokePath();
+        }
+        g.fillStyle(0xffffff, 0.9);
+        g.fillCircle(p.x, p.y, 3 * grow);
+        return;
+      }
+      case 'sombra': {
+        g.fillStyle(0x2a1440, 0.55);
+        g.fillCircle(p.x - dx * 10, p.y - dy * 10, 8 * grow);
+        g.fillStyle(0xa070e0, 0.9);
+        g.fillCircle(p.x, p.y, 8 * grow);
+        g.fillStyle(0x12081c, 1);
+        g.fillCircle(p.x, p.y, 4 * grow);
+        return;
+      }
+      case 'luz': {
+        g.fillStyle(0xfff1a8, 0.35);
+        g.fillCircle(p.x, p.y, 12 * grow);
+        g.fillStyle(0xffffff, 1);
+        for (let i = 0; i < 4; i++) {
+          const a = time * 0.01 + (i * Math.PI) / 2;
+          g.fillTriangle(p.x + Math.cos(a) * 10 * grow, p.y + Math.sin(a) * 10 * grow, p.x + Math.cos(a + 1.3) * 3, p.y + Math.sin(a + 1.3) * 3, p.x + Math.cos(a - 1.3) * 3, p.y + Math.sin(a - 1.3) * 3);
+        }
+        return;
+      }
+      case 'fisico': {
+        g.fillStyle(0x6b5a44, 1);
+        g.fillCircle(p.x, p.y, 5 * grow);
+        g.lineStyle(2, 0x3a2e22, 0.8);
+        g.strokeCircle(p.x, p.y, 5 * grow);
+        return;
+      }
+      default: {
+        // Fire: an ember with a tail.
+        g.fillStyle(0xff4a1a, 0.35);
+        g.fillCircle(p.x - dx * 9, p.y - dy * 9, 7 * grow);
+        g.fillStyle(0xff7a2f, 1);
+        g.fillCircle(p.x, p.y, 8 * grow);
+        g.fillStyle(0xffe08a, 1);
+        g.fillCircle(p.x + dx * 2, p.y + dy * 2, 4 * grow);
+      }
+    }
   }
 
   /** The swamp's obstacle: grey, leafless trees standing in black water. */
@@ -732,13 +828,16 @@ export class Arena extends Phaser.Scene {
   private spellEffect(e: Snapshot['events'][number]) {
     if (e.kind === 'explosion') {
       const radius = RULES.explosionRadius * (0.6 + 0.4 * (e.power ?? 1));
+      // A world skill brings its own colour: a lightning burst is not a fireball.
+      const tint = e.color ? Phaser.Display.Color.HexStringToColor(e.color).color : 0xff7a2f;
+      const ring = e.color ? Phaser.Display.Color.HexStringToColor(e.color).lighten(25).color : 0xffe08a;
       this.fade(
-        this.add.circle(e.x, e.y, 10, 0xff7a2f, 0.6).setDepth(16),
+        this.add.circle(e.x, e.y, 10, tint, 0.6).setDepth(16),
         { scale: radius / 10 },
         380,
       );
       this.fade(
-        this.add.circle(e.x, e.y, 8).setStrokeStyle(3, 0xffe08a, 0.95).setDepth(16),
+        this.add.circle(e.x, e.y, 8).setStrokeStyle(3, ring, 0.95).setDepth(16),
         { scale: 6 },
         460,
       );
@@ -2061,6 +2160,22 @@ export class Arena extends Phaser.Scene {
       this.traps.fillStyle(color, 0.2);
       this.traps.fillCircle(trap.x, trap.y, 3);
     }
+    // Someone riding water: a board of light under the feet and foam trailing behind.
+    const zoneHere = (s as Snapshot & { zoneId?: ZoneId }).zoneId;
+    if (zoneHere) {
+      const ground = worldTerrain(zoneHere);
+      for (const q of s.players) {
+        const at = q.id === this.localId && this.predicted ? this.predicted : q;
+        if (q.hp <= 0 || !wet(at.x, at.y + 6, 2, ground)) continue;
+        const bob = Math.sin(time * 0.012 + at.x * 0.01) * 1.5;
+        this.traps.fillStyle(0xffffff, 0.35);
+        this.traps.fillEllipse(at.x - Math.cos(q.angle) * 14, at.y + 12, 34, 10);
+        this.traps.fillStyle(0x9fe8ff, 0.9);
+        this.traps.fillEllipse(at.x, at.y + 10 + bob, 30, 9);
+        this.traps.lineStyle(2, 0xffffff, 0.8);
+        this.traps.strokeEllipse(at.x, at.y + 10 + bob, 30, 9);
+      }
+    }
     // Graves of fallen rivals: a necromancer can raise them until they crumble.
     for (const g of s.graves) {
       const fade = Math.min(1, g.left / 2);
@@ -2123,6 +2238,10 @@ export class Arena extends Phaser.Scene {
       };
       const p = lineClear(a, next, this.terrain()) ? next : a;
       const grow = 1 + (a.power ?? 0);
+      if (a.worldElement) {
+        this.drawElementShot(p, a.angle, a.worldElement, grow, time);
+        continue;
+      }
       if (a.reflected) {
         // Countered projectile: a golden halo, bigger when the counter was charged.
         this.arrows.fillStyle(0xffd36b, 0.18 + 0.1 * a.reflected);

@@ -577,7 +577,7 @@ export const SKILLS_WORLD: Record<string, WorldSkill> = {
   },
   chispazo: {
     id: 'chispazo',
-    name: 'Chispazo',
+    name: 'Centella',
     school: 'rayo',
     rarity: 'comun',
     flavor: 'Primero la luz, después el ruido.',
@@ -1252,6 +1252,27 @@ export const SILENT_CAST_RANK = 2;
 /** Rank index at which martial affinities wake the battle aura. */
 export const TOUKI_RANK = 3;
 
+/** Rank at which water or wind carries a character over water instead of stopping them. */
+export const SURF_RANK = 1;
+
+/** Surfing is not bought: it arrives when water or wind has been used enough to reach Intermedio. */
+export function canSurf(affinities: Partial<Record<Affinity, AffinityState>>) {
+  return (['agua', 'viento'] as const).some((a) => rankOf(affinities[a]?.xp ?? 0) >= SURF_RANK);
+}
+
+/** The element a staff's plain shot carries: the arcane affinity the character leans on most. */
+export function primaryElement(affinities: Partial<Record<Affinity, AffinityState>>): Element | null {
+  let best: Affinity | null = null;
+  for (const a of ARCANE) {
+    const state = affinities[a];
+    if (!state || state.points <= 0) continue;
+    const top = best ? affinities[best]! : null;
+    if (!top || state.points > top.points || (state.points === top.points && state.xp > top.xp)) best = a;
+  }
+  if (!best) return null;
+  return best === 'agua' ? 'hielo' : (best as Element);
+}
+
 export function rankOf(xp: number) {
   let rank = 0;
   for (const needed of RANK_XP) if (xp >= needed) rank++;
@@ -1325,7 +1346,7 @@ export const STAT_NAMES: Record<StatId, string> = {
   might: 'Fuerza',
   agility: 'Agilidad',
   perception: 'Percepción',
-  spirit: 'Espíritu',
+  spirit: 'Magia',
   vigor: 'Vigor',
 };
 
@@ -1389,10 +1410,10 @@ export const AFFINITY_TEXT: Record<Affinity, string> = {
 
 /** What each attribute does, in one line. */
 export const STAT_TEXT: Record<StatId, string> = {
-  might: 'Daño cuerpo a cuerpo.',
-  agility: 'Velocidad y recargas.',
-  perception: 'Críticos y ver lo que otros esconden.',
-  spirit: 'Maná máximo y cuánto se recupera.',
+  might: 'Daño de espada, escudo y habilidades de fuerza.',
+  agility: 'Daño con arco y daga, velocidad y recargas.',
+  perception: 'Probabilidad de golpe crítico.',
+  spirit: 'Poder de hechizos y del bastón, maná y su recuperación.',
   vigor: 'Vida máxima.',
 };
 

@@ -1,5 +1,5 @@
-import type { Rect, Vec } from '../index.js';
-import { zone, type ZoneDefinition, type ZoneId } from './zones.js';
+import type { Rect, Terrain, Vec } from '../index.js';
+import { ZONES, zone, type ZoneDefinition, type ZoneId } from './zones.js';
 
 /**
  * What the ground of a zone looks like, tile by tile.
@@ -111,6 +111,8 @@ function landmarks(def: ZoneDefinition): Vec[] {
     def.entry,
     ...def.spawners.map((s) => s.at),
     ...def.portals.map((p) => ({ x: p.area.x + p.area.w / 2, y: p.area.y + p.area.h / 2 })),
+    // Where other zones' portals drop a traveller: arriving in a lake would strand them.
+    ...Object.values(ZONES).flatMap((other) => other?.portals.filter((p) => p.to === def.id).map((p) => p.arrive) ?? []),
   ];
 }
 
@@ -228,3 +230,46 @@ export const TILE_COLORS: Record<ZoneDefinition['theme'], Partial<Record<TileKin
 };
 
 export const tileColor = (theme: ZoneDefinition['theme'], kind: TileKind) => TILE_COLORS[theme][kind] ?? TILE_COLORS.base[kind];
+
+const waterCache = new Map<ZoneId, Rect[]>();
+
+/** The zone's water as rectangles, one per run of water tiles in a row. Roads over it are fords. */
+export function waterRects(zoneId: ZoneId): Rect[] {
+  let rects = waterCache.get(zoneId);
+  if (rects) return rects;
+  const map = tileMap(zoneId);
+  const wet = new Set([T.water, T.waterDeep]);
+  rects = [];
+  for (let row = 0; row < map.rows; row++) {
+    let col = 0;
+    while (col < map.cols) {
+      if (!wet.has(map.tiles[row * map.cols + col])) {
+        col++;
+        continue;
+      }
+      let run = 1;
+      while (col + run < map.cols && wet.has(map.tiles[row * map.cols + col + run])) run++;
+      rects.push({ x: col * TILE, y: row * TILE, w: run * TILE, h: TILE });
+      col += run;
+    }
+  }
+  waterCache.set(zoneId, rects);
+  return rects;
+}
+
+const groundCache = new Map<string, Terrain>();
+
+/**
+ * The ground a body moves on in a zone. Water stops everyone except those who can ride it; one
+ * object per zone and case, so the pathfinding grid is built once for each.
+ */
+export function worldTerrain(zoneId: ZoneId, surfs = false): Terrain {
+  const key = `${zoneId}:${surfs}`;
+  let terrain = groundCache.get(key);
+  if (!terrain) {
+    const base = zone(zoneId).terrain;
+    terrain = surfs ? { walls: base.walls, bounds: base.bounds } : { walls: base.walls, bounds: base.bounds, water: waterRects(zoneId) };
+    groundCache.set(key, terrain);
+  }
+  return terrain;
+}

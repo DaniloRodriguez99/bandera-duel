@@ -12,6 +12,7 @@ import {
   STAT_NAMES,
   canLearn,
   effectiveSkill,
+  primaryElement,
   refusalFor,
   schoolOpen,
   rankOf,
@@ -104,6 +105,28 @@ const AFFINITY_COLOR: Record<Affinity, string> = {
 };
 
 const icon = (name: string) => `/assets/skills/${name}.png`;
+
+/**
+ * Plain element glyphs, drawn inline, for what no sprite fits yet: a staff's shot takes the look of
+ * its affinity, so a lightning character never sees a fireball on its click.
+ */
+const ELEMENT_GLYPH: Record<string, { color: string; path: string }> = {
+  rayo: { color: '#f4f07a', path: '<path d="M19 3L7 18h8l-3 11 13-17h-8z" fill="#fffbd0" stroke="#8a7a10" stroke-width="1.5" stroke-linejoin="round"/>' },
+  fuego: { color: '#ff7a2f', path: '<path d="M16 3c2 6 9 8 9 16a9 9 0 0 1-18 0c0-5 4-7 4-11 2 2 3 4 3 6 1-3 1-7 2-11z" fill="#ff7a2f" stroke="#7a2a08" stroke-width="1.5"/><path d="M16 17c1 3 4 4 4 7a4 4 0 0 1-8 0c0-2 2-3 2-5 1 1 1 1 2-2z" fill="#ffe08a"/>' },
+  hielo: { color: '#7dd8ff', path: '<g stroke="#dff8ff" stroke-width="2.4" stroke-linecap="round"><path d="M16 4v24M5.6 10l20.8 12M5.6 22l20.8-12"/><path d="M12 6l4 3 4-3M12 26l4-3 4 3"/></g>' },
+  viento: { color: '#d8fbff', path: '<g fill="none" stroke="#e8fdff" stroke-width="2.6" stroke-linecap="round"><path d="M4 12h15a4 4 0 1 0-4-4"/><path d="M4 18h20a4 4 0 1 1-4 4"/><path d="M4 24h9"/></g>' },
+  tierra: { color: '#c9a36b', path: '<path d="M5 22l6-12 7 3 5-6 4 15z" fill="#8a6a44" stroke="#3a2a18" stroke-width="1.5" stroke-linejoin="round"/><path d="M11 10l3 6 4-3" fill="none" stroke="#c9a36b" stroke-width="1.5"/>' },
+  sombra: { color: '#a070e0', path: '<circle cx="16" cy="16" r="10" fill="#a070e0"/><circle cx="19" cy="14" r="8" fill="#12081c"/>' },
+  luz: { color: '#fff1a8', path: '<g stroke="#fff1a8" stroke-width="2.2" stroke-linecap="round"><path d="M16 3v5M16 24v5M3 16h5M24 16h5M7 7l3.5 3.5M21.5 21.5L25 25M7 25l3.5-3.5M21.5 10.5L25 7"/></g><circle cx="16" cy="16" r="6" fill="#ffffff"/>' },
+  fisico: { color: '#b8a672', path: '<path d="M8 26L24 6" stroke="#7a5a34" stroke-width="4" stroke-linecap="round"/><circle cx="24" cy="6" r="3" fill="#a8b0b8"/>' },
+};
+const glyph = (element: string) => {
+  const g = ELEMENT_GLYPH[element] ?? ELEMENT_GLYPH.fisico;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="4" fill="#0b1426"/><circle cx="16" cy="16" r="14" fill="${g.color}" opacity=".18"/>${g.path}</svg>`;
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+};
+/** A staff with no element yet, for the birth screen: it becomes whatever the sparks make it. */
+const STAFF_GLYPH = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="4" fill="#0b1426"/><path d="M9 27L21 9" stroke="#8a6a44" stroke-width="3.5" stroke-linecap="round"/><circle cx="22" cy="8" r="4.5" fill="#dfe7ff" stroke="#63d9ff" stroke-width="1.5"/></svg>')}`;
 
 /**
  * The Man-God as the books draw him: a slim, featureless white figure standing in the white void,
@@ -612,7 +635,9 @@ export class WorldHud {
   private refreshSlots() {
     const sheet = this.sheet!;
     const weapon = this.slotEls.get('click')!;
-    weapon.querySelector('img')!.src = icon(WEAPON_ICON[sheet.weapon]);
+    // A staff's click is its element's; every other weapon keeps its own picture.
+    weapon.querySelector('img')!.src =
+      sheet.weapon === 'baston' ? glyph(primaryElement(sheet.affinities) ?? 'fisico') : icon(WEAPON_ICON[sheet.weapon]);
     weapon.title = `${ITEMS[sheet.equipment.weapon.itemId]?.name ?? WEAPONS[sheet.weapon].name} · ${WEAPONS[sheet.weapon].text}`;
     for (const slot of CAST_SLOTS) {
       const node = this.slotEls.get(slot)!;
@@ -1092,7 +1117,7 @@ export class WorldHud {
       const card = el('button', 'wh-weapon') as HTMLButtonElement;
       card.type = 'button';
       card.dataset.weapon = id;
-      card.innerHTML = `<img src="${icon(WEAPON_ICON[id])}" alt="" aria-hidden="true"><b>${WEAPONS[id].name}</b><small>${WEAPONS[id].text}</small>`;
+      card.innerHTML = `<img src="${id === 'baston' ? STAFF_GLYPH : icon(WEAPON_ICON[id])}" alt="" aria-hidden="true"><b>${WEAPONS[id].name}</b><small>${id === 'baston' ? 'Lanza el elemento de tu afinidad más fuerte. Sin afinidad mágica, es un palo.' : WEAPONS[id].text}</small>`;
       card.onclick = () => {
         weapon = id;
         render();

@@ -138,8 +138,11 @@ function grimoirePool(rarity: Rarity, character: LootRoll['character'], already:
     if (effect.kind === 'teach') {
       const skill = SKILLS_WORLD[effect.skillId];
       if (!skill || character.skills[skill.id] || already.includes(item.id)) continue;
+      // A book of a closed door is a skill you could never cast: chests only teach what fits you.
+      // Doors are opened by tomes, not by spell books.
       const open = skill.school === 'cuerpo' || schoolOpen(skill, character.affinities, character.trees);
-      pool.push([item, open ? 3 : 1]);
+      if (!open) continue;
+      pool.push([item, 3]);
     } else pool.push([item, effect.kind === 'affinity' ? 0.4 : 0.6]);
   }
   return pool;
