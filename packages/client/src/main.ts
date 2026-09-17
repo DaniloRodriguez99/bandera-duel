@@ -61,7 +61,7 @@ function hudTeam(team: Team, right = false) {
 document.querySelector('#app')!.innerHTML = `
 <header class="topbar"><a class="brand" href="/" aria-label="Bandera Duel, inicio"><span class="brand-mark">⚑</span><span>BANDERA<span class="brand-thin"> DUEL</span><small>LA GLORIA NO SE HEREDA. SE ROBA.</small></span></a><div class="header-right"><span class="edition">PRIMERA EDICIÓN <b>01</b></span><button id="mute" class="icon-btn" aria-label="Silenciar sonido"></button></div></header>
 <main>
-<section id="world-gate" class="world-gate" aria-labelledby="world-gate-title"><div class="world-gate-sky" aria-hidden="true"></div><div class="world-gate-copy"><span class="world-gate-kicker">MUNDO ISEKAI · PERSISTENTE</span><h2 id="world-gate-title">Moriste. <em>Despertaste en Aldrath.</em></h2><p>Un mundo abierto que guarda a tu personaje. Diez afinidades, habilidades que evolucionan con el uso, zonas con nivel, cofres custodiados y un dios que solo vino a mirar.</p><ul class="world-gate-facts"><li><b>10</b> afinidades</li><li><b>7</b> rangos</li><li><b>∞</b> caminos</li></ul><button id="world-open" class="world-gate-button" type="button">Entrar a Aldrath <span>↗</span></button></div><form id="world-form" class="world-form" hidden><h3>Tu alma, antes de nacer</h3><label for="world-name">NOMBRE DEL PERSONAJE</label><input id="world-name" maxlength="16" autocomplete="nickname" placeholder="Cómo te van a llamar allá" required><fieldset id="world-account" class="world-account"><legend>TU CUENTA DEL MUNDO</legend><p class="world-hint">El mundo guarda tus personajes. Entrá con tu cuenta o creá una nueva.</p><label for="world-user">CUENTA</label><input id="world-user" maxlength="16" autocomplete="username" placeholder="Tu nombre de cuenta" required><label for="world-pass">CLAVE</label><input id="world-pass" type="password" minlength="6" maxlength="64" autocomplete="current-password" placeholder="Al menos 6 caracteres" required><label class="check"><input id="world-new" type="checkbox"> Es mi primera vez, crear la cuenta</label><div id="world-characters" class="world-characters" hidden></div></fieldset><button id="world-enter" class="world-gate-button" type="submit">Cruzar <span>↗</span></button><p id="world-status" class="world-status" role="status" aria-live="polite"></p></form><div class="world-gate-god" aria-hidden="true">${hitogamiSvg('gate')}</div></section>
+<section id="world-gate" class="world-gate" aria-labelledby="world-gate-title"><div class="world-gate-sky" aria-hidden="true"></div><div class="world-gate-copy"><span class="world-gate-kicker">MUNDO ISEKAI · PERSISTENTE</span><h2 id="world-gate-title">Despertaste en <em>Lugunica.</em></h2><p>Un mundo de magia y peligro, donde cualquiera puede esconder un poder increíble. El tuyo todavía no despertó.</p><ul class="world-gate-facts"><li><b>10</b> afinidades</li><li><b>7</b> rangos</li><li><b>∞</b> caminos</li></ul><button id="world-open" class="world-gate-button" type="button">Entrar a Lugunica <span>↗</span></button></div><form id="world-form" class="world-form" hidden><h3>Tu alma, antes de nacer</h3><label for="world-name">NOMBRE DEL PERSONAJE</label><input id="world-name" maxlength="16" autocomplete="nickname" placeholder="Cómo te van a llamar allá" required><fieldset id="world-account" class="world-account"><legend>TU CUENTA DEL MUNDO</legend><p class="world-hint">El mundo guarda tus personajes. Entrá con tu cuenta o creá una nueva.</p><label for="world-user">CUENTA</label><input id="world-user" maxlength="16" autocomplete="username" placeholder="Tu nombre de cuenta" required><label for="world-pass">CLAVE</label><input id="world-pass" type="password" minlength="6" maxlength="64" autocomplete="current-password" placeholder="Al menos 6 caracteres" required><label class="check" for="world-new"><input id="world-new" type="checkbox"><span>Es mi primera vez: crear la cuenta</span></label><div id="world-characters" class="world-characters" hidden></div></fieldset><button id="world-enter" class="world-gate-button" type="submit">Cruzar <span>↗</span></button><p id="world-status" class="world-status" role="status" aria-live="polite"></p></form><div class="world-gate-god" aria-hidden="true">${hitogamiSvg('gate')}</div></section>
 <section id="intro" class="intro"><div class="hero-copy"><div class="eyebrow"><i></i> DUELO ONLINE · HASTA 4 JUGADORES</div><h1>Tu rival tiene<br>algo <em>tuyo.</em></h1><p>Entrá al castillo. Robá su bandera.<br>Volvé con la gloria antes de que te alcancen.</p><div class="facts"><span><b>04</b> jugadores</span><span><b>03</b> minutos</span><span><b>01</b> vencedor</span></div></div>
 <div class="entry-card"><div class="card-top"><span class="tiny">EL DESAFÍO EMPIEZA ACÁ</span><span class="swords">⚔</span></div><h2 id="entry-title">Prepará tu estandarte.</h2><p id="entry-description">Elegí tu guerrero, prepará una sala e invitá a tu rival.</p><form id="entry-form"><div class="player-setup"><div class="setup-heading"><span>01</span><h3>Tu guerrero</h3></div><label for="name">TU APODO</label><input id="name" name="name" placeholder="Caballero sin nombre" maxlength="16" autocomplete="nickname" required><fieldset id="entry-class-picker" class="class-picker"><legend>ELEGÍ TU GUERRERO</legend><div id="entry-classes" class="class-grid"></div></fieldset></div><div class="room-setup"><div class="setup-heading"><span>02</span><h3>Tu próxima partida</h3></div><fieldset id="room-options"><legend>TU SALA</legend><label for="room-title">TÍTULO</label><input id="room-title" maxlength="48" value="Duelo medieval"><label for="visibility">VISIBILIDAD</label><select id="visibility"><option value="private">Privada · solo por enlace</option><option value="public">Pública · aparece en el listado</option></select><div class="option-row"><label>FORMATO<select id="game-mode"><option value="duel">Duelo · 1v1</option><option value="teams">Equipos · 2v2</option><option value="ffa3">Todos contra todos · 3</option><option value="ffa4">Todos contra todos · 4</option><option value="pve">Hordas PvE · 1–4</option></select></label><label>MAPA<select id="map-select"><option value="courtyard">Patio del Rey</option><option value="forest">Bosque de Emboscadas</option><option value="ruins">Ruinas del Bastión</option><option value="crossroads">Encrucijada</option></select></label></div><div id="map-preview" class="map-preview"></div><label class="check-option"><input id="allow-spectators" type="checkbox" checked> Permitir espectadores (máximo 5)</label></fieldset><label for="room-password">CONTRASEÑA (OPCIONAL)</label><input id="room-password" type="password" maxlength="64" autocomplete="off" placeholder="Sin contraseña"><label id="spectator-choice" hidden><input id="spectator" type="checkbox"> Entrar como espectador</label><label id="perspective-choice" hidden>PERSPECTIVA<select id="spectator-perspective"><option value="blue">Azul</option><option value="red">Carmesí</option><option value="green">Jade</option><option value="violet">Violeta</option></select></label></div><div class="entry-actions"><button id="enter" class="primary" type="submit">Crear un duelo <span>↗</span></button><button id="practice-start" class="secondary" type="button">Probar contra un rival inmóvil</button><span class="entry-note">Práctica local, sin sala.</span></div></form><div id="status" class="status" role="status" aria-live="polite">Sin cuentas. Sin descargas. Solo el duelo.</div><button id="new-instead" class="text-btn" hidden>Crear otra sala</button></div></section>
 <section id="room-browser" class="room-browser"><div class="browser-heading"><div><span class="tiny">BUSCÁ TU PRÓXIMO RIVAL</span><h2>Salas públicas</h2></div><button id="refresh-rooms" class="secondary">↻ Actualizar salas</button></div><p id="rooms-status" role="status"></p><h3 class="room-group-title">● Combates en vivo</h3><p id="live-empty">No hay combates públicos en curso.</p><div id="live-rooms-list"></div><h3 class="room-group-title">Salas para jugar y próximas rondas</h3><div id="rooms-list"></div></section><section class="arena-section"><div class="arena-heading"><div><span class="live-dot"></span><span id="arena-label">EL PATIO DEL REY</span><span class="map-label">ARENA 01</span></div><span id="connection-label">ACERO · ARCO · MAGIA</span></div>
@@ -543,6 +543,8 @@ function bind(joined: Room) {
   room.onMessage('entered', ({ zoneId, characterId }: { zoneId: string; characterId: string }) => {
     worldCharacterId = characterId;
     $('overlay').hidden = true;
+    $('overlay').classList.remove('world-select');
+    document.body.classList.remove('world-choosing');
     $('world-characters').hidden = true;
     $('stage').dataset.zone = zoneId;
     $('stage').dataset.mode = 'world';
@@ -778,60 +780,68 @@ function enterWorld() {
  * the level of each one, which is what tells you where you left off.
  */
 function showCharacters(list: WorldCharacterList) {
-  const box = $('world-characters');
-  // It was born inside the entry form, and `bind()` hides that whole section the moment the
-  // connection succeeds — the list would render inside a hidden container and nobody could ever
-  // pick a character. Move it into the overlay card, which stays up while choosing.
-  const card = document.querySelector('#overlay .overlay-card');
-  if (card && box.parentElement !== card) card.append(box);
   // The account exists now. Left ticked, picking a character would ask to create it again and
   // the server would refuse the second join with "that name is taken".
   $<HTMLInputElement>('world-new').checked = false;
+  document.body.classList.remove('joining-room');
+  const create = () => {
+    // Birth happens before the join: the server rolls fate from the sparks and weapon it gets.
+    $('overlay').hidden = true;
+    worldHud.openCreation((creation) => {
+      chosenCreation = creation;
+      chosenCharacter = `c${Date.now().toString(36)}`;
+      void enterWorld();
+    });
+  };
+  // Nobody to come back with: straight to the Man-God's void, no lobby in between.
+  if (!list.characters.length) return create();
+
+  const box = $('world-characters');
+  // It was born inside the entry form, and `bind()` hides that whole section the moment the
+  // connection succeeds. Move it into the overlay card, which stays up while choosing.
+  const card = document.querySelector('#overlay .overlay-card');
+  if (card && box.parentElement !== card) card.insertBefore(box, $('leave'));
   box.hidden = false;
   box.replaceChildren();
-  const title = document.createElement('p');
-  title.className = 'world-hint';
-  title.textContent = list.characters.length
-    ? 'Elegí con quién volver:'
-    : 'Todavía no tenés personajes. Elegí una clase arriba y creá el primero.';
-  box.append(title);
   for (const character of list.characters) {
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'world-character';
     button.dataset.character = character.id;
-    button.textContent = `${character.name} · nivel ${character.level} · ${character.zoneId}`;
+    const place = (() => {
+      try {
+        return zone(character.zoneId as ZoneId).name;
+      } catch {
+        return character.zoneId;
+      }
+    })();
+    button.innerHTML = '<b></b><span></span><small>Continuar ↗</small>';
+    button.querySelector('b')!.textContent = character.name;
+    button.querySelector('span')!.textContent = `Nivel ${character.level} · ${place}`;
     button.onclick = () => {
       chosenCharacter = character.id;
       void enterWorld();
     };
     box.append(button);
   }
-  if (list.characters.length < list.max) {
-    const crear = document.createElement('button');
-    crear.type = 'button';
-    crear.className = 'world-character new';
-    crear.id = 'world-create';
-    crear.textContent = 'Crear un personaje nuevo ↗';
-    crear.onclick = () => {
-      // Birth happens before the join: the server rolls fate from the sparks and weapon it gets.
-      $('overlay').hidden = true;
-      worldHud.openCreation((creation) => {
-        chosenCreation = creation;
-        chosenCharacter = `c${Date.now().toString(36)}`;
-        void enterWorld();
-      });
-    };
-    box.append(crear);
+  // Every free place is a door to a new character, up to the account's five.
+  for (let free = list.characters.length; free < list.max; free++) {
+    const slot = document.createElement('button');
+    slot.type = 'button';
+    slot.className = 'world-character new';
+    if (free === list.characters.length) slot.id = 'world-create';
+    slot.innerHTML = '<b>+</b><span>Nuevo personaje</span>';
+    slot.onclick = create;
+    box.append(slot);
   }
-  // The overlay is what stays visible after `bind()`, so the choice lives there.
+  // A world list, not a duel lobby: no classes, no invitation link, no "ready".
+  $('overlay').classList.add('world-select');
+  document.body.classList.add('world-choosing');
   $('overlay').hidden = false;
-  $('overlay-kicker').textContent = 'MUNDO';
-  $('overlay-title').textContent = 'Elegí tu personaje';
-  $('overlay-description').textContent = list.characters.length
-    ? `Tenés ${list.characters.length} de ${list.max}. El mundo te espera donde lo dejaste.`
-    : 'Todavía no creaste ninguno. Dios te espera del otro lado.';
-  document.body.classList.remove('joining-room');
+  $('overlay-kicker').textContent = 'LUGUNICA';
+  $('overlay-title').textContent = 'Tus personajes';
+  $('overlay-description').textContent = `${list.characters.length} de ${list.max}. Podés crear ${list.max - list.characters.length} más.`;
+  $('leave').textContent = 'Salir';
 }
 
 function showSheet(sheet: Character) {

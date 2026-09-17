@@ -18,13 +18,10 @@ test('entra al mundo: nace en el vacío blanco, aparece en el valle y el Sistema
   await page.locator('#world-new').check();
   await page.locator('#world-enter').click();
 
-  // No character named yet: the server answers with the (empty) list and the create button.
-  await expect(page.locator('#world-create')).toBeVisible({ timeout: 15000 });
-  await page.screenshot({ path: test.info().outputPath('1-lista-personajes.png') });
-
-  // Birth: the Man-God's white void. Three sparks, a weapon, and fate picks the skill.
-  await page.locator('#world-create').click();
-  await expect(page.locator('#wh-creation')).toBeVisible();
+  // A new account has nobody to come back with: it goes straight to the Man-God's white void,
+  // never through a duel lobby. Three sparks, a weapon, and fate picks the skill.
+  await expect(page.locator('#wh-creation')).toBeVisible({ timeout: 15000 });
+  await expect(page.locator('#ready')).toBeHidden();
   await expect(page.locator('#wh-born')).toBeDisabled();
   await page.locator('[data-affinity=fuego]').click();
   await page.locator('[data-affinity=fuego]').click();
@@ -128,7 +125,7 @@ test('quien se queda quieto queda afuera con su personaje guardado, y vuelve con
   await page.locator('#world-pass').fill('mundo123');
   await page.locator('#world-new').check();
   await page.locator('#world-enter').click();
-  await page.locator('#world-create').click();
+  await expect(page.locator('#wh-creation')).toBeVisible({ timeout: 15000 });
   for (const affinity of ['fuerza', 'fuerza', 'destreza']) await page.locator(`[data-affinity=${affinity}]`).click();
   await page.locator('#wh-born').click();
   await expect(page.locator('#world-hud')).toBeVisible({ timeout: 15000 });
@@ -162,7 +159,7 @@ test('el Sistema muestra el equipo puesto, la bolsa y lo que da un cofre', async
   await page.locator('#world-pass').fill('mundo123');
   await page.locator('#world-new').check();
   await page.locator('#world-enter').click();
-  await page.locator('#world-create').click();
+  await expect(page.locator('#wh-creation')).toBeVisible({ timeout: 15000 });
   for (const affinity of ['fuego', 'fuego', 'agua']) await page.locator(`[data-affinity=${affinity}]`).click();
   await page.locator('[data-weapon=baston]').click();
   await page.locator('#wh-born').click();
@@ -200,5 +197,41 @@ test('el Sistema muestra el equipo puesto, la bolsa y lo que da un cofre', async
   await expect(page.locator('#wh-loot [data-item=arco_vael]')).toHaveAttribute('data-rarity', 'legendaria');
   await page.waitForTimeout(600);
   await page.screenshot({ path: test.info().outputPath('botin.png') });
+  expect(errors).toEqual([]);
+});
+
+test('volver con la cuenta muestra tus personajes y los lugares libres, no una sala de duelo', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  const account = `vuelvo${Date.now().toString(36).slice(-6)}`;
+  const login = async (create: boolean) => {
+    await page.goto('/');
+    await expect(page.locator('#world-gate h2')).toContainText('Lugunica');
+    await page.locator('#world-open').click();
+    if (create) await page.locator('#world-gate').screenshot({ path: test.info().outputPath('0-portada.png') });
+    await page.locator('#world-name').fill('Subaru');
+    await page.locator('#world-user').fill(account);
+    await page.locator('#world-pass').fill('mundo123');
+    // The checkbox is a checkbox: small, beside its text, not a stretched field.
+    const box = await page.locator('#world-new').boundingBox();
+    expect(box!.width).toBeLessThan(30);
+    if (create) await page.locator('#world-new').check();
+    await page.locator('#world-enter').click();
+  };
+  await login(true);
+  await expect(page.locator('#wh-creation')).toBeVisible({ timeout: 15000 });
+  for (const affinity of ['agua', 'agua', 'luz']) await page.locator(`[data-affinity=${affinity}]`).click();
+  await page.locator('#wh-born').click();
+  await expect(page.locator('#stage')).toHaveAttribute('data-x', /\d+/, { timeout: 15000 });
+
+  await login(false);
+  await expect(page.locator('#overlay-title')).toHaveText('Tus personajes', { timeout: 15000 });
+  await expect(page.locator('.world-character:not(.new)')).toHaveCount(1);
+  await expect(page.locator('.world-character:not(.new)')).toContainText('Subaru');
+  await expect(page.locator('.world-character.new')).toHaveCount(4);
+  for (const duel of ['#ready', '#invitation', '#room-picker']) await expect(page.locator(duel)).toBeHidden();
+  await page.screenshot({ path: test.info().outputPath('1-personajes.png') });
+  await page.locator('.world-character:not(.new)').click();
+  await expect(page.locator('#world-hud')).toBeVisible({ timeout: 15000 });
   expect(errors).toEqual([]);
 });

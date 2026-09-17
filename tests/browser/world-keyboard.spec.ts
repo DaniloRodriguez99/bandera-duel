@@ -9,7 +9,7 @@ async function born(page: Page) {
   await page.locator('#world-pass').fill('mundo123');
   await page.locator('#world-new').check();
   await page.locator('#world-enter').click();
-  await page.locator('#world-create').click();
+  await expect(page.locator('#wh-creation')).toBeVisible({ timeout: 15000 });
   await page.locator('[data-affinity=viento]').click();
   await page.locator('[data-affinity=viento]').click();
   await page.locator('[data-affinity=destreza]').click();
@@ -62,8 +62,10 @@ test('el mundo se juega entero con el teclado: WASD mueve, flechas apuntan, Q ar
   // E casts the destiny skill: the System answers with its name or with why not.
   await page.keyboard.press('KeyE');
   await expect(page.locator('#wh-callout:visible, .wh-notice[data-kind=denied]').first()).toBeVisible({ timeout: 5000 });
-  // X is still closed at level 1, and says so.
+  // X is still closed at level 1, and says so. (A key pressed while E is still being chanted is
+  // ignored, so it waits for the incantation to end first.)
+  await page.waitForTimeout(900);
   await page.keyboard.press('KeyX');
-  await expect(page.locator('.wh-notice[data-kind=denied]', { hasText: 'nivel 5' }).first()).toBeVisible({ timeout: 5000 });
+  await expect(page.locator('.wh-notice[data-kind=denied]', { hasText: 'nivel 5' }).first()).toBeVisible({ timeout: 15000 });
   expect(errors).toEqual([]);
 });

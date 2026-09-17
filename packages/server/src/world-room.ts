@@ -89,6 +89,7 @@ export class WorldRoom extends Room {
   static choosingIdleSeconds = 300;
   /** Last time each connection did something: walked, struck, cast, learned. */
   private lastActive = new Map<string, number>();
+  private lastAngle = new Map<string, number>();
   private touch = (client: Client) => this.lastActive.set(client.sessionId, Date.now());
 
   /** Every world room alive in this process, so shutdown can save them all before exiting. */
@@ -125,8 +126,11 @@ export class WorldRoom extends Room {
       if (!id) return;
       const input = sanitizeInput(message);
       if (!input) return;
-      // Only doing something counts; a mouse resting on the canvas still sends aim every tick.
-      if (input.x !== 0 || input.y !== 0 || input.sword || input.shot || input.charge) this.touch(client);
+      // Only doing something counts; a mouse resting on the canvas still sends the same aim every
+      // tick. Turning the aim does count: a keyboard player aims with the arrows while standing.
+      const turned = Math.abs(input.angle - (this.lastAngle.get(client.sessionId) ?? input.angle)) > 0.05;
+      this.lastAngle.set(client.sessionId, input.angle);
+      if (input.x !== 0 || input.y !== 0 || input.sword || input.shot || input.charge || turned) this.touch(client);
       const last = this.seen.get(id) ?? -1;
       if (input.seq <= last) return;
       this.seen.set(id, input.seq);
@@ -251,6 +255,7 @@ export class WorldRoom extends Room {
       const limit = seconds * 1000;
       if (now - (this.lastActive.get(client.sessionId) ?? now) < limit) continue;
       this.lastActive.delete(client.sessionId);
+    this.lastAngle.delete(client.sessionId);
       client.send('idle', { seconds });
       client.leave(4000);
     }
@@ -405,6 +410,7 @@ export class WorldRoom extends Room {
     this.characterOf.delete(client.sessionId);
     this.accounts.delete(client.sessionId);
     this.lastActive.delete(client.sessionId);
+    this.lastAngle.delete(client.sessionId);
     this.known.delete(client.sessionId);
     if (!id) return;
     const world = this.worldOf(id);

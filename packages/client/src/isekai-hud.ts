@@ -97,44 +97,58 @@ const glyph = (element: string) => icon(`el-${element}`);
 const STAFF_GLYPH = icon('item-baston_aprendiz');
 
 /**
- * The Man-God as the books draw him: a slim, featureless white figure standing in the white void,
- * his face hidden behind a flickering mosaic nobody can see through.
+ * The Man-God as the story shows him: a slender, sexless human figure, pale as the void he stands
+ * in, with real proportions — shoulders, waist, knees — and no features at all where it matters:
+ * his whole face is a flickering mosaic nobody can see through. He does not float or glow like an
+ * angel; he stands at ease and waves, far too friendly for someone you just met.
  */
 export const hitogamiSvg = (key: string) => {
-  // Each copy owns its gradient and filter ids: a url(#id) resolving to a copy inside a hidden
-  // section paints nothing, which left the figure invisible in the birth screen.
-  let seed = 7;
+  // Each copy owns its gradient, clip and filter ids: a url(#id) resolving to a copy inside a
+  // hidden section paints nothing, which once left the figure invisible in the birth screen.
+  let seed = 11;
   const next = () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648);
-  const greys = ['#eef1f7', '#d6dce7', '#bcc5d4', '#a3adbf', '#8c97ab', '#e2e6ee'];
+  const tones = ['#f4f1ec', '#e6e1d9', '#d4cec5', '#c2bbb2', '#aaa39b', '#ece8e2', '#b8b2aa', '#8f8983'];
   const tiles: string[] = [];
-  for (let row = 0; row < 8; row++)
-    for (let col = 0; col < 8; col++)
+  for (let row = 0; row < 13; row++)
+    for (let col = 0; col < 11; col++)
       tiles.push(
-        `<rect class="mz" x="${44 + col * 4}" y="${17 + row * 4}" width="4" height="4" fill="${greys[Math.floor(next() * greys.length)]}" style="animation-delay:-${(next() * 1.6).toFixed(2)}s"/>`,
+        `<rect class="mz" x="${44 + col * 3}" y="${11 + row * 3}" width="3.05" height="3.05" fill="${tones[Math.floor(next() * tones.length)]}" style="animation-delay:-${(next() * 1.6).toFixed(2)}s"/>`,
       );
-  return `<svg class="hitogami" viewBox="0 0 120 200" role="img" aria-label="Hitogami">
+  return `<svg class="hitogami" viewBox="0 0 120 240" role="img" aria-label="Hitogami">
     <defs>
-      <radialGradient id="hg-glow"><stop offset="0" stop-color="#ffffff" stop-opacity=".95"/><stop offset=".55" stop-color="#dfe7f7" stop-opacity=".35"/><stop offset="1" stop-color="#dfe7f7" stop-opacity="0"/></radialGradient>
-      <clipPath id="hg-face"><circle cx="60" cy="33" r="15"/></clipPath>
-      <radialGradient id="hg-halo"><stop offset="0" stop-color="#c7d2e8" stop-opacity=".9"/><stop offset=".7" stop-color="#dfe6f3" stop-opacity=".45"/><stop offset="1" stop-color="#eef2f9" stop-opacity="0"/></radialGradient>
-      <linearGradient id="hg-body" x1="0" x2="1"><stop offset="0" stop-color="#e3e9f4"/><stop offset=".45" stop-color="#ffffff"/><stop offset="1" stop-color="#d7dfee"/></linearGradient>
-      <filter id="hg-soft" x="-40%" y="-40%" width="180%" height="180%"><feDropShadow dx="0" dy="2" stdDeviation="3.5" flood-color="#6c7fa6" flood-opacity=".75"/></filter>
+      <linearGradient id="hg-skin" x1="0" x2="1" y1="0" y2="0.2"><stop offset="0" stop-color="#d9d6d1"/><stop offset=".35" stop-color="#f7f5f2"/><stop offset=".7" stop-color="#eeebe6"/><stop offset="1" stop-color="#c9c5bf"/></linearGradient>
+      <radialGradient id="hg-floor"><stop offset="0" stop-color="#8d95a8" stop-opacity=".45"/><stop offset="1" stop-color="#8d95a8" stop-opacity="0"/></radialGradient>
+      <clipPath id="hg-face"><ellipse cx="60" cy="30" rx="15.5" ry="18"/></clipPath>
+      <filter id="hg-soft" x="-30%" y="-10%" width="160%" height="120%"><feDropShadow dx="1.5" dy="1.5" stdDeviation="1.6" flood-color="#5d6478" flood-opacity=".35"/></filter>
     </defs>
-    <ellipse cx="60" cy="96" rx="56" ry="92" fill="url(#hg-halo)"/>
-    <ellipse cx="60" cy="104" rx="58" ry="98" fill="url(#hg-glow)" opacity=".6"/>
-    <ellipse cx="60" cy="194" rx="30" ry="4" fill="#8c97ab" opacity=".35"/>
-    <g filter="url(#hg-soft)" fill="url(#hg-body)" stroke="#aeb9cf" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M45 62 Q34 90 36 121" fill="none" stroke="#aeb9cf" stroke-width="8.5"/>
-      <path d="M45 62 Q34 90 36 121" fill="none" stroke="#f7f9fd" stroke-width="6.5"/>
-      <path d="M75 62 Q86 90 84 121" fill="none" stroke="#aeb9cf" stroke-width="8.5"/>
-      <path d="M75 62 Q86 90 84 121" fill="none" stroke="#f7f9fd" stroke-width="6.5"/>
-      <rect x="55" y="45" width="10" height="11" rx="3"/>
-      <path d="M44 58 Q60 51 76 58 L73 112 Q66 119 60 117 Q54 119 47 112 Z"/>
-      <path d="M49 108 L47 192 L57 192 L60 134 L63 192 L73 192 L71 108 Z"/>
-      <circle cx="60" cy="33" r="15"/>
+    <ellipse cx="60" cy="232" rx="34" ry="6" fill="url(#hg-floor)"/>
+    <g filter="url(#hg-soft)" fill="url(#hg-skin)" stroke="#b9b4ad" stroke-width=".8" stroke-linejoin="round">
+      <!-- Raised forearm, waving: drawn behind the torso line so the shoulder reads in front. -->
+      <path d="M74 63 C82 66 88 74 90 84 C91 88 89 90 86 89 C84 81 79 74 72 71 Z"/>
+      <path d="M86 89 C84 78 88 64 93 52 C95 49 98 50 98 53 C96 64 92 78 90 88 Z"/>
+      <path d="M93 53 C92 47 93 42 95 40 C96 39 97 40 97 42 L97 45 C98 41 99 38 101 39 C102 40 101 43 100 47 C101 44 103 42 104 43 C105 44 103 48 101 52 C99 55 95 56 93 53 Z"/>
+      <!-- Body: neck, shoulders, the hanging arm, torso, hips and legs, one relaxed stance. -->
+      <path d="M55 45 C55 50 54 54 50 56 C45 58 40 59 37.5 63 C35.5 67 35 73 34.5 80 C34 90 33 100 32.5 110 C32 118 32 124 33 130
+        C33.5 134 34 138 36.5 139 C38.5 139.5 39.5 137 39 134 C38.8 128 39.8 120 41 112 C42 104 43 96 44 88
+        C45 96 46 104 46.5 112 C46 118 44.5 124 44.5 132 C44.5 150 46.5 170 48 188 C48.7 198 48.5 210 48 220
+        C47.8 225 46 228 43.5 230 C42.5 231 43 232.5 45 232.5 L55 232.5 C56.5 232.5 57 231 56.5 229
+        C56 222 56 214 56.5 206 C57 194 58 170 60 148 C62 170 63.2 194 63.6 206 C64 214 64 222 63.5 229
+        C63 231 63.5 232.5 65 232.5 L75 232.5 C77 232.5 77.5 231 76.5 230 C74 228 72.2 225 72 220
+        C71.5 210 71.3 198 72 188 C73.5 170 75.5 150 75.5 132 C75.5 124 74 118 73.5 112 C74 104 75 96 76 88
+        C76.5 82 76.5 76 76 71 C80 66 81.5 61 79 58 C75.5 56.5 70 55.5 67.5 54 C65.5 52.5 65 49 65 45 Z"/>
+      <!-- The head under the mosaic, and the line of the jaw below it. -->
+      <ellipse cx="60" cy="30" rx="14" ry="17"/>
+    </g>
+    <g fill="none" stroke="#b9b4ad" stroke-linecap="round" opacity=".55">
+      <path d="M50 60 C54 62 57 62 60 61 C63 62 66 62 70 60" stroke-width=".7"/>
+      <path d="M60 70 L60 104" stroke-width=".5"/>
+      <path d="M52 80 C55 83 58 83 60 82 C62 83 65 83 68 80" stroke-width=".5"/>
+      <path d="M58 104 C59 106 61 106 62 104" stroke-width=".6"/>
+      <path d="M50 186 C52 188 54 188 55 186 M65 186 C66 188 68 188 70 186" stroke-width=".6"/>
     </g>
     <g clip-path="url(#hg-face)">${tiles.join('')}</g>
-  </svg>`.replace(/hg-(glow|face|soft|halo|body)/g, `hg-${key}-$1`);
+    <ellipse cx="60" cy="30" rx="15.5" ry="18" fill="none" stroke="#c9c3bb" stroke-width=".6" opacity=".7"/>
+  </svg>`.replace(/hg-(skin|floor|face|soft)/g, `hg-${key}-$1`);
 };
 const el = <K extends keyof HTMLElementTagNameMap>(tag: K, className = '', text = '') => {
   const node = document.createElement(tag);
@@ -1045,8 +1059,8 @@ export class WorldHud {
     this.creation.innerHTML = `
       <div class="wh-birth" role="dialog" aria-label="Nacer">
         <div class="wh-hitogami">${hitogamiSvg('birth')}</div>
-        <p class="wh-god">Una figura blanca, sin rostro, te habla como un viejo amigo.</p>
-        <h2>「Bienvenido a Aldrath.」</h2>
+        <p class="wh-god">Una figura pálida, sin rostro, te saluda como a un viejo amigo.</p>
+        <h2>「Bienvenido a Lugunica.」</h2>
         <p class="wh-god-line">No, no soy tu dios. No tengo nada para darte. Solo vine a mirar.</p>
         <h5>Chispas de afinidad <b id="wh-sparks"></b></h5>
         <div class="wh-sparks" id="wh-spark-grid"></div>
