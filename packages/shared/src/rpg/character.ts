@@ -2,6 +2,7 @@ import { idleSlots, type ClassId, type Input } from '../index.js';
 import { DEFAULT_ZONE, zone, type ZoneId } from './zones.js';
 import { BASE_STATS, type Stats } from './progression.js';
 import { AFFINITIES, SKILLS_WORLD, type Affinity, type AffinityState, type Rarity, type SkillProgress } from './skills.js';
+import { STARTER_WEAPON, type Equipment, type ItemInstance } from './items.js';
 
 /**
  * A character of the persistent world: what is saved, how it is born, and how its input is shaped.
@@ -100,6 +101,11 @@ export interface Character {
    * the bond does, so Alzar can bring the same Sombra back without a grave.
    */
   thrall: ThrallBond | null;
+  /** The bag. Equipped items are not in it. */
+  inventory: ItemInstance[];
+  equipment: Equipment;
+  /** Next item uid number. Saved, so a uid is never handed out twice. */
+  itemSerial: number;
 }
 
 export interface ThrallBond {
@@ -150,7 +156,19 @@ export function newCharacter(
     destiny: { skillId: skill.id, rarity: destiny.rarity },
     bonusMana: 0,
     thrall: null,
+    inventory: [],
+    equipment: { weapon: { uid: 'i0', itemId: STARTER_WEAPON[weapon] }, armor: null, amulet: null },
+    itemSerial: 1,
   };
+}
+
+/** One past the highest uid a save already uses, so an old save never reuses one. */
+function nextSerial(raw: Partial<Character>) {
+  const e = raw.equipment;
+  const uids = [...(raw.inventory ?? []), e?.weapon, e?.armor, e?.amulet].flatMap((i) =>
+    i ? [Number(/^i(\d+)$/.exec(i.uid)?.[1] ?? 0)] : [],
+  );
+  return Math.max(0, ...uids) + 1;
 }
 
 /** Fills whatever an older save lacks, so a character from before skills existed still loads. */
@@ -167,6 +185,17 @@ export function normalizeCharacter(raw: Character): Character {
     passives: raw.passives ?? [],
     bonusMana: raw.bonusMana ?? 0,
     thrall: raw.thrall ?? null,
+    inventory: raw.inventory ?? [],
+    // An old save has no gear: its hands hold the starter of ITS weapon. `base` was built from the
+    // class, and archer means arco even for a dagger.
+    equipment: raw.equipment?.weapon
+      ? { ...raw.equipment, armor: raw.equipment.armor ?? null, amulet: raw.equipment.amulet ?? null }
+      : {
+          weapon: { uid: 'i0', itemId: STARTER_WEAPON[raw.weapon ?? base.weapon] },
+          armor: raw.equipment?.armor ?? null,
+          amulet: raw.equipment?.amulet ?? null,
+        },
+    itemSerial: raw.itemSerial ?? nextSerial(raw),
   };
 }
 

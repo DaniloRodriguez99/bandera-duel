@@ -1424,6 +1424,53 @@ body.world-mode #clock-note{color:#7fd6ff;letter-spacing:3px}
 .wh-learn{justify-self:start;margin-top:3px;padding:3px 10px;border:1px solid #ffd76a;background:#2c2208;color:#ffe39a;font:700 9px 'DM Sans',sans-serif;letter-spacing:1.5px;cursor:pointer}
 .wh-learn:hover{background:#4a3a0d;box-shadow:0 0 10px #ffd76a66}
 
+/* Pestañas, equipo y bolsa */
+.wh-tabs{display:flex;gap:2px;padding:0 14px;border-bottom:1px solid #63d9ff33;background:#06142a}
+.wh-tabs button{padding:8px 14px;border:0;border-bottom:2px solid transparent;background:transparent;color:#7fa6c0;font:700 10px 'DM Sans',sans-serif;letter-spacing:2px;text-transform:uppercase;cursor:pointer}
+.wh-tabs button[aria-pressed=true]{color:#fff;border-color:var(--sys);text-shadow:0 0 8px #63d9ff88}
+.wh-panel{grid-template-rows:auto auto 1fr}
+.wh-equipment{display:grid;gap:6px}
+.wh-equip-slot{--rarity:#2b4a66;display:grid;grid-template-columns:34px 1fr;grid-template-rows:auto auto;align-items:center;column-gap:8px;padding:6px 8px;text-align:left;border:1px solid color-mix(in srgb,var(--rarity) 70%,transparent);background:#030a16;color:#dff4ff;cursor:pointer}
+.wh-equip-slot small{grid-column:1/-1;font:700 8px 'DM Sans',sans-serif;letter-spacing:2px;color:#6e93ad;text-transform:uppercase}
+.wh-equip-slot img{width:32px;height:32px;image-rendering:pixelated;filter:drop-shadow(0 0 6px color-mix(in srgb,var(--rarity) 70%,transparent))}
+.wh-equip-slot b{font-size:11px}.wh-equip-slot em{grid-column:1/-1;font-size:10px;color:#4f6c84}
+.wh-gear-total{margin:4px 0 0;font-size:10px;color:#9fd8ff;line-height:1.5}
+.wh-bag-area{display:grid;grid-template-columns:auto minmax(220px,1fr);align-items:start;gap:12px;padding:10px 12px;overflow:auto;scrollbar-width:thin}
+.wh-bag{display:grid;grid-template-columns:repeat(5,clamp(34px,4.2vw,48px));gap:5px}
+.wh-bag-cell{--rarity:#1e3a55;aspect-ratio:1;display:grid;place-items:center;padding:0;border:1px solid color-mix(in srgb,var(--rarity) 80%,transparent);background:radial-gradient(circle at 50% 40%,color-mix(in srgb,var(--rarity) 22%,#081830),#030a16 80%);cursor:pointer}
+.wh-bag-cell:disabled{cursor:default;border-color:#12263a;background:#030a16}
+.wh-bag-cell img{width:72%;image-rendering:pixelated}
+.wh-bag-cell[aria-pressed=true]{box-shadow:0 0 0 2px #fff,0 0 14px var(--rarity)}
+.wh-bag-cell[data-rarity=legendaria],.wh-bag-cell[data-rarity=unica]{animation:whGlowCell 2.4s ease-in-out infinite}
+.wh-item{--rarity:#b9c6cf;display:grid;gap:6px;padding:10px 11px;border:1px solid color-mix(in srgb,var(--rarity) 60%,transparent);background:#040d1bcc}
+.wh-item>header{font:700 8px 'DM Sans',sans-serif;letter-spacing:2.5px;color:var(--rarity)}
+.wh-item h4{margin:0;font:700 19px 'Barlow Condensed',Impact,sans-serif;color:#fff;text-shadow:0 0 10px color-mix(in srgb,var(--rarity) 60%,transparent)}
+.wh-item img{width:38px;height:38px;padding:3px;image-rendering:pixelated;background:#040a15;border:1px solid var(--rarity)}
+.wh-item-lines{margin:0;padding:0;list-style:none;display:grid;gap:2px;font-size:11px;color:#9fe0b0}
+.wh-item blockquote{margin:0;padding-left:8px;border-left:2px solid var(--rarity);font-style:italic;font-size:11px;color:#d6e4ee}
+.wh-warning{margin:0;font-size:10px;color:#ff9aa6}
+.wh-item-actions{display:flex;flex-wrap:wrap;gap:5px}
+.wh-item-actions button,.wh-item-actions select{padding:5px 10px;border:1px solid #63d9ff66;background:#07182e;color:#dff4ff;font:700 9px 'DM Sans',sans-serif;letter-spacing:1.2px;cursor:pointer}
+.wh-item-actions button:disabled{opacity:.35;cursor:default}
+.wh-item-actions button.danger{border-color:#ff5a6e;color:#ffb3bd;background:#2a0a14}
+.wh-hint{margin:0;font-size:11px;color:#6e93ad}
+@media(max-width:760px){.wh-bag-area{grid-template-columns:1fr}}
+
+/* Abrir un cofre y lo que dio */
+.wh-channel{position:absolute;left:50%;bottom:calc(clamp(40px,5.6vw,62px) + 42px);transform:translateX(-50%);width:min(240px,50%);display:grid;gap:3px;padding:5px 9px 6px;text-align:center;border:1px solid #63d9ff66;background:#050f20e6;pointer-events:none}
+.wh-channel span{font:700 9px 'DM Sans',sans-serif;letter-spacing:2px;color:#bfeaff}
+.wh-channel i{display:block;height:4px;width:0;background:linear-gradient(90deg,#c9a36b,#ffe39a);box-shadow:0 0 8px #ffd76a}
+.wh-channel[data-tier=raro] i{background:linear-gradient(90deg,#2b7fb0,#9fe3ff)}
+.wh-channel[data-tier=legendario] i{background:linear-gradient(90deg,#b8860b,#fff1a8);box-shadow:0 0 14px #ffc84d}
+.wh-loot{position:absolute;left:50%;top:30%;transform:translateX(-50%);z-index:10;display:flex;gap:10px;pointer-events:auto;animation:whLootIn .5s cubic-bezier(.2,1.3,.3,1)}
+.wh-loot .reward-card{--rarity:#b9c6cf;width:clamp(120px,15vw,170px);min-height:0;align-items:center;text-align:center;border-color:var(--rarity);background:linear-gradient(180deg,#0c2242f2,#050f20f5);box-shadow:0 0 22px color-mix(in srgb,var(--rarity) 45%,transparent);cursor:pointer}
+.wh-loot .reward-card small{color:var(--rarity);letter-spacing:3px}
+.wh-loot .reward-card strong{font-size:18px}
+.wh-loot .reward-card p{font-size:9px;color:#b5d3e6}
+.wh-loot .reward-card.rarity-legendaria,.wh-loot .reward-card.rarity-unica{animation:whGlowCell 1.8s ease-in-out infinite}
+@keyframes whGlowCell{50%{box-shadow:0 0 26px var(--rarity),inset 0 0 12px color-mix(in srgb,var(--rarity) 30%,transparent)}}
+@keyframes whLootIn{from{opacity:0;transform:translate(-50%,20px) scale(.9)}to{opacity:1;transform:translate(-50%,0) scale(1)}}
+
 /* El vacío blanco del Hitogami */
 .wh-creation{position:fixed;inset:0;z-index:120;display:grid;place-items:center;overflow:auto;padding:16px;color:#1b2333;background:radial-gradient(circle at 50% 38%,#fff 0,#f1f3f8 38%,#d3d9e4 100%);animation:whFade .8s reverse}
 .wh-birth{width:min(700px,100%);display:grid;justify-items:center;gap:8px;text-align:center}

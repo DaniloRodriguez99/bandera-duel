@@ -43,7 +43,7 @@ import { loadMageCustomization, mountMageCustomization } from './customization.j
 import { UPGRADE_META, UPGRADE_ORDER } from './pve-upgrades.js';
 import { WorldHud } from './isekai-hud.js';
 import { zone, type ZoneId } from '@bandera/shared/rpg/zones';
-import type { CastSlot, Character, Creation, Notice } from '@bandera/shared/world';
+import type { CastSlot, Character, ChestView, Creation, Notice } from '@bandera/shared/world';
 
 function hudTeam(team: Team, right = false) {
   const label = right
@@ -87,7 +87,14 @@ const worldHud = new WorldHud($('stage'), {
   learn: (skillId, nodeId) => room?.send('learn', { skillId, nodeId }),
   slot: (slot, skillId) => room?.send('slot', { slot, skillId }),
   spend: (stat) => room?.send('spendPoint', { stat }),
+  equip: (uid) => room?.send('equip', { uid }),
+  unequip: (slot) => room?.send('unequip', { slot }),
+  use: (uid, skillId) => room?.send('useItem', skillId ? { uid, skillId } : { uid }),
+  discard: (uid) => room?.send('discard', { uid }),
 });
+// Development only (stripped from production builds): lets a browser spec show a loot window
+// without walking a character across the valley to a guarded chest.
+if (import.meta.env.DEV) (window as unknown as { __worldHud: WorldHud }).__worldHud = worldHud;
 window.addEventListener('keydown', (event) => {
   if (!worldCharacterId || (event.target as HTMLElement)?.matches?.('input, textarea, select')) return;
   if (event.code === 'KeyK' && !event.repeat) worldHud.togglePanel();
@@ -519,6 +526,7 @@ function bind(joined: Room) {
   room.onMessage('sheet', (sheet: Character) => showSheet(sheet));
   room.onMessage('system', (notice: Notice) => worldHud.notice(notice));
   room.onMessage('idle', () => (idleKicked = true));
+  room.onMessage('replaced', () => (replaced = true));
   room.onMessage('entered', ({ zoneId, characterId }: { zoneId: string; characterId: string }) => {
     worldCharacterId = characterId;
     $('overlay').hidden = true;
@@ -577,6 +585,19 @@ function bind(joined: Room) {
   room.onLeave(() => {
     online = false;
     sessionStorage.removeItem('bandera-token');
+    if (room === joined && replaced) {
+      arena.controls.enabled = false;
+      arena.controls.clear();
+      worldHud.hide();
+      $('overlay').hidden = false;
+      $('overlay-kicker').textContent = 'MUNDO';
+      $('overlay-title').textContent = 'Entraste desde otro lado';
+      $('overlay-description').textContent = 'Tu personaje sigue jugando en la otra pestaña o dispositivo.';
+      for (const id of ['ready', 'invitation', 'room-picker', 'roster', 'team-choice', 'world-return']) $(id).hidden = true;
+      $('announcement').hidden = true;
+      $('connection-label').textContent = '● DESCONECTADO';
+      return;
+    }
     if (room === joined && idleKicked && worldCharacterId) {
       // Not an ending: the character is saved where it stood, one click away.
       arena.controls.enabled = false;
@@ -691,6 +712,8 @@ interface WorldCharacterList {
 let chosenCharacter: string | null = null;
 /** Set when the world said we were idle, so the disconnection that follows is not a crash. */
 let idleKicked = false;
+/** Set when the same character entered from somewhere else and took over. */
+let replaced = false;
 /** The sparks and weapon placed in the Man-God's void, sent once with the new character. */
 let chosenCreation: Creation | null = null;
 /**
@@ -786,6 +809,8 @@ function showSheet(sheet: Character) {
   stage.dataset.unspent = String(sheet.unspent);
   stage.dataset.zone = sheet.zoneId;
   stage.dataset.skillPoints = String(sheet.skillPoints);
+  stage.dataset.bag = String(sheet.inventory.length);
+  stage.dataset.weaponItem = sheet.equipment.weapon.itemId;
 }
 
 $('new-instead').onclick = () => {
@@ -870,6 +895,7 @@ function renderWorldChrome(s: Snapshot, me: Snapshot['players'][number] | undefi
   $('abilities').hidden = true;
   $('overlay').hidden = true;
   if (me) worldHud.setPlayer(me);
+  worldHud.setChests((s as Snapshot & { chests?: ChestView[] }).chests ?? [], me);
 }
 function render(s: Snapshot) {
   if (!room && !practice) return;

@@ -173,6 +173,38 @@ export class WorldRoom extends Room {
       this.worldOf(id)?.setSlot(id, m!.slot as CastSlot, skillId);
     });
 
+    // The bag. The World validates everything; here only the shape of the message.
+    const uidOf = (message: unknown) => {
+      const uid = (message as { uid?: unknown } | null)?.uid;
+      return typeof uid === 'string' && /^i\d{1,9}$/.test(uid) ? uid : null;
+    };
+    this.onMessage('equip', (client, message: unknown) => {
+      this.touch(client);
+      const id = this.characterOf.get(client.sessionId);
+      const uid = uidOf(message);
+      if (id && uid) this.worldOf(id)?.equip(id, uid);
+    });
+    this.onMessage('unequip', (client, message: unknown) => {
+      this.touch(client);
+      const id = this.characterOf.get(client.sessionId);
+      const slot = (message as { slot?: unknown } | null)?.slot;
+      if (id && (slot === 'weapon' || slot === 'armor' || slot === 'amulet')) this.worldOf(id)?.unequip(id, slot);
+    });
+    this.onMessage('useItem', (client, message: unknown) => {
+      this.touch(client);
+      const id = this.characterOf.get(client.sessionId);
+      const uid = uidOf(message);
+      const skillId = (message as { skillId?: unknown } | null)?.skillId;
+      if (!id || !uid || (skillId !== undefined && (typeof skillId !== 'string' || skillId.length > 40))) return;
+      this.worldOf(id)?.useItem(id, uid, skillId as string | undefined);
+    });
+    this.onMessage('discard', (client, message: unknown) => {
+      this.touch(client);
+      const id = this.characterOf.get(client.sessionId);
+      const uid = uidOf(message);
+      if (id && uid) this.worldOf(id)?.discard(id, uid);
+    });
+
     // Colyseus closes the connection (code 4002) on any message type the room did not register.
     // The client pings every two seconds, and the shared bind() can send duel messages too, so
     // the world answers pings and quietly ignores anything else it does not know.
@@ -248,6 +280,13 @@ export class WorldRoom extends Room {
       if (client) this.sendSheet(client, id);
     }
     world.sheetChanged.clear();
+    // Loot and gear are saved the moment they change, not on the next 15 s beat: a crash in between
+    // must not take a legendary drop with it.
+    for (const id of world.saveNow) {
+      const character = world.characters.get(id);
+      if (character) void store.save(character).catch((error) => logSaveError(id, error));
+    }
+    world.saveNow.clear();
     for (const trip of world.travels.splice(0)) void this.travel(trip.id, trip.to, trip.arrive);
   }
 
@@ -309,6 +348,31 @@ export class WorldRoom extends Room {
     const chosen = typeof options.characterId === 'string' ? options.characterId : null;
     if (!chosen) {
       client.send('characters', { characters: saved, max: 5 });
+      return;
+    }
+    // Already in the world: from another tab, or a connection that has not timed out yet. The new
+    // session takes over the live character. Loading it from the store instead would put a second
+    // entity with the same id in the zone, and two copies of one sheet saving over each other.
+    if (this.zoneOf.has(chosen)) {
+      const world = this.worldOf(chosen)!;
+      const live = world.characters.get(chosen)!;
+      if (live.accountId !== auth.account) throw new ServerError(409, 'Ese personaje ya está en el mundo.');
+      const old = this.clientOf(chosen);
+      if (old) {
+        // Detached first, so its onLeave finds nothing to remove and cannot take the new entity.
+        this.characterOf.delete(old.sessionId);
+        this.accounts.delete(old.sessionId);
+        this.lastActive.delete(old.sessionId);
+        this.known.delete(old.sessionId);
+      }
+      world.leave(chosen);
+      this.zoneOf.delete(chosen);
+      this.queues.delete(chosen);
+      // The new client counts its inputs from zero again.
+      this.seen.delete(chosen);
+      this.enter(client, live);
+      old?.send('replaced', {});
+      old?.leave(4001);
       return;
     }
     let character = await store.load(auth.account, chosen);
@@ -394,6 +458,7 @@ export class WorldRoom extends Room {
       arrows: source.arrows.filter((a) => inside(leave, a)),
       graves: source.graves.filter((g) => inside(leave, g)),
       traps: source.traps.filter((t) => inside(leave, t)),
+      chests: (source.chests ?? []).filter((c) => inside(leave, c)),
       events: source.events.filter((e) => inside(leave, e)).slice(-24),
     };
   }

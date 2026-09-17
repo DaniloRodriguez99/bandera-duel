@@ -3,6 +3,7 @@ import { CAST_SLOTS, WEAPON_IDS, normalizeCharacter, type Character } from '@ban
 import { MAX_LEVEL, STAT_IDS } from '@bandera/shared/rpg/progression';
 import { AFFINITIES, RARITY_NAMES } from '@bandera/shared/rpg/skills';
 import { validZone } from '@bandera/shared/rpg/zones';
+import { INVENTORY_SIZE } from '@bandera/shared/rpg/items';
 import { SAVE_VERSION, StoreError, type SavedCharacter } from './characters.js';
 
 /**
@@ -91,11 +92,37 @@ function checkCharacter(raw: unknown): Character {
     if (!isObject(t) || !text(t.victimId) || !text(t.name) || !validClass(t.classId)) invalid('thrall');
     if (!finite(t.level) || t.level < 1 || !finite(t.maxHp) || t.maxHp <= 0) invalid('thrall');
   }
+  checkItems(c);
   if (c.destiny !== undefined) {
     if (!isObject(c.destiny) || !text(c.destiny.skillId) || !RARITIES.includes(c.destiny.rarity as string))
       invalid('destiny');
   }
   return c as unknown as Character;
+}
+
+/**
+ * Shapes and uniqueness only. An unknown item id is allowed: removing an item from the catalog must
+ * not lock its owners out. A duplicated uid is not: it is exactly how a broken save duplicates loot.
+ */
+function checkItems(c: Record<string, unknown>) {
+  const instance = (v: unknown) => isObject(v) && text(v.uid, 24) && text(v.itemId, 64);
+  const uids: string[] = [];
+  if (c.inventory !== undefined) {
+    if (!Array.isArray(c.inventory) || c.inventory.length > INVENTORY_SIZE || !c.inventory.every(instance))
+      invalid('inventory');
+    uids.push(...c.inventory.map((i) => (i as { uid: string }).uid));
+  }
+  if (c.equipment !== undefined) {
+    const e = c.equipment;
+    if (!isObject(e)) invalid('equipment');
+    if (e.weapon !== undefined && !instance(e.weapon)) invalid('equipment.weapon');
+    for (const slot of ['armor', 'amulet'] as const)
+      if (e[slot] !== undefined && e[slot] !== null && !instance(e[slot])) invalid(`equipment.${slot}`);
+    for (const slot of ['weapon', 'armor', 'amulet'] as const)
+      if (instance(e[slot])) uids.push((e[slot] as { uid: string }).uid);
+  }
+  if (c.itemSerial !== undefined && !count(c.itemSerial)) invalid('itemSerial');
+  if (new Set(uids).size !== uids.length) invalid('objeto duplicado');
 }
 
 export function migrate(raw: unknown): SavedCharacter {

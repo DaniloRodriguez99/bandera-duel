@@ -7,6 +7,7 @@ import {
   newPlayer,
   projectileStats,
   translate,
+  activePreset,
   defaultCustomization,
   type Allegiant,
   type Arrow,
@@ -56,10 +57,23 @@ import {
   type LearnCheck,
   type Passive,
   type SkillEffect,
+  type SkillProgress,
   type WorldSkill,
 } from './rpg/skills.js';
 import {
+  AFFINITY_POINT_CAP,
+  COPY_CHARGE_CAP,
+  INVENTORY_SIZE,
+  ITEMS,
+  equipmentBonus,
+  statsWithEquipment,
+  type EquipSlot,
+  type ItemInstance,
+} from './rpg/items.js';
+import { CHEST_TIERS, rollLoot, type ChestTier } from './rpg/loot.js';
+import {
   CAST_SLOTS,
+  WEAPONS,
   SLOT_LEVEL,
   SLOT_NAMES,
   normalizeCharacter,
@@ -126,7 +140,9 @@ export interface Notice {
     | 'widen'
     | 'death'
     | 'kill'
-    | 'raise';
+    | 'raise'
+    | 'loot'
+    | 'item';
   title: string;
   text: string;
   color?: string;
@@ -136,11 +152,27 @@ export interface Notice {
   slot?: CastSlot;
   cooldown?: number;
   mana?: number;
+  /** A loot window: what went into the bag, and from what kind of chest. */
+  items?: ItemInstance[];
+  tier?: ChestTier;
+}
+
+/** A chest as everyone sees it. `opener` and `progress` belong to whoever is furthest along. */
+export interface ChestView {
+  id: string;
+  x: number;
+  y: number;
+  tier: ChestTier;
+  ready: boolean;
+  respawnLeft: number;
+  opener: string | null;
+  progress: number;
 }
 
 export interface WorldSnapshot extends Snapshot {
   /** The zone this view belongs to. `mapId` stays a valid arena id so the shared types hold. */
   zoneId: ZoneId;
+  chests: ChestView[];
 }
 
 /** Around a wild zone's shrine nobody hurts anybody: the place you revive is not a place to camp. */
@@ -149,6 +181,9 @@ export const SHRINE_WARD = 240;
 export const THRALL_HP_SHARE = 0.6;
 /** A parry turns a player's blow back only on someone standing close enough to have struck it. */
 const PARRY_REACH = 90;
+
+/** How close a character must stand to a chest to open it. */
+export const CHEST_REACH = 44;
 
 /** Which engine projectile carries each element, so existing renderers draw it for free. */
 const BOLT_LOOK: Record<Element, { classId: ClassId; element?: Arrow['element']; wind?: boolean }> = {
@@ -182,6 +217,14 @@ export class World extends Duel {
   /** Where monsters fell, for skills that devour. */
   readonly corpses: { x: number; y: number; left: number }[] = [];
   private requested: { id: string; slot: CastSlot; aim: Vec }[] = [];
+  /** Characters whose bag changed: the room saves them at once instead of waiting for the flush. */
+  readonly saveNow = new Set<string>();
+  /** Loot is rolled with this; tests pin it. */
+  random: () => number = Math.random;
+  private opening = new Map<string, { chestId: string; elapsed: number }>();
+  /** `${player}|${chest}` already told their bag is too full, until they step away. */
+  private lootWarned = new Set<string>();
+  private chestCamp = new Map<string, number>();
   private incantations = new Map<string, { skillId: string; aim: Vec; left: number }>();
   private skillCd = new Map<string, number>();
   private parries = new Map<string, { left: number; reflect: number }>();
@@ -200,6 +243,7 @@ export class World extends Duel {
     s.maxPlayers = Number.POSITIVE_INFINITY;
     s.bases = [];
     s.flags = [];
+    s.chests = [];
     this.populate();
   }
 
@@ -214,6 +258,20 @@ export class World extends Duel {
       const campId = this.campId(i);
       for (let n = 0; n < camp.count; n++) this.spawnMob(camp, campId);
       this.respawn.set(campId, camp.respawnSeconds);
+      if (camp.guards === 'chest' && camp.chest) {
+        const id = `chest:${this.zoneId}:${i}`;
+        this.chestCamp.set(id, i);
+        (this.state as WorldSnapshot).chests.push({
+          id,
+          x: camp.at.x,
+          y: camp.at.y,
+          tier: camp.chest.tier,
+          ready: true,
+          respawnLeft: 0,
+          opener: null,
+          progress: 0,
+        });
+      }
     }
   }
 
@@ -285,8 +343,22 @@ export class World extends Duel {
     return total;
   }
 
+  /** Stolen passives and equipped gear, added together: everything that is not a bare stat. */
+  bonusesOf(character: Character) {
+    const passive = this.passivesOf(character);
+    const gear = equipmentBonus(character);
+    return {
+      regen: passive.regen + gear.regen,
+      maxHp: passive.maxHp + gear.maxHp,
+      // Heavy armor slows, but never to a crawl.
+      speed: Math.max(-0.2, passive.speed + gear.speed),
+      damage: passive.damage + gear.damage,
+      xp: passive.xp + gear.xp,
+    };
+  }
+
   private maxManaOf(character: Character) {
-    return maxManaFor(character.stats) + character.bonusMana;
+    return maxManaFor(statsWithEquipment(character)) + character.bonusMana;
   }
 
   /**
@@ -295,9 +367,9 @@ export class World extends Duel {
    * character — a client must not receive a first snapshot with an empty mana bar.
    */
   private applyCharacter(p: Player, character: Character) {
-    const passive = this.passivesOf(character);
+    const bonus = this.bonusesOf(character);
     p.level = character.level;
-    p.maxHp = Math.round(maxHpFor(character.stats) * (1 + passive.maxHp) * 10) / 10;
+    p.maxHp = Math.round(maxHpFor(statsWithEquipment(character)) * (1 + bonus.maxHp) * 10) / 10;
     p.hp = Math.min(p.hp > 0 ? p.hp : p.maxHp, p.maxHp);
     p.maxMana = this.maxManaOf(character);
     p.mana = Math.min(p.mana > 0 ? p.mana : p.maxMana, p.maxMana);
@@ -362,6 +434,8 @@ export class World extends Duel {
     this.parries.delete(id);
     this.buffs.delete(id);
     this.drains.delete(id);
+    this.opening.delete(id);
+    for (const key of this.lootWarned) if (key.startsWith(`${id}|`)) this.lootWarned.delete(key);
   }
 
   /** Experience for a kill, applied to the sheet and reported so the client can announce it. */
@@ -369,7 +443,7 @@ export class World extends Duel {
     const character = this.characters.get(id);
     if (!character || amount <= 0) return null;
     this.sheetChanged.add(id);
-    const bonus = 1 + this.passivesOf(character).xp;
+    const bonus = 1 + this.bonusesOf(character).xp;
     const before = character.level;
     const result = applyXp(character.level, character.xp, Math.round(amount * bonus));
     character.level = result.level;
@@ -448,7 +522,7 @@ export class World extends Duel {
     if (!character) return 1;
     const buff = this.buffs.get(id)?.damage ?? 0;
     const touki = MARTIAL.some((a) => rankOf(character.affinities[a]?.xp ?? 0) >= TOUKI_RANK) ? 0.15 : 0;
-    return 1 + buff + this.passivesOf(character).damage + touki;
+    return 1 + buff + this.bonusesOf(character).damage + touki;
   }
 
   /** Where a character counts as standing for saving: its body, or the shrine if it lies dead. */
@@ -543,10 +617,10 @@ export class World extends Duel {
     for (const p of this.state.players) {
       const character = this.characters.get(p.id);
       if (!character || p.hp <= 0) continue;
-      const passive = this.passivesOf(character);
-      if (passive.regen > 0) p.hp = Math.min(p.maxHp, p.hp + passive.regen * dt);
+      const bonus = this.bonusesOf(character);
+      if (bonus.regen > 0) p.hp = Math.min(p.maxHp, p.hp + bonus.regen * dt);
       // Speed rides on the upgrade state `movePlayer` already reads, so prediction stays honest.
-      p.pve.speed = (this.buffs.get(p.id)?.speed ?? 0) + passive.speed;
+      p.pve.speed = (this.buffs.get(p.id)?.speed ?? 0) + bonus.speed;
     }
     for (const [id, spell] of this.incantations) {
       spell.left -= dt;
@@ -581,6 +655,8 @@ export class World extends Duel {
       return this.deny(id, effective.name, `Maná insuficiente: necesitás ${Math.ceil(effective.mana)}.`);
     const blocked = this.precheck(p, character, skill);
     if (blocked) return this.deny(id, effective.name, blocked);
+    // Casting takes the hands off the chest.
+    this.opening.delete(id);
 
     p.mana -= effective.mana;
     this.skillCd.set(this.cooldownKey(id, skill.id), effective.cooldown);
@@ -820,29 +896,8 @@ export class World extends Duel {
   private grow(p: Player, character: Character, skill: WorldSkill) {
     const progress = character.skills[skill.id];
     progress.uses++;
-    if (progress.level < skill.maxLevel && progress.uses >= usesToLevel(skill, progress.level)) {
-      const previous = skillName(skill, progress.level);
-      progress.uses = 0;
-      progress.level++;
-      const evolution = skill.evolutions.find((e) => e.level === progress.level);
-      if (evolution)
-        this.notify(p.id, {
-          kind: 'evolution',
-          title: `«${previous}» evolucionó en «${evolution.name}»`,
-          text: evolution.line,
-          color: skill.color,
-          rarity: skill.rarity,
-          skillId: skill.id,
-        });
-      else
-        this.notify(p.id, {
-          kind: 'skill',
-          title: `${skillName(skill, progress.level)} → Nv ${progress.level}`,
-          text: 'Algo en tu cuerpo aprendió sin avisarte.',
-          color: skill.color,
-          skillId: skill.id,
-        });
-    }
+    if (progress.level < skill.maxLevel && progress.uses >= usesToLevel(skill, progress.level))
+      this.raiseSkillLevel(p.id, skill, progress);
     const school = skill.school as Affinity;
     const affinity = character.affinities[school];
     if (affinity) {
@@ -866,6 +921,31 @@ export class World extends Duel {
       }
     }
     this.sheetChanged.add(p.id);
+  }
+
+  /** A level, and the evolution it may bring, announced the same way whether use or a book earned it. */
+  private raiseSkillLevel(id: string, skill: WorldSkill, progress: SkillProgress) {
+    const previous = skillName(skill, progress.level);
+    progress.uses = 0;
+    progress.level++;
+    const evolution = skill.evolutions.find((e) => e.level === progress.level);
+    if (evolution)
+      this.notify(id, {
+        kind: 'evolution',
+        title: `«${previous}» evolucionó en «${evolution.name}»`,
+        text: evolution.line,
+        color: skill.color,
+        rarity: skill.rarity,
+        skillId: skill.id,
+      });
+    else
+      this.notify(id, {
+        kind: 'skill',
+        title: `${skillName(skill, progress.level)} → Nv ${progress.level}`,
+        text: 'Algo en tu cuerpo aprendió sin avisarte.',
+        color: skill.color,
+        skillId: skill.id,
+      });
   }
 
   /** Mushoku Tensei's childhood rule for mana: run it dry as a child and the channels widen. */
@@ -925,6 +1005,8 @@ export class World extends Duel {
     const scaled = caster && this.characters.has(caster) ? amount * this.damageMultiplier(caster) : amount;
     const alive = target.hp > 0;
     const landed = super.damage(target, source, angle, scaled, options);
+    // A blow that lands takes the hands off the chest.
+    if (landed) this.opening.delete(target.id);
     if (landed && caster) this.heal(caster, scaled);
     if (landed && alive && target.hp <= 0) this.onDeath(target, source);
     return landed;
@@ -1059,6 +1141,9 @@ export class World extends Duel {
     this.stepArrows(dt);
     this.stepZombies(dt);
     this.stepTraps(placements, dt);
+    // After every blow of the tick has had its chance to interrupt; before a portal can take the
+    // opener to another zone.
+    this.stepChests(dt);
     this.stepPortals(dt);
     this.stepSpawners(dt);
     this.stepMana(dt);
@@ -1151,13 +1236,251 @@ export class World extends Duel {
     this.state.zombies.push(z);
   }
 
+  // ─── Chests ───────────────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Standing next to a ready chest, untouched, opens it. No key and no message: the client can
+   * never name a chest or what is inside. First to finish takes everything. An emptied chest
+   * returns after its timer, and only once its camp stands whole again.
+   */
+  private stepChests(dt: number) {
+    const s = this.state as WorldSnapshot;
+    const camps = this.definition.spawners;
+    for (const chest of s.chests) {
+      if (chest.ready) continue;
+      chest.respawnLeft = Math.max(0, chest.respawnLeft - dt);
+      const index = this.chestCamp.get(chest.id)!;
+      const guards = s.zombies.filter((z) => z.owner === this.campId(index) && z.hp > 0).length;
+      if (chest.respawnLeft <= 0 && guards >= camps[index].count) {
+        chest.ready = true;
+        this.event('pickup', chest, 'red', undefined, undefined, -1);
+      }
+    }
+    for (const p of s.players) {
+      const character = this.characters.get(p.id);
+      if (!character || p.hp <= 0) {
+        this.opening.delete(p.id);
+        continue;
+      }
+      const chest = s.chests
+        .filter((c) => c.ready && distance(p, c) <= CHEST_REACH)
+        .sort((a, b) => distance(p, a) - distance(p, b))[0];
+      const warned = chest ? `${p.id}|${chest.id}` : '';
+      for (const key of this.lootWarned) if (key.startsWith(`${p.id}|`) && key !== warned) this.lootWarned.delete(key);
+      const current = this.opening.get(p.id);
+      if (!chest || (current && current.chestId !== chest.id)) this.opening.delete(p.id);
+      if (!chest) continue;
+      const rules = CHEST_TIERS[chest.tier];
+      if (INVENTORY_SIZE - character.inventory.length < rules.maxDrops) {
+        if (!this.lootWarned.has(warned)) {
+          this.lootWarned.add(warned);
+          this.deny(p.id, rules.name, `Tu bolsa no tiene lugar: hacé espacio para ${rules.maxDrops} objetos.`);
+        }
+        continue;
+      }
+      const entry = this.opening.get(p.id) ?? { chestId: chest.id, elapsed: 0 };
+      entry.elapsed += dt;
+      this.opening.set(p.id, entry);
+      if (entry.elapsed + 1e-9 >= rules.openSeconds) this.loot(p, character, chest);
+    }
+    for (const chest of s.chests) {
+      let lead: { id: string; elapsed: number } | null = null;
+      for (const [id, entry] of this.opening)
+        if (entry.chestId === chest.id && (!lead || entry.elapsed > lead.elapsed)) lead = { id, elapsed: entry.elapsed };
+      chest.opener = lead?.id ?? null;
+      chest.progress = lead ? Math.min(1, lead.elapsed / CHEST_TIERS[chest.tier].openSeconds) : 0;
+    }
+  }
+
+  private loot(p: Player, character: Character, chest: ChestView) {
+    const rules = CHEST_TIERS[chest.tier];
+    const camp = this.definition.spawners[this.chestCamp.get(chest.id)!];
+    const drops = rollLoot({ tier: chest.tier, campLevel: camp.level, character, random: this.random });
+    const items = drops.flatMap((itemId) => this.give(p.id, itemId) ?? []);
+    chest.ready = false;
+    chest.respawnLeft = rules.respawnSeconds;
+    for (const [id, entry] of this.opening) {
+      if (entry.chestId !== chest.id) continue;
+      this.opening.delete(id);
+      if (id !== p.id) this.deny(id, rules.name, 'Alguien lo abrió primero.');
+    }
+    const order = ['comun', 'rara', 'epica', 'legendaria', 'unica'];
+    const best = items
+      .map((i) => ITEMS[i.itemId].rarity)
+      .sort((a, b) => order.indexOf(b) - order.indexOf(a))[0];
+    this.notify(p.id, {
+      kind: 'loot',
+      title: `¡${rules.name} abierto!`,
+      text: `Conseguiste: ${items.map((i) => ITEMS[i.itemId].name).join(', ')}.`,
+      rarity: best,
+      tier: chest.tier,
+      items,
+      color: chest.tier === 'legendario' ? '#ffc84d' : chest.tier === 'raro' ? '#56b8ff' : '#c9a36b',
+    });
+    this.event('pickup', chest, p.team, undefined, undefined, 1);
+  }
+
+  // ─── Bag and gear ─────────────────────────────────────────────────────────────────────────────
+
+  private bagChanged(id: string) {
+    this.sheetChanged.add(id);
+    this.saveNow.add(id);
+  }
+
+  /** The one door items come in through. Null when the bag is full or the item does not exist. */
+  give(id: string, itemId: string): ItemInstance | null {
+    const character = this.characters.get(id);
+    if (!character || !ITEMS[itemId] || character.inventory.length >= INVENTORY_SIZE) return null;
+    const instance = { uid: `i${character.itemSerial++}`, itemId };
+    character.inventory.push(instance);
+    this.bagChanged(id);
+    return instance;
+  }
+
+  /** Puts on what is in the bag; what was worn takes its place in the bag, so nothing overflows. */
+  equip(id: string, uid: string): boolean {
+    const character = this.characters.get(id);
+    const p = this.state.players.find((q) => q.id === id);
+    const index = character?.inventory.findIndex((i) => i.uid === uid) ?? -1;
+    // A uid the character does not own is a forged message: nothing to explain.
+    if (!character || !p || index < 0) return false;
+    const instance = character.inventory[index];
+    const item = ITEMS[instance.itemId];
+    const refuse = (text: string) => (this.deny(id, item?.name ?? 'Objeto', text), false);
+    if (!item?.slot) return refuse('Eso no se equipa.');
+    if (character.level < item.level) return refuse(`Necesitás nivel ${item.level} para «${item.name}».`);
+    if (p.hp <= 0) return refuse('Los caídos no se cambian de equipo.');
+    if (this.incantations.has(id)) return refuse('No en medio de un conjuro.');
+    const previous = character.equipment[item.slot];
+    if (previous) character.inventory[index] = previous;
+    else character.inventory.splice(index, 1);
+    (character.equipment as Record<EquipSlot, ItemInstance | null>)[item.slot] = instance;
+    if (item.slot === 'weapon' && item.weapon) {
+      character.weapon = item.weapon;
+      character.classId = WEAPONS[item.weapon].classId;
+      // A new weapon is a new engine class: its kit and skin, never the old one's shield or charges.
+      const kit = defaultCustomization(character.classId);
+      p.classId = character.classId;
+      p.skinId = kit.selectedSkin;
+      p.loadout = { ...activePreset(kit).loadout };
+      p.windup = 0;
+      p.shotCharge = 0;
+      p.specialCharge = 0;
+      p.swingPower = 0;
+      p.guarding = false;
+      p.attackLock = Math.max(p.attackLock, 0.6);
+    }
+    this.opening.delete(id);
+    this.applyCharacter(p, character);
+    this.bagChanged(id);
+    return true;
+  }
+
+  unequip(id: string, slot: EquipSlot): boolean {
+    const character = this.characters.get(id);
+    const p = this.state.players.find((q) => q.id === id);
+    if (!character || !p) return false;
+    if (slot === 'weapon') return (this.deny(id, 'Arma', 'Las manos no quedan vacías: cambiá el arma por otra.'), false);
+    const instance = character.equipment[slot];
+    if (!instance) return false;
+    if (character.inventory.length >= INVENTORY_SIZE)
+      return (this.deny(id, ITEMS[instance.itemId]?.name ?? 'Objeto', `Tu bolsa está llena (${INVENTORY_SIZE}/${INVENTORY_SIZE}).`), false);
+    character.equipment[slot] = null;
+    character.inventory.push(instance);
+    this.applyCharacter(p, character);
+    this.bagChanged(id);
+    return true;
+  }
+
+  /** Gone for good. Only what is in the bag; what is worn has to come off first. */
+  discard(id: string, uid: string): boolean {
+    const character = this.characters.get(id);
+    const index = character?.inventory.findIndex((i) => i.uid === uid) ?? -1;
+    if (!character || index < 0) return false;
+    character.inventory.splice(index, 1);
+    this.bagChanged(id);
+    return true;
+  }
+
+  /**
+   * Reads a grimoire. Every check runs before anything changes, so a refusal never eats the book;
+   * a success removes it and applies it in the same call.
+   */
+  useItem(id: string, uid: string, skillId?: string): boolean {
+    const character = this.characters.get(id);
+    const p = this.state.players.find((q) => q.id === id);
+    const index = character?.inventory.findIndex((i) => i.uid === uid) ?? -1;
+    if (!character || !p || index < 0) return false;
+    const item = ITEMS[character.inventory[index].itemId];
+    const effect = item?.grimoire;
+    const refuse = (text: string) => (this.deny(id, item?.name ?? 'Objeto', text), false);
+    if (!effect) return refuse(item?.slot ? 'Eso no se lee: se equipa.' : 'No sabés qué hacer con esto.');
+    if (p.hp <= 0) return refuse('Los caídos no leen.');
+    const consume = () => {
+      character.inventory.splice(index, 1);
+      this.bagChanged(id);
+    };
+    const tell = (title: string, text: string, color = '#9fd8ff') => this.notify(id, { kind: 'item', title, text, color });
+
+    switch (effect.kind) {
+      case 'teach': {
+        const skill = SKILLS_WORLD[effect.skillId];
+        if (!skill) return refuse('Las páginas están en blanco.');
+        const known = character.skills[skill.id];
+        if (known) {
+          if (known.level >= skill.maxLevel) return refuse(`«${skillName(skill, known.level)}» ya está en su nivel máximo.`);
+          consume();
+          this.raiseSkillLevel(id, skill, known);
+          return true;
+        }
+        consume();
+        character.skills[skill.id] = { level: 1, uses: 0, nodes: [] };
+        const open = schoolOpen(skill, character.affinities, character.trees);
+        const free = CAST_SLOTS.find((slot) => slotOpen(slot, character.level) && character.slots[slot] === null);
+        if (open && free) character.slots[free] = skill.id;
+        tell(
+          `Aprendiste «${skill.name}»`,
+          open ? skill.flavor : 'La conocés, pero tu cuerpo todavía no reconoce su flujo. Abrí esa afinidad para usarla.',
+          skill.color,
+        );
+        return true;
+      }
+      case 'affinity': {
+        const state = character.affinities[effect.affinity];
+        const name = AFFINITY_NAMES[effect.affinity];
+        if (state && state.points >= AFFINITY_POINT_CAP) return refuse(`${name} ya llegó a su tope de ${AFFINITY_POINT_CAP} puntos.`);
+        consume();
+        if (state) state.points++;
+        else character.affinities[effect.affinity] = { points: 1, xp: 0, cultivation: 1 };
+        tell(state ? `${name} se profundiza` : `Se abrió ${name}`, state ? `Ahora tenés ${state.points} puntos.` : 'Una puerta que no sabías que existía.');
+        return true;
+      }
+      case 'train': {
+        const skill = skillId ? SKILLS_WORLD[skillId] : undefined;
+        const progress = skill ? character.skills[skill.id] : undefined;
+        if (!skill || !progress || progress.level >= skill.maxLevel)
+          return refuse('Elegí una habilidad que conozcas y que todavía pueda crecer.');
+        consume();
+        this.raiseSkillLevel(id, skill, progress);
+        return true;
+      }
+      case 'copy': {
+        if (character.copyCharges >= COPY_CHARGE_CAP) return refuse(`El ojo no aguanta más de ${COPY_CHARGE_CAP} cargas.`);
+        consume();
+        character.copyCharges++;
+        tell('El ojo se abre otra vez', `Cargas del Ojo del Impostor: ${character.copyCharges}.`, '#ff6fb0');
+        return true;
+      }
+    }
+  }
+
   /** Mana ticks back for anyone who has a pool at all. */
   private stepMana(dt: number) {
     for (const p of this.state.players) {
       const character = this.characters.get(p.id);
       if (!character || p.hp <= 0) continue;
       const max = this.maxManaOf(character);
-      p.mana = Math.min(max, (p.mana ?? max) + manaRegenFor(character.stats) * dt);
+      p.mana = Math.min(max, (p.mana ?? max) + manaRegenFor(statsWithEquipment(character)) * dt);
       p.maxMana = max;
     }
   }

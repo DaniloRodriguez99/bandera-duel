@@ -309,6 +309,85 @@ describe('sala del mundo', () => {
     }
   });
 
+  it('abrir un cofre guarda al personaje en el momento, sin esperar el volcado', async () => {
+    const s = await connect({ account: 'Cofre', password: 'cofre123', create: true, characterId: 'cofre-1', name: 'Cofre', classId: 'guardian' });
+    await until(() => s.entered !== null && s.sheet !== null);
+    const valle = zoneWorld(s.room.roomId, 'umbral') as unknown as ZoneWorldForTests & {
+      state: { chests: { id: string; x: number; y: number }[]; players: { id: string; x: number; y: number; invuln: number }[] };
+    };
+    const chest = valle.state.chests[0];
+    const p = valle.state.players.find((q) => q.id === 'cofre-1')!;
+    Object.assign(p, { x: chest.x, y: chest.y + 20, invuln: 999 });
+    // The snapshot now carries the chest, which it did not from the village.
+    await until(() => (s.snapshots.at(-1) as Snapshot & { chests?: { id: string }[] }).chests?.some((c) => c.id === chest.id) ?? false);
+    await until(() => (s.sheet?.inventory.length ?? 0) > 0, 6000);
+    const cuenta = await characterStore().verify('Cofre', 'cofre123');
+    const guardado = await characterStore().load(cuenta!, 'cofre-1');
+    expect(guardado!.inventory.map((i) => i.uid)).toEqual(s.sheet!.inventory.map((i) => i.uid));
+  });
+
+  it('desde el pueblo no llegan los cofres de la otra punta del valle', async () => {
+    const s = await connect({ account: 'Lejos', password: 'lejos123', create: true, characterId: 'lejos-1', name: 'Lejos', classId: 'guardian' });
+    await until(() => s.entered !== null && s.snapshots.length > 0);
+    const ultimo = s.snapshots.at(-1) as Snapshot & { chests?: unknown[] };
+    expect(ultimo.chests).toEqual([]);
+  });
+
+  it('equipar por mensaje valida en el servidor: un uid inventado no cambia nada', async () => {
+    const s = await connect({ account: 'Armero', password: 'armero12', create: true, characterId: 'armero-1', name: 'Armero', classId: 'guardian' });
+    await until(() => s.entered !== null && s.sheet !== null);
+    s.room.send('equip', { uid: 'i999' });
+    s.room.send('equip', { uid: '../../etc' });
+    await sleep(200);
+    expect(s.sheet!.equipment.weapon.itemId).toBe('espada_madera');
+    const world = zoneWorld(s.room.roomId, 'umbral') as unknown as ZoneWorldForTests & {
+      characters: Map<string, Character>;
+      give(id: string, itemId: string): { uid: string } | null;
+    };
+    world.characters.get('armero-1')!.level = 4;
+    const espada = world.give('armero-1', 'espada_acero')!;
+    s.room.send('equip', { uid: espada.uid });
+    await until(() => s.sheet?.equipment.weapon.itemId === 'espada_acero');
+    expect(s.sheet!.inventory.map((i) => i.itemId)).toContain('espada_madera');
+  });
+
+  it('entrar dos veces con el mismo personaje no lo duplica: la sesión nueva toma la ficha viva', async () => {
+    const a = await connect({ account: 'Doble', password: 'doble123', create: true, characterId: 'doble-1', name: 'Doble', classId: 'guardian' });
+    await until(() => a.entered !== null);
+    const world = zoneWorld(a.room.roomId, 'umbral') as unknown as ZoneWorldForTests & {
+      give(id: string, itemId: string): { uid: string } | null;
+    };
+    const libro = world.give('doble-1', 'manual_practica')!;
+    let reemplazada = false;
+    let cerrada = false;
+    a.room.onMessage('replaced', () => (reemplazada = true));
+    a.room.onLeave(() => (cerrada = true));
+    const b = await connect({ account: 'Doble', password: 'doble123', characterId: 'doble-1' });
+    await until(() => b.entered !== null && b.sheet !== null && cerrada);
+    expect(reemplazada).toBe(true);
+    await sleep(200);
+    expect(world.state.players.filter((p) => p.id === 'doble-1')).toHaveLength(1);
+    expect(b.sheet!.inventory.map((i) => i.uid)).toContain(libro.uid);
+    const x = world.state.players.find((p) => p.id === 'doble-1')!.x;
+    let seq = 0;
+    const paso = setInterval(() => b.room.send('input', { seq: ++seq, x: 1, y: 0, angle: 0, aimX: 0, aimY: 0 }), 33);
+    try {
+      await until(() => world.state.players.find((p) => p.id === 'doble-1')!.x > x + 40);
+    } finally {
+      clearInterval(paso);
+    }
+  });
+
+  it('otra cuenta no puede entrar con el id de un personaje que ya está en el mundo', async () => {
+    const a = await connect({ account: 'Dueno', password: 'dueno123', create: true, characterId: 'mismo-id', name: 'Dueño', classId: 'guardian' });
+    await until(() => a.entered !== null);
+    await expect(
+      sdk.joinOrCreate('world', { account: 'Intruso', password: 'intruso1', create: true, characterId: 'mismo-id', name: 'Intruso' }),
+    ).rejects.toBeTruthy();
+    const world = zoneWorld(a.room.roomId, 'umbral');
+    expect(world.state.players.filter((p) => p.id === 'mismo-id')).toHaveLength(1);
+  });
+
   it('la sala de duelo sigue funcionando igual al lado', async () => {
     const duelo = await sdk.create('duel', { name: 'Azul', classId: 'guardian' });
     sessions.push(duelo);

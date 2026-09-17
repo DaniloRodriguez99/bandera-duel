@@ -23,6 +23,9 @@ export type ZoneId =
 /** Families of world monsters. The stats and skill kit of each one live in `mobs.ts`. */
 export type MobFamilyId = 'lobezno' | 'jabali' | 'arana' | 'saqueador' | 'ghoul';
 
+/** How good a guarded chest is: how long it takes to open, what it drops, how long it takes to return. */
+export type ChestTier = 'comun' | 'raro' | 'legendario';
+
 export interface Spawner {
   familyId: MobFamilyId;
   level: number;
@@ -34,6 +37,8 @@ export interface Spawner {
   respawnSeconds: number;
   /** What the camp guards, if anything. Shown to the player and used to place loot. */
   guards?: 'chest' | 'shrine' | 'portal';
+  /** The chest a `guards: 'chest'` camp sits on. */
+  chest?: { tier: ChestTier };
 }
 
 export interface Portal {
@@ -157,6 +162,7 @@ export const ZONES: Partial<Record<ZoneId, ZoneDefinition>> = {
         count: 4,
         respawnSeconds: 45,
         guards: 'chest',
+        chest: { tier: 'comun' },
       },
     ],
     portals: [
@@ -190,6 +196,7 @@ export const ZONES: Partial<Record<ZoneId, ZoneDefinition>> = {
         count: 5,
         respawnSeconds: 30,
         guards: 'chest',
+        chest: { tier: 'raro' },
       },
       { familyId: 'lobezno', level: 8, at: { x: 2700, y: 1300 }, radius: 260, count: 5, respawnSeconds: 40 },
       { familyId: 'saqueador', level: 9, at: { x: 3300, y: 2000 }, radius: 220, count: 3, respawnSeconds: 45 },
@@ -230,6 +237,18 @@ export const ZONES: Partial<Record<ZoneId, ZoneDefinition>> = {
         count: 5,
         respawnSeconds: 60,
         guards: 'chest',
+        chest: { tier: 'raro' },
+      },
+      // Above the zone's level on purpose: the tempting chest nobody at level 10 should touch alone.
+      {
+        familyId: 'saqueador',
+        level: 18,
+        at: { x: 3650, y: 320 },
+        radius: 200,
+        count: 6,
+        respawnSeconds: 90,
+        guards: 'chest',
+        chest: { tier: 'legendario' },
       },
     ],
     portals: [

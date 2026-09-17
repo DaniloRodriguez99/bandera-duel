@@ -38,6 +38,17 @@ describe('migración de guardados', () => {
     expect(migrate({ version: 1, character: viejo, updatedAt: 0 }).character.thrall).toBe(null);
   });
 
+  it('la bolsa se valida por forma, rechaza uid duplicados y deja pasar objetos que ya no existen', () => {
+    const { character } = guardado();
+    const con = (extra: object) => ({ version: 1, character: { ...character, ...extra }, updatedAt: 0 });
+    expect(migrate(con({ inventory: [{ uid: 'i1', itemId: 'algo_que_se_borro' }] })).character.inventory).toHaveLength(1);
+    expect(() => migrate(con({ inventory: [{ uid: 'i0', itemId: 'jubon_cuero' }] }))).toThrow(
+      expect.objectContaining({ code: 'save-invalido' }),
+    );
+    expect(() => migrate(con({ inventory: 'nada' }))).toThrow(expect.objectContaining({ code: 'save-invalido' }));
+    expect(() => migrate(con({ itemSerial: -1 }))).toThrow(expect.objectContaining({ code: 'save-invalido' }));
+  });
+
   it('la basura no se convierte en un personaje nuevo: tira save-invalido', () => {
     const rotos: unknown[] = [
       null,

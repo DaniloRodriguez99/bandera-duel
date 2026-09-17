@@ -35,7 +35,9 @@ import {
   type MobKind,
 } from '@bandera/shared';
 import { zone, type ZoneId } from '@bandera/shared/rpg/zones';
-import { SHRINE_WARD, worldInput, type Weapon } from '@bandera/shared/world';
+import { SHRINE_WARD, worldInput, type ChestView, type Weapon } from '@bandera/shared/world';
+
+const CHEST_COLOR: Record<ChestView['tier'], number> = { comun: 0xc9a36b, raro: 0x56b8ff, legendario: 0xffc84d };
 import { Controls } from './input.js';
 import { blueprintSpec, clipRay } from './targeting.js';
 import { sound } from './audio.js';
@@ -1807,6 +1809,32 @@ export class Arena extends Phaser.Scene {
       this.traps.strokeRoundedRect(g.x - 6, g.y - 12, 12, 16, { tl: 5, tr: 5, bl: 1, br: 1 });
       this.traps.lineBetween(g.x, g.y - 9, g.x, g.y - 1);
       this.traps.lineBetween(g.x - 3, g.y - 6, g.x + 3, g.y - 6);
+    }
+    // World chests: coloured by tier, lid shut while ready, dimmed and open while they come back,
+    // and a ring filling up while somebody opens one.
+    for (const chest of (s as Snapshot & { chests?: ChestView[] }).chests ?? []) {
+      const color = CHEST_COLOR[chest.tier];
+      const alpha = chest.ready ? 1 : 0.4;
+      if (chest.tier === 'legendario' && chest.ready) {
+        this.traps.fillStyle(color, 0.12 + 0.08 * Math.sin(time * 0.004));
+        this.traps.fillCircle(chest.x, chest.y, 30);
+      }
+      this.traps.fillStyle(0x000000, 0.25 * alpha);
+      this.traps.fillEllipse(chest.x, chest.y + 10, 30, 8);
+      this.traps.fillStyle(0x4a3220, alpha);
+      this.traps.fillRoundedRect(chest.x - 11, chest.y - 4, 22, 14, 2);
+      this.traps.fillStyle(color, alpha);
+      if (chest.ready) this.traps.fillRoundedRect(chest.x - 12, chest.y - 10, 24, 8, { tl: 5, tr: 5, bl: 0, br: 0 });
+      else this.traps.fillRect(chest.x - 12, chest.y - 16, 24, 4);
+      this.traps.fillRect(chest.x - 2, chest.y - 4, 4, 5);
+      this.traps.lineStyle(1, 0x1a120a, 0.8 * alpha);
+      this.traps.strokeRoundedRect(chest.x - 11, chest.y - 4, 22, 14, 2);
+      if (chest.progress > 0) {
+        this.traps.lineStyle(3, color, 0.95);
+        this.traps.beginPath();
+        this.traps.arc(chest.x, chest.y, 22, -Math.PI / 2, -Math.PI / 2 + chest.progress * Math.PI * 2);
+        this.traps.strokePath();
+      }
     }
     // A necromancer casting a raise: the mandala grows where the dead will rise.
     for (const q of s.players) {

@@ -10,6 +10,8 @@ import {
   STAT_NAMES,
   canLearn,
   effectiveSkill,
+  refusalFor,
+  schoolOpen,
   rankOf,
   skillName,
   usesToLevel,
@@ -19,6 +21,17 @@ import {
 } from '@bandera/shared/rpg/skills';
 import { xpToLevel, STAT_IDS, type StatId } from '@bandera/shared/rpg/progression';
 import {
+  EQUIP_SLOTS,
+  INVENTORY_SIZE,
+  ITEMS,
+  describeBonus,
+  describeGrimoire,
+  equipmentBonus,
+  type EquipSlot,
+  type ItemInstance,
+} from '@bandera/shared/rpg/items';
+import { CHEST_TIERS } from '@bandera/shared/rpg/loot';
+import {
   CAST_SLOTS,
   SLOT_LEVEL,
   SLOT_NAMES,
@@ -27,6 +40,7 @@ import {
   WEAPON_IDS,
   type CastSlot,
   type Character,
+  type ChestView,
   type Creation,
   type Notice,
   type Weapon,
@@ -46,7 +60,14 @@ export interface WorldHudActions {
   learn(skillId: string, nodeId: string): void;
   slot(slot: CastSlot, skillId: string | null): void;
   spend(stat: StatId): void;
+  equip(uid: string): void;
+  unequip(slot: EquipSlot): void;
+  use(uid: string, skillId?: string): void;
+  discard(uid: string): void;
 }
+
+const SLOT_LABEL: Record<EquipSlot, string> = { weapon: 'Arma', armor: 'Armadura', amulet: 'Amuleto' };
+const KIND_LABEL: Record<string, string> = { arma: 'Arma', armadura: 'Armadura', amuleto: 'Amuleto', grimorio: 'Grimorio' };
 
 const RARITY_COLOR: Record<Rarity, string> = {
   comun: '#b9c6cf',
@@ -92,6 +113,8 @@ const NOTICE_LIFE: Partial<Record<Notice['kind'], number>> = {
   denied: 2200,
   learn: 3800,
   death: 6000,
+  loot: 6000,
+  item: 4200,
   kill: 4500,
   raise: 5000,
 };
@@ -109,6 +132,12 @@ export class WorldHud {
   private panel: HTMLElement;
   private creation: HTMLElement;
   private revealPending = false;
+  private tab: 'skills' | 'items' = 'skills';
+  private selectedUid: string | null = null;
+  /** Second click on "Tirar" within a few seconds actually throws it away. */
+  private discardArmed: string | null = null;
+  private channel: HTMLElement;
+  private lootStrip: HTMLElement;
 
   constructor(
     stage: HTMLElement,
@@ -125,7 +154,9 @@ export class WorldHud {
         <div class="wh-bar xp" title="Experiencia"><i id="wh-xp"></i></div>
         <button type="button" id="wh-system" class="wh-system" aria-label="Abrir el Sistema">SISTEMA <kbd>K</kbd><b id="wh-owed" hidden></b></button>
       </div>
+      <div id="wh-channel" class="wh-channel" hidden><span></span><i></i></div>
       <div id="skillbar" class="skillbar" aria-label="Habilidades"></div>
+      <div id="wh-loot" class="wh-loot" hidden></div>
       <div id="wh-notices" class="wh-notices" aria-live="polite"></div>
       <div id="wh-callout" class="wh-callout" hidden aria-live="polite">
         <small id="wh-incantation"></small><strong id="wh-callout-name"></strong>
@@ -136,6 +167,8 @@ export class WorldHud {
     this.callout = this.root.querySelector('#wh-callout')!;
     this.notices = this.root.querySelector('#wh-notices')!;
     this.tooltip = this.root.querySelector('#wh-tooltip')!;
+    this.channel = this.root.querySelector('#wh-channel')!;
+    this.lootStrip = this.root.querySelector('#wh-loot')!;
     this.panel = this.root.querySelector('#wh-panel')!;
     // The HUD is a stacking context under the chat button; the System window must open above it.
     stage.append(this.panel);
@@ -261,7 +294,7 @@ export class WorldHud {
     const sheet = this.sheet!;
     const weapon = this.slotEls.get('click')!;
     weapon.querySelector('img')!.src = icon(WEAPON_ICON[sheet.weapon]);
-    weapon.title = `${WEAPONS[sheet.weapon].name} · ${WEAPONS[sheet.weapon].text}`;
+    weapon.title = `${ITEMS[sheet.equipment.weapon.itemId]?.name ?? WEAPONS[sheet.weapon].name} · ${WEAPONS[sheet.weapon].text}`;
     for (const slot of CAST_SLOTS) {
       const node = this.slotEls.get(slot)!;
       const locked = sheet.level < SLOT_LEVEL[slot];
@@ -334,7 +367,10 @@ export class WorldHud {
     for (const slot of CAST_SLOTS) {
       const button = el('button', '', SLOT_NAMES[slot]) as HTMLButtonElement;
       button.type = 'button';
-      button.disabled = sheet.level < SLOT_LEVEL[slot];
+      // A book can teach a skill whose door is still closed: say so instead of a silent refusal.
+      const closed = !schoolOpen(skill, sheet.affinities, sheet.trees);
+      button.disabled = sheet.level < SLOT_LEVEL[slot] || closed;
+      if (closed) button.title = refusalFor(skill.school);
       button.dataset.active = String(sheet.slots[slot] === skill.id);
       button.dataset.assign = `${skill.id}:${slot}`;
       button.onclick = () => this.actions.slot(slot, skill.id);
@@ -384,6 +420,23 @@ export class WorldHud {
     close.setAttribute('aria-label', 'Cerrar');
     close.onclick = () => this.togglePanel(false);
     head.append(close);
+    const tabs = el('nav', 'wh-tabs');
+    tabs.id = 'wh-tabs';
+    for (const [id, label] of [['skills', 'Habilidades'], ['items', `Equipo · ${sheet.inventory.length}/${INVENTORY_SIZE}`]] as const) {
+      const button = el('button', '', label) as HTMLButtonElement;
+      button.type = 'button';
+      button.dataset.tab = id;
+      button.setAttribute('aria-pressed', String(this.tab === id));
+      button.onclick = () => {
+        this.tab = id;
+        this.renderPanel();
+      };
+      tabs.append(button);
+    }
+    if (this.tab === 'items') {
+      this.panel.append(head, tabs, this.itemsTab(sheet));
+      return;
+    }
 
     const status = el('div', 'wh-attributes');
     status.append(el('h5', '', `Atributos · ${sheet.unspent} por repartir`));
@@ -426,8 +479,179 @@ export class WorldHud {
     }
     const body = el('div', 'wh-panel-body');
     body.append(side, skills);
-    this.panel.append(head, body);
+    this.panel.append(head, tabs, body);
   }
+
+  /** Opens the System on the gear tab, with one item picked. */
+  showItem(uid: string) {
+    this.tab = 'items';
+    this.selectedUid = uid;
+    this.togglePanel(true);
+  }
+
+  private itemsTab(sheet: Character) {
+    const body = el('div', 'wh-panel-body');
+    const side = el('aside', 'wh-side');
+    const gear = el('div', 'wh-equipment');
+    gear.id = 'wh-equipment';
+    gear.append(el('h5', '', 'Puesto'));
+    for (const slot of EQUIP_SLOTS) {
+      const instance = sheet.equipment[slot];
+      const item = instance ? ITEMS[instance.itemId] : undefined;
+      const cell = el('button', 'wh-equip-slot') as HTMLButtonElement;
+      cell.type = 'button';
+      cell.dataset.slot = slot;
+      cell.dataset.item = instance?.itemId ?? '';
+      cell.style.setProperty('--rarity', item ? RARITY_COLOR[item.rarity] : '#2b4a66');
+      cell.innerHTML = `<small>${SLOT_LABEL[slot]}</small>${item ? `<img src="${icon(item.icon)}" alt="" aria-hidden="true"><b></b>` : '<em>Vacío</em>'}`;
+      if (item) cell.querySelector('b')!.textContent = item.name;
+      if (instance) cell.onclick = () => ((this.selectedUid = instance.uid), this.renderPanel());
+      gear.append(cell);
+    }
+    const bonus = equipmentBonus(sheet);
+    const lines = describeBonus({ ...bonus, stats: Object.fromEntries(Object.entries(bonus.stats).filter(([, n]) => n)) });
+    gear.append(el('p', 'wh-gear-total', lines.length ? lines.join(' · ') : 'Sin bonos de equipo.'));
+    side.append(gear);
+
+    const main = el('div', 'wh-bag-area');
+    const bag = el('div', 'wh-bag');
+    bag.id = 'wh-bag';
+    bag.dataset.capacity = String(INVENTORY_SIZE);
+    bag.dataset.count = String(sheet.inventory.length);
+    for (let i = 0; i < INVENTORY_SIZE; i++) {
+      const instance = sheet.inventory[i];
+      const item = instance ? ITEMS[instance.itemId] : undefined;
+      const cell = el('button', 'wh-bag-cell') as HTMLButtonElement;
+      cell.type = 'button';
+      if (instance) {
+        cell.dataset.uid = instance.uid;
+        cell.dataset.item = instance.itemId;
+        cell.dataset.rarity = item?.rarity ?? '';
+        cell.style.setProperty('--rarity', item ? RARITY_COLOR[item.rarity] : '#44545c');
+        cell.setAttribute('aria-pressed', String(this.selectedUid === instance.uid));
+        cell.innerHTML = `<img src="${icon(item?.icon ?? 'vanguard-counter')}" alt="${item?.name ?? 'Objeto desconocido'}">`;
+        cell.title = item?.name ?? 'Objeto desconocido';
+        cell.onclick = () => ((this.selectedUid = instance.uid), (this.discardArmed = null), this.renderPanel());
+      } else cell.disabled = true;
+      bag.append(cell);
+    }
+    main.append(bag);
+    const selected = this.findItem(sheet, this.selectedUid);
+    main.append(selected ? this.itemCard(sheet, selected.instance, selected.slot) : el('p', 'wh-hint', 'Elegí un objeto para ver qué hace.'));
+    body.append(side, main);
+    return body;
+  }
+
+  private findItem(sheet: Character, uid: string | null): { instance: ItemInstance; slot: EquipSlot | null } | null {
+    if (!uid) return null;
+    const inBag = sheet.inventory.find((i) => i.uid === uid);
+    if (inBag) return { instance: inBag, slot: null };
+    for (const slot of EQUIP_SLOTS) if (sheet.equipment[slot]?.uid === uid) return { instance: sheet.equipment[slot]!, slot };
+    return null;
+  }
+
+  private itemCard(sheet: Character, instance: ItemInstance, worn: EquipSlot | null) {
+    const item = ITEMS[instance.itemId];
+    const card = el('article', `wh-item rarity-${item?.rarity ?? 'comun'}`);
+    card.dataset.uid = instance.uid;
+    card.style.setProperty('--rarity', item ? RARITY_COLOR[item.rarity] : '#44545c');
+    if (!item) {
+      card.append(el('h4', '', 'Objeto desconocido'), el('p', '', 'Este objeto ya no existe en el mundo. Podés tirarlo.'));
+    } else {
+      card.innerHTML = `
+        <header>SISTEMA · ${RARITY_NAMES[item.rarity].toUpperCase()} · ${KIND_LABEL[item.kind]} · Nv ${item.level}</header>
+        <div class="wh-skill-head"><img src="${icon(item.icon)}" alt="" aria-hidden="true"><div><h4></h4>${worn ? '<span class="wh-meta">Puesto</span>' : ''}</div></div>`;
+      card.querySelector('h4')!.textContent = item.name;
+      const effect = item.grimoire ? [describeGrimoire(item.grimoire)] : describeBonus(item.bonus);
+      const list = el('ul', 'wh-item-lines');
+      for (const line of effect) list.append(el('li', '', line));
+      card.append(list, el('blockquote', '', item.flavor));
+      if (item.grimoire?.kind === 'teach') {
+        const skill = SKILLS_WORLD[item.grimoire.skillId];
+        if (skill && !schoolOpen(skill, sheet.affinities, sheet.trees)) card.append(el('p', 'wh-warning', refusalFor(skill.school)));
+      }
+    }
+    const actions = el('div', 'wh-item-actions');
+    const button = (label: string, onclick: () => void, disabled = false) => {
+      const b = el('button', '', label) as HTMLButtonElement;
+      b.type = 'button';
+      b.disabled = disabled;
+      b.onclick = onclick;
+      actions.append(b);
+      return b;
+    };
+    if (item?.slot && !worn) {
+      const b = button(sheet.level < item.level ? `Equipar · Nv ${item.level}` : 'Equipar', () => this.actions.equip(instance.uid), sheet.level < item.level);
+      b.dataset.action = 'equip';
+    }
+    if (worn && worn !== 'weapon') button('Quitar', () => this.actions.unequip(worn)).dataset.action = 'unequip';
+    if (item?.grimoire && !worn) {
+      if (item.grimoire.kind === 'train') {
+        const select = el('select', 'wh-train') as HTMLSelectElement;
+        for (const [id, progress] of Object.entries(sheet.skills)) {
+          const skill = SKILLS_WORLD[id];
+          if (skill && progress.level < skill.maxLevel) select.append(new Option(`${skillName(skill, progress.level)} · Nv ${progress.level}`, id));
+        }
+        actions.append(select);
+        button('Usar', () => this.actions.use(instance.uid, select.value), !select.options.length).dataset.action = 'use';
+      } else button('Usar', () => this.actions.use(instance.uid)).dataset.action = 'use';
+    }
+    if (!worn) {
+      const armed = this.discardArmed === instance.uid;
+      const b = button(armed ? 'Tirar para siempre' : 'Tirar', () => {
+        if (!armed) {
+          this.discardArmed = instance.uid;
+          this.renderPanel();
+          return;
+        }
+        this.discardArmed = null;
+        this.selectedUid = null;
+        this.actions.discard(instance.uid);
+      });
+      b.dataset.action = 'discard';
+      b.classList.toggle('danger', armed);
+    }
+    card.append(actions);
+    return card;
+  }
+
+  // ─── Chests ────────────────────────────────────────────────────────────────────────────────
+
+  /** While this character opens a chest, a thin System bar says so. */
+  setChests(chests: ChestView[], me: Player | undefined) {
+    const mine = me ? chests.find((c) => c.opener === me.id) : undefined;
+    this.channel.hidden = !mine;
+    if (!mine) return;
+    this.channel.dataset.tier = mine.tier;
+    this.channel.querySelector('span')!.textContent = `Abriendo ${CHEST_TIERS[mine.tier].name.toLowerCase()}…`;
+    (this.channel.querySelector('i') as HTMLElement).style.width = `${Math.round(mine.progress * 100)}%`;
+  }
+
+  /** What a chest gave, as cards with their rarity; clicking one opens it in the System. */
+  private showLoot(n: Notice) {
+    this.lootStrip.replaceChildren();
+    for (const instance of n.items ?? []) {
+      const item = ITEMS[instance.itemId];
+      if (!item) continue;
+      const card = el('button', `reward-card rarity-${item.rarity}`) as HTMLButtonElement;
+      card.type = 'button';
+      card.dataset.item = item.id;
+      card.dataset.rarity = item.rarity;
+      card.style.setProperty('--rarity', RARITY_COLOR[item.rarity]);
+      card.innerHTML = `<img class="reward-icon" src="${icon(item.icon)}" alt="" aria-hidden="true"><small>${RARITY_NAMES[item.rarity].toUpperCase()}</small><strong></strong><p></p>`;
+      card.querySelector('strong')!.textContent = item.name;
+      card.querySelector('p')!.textContent = item.grimoire ? describeGrimoire(item.grimoire) : describeBonus(item.bonus).join(' · ');
+      card.onclick = () => {
+        this.lootStrip.hidden = true;
+        this.showItem(instance.uid);
+      };
+      this.lootStrip.append(card);
+    }
+    this.lootStrip.hidden = !this.lootStrip.children.length;
+    clearTimeout(this.lootTimer);
+    this.lootTimer = window.setTimeout(() => (this.lootStrip.hidden = true), 5500);
+  }
+  private lootTimer = 0;
 
   // ─── The voice of the System ───────────────────────────────────────────────────────────────
 
@@ -439,6 +663,7 @@ export class WorldHud {
       return;
     }
     if (n.kind === 'evolution' || n.kind === 'steal') this.cinematic(n);
+    if (n.kind === 'loot') this.showLoot(n);
     const window = el('article', 'wh-notice');
     window.dataset.kind = n.kind;
     window.style.setProperty('--accent', n.color ?? '#56b8ff');

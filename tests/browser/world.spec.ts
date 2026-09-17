@@ -127,3 +127,54 @@ test('quien se queda quieto queda afuera con su personaje guardado, y vuelve con
   await expect.poll(async () => Number(await page.locator('#stage').getAttribute('data-x'))).toBeGreaterThan(x + 100);
   expect(errors).toEqual([]);
 });
+
+test('el Sistema muestra el equipo puesto, la bolsa y lo que da un cofre', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  await page.goto('/');
+  await page.locator('#game-mode').selectOption('world');
+  await page.locator('#name').fill('Armero');
+  await page.locator('#world-user').fill(`armero${Date.now().toString(36).slice(-6)}`);
+  await page.locator('#world-pass').fill('mundo123');
+  await page.locator('#world-new').check();
+  await page.locator('#enter').click();
+  await page.locator('#world-create').click();
+  for (const affinity of ['fuego', 'fuego', 'agua']) await page.locator(`[data-affinity=${affinity}]`).click();
+  await page.locator('[data-weapon=baston]').click();
+  await page.locator('#wh-born').click();
+  await expect(page.locator('#stage')).toHaveAttribute('data-weapon-item', 'baston_aprendiz', { timeout: 15000 });
+  await expect(page.locator('#stage')).toHaveAttribute('data-bag', '0');
+
+  await page.keyboard.press('KeyK');
+  await page.locator('#wh-tabs [data-tab=items]').click();
+  await expect(page.locator('#wh-equipment [data-slot=weapon]')).toHaveAttribute('data-item', 'baston_aprendiz');
+  await expect(page.locator('#wh-bag')).toHaveAttribute('data-capacity', '20');
+  await expect(page.locator('#wh-bag')).toHaveAttribute('data-count', '0');
+  await page.locator('#wh-equipment [data-slot=weapon]').click();
+  await expect(page.locator('.wh-item h4')).toHaveText('Bastón de Aprendiz');
+  await page.screenshot({ path: test.info().outputPath('equipo.png') });
+  await page.keyboard.press('Escape');
+
+  // What a chest window looks like: one card per item, framed by its rarity. (After fate's card from
+  // birth has gone, which never coincides with a chest in play.)
+  await expect(page.locator('#wh-destiny')).toHaveCount(0, { timeout: 10000 });
+  await page.evaluate(() =>
+    (window as unknown as { __worldHud: { notice(n: object): void } }).__worldHud.notice({
+      id: 'x',
+      kind: 'loot',
+      title: '¡Cofre legendario abierto!',
+      text: 'Conseguiste: Arco del Viento de Vael, Grimorio: Mil Espadas, Talismán de Jade.',
+      tier: 'legendario',
+      items: [
+        { uid: 'i90', itemId: 'arco_vael' },
+        { uid: 'i91', itemId: 'grimorio:mil_espadas' },
+        { uid: 'i92', itemId: 'talisman_jade' },
+      ],
+    }),
+  );
+  await expect(page.locator('#wh-loot .reward-card')).toHaveCount(3);
+  await expect(page.locator('#wh-loot [data-item=arco_vael]')).toHaveAttribute('data-rarity', 'legendaria');
+  await page.waitForTimeout(600);
+  await page.screenshot({ path: test.info().outputPath('botin.png') });
+  expect(errors).toEqual([]);
+});
