@@ -915,7 +915,9 @@ function renderWorldChrome(s: Snapshot, me: Snapshot['players'][number] | undefi
   $('overlay').hidden = true;
   if (zoneId) worldHud.setZone(zoneId);
   if (me) worldHud.setPlayer(me);
-  worldHud.setChests((s as Snapshot & { chests?: ChestView[] }).chests ?? [], me);
+  const chests = (s as Snapshot & { chests?: ChestView[] }).chests ?? [];
+  worldHud.setChests(chests, me);
+  worldHud.setSurroundings(s.players, s.zombies, chests, me, arena.viewRect());
 }
 function render(s: Snapshot) {
   if (!room && !practice) return;

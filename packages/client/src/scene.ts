@@ -35,6 +35,7 @@ import {
   type MobKind,
 } from '@bandera/shared';
 import { zone, type ZoneId } from '@bandera/shared/rpg/zones';
+import { TILE, TILES, roadPaths, tileColor, tileMap, type TileKind } from '@bandera/shared/rpg/terrain';
 import { SHRINE_WARD, worldInput, type ChestView, type Weapon } from '@bandera/shared/world';
 
 const CHEST_COLOR: Record<ChestView['tier'], number> = { comun: 0xc9a36b, raro: 0x56b8ff, legendario: 0xffc84d };
@@ -278,6 +279,12 @@ export class Arena extends Phaser.Scene {
     g.fillRect(x, y + h - 6, w, 6);
   }
 
+  /** What the camera shows right now, in world units, for the minimap's frame. */
+  viewRect() {
+    const view = this.cameras?.main?.worldView;
+    return view ? { x: view.x, y: view.y, w: view.width, h: view.height } : null;
+  }
+
   /** The play area: the arena's fixed rectangle, or the bounds of the zone being played. */
   private bounds(): Bounds {
     const zoneId = (this.snapshot as (Snapshot & { zoneId?: ZoneId }) | undefined)?.zoneId;
@@ -310,32 +317,103 @@ export class Arena extends Phaser.Scene {
     this.mapObjects.forEach((object) => object.destroy());
     this.mapObjects = [];
     const definition = zone(zoneId);
+    const theme = definition.theme;
     const b = definition.terrain.bounds;
     const width = b.maxX + b.minX;
     const height = b.maxY + b.minY;
     const g = this.add.graphics();
     this.mapObjects.push(g);
-    g.fillStyle(definition.theme === 'valle' ? 0x1d3327 : 0x1a2b2f);
+    // The ground, from the same tile picture the minimap draws. The biome's base colour first, then
+    // every other kind as a rounded, slightly oversized blob in layers, so edges read as organic
+    // shores and meadows instead of a checkerboard.
+    const map = tileMap(zoneId);
+    const kind = (col: number, row: number) => TILES[map.tiles[row * map.cols + col]];
+    const base = theme === 'ceniza' ? 'ash' : theme === 'bosque' ? 'grass' : 'grass';
+    g.fillStyle(tileColor(theme, base));
     g.fillRect(0, 0, width, height);
-    // Coarse patches, big enough that the whole zone costs a few hundred rectangles.
-    for (let y = b.minY; y < b.maxY; y += 120)
-      for (let x = b.minX; x < b.maxX; x += 120) {
-        const n = ((x * 37 + y * 19) % 113) / 113;
-        if (n < 0.55) continue;
-        g.fillStyle(n > 0.85 ? 0x24402f : 0x21392c, 0.6);
-        g.fillRect(x, y, 118, 118);
+    const layers: TileKind[][] = [
+      ['grassLight', 'grassDark', 'moss', 'ashDark', 'dirt', 'flowers'],
+      ['sand'],
+      ['water'],
+      ['waterDeep'],
+    ];
+    for (const layer of layers)
+      for (let row = 0; row < map.rows; row++)
+        for (let col = 0; col < map.cols; col++) {
+          const name = kind(col, row);
+          if (!layer.includes(name)) continue;
+          const paint = name === 'flowers' ? (theme === 'bosque' ? 'grass' : 'grassLight') : name;
+          g.fillStyle(tileColor(theme, paint));
+          g.fillRoundedRect(col * TILE - 8, row * TILE - 8, TILE + 16, TILE + 16, 18);
+        }
+    // Worn roads as strokes: a dark margin, the packed earth, and pebbles along it.
+    const roadColor = tileColor(theme, theme === 'ceniza' ? 'dirt' : 'road');
+    for (const path of roadPaths(zoneId)) {
+      for (const [widthPx, color, alpha] of [[46, 0x2a1f12, 0.35], [34, roadColor, 1]] as const) {
+        g.lineStyle(widthPx, color, alpha);
+        g.beginPath();
+        g.moveTo(path[0].x, path[0].y);
+        for (const point of path.slice(1)) g.lineTo(point.x, point.y);
+        g.strokePath();
+        g.fillStyle(color, alpha);
+        for (const point of path) g.fillCircle(point.x, point.y, widthPx / 2);
       }
-    for (const w of definition.terrain.walls) this.wall(g, w.x, w.y, w.w, w.h);
+    }
+    // Texture on top: tufts, flowers, ripples and embers, placed by a fixed hash so they never move.
+    const speck = (col: number, row: number, salt: number) => (((col * 73856093) ^ (row * 19349663) ^ salt) >>> 0) % 1000;
+    for (let row = 0; row < map.rows; row++)
+      for (let col = 0; col < map.cols; col++) {
+        const name = kind(col, row);
+        const x = col * TILE;
+        const y = row * TILE;
+        const n = speck(col, row, 17);
+        if ((name === 'grass' || name === 'grassDark' || name === 'grassLight' || name === 'moss') && n < 260) {
+          g.fillStyle(0x000000, 0.14);
+          g.fillTriangle(x + (n % 30), y + 30, x + (n % 30) + 3, y + 22 - ((n >> 3) % 6), x + (n % 30) + 6, y + 30);
+          g.fillStyle(0xffffff, 0.07);
+          g.fillRect(x + ((n >> 2) % 32), y + ((n >> 4) % 32), 4, 2);
+        } else if (name === 'flowers') {
+          for (let i = 0; i < 5; i++) {
+            g.fillStyle([0xf4e27a, 0xe98bb0, 0xffffff, 0xb59cff][(n + i) % 4]);
+            g.fillCircle(x + ((n * (i + 3)) % 34) + 3, y + ((n * (i + 7)) % 34) + 3, 2.5);
+          }
+        } else if ((name === 'water' || name === 'waterDeep') && n < 300) {
+          g.fillStyle(0xffffff, 0.16);
+          g.fillRect(x + (n % 24), y + ((n >> 3) % 30), 14, 2);
+        } else if (name === 'ember') {
+          g.fillStyle(0xff8a3a, 0.8);
+          g.fillCircle(x + 18, y + 20, 4);
+          g.fillStyle(0xffd27a, 0.7);
+          g.fillCircle(x + 18, y + 20, 1.5);
+        }
+      }
+    // What blocks is drawn as what the biome makes solid.
+    for (const w of definition.terrain.walls) {
+      if (theme === 'bosque') this.grove(g, w.x, w.y, w.w, w.h);
+      else if (theme === 'ceniza') this.ruin(g, w.x, w.y, w.w, w.h);
+      else this.boulder(g, w.x, w.y, w.w, w.h);
+    }
     const edge = b.minX;
-    this.wall(g, 0, 0, width, edge);
-    this.wall(g, 0, b.maxY, width, edge);
-    this.wall(g, 0, edge, edge, b.maxY - edge);
-    this.wall(g, b.maxX, edge, edge, b.maxY - edge);
+    for (const [x, y, w, h] of [[0, 0, width, edge], [0, b.maxY, width, edge], [0, edge, edge, b.maxY - edge], [b.maxX, edge, edge, b.maxY - edge]])
+      if (theme === 'bosque') this.grove(g, x, y, w, h);
+      else this.wall(g, x, y, w, h);
     // The shrine: where you revive and where the world saves you.
-    g.fillStyle(0x2c4a3a);
-    g.fillCircle(definition.shrine.x, definition.shrine.y, 26);
-    g.lineStyle(2, 0x9fd8b0, 0.5);
-    g.strokeCircle(definition.shrine.x, definition.shrine.y, 26);
+    g.fillStyle(0x000000, 0.25);
+    g.fillEllipse(definition.shrine.x, definition.shrine.y + 8, 70, 26);
+    g.fillStyle(0xd9d2bd);
+    g.fillCircle(definition.shrine.x, definition.shrine.y, 28);
+    g.fillStyle(0x7fd6ff, 0.9);
+    g.fillCircle(definition.shrine.x, definition.shrine.y, 12);
+    g.lineStyle(3, 0xffffff, 0.6);
+    g.strokeCircle(definition.shrine.x, definition.shrine.y, 28);
+    // Portals: a swirl of light where the zone lets you through.
+    for (const portal of definition.portals) {
+      const a = portal.area;
+      g.fillStyle(0x7c5cff, 0.18);
+      g.fillRoundedRect(a.x, a.y, a.w, a.h, 12);
+      g.lineStyle(3, 0xb9a4ff, 0.7);
+      g.strokeRoundedRect(a.x, a.y, a.w, a.h, 12);
+    }
     // In the wild, the ring inside which nobody can hurt anybody.
     if (definition.pvp === 'wild')
       for (let a = 0; a < Math.PI * 2; a += Math.PI / 24) {
@@ -344,6 +422,50 @@ export class Arena extends Phaser.Scene {
         g.arc(definition.shrine.x, definition.shrine.y, SHRINE_WARD, a, a + Math.PI / 48);
         g.strokePath();
       }
+  }
+
+  /** A forest's obstacle: a thicket of canopies you cannot walk through. */
+  private grove(g: Phaser.GameObjects.Graphics, x: number, y: number, w: number, h: number) {
+    g.fillStyle(0x0b1f10);
+    g.fillRect(x, y, w, h);
+    const step = 34;
+    for (let ty = y + 10; ty < y + h; ty += step)
+      for (let tx = x + 10 + (((ty - y) / step) % 2) * 16; tx < x + w; tx += step) {
+        const r = 22 + (((tx * 7 + ty * 13) >>> 0) % 7);
+        g.fillStyle(0x000000, 0.3);
+        g.fillCircle(tx + 5, ty + 7, r);
+        g.fillStyle(((tx + ty) >>> 0) % 3 ? 0x1f5a25 : 0x2a6b2c);
+        g.fillCircle(tx, ty, r);
+        g.fillStyle(0x4a8f3e, 0.55);
+        g.fillCircle(tx - r * 0.3, ty - r * 0.35, r * 0.45);
+      }
+  }
+
+  /** A valley's obstacle: a rounded outcrop of stone. */
+  private boulder(g: Phaser.GameObjects.Graphics, x: number, y: number, w: number, h: number) {
+    if (w > 400 || h > 400) return this.wall(g, x, y, w, h);
+    g.fillStyle(0x000000, 0.3);
+    g.fillRoundedRect(x + 8, y + 12, w, h, Math.min(w, h) * 0.35);
+    g.fillStyle(0x6b6f69);
+    g.fillRoundedRect(x, y, w, h, Math.min(w, h) * 0.35);
+    g.fillStyle(0x8d918a);
+    g.fillRoundedRect(x + w * 0.12, y + h * 0.1, w * 0.6, h * 0.45, Math.min(w, h) * 0.25);
+    g.fillStyle(0x4f534e);
+    g.fillRoundedRect(x + w * 0.2, y + h * 0.62, w * 0.7, h * 0.3, Math.min(w, h) * 0.15);
+  }
+
+  /** Ash fields: what is left of a house after the fire. */
+  private ruin(g: Phaser.GameObjects.Graphics, x: number, y: number, w: number, h: number) {
+    g.fillStyle(0x000000, 0.35);
+    g.fillRect(x + 8, y + 10, w, h);
+    g.fillStyle(0x2c2420);
+    g.fillRect(x, y, w, h);
+    for (let py = y + 4; py < y + h - 4; py += 18) {
+      g.fillStyle((py - y) % 36 ? 0x3d302a : 0x4a3a30);
+      g.fillRect(x + 4, py, w - 8, 12);
+    }
+    g.fillStyle(0xff7a2f, 0.35);
+    g.fillRect(x + w * 0.3, y + h * 0.4, Math.max(6, w * 0.12), 6);
   }
 
   private drawMap(mapId: MapId) {

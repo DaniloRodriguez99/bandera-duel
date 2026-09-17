@@ -1,4 +1,4 @@
-import type { Player } from '@bandera/shared';
+import type { Player, Zombie } from '@bandera/shared';
 import {
   AFFINITIES,
   AFFINITY_NAMES,
@@ -35,6 +35,7 @@ import {
 import { CHEST_TIERS } from '@bandera/shared/rpg/loot';
 import { MOB_FAMILIES } from '@bandera/shared/rpg/mobs';
 import { ZONES, zone, type ZoneId } from '@bandera/shared/rpg/zones';
+import { TILES, tileColor, tileMap } from '@bandera/shared/rpg/terrain';
 import {
   CAST_SLOTS,
   SLOT_LEVEL,
@@ -184,7 +185,15 @@ export class WorldHud {
   private channel: HTMLElement;
   private map!: HTMLElement;
   private zoneId: ZoneId | null = null;
-  private mapDot: SVGCircleElement | null = null;
+  private minimap!: HTMLButtonElement;
+  private bigMap: HTMLCanvasElement | null = null;
+  private ground = new Map<ZoneId, HTMLCanvasElement>();
+  private seen: { players: Player[]; zombies: Zombie[]; chests: ChestView[]; view: { x: number; y: number; w: number; h: number } | null; me?: Player } = {
+    players: [],
+    zombies: [],
+    chests: [],
+    view: null,
+  };
   private lootStrip: HTMLElement;
 
   constructor(
@@ -211,7 +220,8 @@ export class WorldHud {
       </div>
       <div id="wh-tooltip" class="wh-tooltip" hidden></div>
       <section id="wh-panel" class="wh-panel" hidden aria-label="Sistema"></section>
-      <section id="wh-map" class="wh-panel wh-map" hidden aria-label="Mapa"></section>`;
+      <section id="wh-map" class="wh-panel wh-map" hidden aria-label="Mapa"></section>
+      <button type="button" id="wh-minimap" class="wh-minimap" aria-label="Minimapa: abrir el mapa grande"><canvas></canvas><span id="wh-minimap-name"></span></button>`;
     stage.append(this.root);
     this.callout = this.root.querySelector('#wh-callout')!;
     this.notices = this.root.querySelector('#wh-notices')!;
@@ -224,6 +234,8 @@ export class WorldHud {
     this.map = this.root.querySelector('#wh-map')!;
     stage.append(this.map);
     this.root.querySelector<HTMLButtonElement>('#wh-map-open')!.onclick = () => this.toggleMap();
+    this.minimap = this.root.querySelector<HTMLButtonElement>('#wh-minimap')!;
+    this.minimap.onclick = () => this.toggleMap(true);
     this.root.querySelector<HTMLButtonElement>('#wh-system')!.onclick = () => this.togglePanel();
 
     this.creation = el('div', 'wh-creation');
@@ -259,7 +271,181 @@ export class WorldHud {
   setZone(zoneId: ZoneId) {
     if (this.zoneId === zoneId) return;
     this.zoneId = zoneId;
+    this.root.querySelector('#wh-minimap-name')!.textContent = zone(zoneId).name;
+    this.minimap.dataset.zone = zoneId;
     if (this.mapOpen) this.renderMap();
+  }
+
+  /** What the minimap shows besides the ground: who is around, and what the camera frames. */
+  setSurroundings(players: Player[], zombies: Zombie[], chests: ChestView[], me: Player | undefined, view: { x: number; y: number; w: number; h: number } | null) {
+    this.seen = { players, zombies, chests, view, me };
+    this.drawMap(this.minimap.querySelector('canvas')!, false);
+    if (this.mapOpen && this.bigMap) this.drawMap(this.bigMap, true);
+  }
+
+  /** The zone's ground, one pixel per tile, painted once and scaled up without smoothing. */
+  private groundOf(zoneId: ZoneId) {
+    let canvas = this.ground.get(zoneId);
+    if (canvas) return canvas;
+    const map = tileMap(zoneId);
+    const theme = zone(zoneId).theme;
+    canvas = document.createElement('canvas');
+    canvas.width = map.cols;
+    canvas.height = map.rows;
+    const ctx = canvas.getContext('2d')!;
+    const image = ctx.createImageData(map.cols, map.rows);
+    for (let i = 0; i < map.tiles.length; i++) {
+      const color = tileColor(theme, TILES[map.tiles[i]]);
+      image.data[i * 4] = (color >> 16) & 255;
+      image.data[i * 4 + 1] = (color >> 8) & 255;
+      image.data[i * 4 + 2] = color & 255;
+      image.data[i * 4 + 3] = 255;
+    }
+    ctx.putImageData(image, 0, 0);
+    this.ground.set(zoneId, canvas);
+    return canvas;
+  }
+
+  /**
+   * A Warcraft III minimap: the ground, creep camps as dots coloured by how dangerous they are for
+   * you, chests as gold, the shrine, portals labelled with where they lead, the people and monsters
+   * around, and the frame of what the camera sees.
+   */
+  private drawMap(canvas: HTMLCanvasElement, big: boolean) {
+    const sheet = this.sheet;
+    const here = this.zoneId ? zone(this.zoneId) : null;
+    if (!sheet || !here) return;
+    const b = here.terrain.bounds;
+    const worldW = b.maxX + b.minX;
+    const worldH = b.maxY + b.minY;
+    const W = big ? 1100 : 300;
+    const H = Math.round((W * worldH) / worldW);
+    if (canvas.width !== W || canvas.height !== H) {
+      canvas.width = W;
+      canvas.height = H;
+    }
+    const ctx = canvas.getContext('2d')!;
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(this.groundOf(here.id), 0, 0, W, H);
+    const sx = W / worldW;
+    const sy = H / worldH;
+    const px = (x: number) => x * sx;
+    const py = (y: number) => y * sy;
+    const unit = big ? 2.2 : 1;
+    const now = performance.now();
+    const text = (label: string, x: number, y: number, color: string, size: number, align: CanvasTextAlign = 'center') => {
+      ctx.font = `700 ${size}px "DM Sans", sans-serif`;
+      ctx.textAlign = align;
+      ctx.textBaseline = 'middle';
+      ctx.lineWidth = Math.max(2, size / 3.5);
+      ctx.strokeStyle = '#000000cc';
+      ctx.strokeText(label, x, y);
+      ctx.fillStyle = color;
+      ctx.fillText(label, x, y);
+    };
+
+    for (const portal of here.portals) {
+      const a = portal.area;
+      const target = ZONES[portal.to];
+      const locked = !target || sheet.level < portal.minLevel;
+      const pulse = 0.55 + 0.45 * Math.sin(now / 300);
+      ctx.fillStyle = locked ? `rgba(255,79,106,${0.5 + 0.3 * pulse})` : `rgba(160,120,255,${0.55 + 0.35 * pulse})`;
+      ctx.fillRect(px(a.x) - 2 * unit, py(a.y), Math.max(4 * unit, px(a.w)) + 4 * unit, py(a.h));
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = unit;
+      ctx.strokeRect(px(a.x) - 2 * unit, py(a.y), Math.max(4 * unit, px(a.w)) + 4 * unit, py(a.h));
+      const cx = px(a.x + a.w / 2);
+      const align: CanvasTextAlign = cx > W * 0.75 ? 'right' : cx < W * 0.25 ? 'left' : 'center';
+      const lx = align === 'right' ? px(a.x) - 6 * unit : align === 'left' ? px(a.x + a.w) + 6 * unit : cx;
+      const name = target?.name ?? 'Sin explorar';
+      text(big ? `${name} · Nv ${portal.minLevel}${locked ? ' · cerrado' : ''}` : `${name.split(' ')[0]} ${portal.minLevel}`, lx, py(a.y + a.h / 2), locked ? '#ffb3bd' : '#e3d6ff', big ? 22 : 11, align);
+    }
+
+    here.spawners.forEach((camp, i) => {
+      const gap = camp.level - sheet.level;
+      const color = gap >= 4 ? '#ff3b4f' : gap >= 1 ? '#ff9f43' : gap >= -3 ? '#ffe15a' : '#5fdc6f';
+      const alive = this.seen.zombies.some((z) => z.owner === `wild:${here.id}:${i}` && z.hp > 0);
+      const x = px(camp.at.x);
+      const y = py(camp.at.y);
+      ctx.beginPath();
+      ctx.arc(x, y, (big ? 9 : 4.5) * (alive || big ? 1 : 0.9), 0, Math.PI * 2);
+      ctx.fillStyle = color;
+      ctx.fill();
+      ctx.lineWidth = unit * 1.4;
+      ctx.strokeStyle = '#1a0f05';
+      ctx.stroke();
+      if (big) text(`${MOB_FAMILIES[camp.familyId].name} ${camp.level}`, x, y + 22, '#ffffff', 16);
+      if (camp.chest) {
+        // A gold mine, Warcraft-style: the treasure the camp sits on.
+        const chest = this.seen.chests.find((c) => c.id === `chest:${here.id}:${i}`);
+        const ready = chest ? chest.ready : true;
+        const s = big ? 12 : 6;
+        ctx.fillStyle = ready ? (camp.chest.tier === 'legendario' ? '#ffd24d' : camp.chest.tier === 'raro' ? '#8fd0ff' : '#f2c14e') : '#6b6b6b';
+        ctx.strokeStyle = '#2a1a00';
+        ctx.lineWidth = unit * 1.2;
+        ctx.beginPath();
+        ctx.moveTo(x, y - s * 2.1);
+        ctx.lineTo(x + s, y - s * 1.2);
+        ctx.lineTo(x + s, y - s * 0.2);
+        ctx.lineTo(x - s, y - s * 0.2);
+        ctx.lineTo(x - s, y - s * 1.2);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        if (big) text(CHEST_TIERS[camp.chest.tier].name, x, y - s * 3, '#ffe39a', 15);
+      }
+    });
+
+    // The shrine, like a town hall on the minimap.
+    const shx = px(here.shrine.x);
+    const shy = py(here.shrine.y);
+    const hs = big ? 11 : 5;
+    ctx.fillStyle = '#ffffff';
+    ctx.strokeStyle = '#0a2a3a';
+    ctx.lineWidth = unit * 1.4;
+    ctx.beginPath();
+    ctx.moveTo(shx, shy - hs * 1.4);
+    ctx.lineTo(shx + hs, shy);
+    ctx.lineTo(shx, shy + hs * 1.4);
+    ctx.lineTo(shx - hs, shy);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    if (big) text('Altar', shx, shy + 26, '#bfeaff', 16);
+
+    for (const z of this.seen.zombies) {
+      if (z.hp <= 0) continue;
+      ctx.fillStyle = z.team === 'red' ? '#ff4f5e' : '#6fb8ff';
+      ctx.fillRect(px(z.x) - 1.5 * unit, py(z.y) - 1.5 * unit, 3 * unit, 3 * unit);
+    }
+    for (const q of this.seen.players) {
+      if (q.id === this.seen.me?.id || q.hp <= 0) continue;
+      ctx.fillStyle = q.team === 'red' ? '#ff2d4a' : '#4fa8ff';
+      ctx.fillRect(px(q.x) - 2.5 * unit, py(q.y) - 2.5 * unit, 5 * unit, 5 * unit);
+    }
+    const view = this.seen.view;
+    if (view) {
+      ctx.strokeStyle = '#ffffffcc';
+      ctx.lineWidth = unit;
+      ctx.strokeRect(px(view.x), py(view.y), px(view.w), py(view.h));
+    }
+    const me = this.seen.me ?? this.player;
+    if (me) {
+      const mx = px(me.x);
+      const my = py(me.y);
+      const ring = ((now % 1200) / 1200) * (big ? 26 : 12);
+      ctx.beginPath();
+      ctx.arc(mx, my, ring, 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(255,255,255,${1 - ring / (big ? 26 : 12)})`;
+      ctx.lineWidth = unit * 1.5;
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(mx, my, big ? 7 : 3.5, 0, Math.PI * 2);
+      ctx.fillStyle = '#ffffff';
+      ctx.fill();
+      ctx.strokeStyle = '#00c8ff';
+      ctx.stroke();
+    }
   }
 
   toggleMap(open = this.map.hidden) {
@@ -287,55 +473,18 @@ export class WorldHud {
     close.onclick = () => this.toggleMap(false);
     head.append(close);
 
-    const b = here.terrain.bounds;
-    const width = b.maxX + b.minX;
-    const height = b.maxY + b.minY;
-    const NS = 'http://www.w3.org/2000/svg';
-    const svg = document.createElementNS(NS, 'svg');
-    svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
-    svg.setAttribute('class', 'wh-map-zone');
-    svg.dataset.zone = here.id;
-    const add = (tag: string, attrs: Record<string, string | number>, parent: Element = svg) => {
-      const node = document.createElementNS(NS, tag);
-      for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, String(v));
-      parent.append(node);
-      return node;
-    };
-    add('rect', { x: 0, y: 0, width, height, class: 'ground' });
-    for (const w of here.terrain.walls) add('rect', { x: w.x, y: w.y, width: w.w, height: w.h, class: 'wall' });
+    this.bigMap = document.createElement('canvas');
+    this.bigMap.className = 'wh-map-zone';
+    this.bigMap.dataset.zone = here.id;
+    this.drawMap(this.bigMap, true);
+    const portals = el('ul', 'wh-map-portals');
     for (const portal of here.portals) {
       const target = ZONES[portal.to];
       const locked = !target || sheet.level < portal.minLevel;
-      const a = portal.area;
-      const g = add('g', { class: `portal${locked ? ' locked' : ''}`, 'data-portal': portal.to });
-      add('rect', { x: a.x, y: a.y, width: a.w, height: a.h }, g);
-      // A portal on the edge labels itself inwards, or the name runs off the map.
-      const centre = a.x + a.w / 2;
-      const anchor = centre > width * 0.8 ? 'end' : centre < width * 0.2 ? 'start' : 'middle';
-      const lx = anchor === 'end' ? a.x - 10 : anchor === 'start' ? a.x + a.w + 10 : centre;
-      const label = add('text', { x: lx, y: a.y + a.h / 2, 'text-anchor': anchor, 'dominant-baseline': 'middle' }, g);
-      label.textContent = `${target?.name ?? 'Sin explorar'} · Nv ${portal.minLevel}${locked ? ' · cerrado' : ''}`;
+      const item = el('li', locked ? 'locked' : '', `→ ${target?.name ?? 'Sin explorar'} · Nv ${portal.minLevel}${locked ? ' · cerrado' : ''}`);
+      item.dataset.portal = portal.to;
+      portals.append(item);
     }
-    here.spawners.forEach((camp) => {
-      const gap = camp.level - sheet.level;
-      const danger = gap >= 4 ? 'deadly' : gap >= 1 ? 'hard' : gap >= -3 ? 'even' : 'easy';
-      const g = add('g', { class: `camp ${danger}` });
-      add('circle', { cx: camp.at.x, cy: camp.at.y, r: camp.radius }, g);
-      const label = add('text', { x: camp.at.x, y: camp.at.y + 8, 'text-anchor': 'middle' }, g);
-      label.textContent = `${MOB_FAMILIES[camp.familyId].name} ${camp.level}`;
-      if (camp.chest) {
-        const chest = add('g', { class: `chest ${camp.chest.tier}` });
-        add('rect', { x: camp.at.x - 26, y: camp.at.y - 70, width: 52, height: 36, rx: 6 }, chest);
-        const t = add('text', { x: camp.at.x, y: camp.at.y - 80, 'text-anchor': 'middle' }, chest);
-        t.textContent = CHEST_TIERS[camp.chest.tier].name;
-      }
-    });
-    const shrine = add('g', { class: 'shrine' });
-    add('circle', { cx: here.shrine.x, cy: here.shrine.y, r: 44 }, shrine);
-    const st = add('text', { x: here.shrine.x, y: here.shrine.y + 90, 'text-anchor': 'middle' }, shrine);
-    st.textContent = 'Altar';
-    this.mapDot = add('circle', { cx: this.player?.x ?? 0, cy: this.player?.y ?? 0, r: 38, class: 'me' }) as SVGCircleElement;
-
     const road = el('aside', 'wh-map-road');
     road.append(el('h5', '', 'Camino'));
     const seen = new Set<string>();
@@ -358,10 +507,11 @@ export class WorldHud {
     const legend = el('div', 'wh-map-legend');
     legend.innerHTML = '<span class="easy">Fácil</span><span class="even">Parejo</span><span class="hard">Difícil</span><span class="deadly">Mortal</span>';
     road.append(legend);
+    road.append(el('h5', '', 'Portales de esta zona'), portals);
 
     const body = el('div', 'wh-map-body');
     const frame = el('div', 'wh-map-frame');
-    frame.append(svg);
+    frame.append(this.bigMap);
     body.append(frame, road);
     this.map.append(head, body);
   }
@@ -394,10 +544,7 @@ export class WorldHud {
 
   setPlayer(p: Player) {
     this.player = p;
-    if (this.mapDot && this.mapOpen) {
-      this.mapDot.setAttribute('cx', String(p.x));
-      this.mapDot.setAttribute('cy', String(p.y));
-    }
+
     const hp = this.root.querySelector('#wh-hp') as HTMLElement;
     const mp = this.root.querySelector('#wh-mp') as HTMLElement;
     hp.style.width = `${Math.max(0, Math.min(100, (p.hp / Math.max(1, p.maxHp)) * 100))}%`;

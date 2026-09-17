@@ -92,11 +92,14 @@ test('entra al mundo: nace en el vacío blanco, aparece en el valle y el Sistema
   await page.keyboard.press('Escape');
   await expect(page.locator('#wh-panel')).toBeHidden();
 
+  // A Warcraft-style minimap sits in the bottom-right corner the whole time.
+  await expect(page.locator('#wh-minimap[data-zone=umbral] canvas')).toBeVisible();
+  await page.screenshot({ path: test.info().outputPath('6b-minimapa.png') });
+
   // M opens the map: the valley to scale, its border to the forest locked below level 5.
   await page.keyboard.press('KeyM');
-  await expect(page.locator('#wh-map svg[data-zone=umbral]')).toBeVisible();
+  await expect(page.locator('#wh-map canvas[data-zone=umbral]')).toBeVisible();
   await expect(page.locator('#wh-map [data-portal=bosque]')).toHaveClass(/locked/);
-  await expect(page.locator('#wh-map .me')).toHaveCount(1);
   await expect(page.locator('#wh-map [data-stop=umbral]')).toHaveAttribute('data-current', 'true');
   await page.screenshot({ path: test.info().outputPath('7-mapa.png') });
   await page.keyboard.press('Escape');

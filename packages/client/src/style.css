@@ -1593,3 +1593,13 @@ body.world-mode #clock-note{color:#7fd6ff;letter-spacing:3px}
 .wh-map-legend span{padding:2px 6px;border:1px solid currentColor}
 .wh-map-legend .easy{color:#6fdc8c}.wh-map-legend .even{color:#f4f07a}.wh-map-legend .hard{color:#ff9f43}.wh-map-legend .deadly{color:#ff4f6a}
 @media(max-width:760px){.wh-map-body{grid-template-columns:1fr}.wh-map-road{border-left:0;border-top:1px solid #63d9ff33}}
+
+/* Minimapa, abajo a la derecha, con marco de piedra y oro como el de Warcraft III */
+.wh-minimap{position:absolute;right:10px;bottom:10px;z-index:3;width:clamp(150px,20vw,260px);padding:5px;border:0;background:linear-gradient(145deg,#6b5a3a,#2a2116 45%,#5a4a2e);box-shadow:0 0 0 1px #0b0805,0 6px 18px #000a,inset 0 0 0 1px #c9a86a66;cursor:zoom-in;pointer-events:auto}
+.wh-minimap canvas{display:block;width:100%;height:auto;image-rendering:pixelated;border:1px solid #0b0805;background:#000}
+.wh-minimap span{position:absolute;left:10px;top:9px;padding:1px 5px;font:700 9px 'DM Sans',sans-serif;letter-spacing:1px;color:#f3e6c4;background:#000a;pointer-events:none}
+.wh-map-zone{display:block;width:100%;height:auto;max-height:100%;object-fit:contain;image-rendering:pixelated;border:3px solid #5a4a2e;box-shadow:0 0 0 1px #000}
+.wh-map-portals{margin:0;padding:0;list-style:none;display:grid;gap:4px;font-size:10px;color:#e3d6ff}
+.wh-map-portals li{padding:4px 6px;border:1px solid #7c5cff66;background:#120a2a}
+.wh-map-portals li.locked{color:#ffb3bd;border-color:#ff4f6a66;background:#2a0a14}
+@media(max-width:760px){.wh-minimap{width:120px}}
