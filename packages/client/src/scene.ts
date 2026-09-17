@@ -333,8 +333,9 @@ export class Arena extends Phaser.Scene {
     const b = definition.terrain.bounds;
     const width = b.maxX + b.minX;
     const height = b.maxY + b.minY;
-    const g = this.add.graphics();
-    this.mapObjects.push(g);
+    // Drawn off the display list and baked below: tens of thousands of shapes replayed every frame
+    // took the world from 44 to 5 frames per second.
+    const g = this.make.graphics({}, false);
     // The ground, from the same tile picture the minimap draws. The biome's base colour first, then
     // every other kind as a rounded, slightly oversized blob in layers, so edges read as organic
     // shores and meadows instead of a checkerboard.
@@ -435,6 +436,24 @@ export class Arena extends Phaser.Scene {
         g.arc(definition.shrine.x, definition.shrine.y, SHRINE_WARD, a, a + Math.PI / 48);
         g.strokePath();
       }
+    this.bake(g, width, height);
+  }
+
+  /**
+   * Turns a static drawing into textures, once. Chunks of 1024 px keep every texture under the
+   * size any GPU accepts; each frame then draws a dozen images instead of re-tessellating the zone.
+   */
+  private bake(g: Phaser.GameObjects.Graphics, width: number, height: number) {
+    const CHUNK = 1024;
+    for (let y = 0; y < height; y += CHUNK)
+      for (let x = 0; x < width; x += CHUNK) {
+        const w = Math.min(CHUNK, width - x);
+        const h = Math.min(CHUNK, height - y);
+        const texture = this.add.renderTexture(x, y, w, h).setOrigin(0, 0).setDepth(g.depth);
+        texture.draw(g, -x, -y);
+        this.mapObjects.push(texture);
+      }
+    g.destroy();
   }
 
   /** A forest's obstacle: a thicket of canopies you cannot walk through. */
