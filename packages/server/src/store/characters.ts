@@ -7,15 +7,19 @@ import type { Character } from '@bandera/shared/world';
  *
  * The world keeps them in memory while people play; this is the only thing that outlives the
  * process. `MemoryStore` ships by default so development and the tests need no infrastructure,
- * and a Postgres driver takes its place in production by implementing the same interface.
+ * `FileStore` keeps them in one JSON file for a single machine with a disk, and a Postgres driver
+ * takes their place in production by implementing the same interface (see `storeFromEnv`).
  */
 
 export type AccountId = string;
 export type CharacterId = string;
 
-/** The shape written to storage. `version` lets a later migration recognise old saves. */
+/** Bumped whenever the saved shape changes; `migrate` knows how to climb from every older one. */
+export const SAVE_VERSION = 1;
+
+/** The shape written to storage. `version` lets `migrate` recognise old saves. */
 export interface SavedCharacter {
-  version: 1;
+  version: typeof SAVE_VERSION;
   character: Character;
   updatedAt: number;
 }
@@ -32,7 +36,18 @@ export const MAX_CHARACTERS = 5;
 
 export class StoreError extends Error {
   constructor(
-    readonly code: 'nombre-tomado' | 'clave-incorrecta' | 'limite-personajes' | 'no-existe',
+    readonly code:
+      | 'nombre-tomado'
+      | 'clave-incorrecta'
+      | 'limite-personajes'
+      | 'no-existe'
+      /** A save that fails validation. Never answered by resetting the character. */
+      | 'save-invalido'
+      /** A save written by a newer server than this one, typically after a rollback. */
+      | 'save-futuro'
+      /** The storage file exists but cannot be read or parsed; the driver refuses to start empty. */
+      | 'archivo-corrupto'
+      | 'store-cerrado',
     message: string,
   ) {
     super(message);
@@ -79,39 +94,100 @@ export async function verifyPassword(password: string, stored: string): Promise<
   return expected.length === actual.length && timingSafeEqual(expected, actual);
 }
 
+/** One account as a driver holds it. Characters stay raw until read, so a driver that loaded them
+ * from disk can migrate and validate each one on the way out without touching the others. */
 interface Account {
   id: AccountId;
   name: string;
   password: string;
-  characters: Map<CharacterId, SavedCharacter>;
+  characters: Map<CharacterId, unknown>;
 }
 
+/** The serialisable form of an `AccountBook`, for drivers that write it somewhere. */
+export interface BookData {
+  nextId: number;
+  accounts: { id: AccountId; name: string; password: string; characters: Record<CharacterId, unknown> }[];
+}
+
+const envelope = (character: Character): SavedCharacter => ({
+  version: SAVE_VERSION,
+  // A copy, never the live object: the world keeps mutating its character between saves, and
+  // sharing nested objects (stats, skills) would let unsaved progress leak into the store.
+  character: structuredClone(character),
+  updatedAt: Date.now(),
+});
+
 /**
- * The default driver. Everything dies with the process, which is fine for development and for
- * the tests, and is the reason production must point `DATABASE_URL` at a real database.
+ * The account and character bookkeeping every driver that keeps the data in memory shares:
+ * `MemoryStore` is nothing else, and `FileStore` is this plus writing it to disk.
  */
-export class MemoryStore implements CharacterStore {
-  private accounts = new Map<string, Account>();
+export class AccountBook {
+  private byName = new Map<string, Account>();
+  private byId = new Map<AccountId, Account>();
   private nextId = 1;
 
-  private byName(name: string) {
-    return this.accounts.get(name.toLowerCase());
+  /** `read` turns a stored entry into a current save; persistent drivers pass `migrate`. */
+  constructor(private readonly read: (raw: unknown) => SavedCharacter = (raw) => raw as SavedCharacter) {}
+
+  static restore(data: BookData, read: (raw: unknown) => SavedCharacter): AccountBook {
+    const book = new AccountBook(read);
+    let highest = 0;
+    for (const entry of data.accounts) {
+      if (book.byName.has(entry.name.toLowerCase()) || book.byId.has(entry.id))
+        throw new Error(`Cuenta repetida: ${entry.name}`);
+      book.insert({ ...entry, characters: new Map(Object.entries(entry.characters)) });
+      const n = Number(/^a(\d+)$/.exec(entry.id)?.[1] ?? 0);
+      highest = Math.max(highest, n);
+    }
+    // Never hand out an id that already exists, even if the counter in the file is stale.
+    book.nextId = Math.max(data.nextId, highest + 1);
+    return book;
+  }
+
+  toData(): BookData {
+    return {
+      nextId: this.nextId,
+      accounts: [...this.byId.values()].map((a) => ({
+        id: a.id,
+        name: a.name,
+        password: a.password,
+        characters: Object.fromEntries(a.characters),
+      })),
+    };
+  }
+
+  private insert(account: Account) {
+    this.byName.set(account.name.toLowerCase(), account);
+    this.byId.set(account.id, account);
+  }
+
+  private owner(account: AccountId): Account {
+    const entry = this.byId.get(account);
+    if (!entry) throw new StoreError('no-existe', 'No existe la cuenta');
+    return entry;
+  }
+
+  private saved(account: Account, id: CharacterId): SavedCharacter | null {
+    const raw = account.characters.get(id);
+    if (raw === undefined) return null;
+    const saved = this.read(raw);
+    if (saved.character.id !== id || saved.character.accountId !== account.id)
+      throw new StoreError('save-invalido', `El guardado de ${id} no corresponde a su cuenta`);
+    return saved;
   }
 
   async createAccount(name: string, password: string): Promise<AccountId> {
-    if (this.byName(name)) throw new StoreError('nombre-tomado', 'Ese nombre ya existe');
+    // Hash first, then check and insert with no await in between, so two sign-ups with the same
+    // name at the same moment cannot both pass the check.
+    const hash = await hashPassword(password);
+    if (this.byName.has(name.toLowerCase())) throw new StoreError('nombre-tomado', 'Ese nombre ya existe');
     const id = `a${this.nextId++}`;
-    this.accounts.set(name.toLowerCase(), {
-      id,
-      name,
-      password: await hashPassword(password),
-      characters: new Map(),
-    });
+    this.insert({ id, name, password: hash, characters: new Map() });
     return id;
   }
 
   async verify(name: string, password: string): Promise<AccountId | null> {
-    const account = this.byName(name);
+    const account = this.byName.get(name.toLowerCase());
     // Hash anyway when the account does not exist, so a missing name and a wrong password take
     // the same time to answer and cannot be told apart.
     if (!account) {
@@ -121,41 +197,69 @@ export class MemoryStore implements CharacterStore {
     return (await verifyPassword(password, account.password)) ? account.id : null;
   }
 
-  private find(account: AccountId) {
-    for (const entry of this.accounts.values()) if (entry.id === account) return entry;
-    return undefined;
-  }
-
-  async listCharacters(account: AccountId): Promise<CharacterSummary[]> {
-    const entry = this.find(account);
+  listCharacters(account: AccountId): CharacterSummary[] {
+    const entry = this.byId.get(account);
     if (!entry) return [];
-    return [...entry.characters.values()].map(({ character }) => ({
-      id: character.id,
-      name: character.name,
-      classId: character.classId,
-      level: character.level,
-      zoneId: character.zoneId,
-    }));
+    return [...entry.characters.keys()].map((id) => {
+      const { character } = this.saved(entry, id)!;
+      return {
+        id: character.id,
+        name: character.name,
+        classId: character.classId,
+        level: character.level,
+        zoneId: character.zoneId,
+      };
+    });
   }
 
-  async createCharacter(account: AccountId, character: Character): Promise<void> {
-    const entry = this.find(account);
-    if (!entry) throw new StoreError('no-existe', 'No existe la cuenta');
+  createCharacter(account: AccountId, character: Character): void {
+    const entry = this.owner(account);
     // Counted and inserted together, so two joins at once cannot both slip past the cap.
     if (entry.characters.size >= MAX_CHARACTERS)
       throw new StoreError('limite-personajes', `Ya tenés ${MAX_CHARACTERS} personajes`);
-    entry.characters.set(character.id, { version: 1, character, updatedAt: 0 });
+    entry.characters.set(character.id, envelope(character));
   }
 
-  async load(account: AccountId, id: CharacterId): Promise<Character | null> {
-    const saved = this.find(account)?.characters.get(id);
-    return saved ? { ...saved.character } : null;
+  load(account: AccountId, id: CharacterId): Character | null {
+    const entry = this.byId.get(account);
+    const saved = entry ? this.saved(entry, id) : null;
+    return saved ? structuredClone(saved.character) : null;
   }
 
-  async save(character: Character): Promise<void> {
-    const entry = this.find(character.accountId);
-    if (!entry) throw new StoreError('no-existe', 'No existe la cuenta');
-    entry.characters.set(character.id, { version: 1, character, updatedAt: 0 });
+  save(character: Character): void {
+    this.owner(character.accountId).characters.set(character.id, envelope(character));
+  }
+}
+
+/**
+ * The default driver. Everything dies with the process, which is fine for development and for
+ * the tests, and is the reason production must point `DATABASE_URL` at a real database.
+ */
+export class MemoryStore implements CharacterStore {
+  private book = new AccountBook();
+
+  createAccount(name: string, password: string) {
+    return this.book.createAccount(name, password);
+  }
+
+  verify(name: string, password: string) {
+    return this.book.verify(name, password);
+  }
+
+  async listCharacters(account: AccountId) {
+    return this.book.listCharacters(account);
+  }
+
+  async createCharacter(account: AccountId, character: Character) {
+    this.book.createCharacter(account, character);
+  }
+
+  async load(account: AccountId, id: CharacterId) {
+    return this.book.load(account, id);
+  }
+
+  async save(character: Character) {
+    this.book.save(character);
   }
 
   async close(): Promise<void> {}

@@ -11,7 +11,8 @@ import {
 } from '@bandera/shared/world';
 import { rollDestiny } from '@bandera/shared/rpg/skills';
 import { DEFAULT_ZONE, ZONES, type ZoneId } from '@bandera/shared/rpg/zones';
-import { MemoryStore, StoreError, type AccountId, type CharacterStore } from './store/characters.js';
+import { StoreError, type AccountId, type CharacterStore } from './store/characters.js';
+import { storeFromEnv } from './store/env.js';
 
 /**
  * The persistent world room.
@@ -35,11 +36,17 @@ const SAVE_EVERY_SECONDS = 15;
 /**
  * The store outlives the room on purpose. It is the only thing meant to survive the process, so
  * it cannot be a room field: a disposed room, or a second one, would take every account and every
- * character with it. Swapping this for a Postgres driver is the whole job of going to production.
+ * character with it. The driver comes from the environment (memory when nothing is set, as in the
+ * tests); swapping in a Postgres driver is the whole job of going to production.
  */
-let store: CharacterStore = new MemoryStore();
+let store: CharacterStore = storeFromEnv();
 export const useCharacterStore = (next: CharacterStore) => (store = next);
 export const characterStore = () => store;
+
+const logSaveError = (characterId: string, error: unknown) =>
+  console.error(
+    JSON.stringify({ event: 'save-failed', characterId, error: String((error as Error)?.message ?? error) }),
+  );
 
 interface Rect {
   minX: number;
@@ -74,6 +81,12 @@ export class WorldRoom extends Room {
   private known = new Map<string, Set<string>>();
   private saveClock = 0;
 
+  /** Every world room alive in this process, so shutdown can save them all before exiting. */
+  private static live = new Set<WorldRoom>();
+  static async flushAll() {
+    await Promise.all([...WorldRoom.live].map((room) => room.flush()));
+  }
+
   private worldFor(zoneId: ZoneId): World {
     const id = ZONES[zoneId] ? zoneId : DEFAULT_ZONE;
     let world = this.worlds.get(id);
@@ -95,6 +108,7 @@ export class WorldRoom extends Room {
 
   onCreate() {
     this.autoDispose = false;
+    WorldRoom.live.add(this);
 
     this.onMessage('input', (client, message: unknown) => {
       const id = this.characterOf.get(client.sessionId);
@@ -170,7 +184,8 @@ export class WorldRoom extends Room {
       this.saveClock += RULES.tick;
       if (this.saveClock >= SAVE_EVERY_SECONDS) {
         this.saveClock = 0;
-        void this.flush();
+        // Already logged per character inside; the next beat tries again.
+        void this.flush().catch(() => {});
       }
     }, 30);
     // Same reason as the duel room: disabling patches before the timer exists loses the clock.
@@ -227,7 +242,9 @@ export class WorldRoom extends Room {
       this.sendSheet(client, characterId);
       this.sendSnapshot(client);
     }
-    await store.save(character);
+    // Called with `void` from the tick: a failed save must be logged here, not become an
+    // unhandled rejection that takes the whole process down.
+    await store.save(character).catch((error) => logSaveError(characterId, error));
   }
 
   /**
@@ -349,20 +366,30 @@ export class WorldRoom extends Room {
     if (view) client.send('snapshot', view);
   }
 
-  /** Saves every character online. Cheap at this cadence, and nothing progress-related is missed. */
+  /**
+   * Saves every character online. Cheap at this cadence, and nothing progress-related is missed.
+   * The saves go out together so a driver that writes to disk can fold them into one write, and
+   * one character failing to save does not stop the others. Throws if any failed.
+   */
   private async flush() {
     const online = [...this.worlds.values()].flatMap((world) => [...world.characters.values()]);
-    for (const character of online) {
-      const p = this.worldOf(character.id)?.state.players.find((q) => q.id === character.id);
-      if (p) {
-        character.x = p.x;
-        character.y = p.y;
-      }
-      await store.save(character);
-    }
+    const results = await Promise.allSettled(
+      online.map((character) => {
+        const p = this.worldOf(character.id)?.state.players.find((q) => q.id === character.id);
+        if (p) {
+          character.x = p.x;
+          character.y = p.y;
+        }
+        return store.save(character);
+      }),
+    );
+    const failed = results.flatMap((r, i) => (r.status === 'rejected' ? [[online[i].id, r.reason] as const] : []));
+    for (const [id, error] of failed) logSaveError(id, error);
+    if (failed.length) throw new Error(`No se pudieron guardar ${failed.length} personajes`);
   }
 
   async onDispose() {
+    WorldRoom.live.delete(this);
     // Flush what this room still owes, but never close the store: it is shared by the whole
     // process, and closing it here would take every other room's persistence down with it.
     await this.flush();

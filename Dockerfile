@@ -30,4 +30,8 @@ COPY --from=build /app/packages/server/dist packages/server/dist
 
 EXPOSE 8080
 
-CMD ["npm", "start"]
+# Node itself must be PID 1's child that receives SIGTERM: through `npm start` the signal reaches
+# npm first, and the world's save-on-shutdown may never run before Cloud Run kills the container.
+# Same working directory `npm start -w @bandera/server` would use.
+WORKDIR /app/packages/server
+CMD ["node", "dist/index.js"]

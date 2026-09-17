@@ -45,6 +45,11 @@ jobs:
           service: ${{ vars.CLOUD_RUN_SERVICE }}
           region: ${{ vars.GCP_REGION }}
           source: .
+          # Exactly one instance, always. The whole world (every zone, every online character)
+          # lives in this one process's memory: a second instance would be a second world that
+          # cannot see the first, splitting players between them, and both would save the same
+          # characters over each other. min=1 also keeps the world from being scaled to zero.
+          flags: --max-instances=1 --min-instances=1
           env_vars: |
             NODE_ENV=production
             ALLOWED_ORIGINS=${{ vars.ALLOWED_ORIGINS }}
