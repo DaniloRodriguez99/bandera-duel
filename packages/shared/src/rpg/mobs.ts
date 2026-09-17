@@ -136,8 +136,8 @@ export const MOB_FAMILIES: Record<MobFamilyId, MobFamily> = {
     aggro: 320, leash: 620, xp: 40, packs: false, undead: false,
     lore: 'El pantano le devuelve lo que se tragó. Y él lo pone de pie.',
     kit: [
-      { id: 'levantar', name: 'Levantar Huesos', kind: 'summon', cooldown: 14, windup: 1.2, min: 0, max: 420, summon: { familyId: 'esqueleto', count: 2, max: 4, seconds: 30 }, color: '#a070e0' },
-      { id: 'dardo_sombrio', name: 'Dardo Sombrío', kind: 'bolt', cooldown: 2.8, windup: 0.6, min: 60, max: 420, damage: 1.3, speed: 320, color: '#a070e0' },
+      { id: 'levantar', name: 'Levantar Huesos', kind: 'summon', cooldown: 14, windup: 1.2, min: 0, max: 420, summon: { familyId: 'esqueleto', count: 2, max: 4, seconds: 30 }, color: '#8a2f5a' },
+      { id: 'dardo_sombrio', name: 'Dardo Sombrío', kind: 'bolt', cooldown: 2.8, windup: 0.6, min: 60, max: 420, damage: 1.3, speed: 320, color: '#8a2f5a' },
     ],
   },
 };

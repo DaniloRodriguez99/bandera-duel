@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { ELEMENT_COLORS, ELEMENT_CORES, hex } from '@bandera/shared/rpg/colors';
 import {
   RULES,
   MOB_STATS,
@@ -502,9 +503,9 @@ export class Arena extends Phaser.Scene {
     switch (element) {
       case 'rayo': {
         // A jagged bolt that flickers: never the same zigzag two frames in a row.
-        g.lineStyle(6 * grow, 0xf4f07a, 0.25);
+        g.lineStyle(7 * grow, hex(ELEMENT_COLORS.rayo), 0.35);
         g.lineBetween(p.x - dx * 30, p.y - dy * 30, p.x, p.y);
-        g.lineStyle(2.5 * grow, 0xfffbd0, 1);
+        g.lineStyle(2.5 * grow, hex(ELEMENT_CORES.rayo), 1);
         g.beginPath();
         g.moveTo(p.x - dx * 30, p.y - dy * 30);
         for (let i = 1; i <= 4; i++) {
@@ -548,7 +549,7 @@ export class Arena extends Phaser.Scene {
       case 'sombra': {
         g.fillStyle(0x2a1440, 0.55);
         g.fillCircle(p.x - dx * 10, p.y - dy * 10, 8 * grow);
-        g.fillStyle(0xa070e0, 0.9);
+        g.fillStyle(hex(ELEMENT_COLORS.sombra), 0.9);
         g.fillCircle(p.x, p.y, 8 * grow);
         g.fillStyle(0x12081c, 1);
         g.fillCircle(p.x, p.y, 4 * grow);
@@ -842,7 +843,7 @@ export class Arena extends Phaser.Scene {
   private spellEffect(e: Snapshot['events'][number]) {
     if (e.kind === 'imbue') {
       // An imbued weapon's blow: sparks of the affinity's colour, and a crackle over a stunned head.
-      const tint = e.color ? Phaser.Display.Color.HexStringToColor(e.color).color : 0xffe45c;
+      const tint = e.color ? Phaser.Display.Color.HexStringToColor(e.color).color : hex(ELEMENT_COLORS.rayo);
       this.fade(this.add.circle(e.x, e.y - 4, 7).setStrokeStyle(2, tint, 0.95).setDepth(17), { scale: 3 }, 300);
       for (let i = 0; i < 6; i++) {
         const a = (e.angle ?? 0) + (i - 2.5) * 0.45;

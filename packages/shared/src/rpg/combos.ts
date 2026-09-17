@@ -1,5 +1,6 @@
 import type { Affinity, Element, SkillNode, WorldSkill } from './skills.js';
 import type { WeaponId } from './weapons.js';
+import { AFFINITY_COLORS as C } from './colors.js';
 
 /**
  * Weapon × affinity: the signature skills.
@@ -35,16 +36,16 @@ interface Pour {
 }
 
 const POUR: Record<Affinity, Pour> = {
-  fuego: { element: 'fuego', color: '#ff7a2f', damage: 0.45, burn: 0.35 },
-  agua: { element: 'hielo', color: '#7fd3ff', damage: 0.2, freeze: 0.55 },
-  tierra: { element: 'tierra', color: '#c49a5a', damage: 0.35, stun: 0.2, knock: 34 },
-  viento: { element: 'viento', color: '#9fe8e0', damage: 0.3, knock: 60 },
-  rayo: { element: 'rayo', color: '#ffe45c', damage: 0.35, stun: 0.45 },
-  sombra: { element: 'sombra', color: '#a070ff', damage: 0.25, drain: 0.35 },
-  luz: { element: 'luz', color: '#fff0a0', damage: 0.3, holy: 1 },
-  fuerza: { element: 'fisico', color: '#e0a060', damage: 0.55, knock: 26 },
-  destreza: { element: 'fisico', color: '#8fe0a0', damage: 0.3, burn: 0.2 },
-  sigilo: { element: 'sombra', color: '#9a9ac0', damage: 0.15, backstab: 1 },
+  fuego: { element: 'fuego', color: C.fuego, damage: 0.45, burn: 0.35 },
+  agua: { element: 'hielo', color: C.agua, damage: 0.2, freeze: 0.55 },
+  tierra: { element: 'tierra', color: C.tierra, damage: 0.35, stun: 0.2, knock: 34 },
+  viento: { element: 'viento', color: C.viento, damage: 0.3, knock: 60 },
+  rayo: { element: 'rayo', color: C.rayo, damage: 0.35, stun: 0.45 },
+  sombra: { element: 'sombra', color: C.sombra, damage: 0.25, drain: 0.35 },
+  luz: { element: 'luz', color: C.luz, damage: 0.3, holy: 1 },
+  fuerza: { element: 'fisico', color: C.fuerza, damage: 0.55, knock: 26 },
+  destreza: { element: 'fisico', color: C.destreza, damage: 0.3, burn: 0.2 },
+  sigilo: { element: 'sombra', color: C.sigilo, damage: 0.15, backstab: 1 },
 };
 
 /** How each weapon shapes what is poured in. */

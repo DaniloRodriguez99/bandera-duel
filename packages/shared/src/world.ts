@@ -30,6 +30,7 @@ import { DEFAULT_ZONE, ZONES, zone, type Spawner, type ZoneDefinition, type Zone
 import { MOB_FAMILIES, formName, mobStats, xpFor, type MobSkill } from './rpg/mobs.js';
 import { worldTerrain } from './rpg/terrain.js';
 import { WEAPON_PROFILE } from './rpg/weapons.js';
+import { AFFINITY_COLORS } from './rpg/colors.js';
 import {
   BASE_STATS,
   POINTS_PER_LEVEL,
@@ -1101,7 +1102,7 @@ export class World extends Duel {
       kind: 'raise',
       title: `${bond.name} se levanta`,
       text: 'Pelea para vos con lo que sabía en vida.',
-      color: '#a070e0',
+      color: AFFINITY_COLORS.sombra,
     });
   }
 
@@ -1319,7 +1320,7 @@ export class World extends Duel {
       const free = CAST_SLOTS.find((slot) => slotOpen(slot, killer.level) && killer.slots[slot] === null);
       if (free) killer.slots[free] = 'alzar';
       this.sheetChanged.add(killer.id);
-      this.notify(killer.id, { kind: 'learn', title: 'Un muerto te mira', text: '«Alzar» despertó en vos.', color: '#a070e0', skillId: 'alzar' });
+      this.notify(killer.id, { kind: 'learn', title: 'Un muerto te mira', text: '«Alzar» despertó en vos.', color: AFFINITY_COLORS.sombra, skillId: 'alzar' });
     }
     this.notify(killer.id, {
       kind: 'kill',
@@ -1327,7 +1328,7 @@ export class World extends Duel {
       text: killer.skills.alzar
         ? `Su cuerpo queda ${RULES.graveLife} s. Podés alzarlo.`
         : 'Su tumba queda un momento donde cayó.',
-      color: '#a070e0',
+      color: AFFINITY_COLORS.sombra,
     });
   }
 

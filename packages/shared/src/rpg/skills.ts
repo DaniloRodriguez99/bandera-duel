@@ -2,6 +2,7 @@ import type { MobFamilyId } from './zones.js';
 import type { StatId, Stats } from './progression.js';
 import type { WeaponId } from './weapons.js';
 import { COMBO_SKILLS, comboId } from './combos.js';
+import { AFFINITY_COLORS } from './colors.js';
 
 /**
  * The world's skills.
@@ -446,7 +447,7 @@ export const SKILLS_WORLD: Record<string, WorldSkill> = {
     rarity: 'rara',
     flavor: 'Lo que tomás, te sostiene.',
     incantation: 'Oscuridad que tenés hambre, comé por mí…',
-    color: '#a070e0',
+    color: AFFINITY_COLORS.sombra,
     icon: 'skill-sombra_voraz',
     mana: 8,
     cooldown: 3,
@@ -463,7 +464,7 @@ export const SKILLS_WORLD: Record<string, WorldSkill> = {
     rarity: 'epica',
     flavor: 'Nadie se va del todo mientras vos lo necesites.',
     incantation: 'Levantate, que todavía no terminaste…',
-    color: '#a070e0',
+    color: AFFINITY_COLORS.sombra,
     icon: 'skill-alzar',
     mana: 16,
     cooldown: 4,
@@ -513,7 +514,7 @@ export const SKILLS_WORLD: Record<string, WorldSkill> = {
     rarity: 'epica',
     flavor: 'El cielo decide.',
     incantation: 'Que caiga lo que el cielo guarda…',
-    color: '#f4f07a',
+    color: AFFINITY_COLORS.rayo,
     icon: 'skill-trueno',
     mana: 14,
     cooldown: 7,
@@ -605,7 +606,7 @@ export const SKILLS_WORLD: Record<string, WorldSkill> = {
     rarity: 'comun',
     flavor: 'Primero la luz, después el ruido.',
     incantation: 'Que corra lo que late en el aire…',
-    color: '#f4f07a',
+    color: AFFINITY_COLORS.rayo,
     icon: 'skill-chispazo',
     mana: 3,
     cooldown: 1,
@@ -645,7 +646,7 @@ export const SKILLS_WORLD: Record<string, WorldSkill> = {
     rarity: 'comun',
     flavor: 'Un rasguño que te devuelve algo.',
     incantation: 'Sombra, arañá por mí…',
-    color: '#a070e0',
+    color: AFFINITY_COLORS.sombra,
     icon: 'skill-zarpa_sombria',
     mana: 3,
     cooldown: 1.4,
@@ -720,7 +721,7 @@ export const SKILLS_WORLD: Record<string, WorldSkill> = {
     rarity: 'rara',
     flavor: 'Atraviesa lo que se le ponga adelante. Y lo que se ponga detrás.',
     incantation: 'Que el trueno encuentre su camino…',
-    color: '#f4f07a',
+    color: AFFINITY_COLORS.rayo,
     icon: 'skill-descarga',
     mana: 7,
     cooldown: 2.5,
@@ -919,7 +920,7 @@ export const SKILLS_WORLD: Record<string, WorldSkill> = {
     rarity: 'legendaria',
     flavor: 'Algunas nubes nunca se van.',
     incantation: 'Que el cielo se rompa, y que no se arregle…',
-    color: '#f4f07a',
+    color: AFFINITY_COLORS.rayo,
     icon: 'skill-tormenta_eterna',
     mana: 22,
     cooldown: 18,
@@ -936,7 +937,7 @@ export const SKILLS_WORLD: Record<string, WorldSkill> = {
     rarity: 'legendaria',
     flavor: 'El vacío no odia a nadie. Solo tiene hambre.',
     incantation: 'Abismo, abrí los brazos…',
-    color: '#a070e0',
+    color: AFFINITY_COLORS.sombra,
     icon: 'skill-abrazo_abismo',
     mana: 20,
     cooldown: 12,
@@ -1072,7 +1073,7 @@ export const SKILLS_WORLD: Record<string, WorldSkill> = {
   dardo_sombrio: {
     id: 'dardo_sombrio', name: 'Dardo Sombrío', school: 'monstruo', rarity: 'rara',
     flavor: 'El pantano presta su oscuridad a quien sabe pedirla.',
-    color: '#a070e0', icon: 'skill-dardo_sombrio', mana: 6, cooldown: 2.8,
+    color: AFFINITY_COLORS.sombra, icon: 'skill-dardo_sombrio', mana: 6, cooldown: 2.8,
     effect: { kind: 'bolt', element: 'sombra', damage: 1.3, range: 420, drain: 0.4 },
     maxLevel: 6, firstLevelUses: 8,
     evolutions: [{ level: 4, name: 'Lanza del Hundido', line: 'Lo que atravesás, lo sentís volver a vos.' }],

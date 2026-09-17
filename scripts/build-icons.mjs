@@ -4,21 +4,16 @@
 import { mkdirSync, readFileSync, writeFileSync, copyFileSync } from 'node:fs';
 import { SKILLS_WORLD, AFFINITIES } from '@bandera/shared/rpg/skills';
 import { ITEMS } from '@bandera/shared/rpg/items';
+import { AFFINITY_COLORS, ELEMENT_COLORS } from '@bandera/shared/rpg/colors';
 
 const SRC = 'assets-src/game-icons';
 const OUT = 'packages/client/public/assets/icons';
 const { glyphs } = JSON.parse(readFileSync(`${SRC}/map.json`, 'utf8'));
 mkdirSync(OUT, { recursive: true });
 
-const AFFINITY_COLOR = {
-  fuego: '#ff7a2f', agua: '#4fa8e0', tierra: '#b8894f', viento: '#8fd8e8', rayo: '#e6d23a',
-  sombra: '#8a5ad0', luz: '#f0d060', fuerza: '#d0803a', destreza: '#4fbf7a', sigilo: '#3f9a6a',
-};
+const AFFINITY_COLOR = AFFINITY_COLORS;
 const RARITY_COLOR = { comun: '#7a8a96', rara: '#3a86d8', epica: '#9a5ae0', legendaria: '#d8a020', unica: '#e0406a' };
-const ELEMENT_COLOR = {
-  fuego: '#ff7a2f', hielo: '#4fa8e0', viento: '#8fd8e8', rayo: '#e6d23a', sombra: '#8a5ad0',
-  luz: '#f0d060', tierra: '#b8894f', fisico: '#8a7a64',
-};
+const ELEMENT_COLOR = ELEMENT_COLORS;
 
 const shade = (hex, amount) => {
   const n = parseInt(hex.slice(1), 16);

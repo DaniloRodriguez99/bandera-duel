@@ -24,6 +24,7 @@ import {
   type Rarity,
   type WorldSkill,
 } from '@bandera/shared/rpg/skills';
+import { AFFINITY_COLORS } from '@bandera/shared/rpg/colors';
 import { xpToLevel, STAT_IDS, type StatId } from '@bandera/shared/rpg/progression';
 import {
   EQUIP_SLOTS,
@@ -86,18 +87,7 @@ const RARITY_COLOR: Record<Rarity, string> = {
   unica: '#ff4f7a',
 };
 
-const AFFINITY_COLOR: Record<Affinity, string> = {
-  fuego: '#ff7a2f',
-  agua: '#7dd8ff',
-  tierra: '#c9a36b',
-  viento: '#d8fbff',
-  rayo: '#f4f07a',
-  sombra: '#a070e0',
-  luz: '#fff1a8',
-  fuerza: '#e0a060',
-  destreza: '#8fe3b0',
-  sigilo: '#6fbf8a',
-};
+const AFFINITY_COLOR: Record<Affinity, string> = AFFINITY_COLORS;
 
 /** World icons, built from game-icons.net glyphs (CC BY 3.0) by scripts/build-icons.mjs. */
 const icon = (name: string) => `/assets/icons/${name}.svg`;
