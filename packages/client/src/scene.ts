@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { ELEMENT_COLORS, ELEMENT_CORES, hex } from '@bandera/shared/rpg/colors';
+import { Settlement, drawAltar, drawProp, drawSettlementGround } from './village';
 import {
   RULES,
   MOB_STATS,
@@ -141,6 +142,8 @@ export class Arena extends Phaser.Scene {
   private currentMapId: MapId = 'courtyard';
   /** Empty while playing a match; the zone being painted while in the world. */
   private currentZoneId = '';
+  /** The moving life of the zone's settlement (villagers, fire, altar glow), when it has one. */
+  private settlement?: Settlement;
   private mapObjects: Phaser.GameObjects.GameObject[] = [];
   private cameraKey = '';
   constructor() {
@@ -420,8 +423,13 @@ export class Arena extends Phaser.Scene {
           g.fillCircle(x + 18, y + 20, 1.5);
         }
       }
-    // What blocks is drawn as what the biome makes solid.
+    // A settlement's ground goes under everything that stands on it.
+    drawSettlementGround(g, definition);
+    // Buildings are drawn as themselves; every other obstacle as what the biome makes solid.
+    const built = new Set((definition.props ?? []).filter((p) => p.solid).map((p) => `${p.x},${p.y},${p.w},${p.h}`));
+    for (const prop of (definition.props ?? []).filter((p) => !p.solid && p.kind !== 'estandarte')) drawProp(g, prop);
     for (const w of definition.terrain.walls) {
+      if (built.has(`${w.x},${w.y},${w.w},${w.h}`)) continue;
       if (theme === 'bosque') this.grove(g, w.x, w.y, w.w, w.h);
       else if (theme === 'ceniza') this.ruin(g, w.x, w.y, w.w, w.h);
       else if (theme === 'cienaga') this.deadGrove(g, w.x, w.y, w.w, w.h);
@@ -431,15 +439,11 @@ export class Arena extends Phaser.Scene {
     for (const [x, y, w, h] of [[0, 0, width, edge], [0, b.maxY, width, edge], [0, edge, edge, b.maxY - edge], [b.maxX, edge, edge, b.maxY - edge]])
       if (theme === 'bosque') this.grove(g, x, y, w, h);
       else this.wall(g, x, y, w, h);
-    // The shrine: where you revive and where the world saves you.
-    g.fillStyle(0x000000, 0.25);
-    g.fillEllipse(definition.shrine.x, definition.shrine.y + 8, 70, 26);
-    g.fillStyle(0xd9d2bd);
-    g.fillCircle(definition.shrine.x, definition.shrine.y, 28);
-    g.fillStyle(0x7fd6ff, 0.9);
-    g.fillCircle(definition.shrine.x, definition.shrine.y, 12);
-    g.lineStyle(3, 0xffffff, 0.6);
-    g.strokeCircle(definition.shrine.x, definition.shrine.y, 28);
+    // Solid buildings, top to bottom so a lower roof overlaps the wall behind it; banners last.
+    for (const prop of (definition.props ?? []).filter((p) => p.solid).sort((a, b) => a.y + a.h - (b.y + b.h))) drawProp(g, prop);
+    for (const prop of (definition.props ?? []).filter((p) => p.kind === 'estandarte')) drawProp(g, prop);
+    // The altar: where you are born, where you revive and where the world saves you.
+    drawAltar(g, definition.shrine);
     // Portals: a swirl of light where the zone lets you through.
     for (const portal of definition.portals) {
       const a = portal.area;
@@ -457,6 +461,8 @@ export class Arena extends Phaser.Scene {
         g.strokePath();
       }
     this.bake(g, width, height);
+    this.settlement?.destroy();
+    this.settlement = new Settlement(this, definition);
   }
 
   /**
@@ -631,6 +637,8 @@ export class Arena extends Phaser.Scene {
 
   private drawMap(mapId: MapId) {
     this.currentZoneId = '';
+    this.settlement?.destroy();
+    this.settlement = undefined;
     this.currentMapId = mapId;
     this.mapObjects.forEach((object) => object.destroy());
     this.mapObjects = [];
@@ -2125,6 +2133,7 @@ export class Arena extends Phaser.Scene {
   }
   update(time: number, delta: number) {
     if (!this.controls) return;
+    this.settlement?.update(time, delta);
     this.updateCamera(delta);
     if (!this.snapshot) return;
     let s = this.snapshot;

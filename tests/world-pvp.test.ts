@@ -33,7 +33,7 @@ function character({ id, name = id, skill = 'parada', creation = { sparks: { fue
  * Two characters facing each other in a zone emptied of monsters, far from the shrine, so only
  * what the test does can hurt anyone.
  */
-function arena(zoneId: ZoneId, a: Who, b: Who, at = { x: 1300, y: 1000 }, gap = 40) {
+function arena(zoneId: ZoneId, a: Who, b: Who, at = { x: 900, y: 1000 }, gap = 40) {
   const world = new World(zoneId);
   world.state.zombies = [];
   const ca = character(a);
@@ -57,12 +57,12 @@ const seen = (world: World, id: string, kind: Notice['kind']) => world.notices.f
 
 describe('hostilidad en el mundo', () => {
   it('el lugar de prueba está libre de paredes', () => {
-    // Otherwise a wall could swallow an arrow and a "nobody got hurt" test would pass for nothing.
+    // In the valley that is the village square and the farms past the south gate. Otherwise a wall could swallow an arrow and a "nobody got hurt" test would pass for nothing.
     for (const zoneId of ['bosque', 'umbral'] as const) {
       const { terrain } = new World(zoneId).definition;
       for (const y of [1000, 1400]) {
-        expect(blocked(1300, y, RULES.radius, terrain)).toBe(false);
-        expect(lineClear({ x: 1300, y }, { x: 1650, y }, terrain)).toBe(true);
+        expect(blocked(900, y, RULES.radius, terrain)).toBe(false);
+        expect(lineClear({ x: 900, y }, { x: 1250, y }, terrain)).toBe(true);
       }
     }
   });
@@ -83,12 +83,12 @@ describe('hostilidad en el mundo', () => {
   it('la flecha de un jugador pega a otro en zona salvaje y lo atraviesa en el santuario', () => {
     const arquero = { sparks: { destreza: 3 }, weapon: 'arco' } as Creation;
     const salvaje = arena('bosque', { id: 'a', creation: arquero }, { id: 'b' }, undefined, 160);
-    expect(salvaje.pb.x).toBe(1460);
+    expect(salvaje.pb.x).toBe(1060);
     run(salvaje.world, 1, { a: { shot: true, angle: 0 } });
     run(salvaje.world, ticks(1));
     expect(salvaje.pb.hp).toBeLessThan(salvaje.pb.maxHp);
 
-    const santuario = arena('umbral', { id: 'a', creation: arquero }, { id: 'b' }, { x: 1400, y: 1400 }, 160);
+    const santuario = arena('umbral', { id: 'a', creation: arquero }, { id: 'b' }, { x: 900, y: 1400 }, 160);
     run(santuario.world, 1, { a: { shot: true, angle: 0 } });
     expect(santuario.world.state.arrows.some((a) => a.owner === 'a')).toBe(true);
     run(santuario.world, ticks(0.3));
@@ -116,7 +116,7 @@ describe('hostilidad en el mundo', () => {
 
   it('Trueno golpea a los jugadores enemigos cercanos solo en zona salvaje', () => {
     for (const [zoneId, hurts] of [['bosque', true], ['umbral', false]] as const) {
-      const { world, ca, pb } = arena(zoneId, { id: 'a', skill: 'trueno' }, { id: 'b' }, { x: 1400, y: 1400 });
+      const { world, ca, pb } = arena(zoneId, { id: 'a', skill: 'trueno' }, { id: 'b' }, { x: 900, y: 1400 });
       ca.affinities.rayo!.xp = 700; // silent: it lands on the cast step
       world.cast('a', 'e', { x: pb.x, y: pb.y });
       run(world, 2);
@@ -126,7 +126,7 @@ describe('hostilidad en el mundo', () => {
 
   it('Cura Menor en zona salvaje cura solo a quien la canta; en el santuario, a todos cerca', () => {
     for (const [zoneId, healsOther] of [['bosque', false], ['umbral', true]] as const) {
-      const { world, pa, pb } = arena(zoneId, { id: 'a', skill: 'cura_menor' }, { id: 'b' }, { x: 1400, y: 1400 });
+      const { world, pa, pb } = arena(zoneId, { id: 'a', skill: 'cura_menor' }, { id: 'b' }, { x: 900, y: 1400 });
       pa.hp = 2;
       pb.hp = 2;
       world.cast('a', 'e', { x: pa.x, y: pa.y });
@@ -153,7 +153,7 @@ describe('hostilidad en el mundo', () => {
 
   it('la Sombra de un jugador ataca a otros en zona salvaje y nunca a su dueño', () => {
     for (const [zoneId, hurts] of [['bosque', true], ['umbral', false]] as const) {
-      const { world, pa, pb } = arena(zoneId, { id: 'a' }, { id: 'b' }, { x: 1400, y: 1400 }, 120);
+      const { world, pa, pb } = arena(zoneId, { id: 'a' }, { id: 'b' }, { x: 900, y: 1400 }, 120);
       pb.invuln = 0;
       // Hunting on its own; guarding, it would only strike inside a small ring around its owner.
       pa.zombieAuto = true;

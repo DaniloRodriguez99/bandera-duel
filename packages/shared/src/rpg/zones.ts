@@ -62,6 +62,34 @@ export interface Portal {
   arrive: Vec;
 }
 
+/** What a piece of a settlement is; the client draws each kind its own way. */
+export type PropKind =
+  | 'ayuntamiento'
+  | 'casa'
+  | 'cuartel'
+  | 'herreria'
+  | 'granero'
+  | 'torre'
+  | 'empalizada'
+  | 'porton'
+  | 'campo'
+  | 'pozo'
+  | 'fogata'
+  | 'carreta'
+  | 'estandarte'
+  | 'lena';
+
+/**
+ * A building or a piece of decoration. Solid ones join the zone's walls, so bodies, arrows and the
+ * pathfinding treat a house exactly like a boulder; the rest are only drawn.
+ */
+export interface Prop extends Rect {
+  kind: PropKind;
+  solid: boolean;
+  /** Roof or banner colour, when the kind has one. */
+  tint?: string;
+}
+
 export interface ZoneDefinition {
   id: ZoneId;
   name: string;
@@ -80,6 +108,8 @@ export interface ZoneDefinition {
   portals: Portal[];
   /** Roofed zones (caves) forbid flying; open ones allow it. */
   roofed: boolean;
+  /** Buildings and decoration; the solid ones are already part of `terrain.walls`. */
+  props?: Prop[];
 }
 
 const ZONE_INSET = 20;
@@ -94,19 +124,58 @@ export const zoneBounds = (width: number, height: number): Bounds => ({
 const UMBRAL_WIDTH = 3840;
 const UMBRAL_HEIGHT = 2160;
 
+const solidProp = (kind: PropKind, x: number, y: number, w: number, h: number, tint?: string): Prop => ({ kind, x, y, w, h, solid: true, ...(tint ? { tint } : {}) });
+const decor = (kind: PropKind, x: number, y: number, w: number, h: number, tint?: string): Prop => ({ kind, x, y, w, h, solid: false, ...(tint ? { tint } : {}) });
+
 /**
- * Valle de Umbral: the starter valley. Sanctuary, so nobody can be attacked here, with the
- * shrine at the village and the first camps out in the meadow to the east and south.
+ * Umbral, the village where every story starts — a human town out of Warcraft III. A palisade with
+ * a watchtower at each corner and two gates (east to the meadow, south to the fields), the town
+ * hall to the north of the square, and the altar in the middle of the square, where you are born
+ * and where you come back. Barracks, smithy, granary and cottages around; farms outside the south
+ * gate. The square around the altar is left open on purpose: nothing may ever stand where a
+ * character appears.
  */
+const umbralVillage: Prop[] = [
+  // Palisade: north, west, and the east and south walls split by their gates.
+  solidProp('empalizada', 380, 360, 1130, 26),
+  solidProp('empalizada', 380, 360, 26, 880),
+  solidProp('empalizada', 1484, 360, 26, 270),
+  solidProp('empalizada', 1484, 850, 26, 390),
+  solidProp('empalizada', 380, 1214, 470, 26),
+  solidProp('empalizada', 1090, 1214, 420, 26),
+  decor('porton', 1478, 630, 38, 220),
+  decor('porton', 850, 1208, 240, 38),
+  // Watchtowers on the corners.
+  solidProp('torre', 364, 344, 58, 58),
+  solidProp('torre', 1468, 344, 58, 58),
+  solidProp('torre', 364, 1198, 58, 58),
+  solidProp('torre', 1468, 1198, 58, 58),
+  // The town hall, north of the square.
+  solidProp('ayuntamiento', 880, 420, 220, 150, '#3f6fd0'),
+  // Around the square.
+  solidProp('cuartel', 500, 450, 170, 110, '#b8433a'),
+  solidProp('herreria', 1220, 450, 140, 100, '#5a4a44'),
+  solidProp('granero', 1250, 1080, 160, 110, '#a8672e'),
+  solidProp('casa', 480, 660, 120, 90, '#b8433a'),
+  solidProp('casa', 480, 850, 120, 90, '#3f6fd0'),
+  solidProp('casa', 660, 1020, 120, 90, '#b8433a'),
+  solidProp('casa', 1250, 800, 110, 84, '#3f6fd0'),
+  solidProp('pozo', 1150, 900, 40, 40),
+  // Life in the square.
+  decor('fogata', 830, 880, 40, 40),
+  decor('carreta', 1150, 600, 60, 36),
+  decor('lena', 700, 560, 54, 30),
+  decor('estandarte', 1440, 600, 18, 60, '#3f6fd0'),
+  decor('estandarte', 1440, 880, 18, 60, '#3f6fd0'),
+  decor('estandarte', 820, 1160, 18, 60, '#3f6fd0'),
+  decor('estandarte', 1110, 1160, 18, 60, '#3f6fd0'),
+  // Farms outside the south gate.
+  decor('campo', 520, 1300, 260, 150),
+  decor('campo', 1160, 1300, 260, 150),
+];
+
 const umbralWalls: Rect[] = [
-  // Village wall, open to the east towards the meadow.
-  { x: 420, y: 520, w: 640, h: 26 },
-  { x: 420, y: 520, w: 26, h: 430 },
-  { x: 420, y: 924, w: 640, h: 26 },
-  // Cottages inside the village.
-  { x: 520, y: 620, w: 120, h: 90 },
-  { x: 760, y: 620, w: 120, h: 90 },
-  { x: 520, y: 790, w: 120, h: 90 },
+  ...umbralVillage.filter((p) => p.solid).map(({ x, y, w, h }) => ({ x, y, w, h })),
   // Rocky spine that splits the valley, with a pass in the middle.
   { x: 1700, y: 180, w: 90, h: 620 },
   { x: 1700, y: 1180, w: 90, h: 800 },
@@ -172,11 +241,14 @@ export const ZONES: Partial<Record<ZoneId, ZoneDefinition>> = {
     terrain: { walls: umbralWalls, bounds: zoneBounds(UMBRAL_WIDTH, UMBRAL_HEIGHT) },
     pvp: 'safe',
     minLevel: 1,
-    entry: { x: 740, y: 760 },
-    shrine: { x: 980, y: 740 },
+    // Born facing the altar, in the middle of the square.
+    entry: { x: 900, y: 780 },
+    shrine: { x: 990, y: 740 },
     roofed: false,
+    props: umbralVillage,
     spawners: [
-      { familyId: 'lobezno', level: 1, at: { x: 1440, y: 700 }, radius: 220, count: 3, respawnSeconds: 25 },
+      // Outside the east gate, where the road meets the meadow.
+      { familyId: 'lobezno', level: 1, at: { x: 1900, y: 980 }, radius: 200, count: 3, respawnSeconds: 25 },
       { familyId: 'lobezno', level: 2, at: { x: 2180, y: 1180 }, radius: 240, count: 4, respawnSeconds: 30 },
       { familyId: 'jabali', level: 2, at: { x: 1180, y: 1560 }, radius: 200, count: 3, respawnSeconds: 30 },
       // Stone-throwing goblins on the hill past the spine: the first thing that hits from afar.

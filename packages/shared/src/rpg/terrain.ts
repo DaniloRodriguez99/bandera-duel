@@ -78,21 +78,30 @@ export function roadPaths(zoneId: ZoneId): Vec[][] {
   if (paths) return paths;
   const def = zone(zoneId);
   const seed = seedOf(def.id);
-  paths = landmarks(def)
+  const gates = (def.props ?? []).filter((p) => p.kind === 'porton').map((p) => ({ x: p.x + p.w / 2, y: p.y + p.h / 2 }));
+  const inside = settlementBox(def);
+  const wobbly = (from: Vec, target: Vec, wobbleScale: number): Vec[] => {
+    const steps = Math.max(2, Math.ceil(Math.hypot(target.x - from.x, target.y - from.y) / (TILE * 1.5)));
+    const nx = -(target.y - from.y);
+    const ny = target.x - from.x;
+    const len = Math.hypot(nx, ny) || 1;
+    const points: Vec[] = [];
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps;
+      const wobble = (noise(i, 0, 3, seed + Math.round(target.x)) - 0.5) * 2.4 * TILE * Math.sin(Math.PI * t) * wobbleScale;
+      points.push({ x: from.x + (target.x - from.x) * t + (nx / len) * wobble, y: from.y + (target.y - from.y) * t + (ny / len) * wobble });
+    }
+    return points;
+  };
+  paths = landmarks(def, false)
     .slice(1)
+    // Nothing inside the walls needs its own road: the square is the road.
+    .filter((target) => !inside || !within(inside, target))
     .map((target) => {
-      const from = def.shrine;
-      const steps = Math.max(2, Math.ceil(Math.hypot(target.x - from.x, target.y - from.y) / (TILE * 1.5)));
-      const nx = -(target.y - from.y);
-      const ny = target.x - from.x;
-      const len = Math.hypot(nx, ny) || 1;
-      const points: Vec[] = [];
-      for (let i = 0; i <= steps; i++) {
-        const t = i / steps;
-        const wobble = (noise(i, 0, 3, seed + Math.round(target.x)) - 0.5) * 2.4 * TILE * Math.sin(Math.PI * t);
-        points.push({ x: from.x + (target.x - from.x) * t + (nx / len) * wobble, y: from.y + (target.y - from.y) * t + (ny / len) * wobble });
-      }
-      return points;
+      if (!gates.length) return wobbly(def.shrine, target, 1);
+      // Out of a walled town, every road leaves through the gate nearest to where it goes.
+      const gate = gates.reduce((best, g) => (Math.hypot(g.x - target.x, g.y - target.y) < Math.hypot(best.x - target.x, best.y - target.y) ? g : best));
+      return [...wobbly(def.shrine, gate, 0.15), ...wobbly(gate, target, 1).slice(1)];
     });
   roadCache.set(zoneId, paths);
   return paths;
@@ -104,13 +113,31 @@ export function tileMap(zoneId: ZoneId): TileMap {
   return map;
 }
 
-/** Places that must stay readable: never under water, and joined by roads. */
-function landmarks(def: ZoneDefinition): Vec[] {
+/** The box a settlement's palisade encloses, if the zone has one. */
+function settlementBox(def: ZoneDefinition) {
+  const walls = (def.props ?? []).filter((p) => p.kind === 'empalizada');
+  if (!walls.length) return null;
+  return {
+    minX: Math.min(...walls.map((p) => p.x)),
+    minY: Math.min(...walls.map((p) => p.y)),
+    maxX: Math.max(...walls.map((p) => p.x + p.w)),
+    maxY: Math.max(...walls.map((p) => p.y + p.h)),
+  };
+}
+const within = (box: { minX: number; minY: number; maxX: number; maxY: number }, v: Vec) =>
+  v.x >= box.minX && v.x <= box.maxX && v.y >= box.minY && v.y <= box.maxY;
+
+/**
+ * Places that must stay readable: never under water, and joined by roads. Buildings count for the
+ * water (no pond under a house) but get no road of their own.
+ */
+function landmarks(def: ZoneDefinition, withProps = true): Vec[] {
   return [
     def.shrine,
     def.entry,
     ...def.spawners.map((s) => s.at),
     ...def.portals.map((p) => ({ x: p.area.x + p.area.w / 2, y: p.area.y + p.area.h / 2 })),
+    ...(withProps ? (def.props ?? []).map((p) => ({ x: p.x + p.w / 2, y: p.y + p.h / 2 })) : []),
     // Where other zones' portals drop a traveller: arriving in a lake would strand them.
     ...Object.values(ZONES).flatMap((other) => other?.portals.filter((p) => p.to === def.id).map((p) => p.arrive) ?? []),
   ];
