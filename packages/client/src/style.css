@@ -1500,13 +1500,19 @@ body.world-mode #clock-note{color:#7fd6ff;letter-spacing:3px}
 /* El vacío blanco del Hitogami */
 .wh-creation{position:fixed;inset:0;z-index:120;display:grid;place-items:center;overflow:auto;padding:16px;color:#1b2333;background:radial-gradient(circle at 50% 38%,#fff 0,#f1f3f8 38%,#d3d9e4 100%);animation:whFade .8s reverse}
 .wh-birth{width:min(700px,100%);display:grid;justify-items:center;gap:8px;text-align:center}
+.wh-creation-close{position:fixed;top:18px;right:22px;z-index:1;display:flex;align-items:center;gap:7px;padding:8px 12px;border:1px solid #aeb8c8;background:#ffffffd9;color:#273247;font:700 11px 'DM Sans',sans-serif;letter-spacing:1px;cursor:pointer;box-shadow:0 5px 18px #28344d1c}
+.wh-creation-close:first-letter{font-size:18px;line-height:10px}
+.wh-creation-close:hover,.wh-creation-close:focus-visible{border-color:#273247;outline:2px solid #fff;box-shadow:0 0 0 4px #273247}
 .wh-god{margin:0;font-size:12px;color:#6a7488}
 .wh-birth h2{margin:0;font:800 italic clamp(26px,4vw,40px) 'Barlow Condensed',Impact,sans-serif;color:#0f1729}
 .wh-god-line{margin:0 0 6px;font-style:italic;color:#3c465b}
 .wh-birth h5{margin:8px 0 2px;font:700 10px 'DM Sans',sans-serif;letter-spacing:3px;color:#56617a}
 .wh-birth h5 b{margin-left:6px;color:#0f1729}
 .wh-sparks{width:100%;display:grid;grid-template-columns:repeat(5,1fr);gap:6px}
-.wh-spark{--element:#888;display:grid;align-content:start;gap:2px;padding:8px 5px;border:1px solid #c7cfdc;border-bottom:3px solid var(--element);background:#ffffffcc;color:#1b2333;cursor:pointer;transition:transform .12s,box-shadow .2s}
+.wh-spark-wrap{position:relative;display:grid}
+.wh-spark{--element:#888;width:100%;height:100%;display:grid;align-content:start;gap:2px;padding:8px 28px 8px 5px;border:1px solid #c7cfdc;border-bottom:3px solid var(--element);background:#ffffffcc;color:#1b2333;cursor:pointer;transition:transform .12s,box-shadow .2s}
+.wh-spark-remove{position:absolute;top:6px;right:6px;width:22px;height:22px;padding:0;border:1px solid #aeb8c8;border-radius:50%;background:#fff;color:#273247;font:700 17px/18px 'DM Sans',sans-serif;cursor:pointer;box-shadow:0 2px 7px #1b233322}
+.wh-spark-remove:hover,.wh-spark-remove:focus-visible{border-color:var(--element,#273247);background:#273247;color:#fff;outline:2px solid #fff}
 .wh-spark:hover{transform:translateY(-2px)}
 .wh-spark b{font:700 14px 'Barlow Condensed',Impact,sans-serif;letter-spacing:.5px}
 .wh-spark .count{font-size:11px;letter-spacing:2px;color:color-mix(in srgb,var(--element) 70%,#1b2333)}

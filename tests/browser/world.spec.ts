@@ -1,5 +1,23 @@
 import { test, expect } from '@playwright/test';
 
+test('permite devolver chispas y cerrar la creación de personaje', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('#world-open').click();
+  await page.locator('#world-name').fill('Sylphie');
+  await page.locator('#world-user').fill(`cerrar${Date.now().toString(36).slice(-6)}`);
+  await page.locator('#world-pass').fill('mundo123');
+  await page.locator('#world-new').check();
+  await page.locator('#world-enter').click();
+
+  await expect(page.locator('#wh-creation')).toBeVisible({ timeout: 15000 });
+  await page.locator('[data-affinity=fuego]').click();
+  await page.locator('[data-remove-affinity=fuego]').click();
+  await expect(page.locator('[data-affinity=fuego]')).toHaveAttribute('data-count', '0');
+  await page.locator('#wh-creation-close').click();
+  await expect(page.locator('#wh-creation')).toBeHidden();
+  await expect(page.locator('#intro')).toBeVisible();
+});
+
 test('entra al mundo: nace en el vacío blanco, aparece en el valle y el Sistema le responde', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
@@ -26,6 +44,12 @@ test('entra al mundo: nace en el vacío blanco, aparece en el valle y el Sistema
   await page.locator('[data-affinity=fuego]').click();
   await page.locator('[data-affinity=fuego]').click();
   await page.locator('[data-affinity=viento]').click();
+  await expect(page.locator('#wh-creation-close')).toBeVisible();
+  // Every assigned affinity exposes an ordinary left-click control to take sparks back.
+  await page.locator('[data-remove-affinity=fuego]').click();
+  await expect(page.locator('[data-affinity=fuego]')).toHaveAttribute('data-count', '1');
+  await expect(page.locator('#wh-born')).toBeDisabled();
+  await page.locator('[data-affinity=fuego]').click();
   // A fourth spark does not exist; right click takes one back.
   await page.locator('[data-affinity=agua]').click();
   await expect(page.locator('[data-affinity=agua]')).toHaveAttribute('data-count', '0');

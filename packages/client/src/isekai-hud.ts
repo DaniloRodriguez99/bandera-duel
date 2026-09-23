@@ -1047,14 +1047,15 @@ export class WorldHud {
    * The Man-God's welcome. He has no class to give and grants nothing: the sparks are yours to
    * place, the weapon yours to pick, and the one skill fate hands over is not chosen by anyone.
    */
-  openCreation(onBorn: (creation: Creation) => void) {
+  openCreation(onBorn: (creation: Creation) => void, onClose: () => void = () => {}) {
     this.creation.classList.remove('robando');
     const sparks: Partial<Record<Affinity, number>> = {};
     let weapon: Weapon = 'espada';
     const left = () => SPARKS - Object.values(sparks).reduce((a, b) => a + (b ?? 0), 0);
     this.creation.hidden = false;
     this.creation.innerHTML = `
-      <div class="wh-birth" role="dialog" aria-label="Nacer">
+      <div class="wh-birth" role="dialog" aria-modal="true" aria-label="Nacer">
+        <button type="button" id="wh-creation-close" class="wh-creation-close" aria-label="Cerrar creación de personaje">× <span>Cerrar</span></button>
         <p class="wh-god">Una voz sin cuerpo te habla como a un viejo amigo.</p>
         <h2>「Bienvenido al mundo.」</h2>
         <p class="wh-god-line">No, no soy tu dios. No tengo nada para darte. Solo vine a mirar.</p>
@@ -1070,13 +1071,32 @@ export class WorldHud {
     const grid = this.creation.querySelector('#wh-spark-grid')!;
     const weapons = this.creation.querySelector('#wh-weapon-grid')!;
     const born = this.creation.querySelector<HTMLButtonElement>('#wh-born')!;
+    const close = this.creation.querySelector<HTMLButtonElement>('#wh-creation-close')!;
+    let finished = false;
+    const dismiss = () => {
+      if (finished) return;
+      finished = true;
+      document.removeEventListener('keydown', onKeyDown);
+      this.creation.hidden = true;
+      this.creation.replaceChildren();
+      onClose();
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.code === 'Escape') dismiss();
+    };
+    close.onclick = dismiss;
+    document.addEventListener('keydown', onKeyDown);
     const render = () => {
       this.creation.querySelector('#wh-sparks')!.textContent = `${SPARKS - left()} / ${SPARKS}`;
       born.disabled = left() !== 0;
       grid.querySelectorAll<HTMLElement>('[data-affinity]').forEach((chip) => {
         const affinity = chip.dataset.affinity as Affinity;
-        chip.dataset.count = String(sparks[affinity] ?? 0);
-        chip.querySelector('.count')!.textContent = '◆'.repeat(sparks[affinity] ?? 0) || '·';
+        const count = sparks[affinity] ?? 0;
+        chip.dataset.count = String(count);
+        chip.setAttribute('aria-pressed', String(count > 0));
+        chip.querySelector('.count')!.textContent = '◆'.repeat(count) || '·';
+        const remove = grid.querySelector<HTMLButtonElement>(`[data-remove-affinity="${affinity}"]`);
+        if (remove) remove.hidden = count === 0;
       });
       weapons.querySelectorAll<HTMLElement>('[data-weapon]').forEach((card) => (card.dataset.active = String(card.dataset.weapon === weapon)));
     };
@@ -1087,7 +1107,17 @@ export class WorldHud {
       chip.style.setProperty('--element', AFFINITY_COLOR[affinity]);
       chip.innerHTML = `<b>${AFFINITY_NAMES[affinity]}</b><span class="count"></span><small>${AFFINITY_TEXT[affinity]}</small>`;
       chip.title = AFFINITY_TEXT[affinity];
-      // Click adds a spark; right click takes one back.
+      chip.setAttribute('aria-label', `${AFFINITY_NAMES[affinity]}: agregar una chispa`);
+      const wrapper = el('div', 'wh-spark-wrap');
+      const remove = el('button', 'wh-spark-remove', '−') as HTMLButtonElement;
+      remove.type = 'button';
+      remove.dataset.removeAffinity = affinity;
+      remove.setAttribute('aria-label', `Quitar una chispa de ${AFFINITY_NAMES[affinity]}`);
+      remove.onclick = () => {
+        if ((sparks[affinity] ?? 0) > 0) sparks[affinity] = (sparks[affinity] ?? 0) - 1;
+        render();
+      };
+      // Click adds a spark; the visible minus button or right click takes one back.
       chip.onclick = () => {
         if (left() > 0) sparks[affinity] = (sparks[affinity] ?? 0) + 1;
         render();
@@ -1097,7 +1127,8 @@ export class WorldHud {
         if (sparks[affinity]) sparks[affinity]! -= 1;
         render();
       };
-      grid.append(chip);
+      wrapper.append(chip, remove);
+      grid.append(wrapper);
     }
     for (const id of WEAPON_IDS) {
       const card = el('button', 'wh-weapon') as HTMLButtonElement;
@@ -1112,6 +1143,8 @@ export class WorldHud {
     }
     born.onclick = () => {
       if (left() !== 0) return;
+      finished = true;
+      document.removeEventListener('keydown', onKeyDown);
       const creation: Creation = { sparks: Object.fromEntries(Object.entries(sparks).filter(([, n]) => n)), weapon };
       this.creation.hidden = true;
       this.revealPending = true;

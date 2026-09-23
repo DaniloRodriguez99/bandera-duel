@@ -938,11 +938,17 @@ function showCharacters(list: WorldCharacterList) {
   const create = () => {
     // Birth happens before the join: the server rolls fate from the sparks and weapon it gets.
     $('overlay').hidden = true;
-    worldHud.openCreation((creation) => {
-      chosenCreation = creation;
-      chosenCharacter = `c${Date.now().toString(36)}`;
-      void enterWorld();
-    });
+    worldHud.openCreation(
+      (creation) => {
+        chosenCreation = creation;
+        chosenCharacter = `c${Date.now().toString(36)}`;
+        void enterWorld();
+      },
+      () => {
+        if (list.characters.length) showCharacters(list);
+        else $('leave').click();
+      },
+    );
   };
   // Nobody to come back with: straight to the Man-God's void, no lobby in between.
   if (!list.characters.length) return create();
