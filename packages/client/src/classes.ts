@@ -61,13 +61,13 @@ function skillPreviews(classId: ClassId) {
 
 export function savedClass(): ClassId { const saved=localStorage.getItem('bandera-class');return validClass(saved)?saved:DEFAULT_CLASS; }
 export function saveClass(classId:ClassId) { localStorage.setItem('bandera-class',classId); }
-export function mountClasses(root:HTMLElement, selected:ClassId, choose:(id:ClassId)=>void, customize?:()=>void) {
-  root.innerHTML=CLASS_IDS.map(id=>{const c=CLASSES[id];return `<article class="class-card" data-class-card="${id}" aria-pressed="${id===selected}"><button type="button" class="class-select" data-class="${id}" aria-pressed="${id===selected}" aria-label="Elegir ${c.name}: ${c.label.toLowerCase()}">${classIllustration(id)}<strong>${c.name}</strong><span class="class-equipment">${c.label}</span><span class="class-stats">${'♥'.repeat(c.hp)} · ${c.speed>=180?'LIGERO':'PESADO'}</span><small>${c.description}</small>${skillPreviews(id)}</button>${id==='mage'?'<button type="button" class="customize-class">PERSONALIZAR</button>':''}</article>`;}).join('');
+export function mountClasses(root:HTMLElement, selected:ClassId, choose:(id:ClassId)=>void, customize?:(id:ClassId)=>void) {
+  root.innerHTML=CLASS_IDS.map(id=>{const c=CLASSES[id];return `<article class="class-card" data-class-card="${id}" aria-pressed="${id===selected}"><button type="button" class="class-select" data-class="${id}" aria-pressed="${id===selected}" aria-label="Elegir ${c.name}: ${c.label.toLowerCase()}">${classIllustration(id)}<strong>${c.name}</strong><span class="class-equipment">${c.label}</span><span class="class-stats">${'♥'.repeat(c.hp)} · ${c.speed>=180?'LIGERO':'PESADO'}</span><small>${c.description}</small>${skillPreviews(id)}</button><button type="button" class="customize-class" data-customize="${id}" aria-label="Personalizar ${c.name}">PERSONALIZAR</button></article>`;}).join('');
   root.querySelectorAll<HTMLButtonElement>('[data-class]').forEach(b=>b.onclick=()=>choose(b.dataset.class as ClassId));
-  root.querySelectorAll<HTMLButtonElement>('.customize-class').forEach(b=>b.onclick=()=>customize?.());
+  root.querySelectorAll<HTMLButtonElement>('.customize-class').forEach(b=>b.onclick=()=>customize?.(b.dataset.customize as ClassId));
 }
 export function updateClasses(root:HTMLElement, selected:ClassId, disabled=false) {
   root.querySelectorAll<HTMLElement>('[data-class-card]').forEach(card=>card.setAttribute('aria-pressed',String(card.dataset.classCard===selected)));
   root.querySelectorAll<HTMLButtonElement>('[data-class]').forEach(b=>{b.disabled=disabled;b.setAttribute('aria-pressed',String(b.dataset.class===selected));});
 }
-export function updateMageSkin(root:HTMLElement,skinId:string){const button=root.querySelector<HTMLElement>('[data-class="mage"]');const old=button?.querySelector('svg');if(old)old.outerHTML=classIllustration('mage',skinId);}
+export function updateClassSkin(root:HTMLElement,classId:ClassId,skinId:string){const button=root.querySelector<HTMLElement>(`[data-class="${classId}"]`);const old=button?.querySelector('svg');if(old)old.outerHTML=classIllustration(classId,skinId);}

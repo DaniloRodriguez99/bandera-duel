@@ -395,6 +395,39 @@ export const MAGE_SKINS: CharacterSkinDefinition[] = [
   {id:'mage.bloodWarlock',classId:'mage',name:'Brujo de Sangre',description:'Poder prohibido escrito en carmesí.',cloth:'#671d2c',light:'#d35a64',accent:'#ff334f',silhouette:'horns'},
   {id:'mage.emeraldGuardian',classId:'mage',name:'Guardián Esmeralda',description:'Magia viva de los bosques antiguos.',cloth:'#376b48',light:'#9fd58b',accent:'#77f0a1',silhouette:'crown'},
 ];
+const classSkins = (classId:ClassId, entries:Omit<CharacterSkinDefinition,'classId'>[]):CharacterSkinDefinition[] => entries.map(entry=>({...entry,classId}));
+export const CHARACTER_SKINS:Record<ClassId,CharacterSkinDefinition[]> = {
+  archer:classSkins('archer',[
+    {id:'archer.royalRanger',name:'Guardabosques Real',description:'Cuero verde y plumas de la guardia del rey.',cloth:'#64897e',light:'#b6cbb0',accent:'#eac787',silhouette:'classic'},
+    {id:'archer.crimsonStalker',name:'Acechador Carmesí',description:'Cazador de primera línea cubierto de rojo.',cloth:'#8f3b35',light:'#dc7664',accent:'#ffc06d',silhouette:'hood'},
+    {id:'archer.winterMarksman',name:'Tirador Invernal',description:'Capas claras para los pasos helados.',cloth:'#477b94',light:'#b9e5ed',accent:'#72dfff',silhouette:'crown'},
+    {id:'archer.nightHunter',name:'Cazador Nocturno',description:'Una silueta oscura que desaparece entre sombras.',cloth:'#34304f',light:'#8075aa',accent:'#c274ff',silhouette:'hood'},
+    {id:'archer.emeraldScout',name:'Explorador Esmeralda',description:'Camuflaje vivo de los bosques antiguos.',cloth:'#39704c',light:'#91c879',accent:'#d5e57a',silhouette:'classic'},
+  ]),
+  mage:MAGE_SKINS,
+  necromancer:classSkins('necromancer',[
+    {id:'necromancer.cryptHerald',name:'Heraldo de la Cripta',description:'Los colores tradicionales de los guardianes del osario.',cloth:'#554067',light:'#9d79b5',accent:'#e58a55',silhouette:'classic'},
+    {id:'necromancer.boneLord',name:'Señor Óseo',description:'Una corona de hueso anuncia a los muertos.',cloth:'#676054',light:'#d1c5a5',accent:'#eef0d0',silhouette:'crown'},
+    {id:'necromancer.crimsonPlague',name:'Plaga Carmesí',description:'Vestiduras marcadas por una peste prohibida.',cloth:'#6e2932',light:'#c45862',accent:'#ff704d',silhouette:'hood'},
+    {id:'necromancer.funeralOracle',name:'Oráculo Funerario',description:'Lee el porvenir en las cenizas de los caídos.',cloth:'#334c59',light:'#7fa5a8',accent:'#7ee6bd',silhouette:'turban'},
+    {id:'necromancer.lichKing',name:'Rey Exánime',description:'Armadura ritual para gobernar a los sin nombre.',cloth:'#332648',light:'#76588f',accent:'#b96cff',silhouette:'armor'},
+  ]),
+  guardian:classSkins('guardian',[
+    {id:'guardian.royalBastion',name:'Bastión Real',description:'Acero y oro de la guardia del castillo.',cloth:'#607c73',light:'#c2d2ca',accent:'#eac787',silhouette:'classic'},
+    {id:'guardian.crimsonGuard',name:'Guardia Carmesí',description:'Escudo rojo para sostener la primera línea.',cloth:'#873b37',light:'#d77969',accent:'#ffbd68',silhouette:'armor'},
+    {id:'guardian.glacialSentinel',name:'Centinela Glacial',description:'Placas azules templadas contra el hielo.',cloth:'#426d89',light:'#a8d8e8',accent:'#70ddff',silhouette:'crown'},
+    {id:'guardian.jadeWall',name:'Muro de Jade',description:'Una armadura verde que nunca retrocede.',cloth:'#3e7054',light:'#93c79a',accent:'#7ef0a0',silhouette:'armor'},
+    {id:'guardian.solarPaladin',name:'Paladín Solar',description:'La luz del juramento grabada en cada placa.',cloth:'#9a7137',light:'#f0cf82',accent:'#fff09a',silhouette:'crown'},
+  ]),
+  vanguard:classSkins('vanguard',[
+    {id:'vanguard.royalExecutioner',name:'Verdugo Real',description:'El mandoble ceremonial de la corona.',cloth:'#68736f',light:'#c6cfca',accent:'#eac787',silhouette:'classic'},
+    {id:'vanguard.crimsonGreatsword',name:'Espadón Carmesí',description:'Armadura roja para una ofensiva sin pausa.',cloth:'#852f32',light:'#ce6262',accent:'#ff9a5d',silhouette:'armor'},
+    {id:'vanguard.ironTitan',name:'Titán de Hierro',description:'Placas pesadas hechas para romper formaciones.',cloth:'#4c5660',light:'#aeb9c2',accent:'#d9e1e5',silhouette:'armor'},
+    {id:'vanguard.shadowReaper',name:'Segador Umbrío',description:'Acero oscuro y una presencia que apaga la arena.',cloth:'#302c42',light:'#746982',accent:'#bd73ef',silhouette:'horns'},
+    {id:'vanguard.goldenChampion',name:'Campeón Dorado',description:'Un veterano cubierto por los colores de la victoria.',cloth:'#9b7138',light:'#efca76',accent:'#fff0a2',silhouette:'crown'},
+  ]),
+};
+export const skinsForClass=(classId:ClassId)=>CHARACTER_SKINS[classId];
 const loadout = (primary:SkillId|null,secondary:SkillId|null,mobility:SkillId|null,skill1:SkillId|null,skill2:SkillId|null):CharacterLoadout => ({primary,secondary,mobility,skill1,skill2});
 const bindings = (secondary:PhysicalBinding, mobility:PhysicalBinding, skill1:PhysicalBinding, skill2:PhysicalBinding):InputBindings => ({primary:'MouseLeft',secondary,mobility,skill1,skill2,companionCommand:'KeyE'});
 export const DEFAULT_LOADOUTS: Record<ClassId, CharacterLoadout> = {
@@ -409,7 +442,7 @@ export const DEFAULT_BINDINGS: Record<ClassId, InputBindings> = {
   necromancer:bindings('MouseRight','Space','Space','KeyQ'), guardian:bindings('MouseRight','Space','KeyQ','KeyE'),
   vanguard:bindings('MouseRight','Space','KeyQ','KeyE'),
 };
-export const defaultSkin = (classId:ClassId) => classId === 'mage' ? MAGE_SKINS[0].id : `${classId}.default`;
+export const defaultSkin = (classId:ClassId) => CHARACTER_SKINS[classId][0].id;
 export function defaultCustomization(classId:ClassId):CharacterCustomization {
   const preset={loadout:{...DEFAULT_LOADOUTS[classId]},bindings:{...DEFAULT_BINDINGS[classId]},skillTreeSelection:Object.values(DEFAULT_LOADOUTS[classId]).filter(Boolean) as SkillId[]};
   return {version:1,classId,selectedSkin:defaultSkin(classId),activePresetId:'default',presets:{default:preset}};
@@ -424,7 +457,7 @@ export function validLoadout(classId:ClassId,value:unknown):value is CharacterLo
 export function validCustomization(classId:ClassId,value:unknown):value is CharacterCustomization {
   if(!value||typeof value!=='object')return false;const c=value as CharacterCustomization;
   if(c.version!==1||c.classId!==classId||typeof c.activePresetId!=='string'||!c.presets||typeof c.presets!=='object')return false;
-  if(classId==='mage'?!MAGE_SKINS.some(s=>s.id===c.selectedSkin):c.selectedSkin!==defaultSkin(classId))return false;
+  if(!CHARACTER_SKINS[classId].some(s=>s.id===c.selectedSkin))return false;
   const presets=Object.values(c.presets);if(!presets.length||!c.presets[c.activePresetId])return false;
   return presets.every(preset=>{
     if(!validLoadout(classId,preset.loadout)||!preset.bindings||!Array.isArray(preset.skillTreeSelection)||!preset.skillTreeSelection.every(validSkill))return false;

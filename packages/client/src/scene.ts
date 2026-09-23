@@ -13,7 +13,7 @@ import {
   TEAMS,
   TEAM_NAMES,
   TEAM_ICONS,
-  MAGE_SKINS,
+  CHARACTER_SKINS,
   layout,
   projectileStats,
   arrowMotion,
@@ -57,7 +57,7 @@ import {
   hatPalette,
   undeadPalette,
   pveMobPalette,
-  mageSkinArt,
+  characterSkinArt,
   MOB_FAMILY_ART,
   MOB_FAMILY_SCALE,
   LOOK_ART,
@@ -239,10 +239,11 @@ export class Arena extends Phaser.Scene {
             palette: palette(CLOTH[team], LIGHT[team]) as Phaser.Types.Create.Palette,
           });
     for (const team of TEAMS)
-      for (const skin of MAGE_SKINS)
+      for (const classId of CLASS_IDS)
+      for (const skin of CHARACTER_SKINS[classId])
         for (let frame=0;frame<2;frame++) {
-          const data=mageSkinArt(skin.id).map((row,i)=>frame===1&&i>=13?row.slice(0,3)+row.slice(3,13).split('').reverse().join('')+row.slice(13):row);
-          this.textures.generate(`${team}-mage-${skin.id}-${frame}`,{data,pixelWidth:2,palette:palette(skin.cloth,skin.light) as Phaser.Types.Create.Palette});
+          const data=characterSkinArt(classId,skin.id).map((row,i)=>frame===1&&i>=13?row.slice(0,3)+row.slice(3,13).split('').reverse().join('')+row.slice(13):row);
+          this.textures.generate(`${team}-${classId}-${skin.id}-${frame}`,{data,pixelWidth:2,palette:palette(skin.cloth,skin.light) as Phaser.Types.Create.Palette});
         }
     for (const team of TEAMS)
       for (let frame = 0; frame < 2; frame++) {
@@ -1519,8 +1520,8 @@ export class Arena extends Phaser.Scene {
     const texture = (frame: number) =>
       look && LOOK_ART[look]
         ? `${p.team}-look-${look}-${frame}`
-        : p.classId === 'mage' && MAGE_SKINS.some((s) => s.id === p.skinId)
-          ? `${p.team}-mage-${p.skinId}-${frame}`
+        : CHARACTER_SKINS[p.classId].some((s) => s.id === p.skinId)
+          ? `${p.team}-${p.classId}-${p.skinId}-${frame}`
           : `${p.team}-${p.classId}-${frame}`;
     // What is in the hand follows the weapon's look in the world, and the class in a match.
     const hand =

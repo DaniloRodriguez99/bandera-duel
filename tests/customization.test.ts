@@ -1,11 +1,12 @@
 import { describe,expect,it } from 'vitest';
-import { CLASS_IDS, DEFAULT_LOADOUTS, Duel, MAGE_SKINS, SKILLS, activePreset, defaultCustomization, idleInput, newPlayer, projectileSkillStats, resolveSlotInput, validCustomization, validLoadout } from '@bandera/shared';
+import { CHARACTER_SKINS, CLASS_IDS, DEFAULT_LOADOUTS, Duel, MAGE_SKINS, SKILLS, activePreset, defaultCustomization, idleInput, newPlayer, projectileSkillStats, resolveSlotInput, validCustomization, validLoadout } from '@bandera/shared';
 
 describe('character customization model',()=>{
   it('ships valid defaults for every class and ten distinct mage skins',()=>{
     for(const classId of CLASS_IDS){expect(validLoadout(classId,DEFAULT_LOADOUTS[classId])).toBe(true);expect(validCustomization(classId,defaultCustomization(classId))).toBe(true);}
     expect(MAGE_SKINS).toHaveLength(10);
     expect(new Set(MAGE_SKINS.map(s=>s.id)).size).toBe(10);
+    for(const classId of CLASS_IDS){expect(CHARACTER_SKINS[classId].length).toBeGreaterThanOrEqual(5);expect(new Set(CHARACTER_SKINS[classId].map(s=>s.id)).size).toBe(CHARACTER_SKINS[classId].length);}
   });
   it('rejects duplicates, reserved bindings and incompatible skills',()=>{
     const duplicate=defaultCustomization('mage');duplicate.presets.default.loadout.skill2='mage.ice';expect(validCustomization('mage',duplicate)).toBe(false);

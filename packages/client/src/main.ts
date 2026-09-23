@@ -4,13 +4,13 @@ import {
   RULES,
   chargePower,
   CLASSES,
+  CLASS_IDS,
   TEAMS,
   TEAM_NAMES,
   TEAM_ICONS,
   MAPS,
   MODE_INFO,
   validName,
-  defaultCustomization,
   activePreset,
   type Snapshot,
   type ClassId,
@@ -34,12 +34,12 @@ import {
   setMusicVolume,
   setMusicMode,
 } from './audio.js';
-import { savedClass, saveClass, mountClasses, updateClasses, updateMageSkin } from './classes.js';
+import { savedClass, saveClass, mountClasses, updateClasses, updateClassSkin } from './classes.js';
 import { updateAbilities } from './abilities.js';
 import { mountTouchAbilities, updateTouchAbilities } from './mobile-controls.js';
 import './style.css';
 import { Practice, PRACTICE_PLAYER } from './practice.js';
-import { loadMageCustomization, mountMageCustomization } from './customization.js';
+import { loadCustomization, mountCharacterCustomization } from './customization.js';
 import { UPGRADE_META, UPGRADE_ORDER } from './pve-upgrades.js';
 import { WorldHud } from './isekai-hud.js';
 import { AFFINITIES, AFFINITY_NAMES, AFFINITY_TEXT, RANKS, RARITY_NAMES, canSurf } from '@bandera/shared/rpg/skills';
@@ -333,15 +333,16 @@ $<HTMLSelectElement>('map-select').onchange = (event) => {
 $<HTMLSelectElement>('game-mode').addEventListener('change', updateMapPreview);
 updateMapPreview();
 let selectedClass = savedClass();
-let mageCustomization: CharacterCustomization = loadMageCustomization();
-const customizer = mountMageCustomization($('customization'), mageCustomization, (value) => {
-  mageCustomization = value;
-  updateMageSkin($('entry-classes'), value.selectedSkin);
-  updateMageSkin($('room-classes'), value.selectedSkin);
-  arena.controls.configure('mage', value);
+const customizations=Object.fromEntries(CLASS_IDS.map(classId=>[classId,loadCustomization(classId)])) as Record<ClassId,CharacterCustomization>;
+const customizationFor=(classId:ClassId)=>customizations[classId];
+const customizer = mountCharacterCustomization($('customization'), customizationFor(selectedClass), (classId,value) => {
+  customizations[classId] = value;
+  updateClassSkin($('entry-classes'), classId, value.selectedSkin);
+  updateClassSkin($('room-classes'), classId, value.selectedSkin);
+  if(selectedClass===classId)arena.controls.configure(classId, value);
   if (
     room &&
-    current?.players.some((player) => player.id === room!.sessionId && player.classId === 'mage') &&
+    current?.players.some((player) => player.id === room!.sessionId && player.classId === classId) &&
     ['lobby', 'finished'].includes(current.phase)
   )
     room.send('selectCustomization', value);
@@ -355,19 +356,18 @@ mountClasses(
     updateClasses($('entry-classes'), id);
     showClassControls(id);
   },
-  () => customizer.open(),
+  (id) => customizer.open(id,customizationFor(id)),
 );
 mountClasses(
   $('room-classes'),
   selectedClass,
   (id) => {
     room?.send('selectClass', id);
-    if (id === 'mage') room?.send('selectCustomization', mageCustomization);
+    room?.send('selectCustomization', customizationFor(id));
   },
-  () => customizer.open(),
+  (id) => customizer.open(id,customizationFor(id)),
 );
-updateMageSkin($('entry-classes'), mageCustomization.selectedSkin);
-updateMageSkin($('room-classes'), mageCustomization.selectedSkin);
+for(const classId of CLASS_IDS){updateClassSkin($('entry-classes'),classId,customizationFor(classId).selectedSkin);updateClassSkin($('room-classes'),classId,customizationFor(classId).selectedSkin);}
 let displayedClass: ClassId | undefined;
 function showClassControls(id: ClassId) {
   if (displayedClass === id) return;
@@ -844,8 +844,7 @@ async function join() {
       ? await client.joinById(target, {
           name,
           classId: selectedClass,
-          customization:
-            selectedClass === 'mage' ? mageCustomization : defaultCustomization(selectedClass),
+          customization: customizationFor(selectedClass),
           spectator: $<HTMLInputElement>('spectator').checked,
           perspective: $<HTMLSelectElement>('spectator-perspective').value,
           password: $<HTMLInputElement>('room-password').value,
@@ -862,8 +861,7 @@ async function join() {
       : await client.create('duel', {
           name,
           classId: selectedClass,
-          customization:
-            selectedClass === 'mage' ? mageCustomization : defaultCustomization(selectedClass),
+          customization: customizationFor(selectedClass),
           title: $<HTMLInputElement>('room-title').value,
           visibility: $<HTMLSelectElement>('visibility').value,
           password: $<HTMLInputElement>('room-password').value,
@@ -1180,12 +1178,12 @@ function render(s: Snapshot) {
     showClassControls(me.classId);
     arena.controls.configure(
       me.classId,
-      me.classId === 'mage' ? mageCustomization : defaultCustomization(me.classId),
+      customizationFor(me.classId),
     );
     updateAbilities(
       $('abilities'),
       me,
-      me.classId === 'mage' ? activePreset(mageCustomization).bindings : undefined,
+      activePreset(customizationFor(me.classId)).bindings,
     );
     updateTouchAbilities($('touch-actions'), me);
     updateClasses($('room-classes'), me.classId, !overlay || s.paused);
@@ -1573,8 +1571,7 @@ function startPractice() {
   resetChat();
   if (room || busy || !arena.controls) return;
   unlockAudio();
-  const customization =
-    selectedClass === 'mage' ? mageCustomization : defaultCustomization(selectedClass);
+  const customization = customizationFor(selectedClass);
   practice = new Practice(
     selectedClass,
     validName(nameInput.value) || 'Vos',
@@ -1624,7 +1621,7 @@ $('practice-exit').onclick = () => {
     selectedClass,
     'Vos',
     selectedMap,
-    selectedClass === 'mage' ? mageCustomization : defaultCustomization(selectedClass),
+    customizationFor(selectedClass),
   );
   preview.duel.state.phase = 'lobby';
   arena.receive(structuredClone(preview.duel.state), '');
