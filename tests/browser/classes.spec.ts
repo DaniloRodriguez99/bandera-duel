@@ -8,10 +8,10 @@ test('selección compartida, ataques de arquero y escudo con mouse',async({page,
   await page.screenshot({path:info.outputPath('clases-sala.png'),fullPage:true});
   await page.locator('#ready').click();await rival.locator('#ready').click();await expect(page.locator('#stage')).toHaveAttribute('data-phase','playing',{timeout:7000});
   await expect(page.locator('#room-picker')).toBeHidden();
-  await page.locator('canvas').click({position:{x:200,y:150}});await expect(page.locator('#cd-shot')).toHaveText(/➶ 0\.\ds/);await page.waitForTimeout(250);
-  await page.locator('canvas').click({button:'right',position:{x:200,y:150}});await expect(page.locator('#cd-sword')).toHaveText(/⚔ 0\.\ds/);await page.waitForTimeout(250);
+  await page.locator('#game canvas').click({position:{x:200,y:150}});await expect(page.locator('#cd-shot')).toHaveText(/➶ 0\.\ds/);await page.waitForTimeout(250);
+  await page.locator('#game canvas').click({button:'right',position:{x:200,y:150}});await expect(page.locator('#cd-sword')).toHaveText(/⚔ 0\.\ds/);await page.waitForTimeout(250);
   await page.keyboard.press('Space');await expect(page.locator('#cd-dash')).toHaveText(/➟ [01]\.\ds/);
-  const canvas=(await rival.locator('canvas').boundingBox())!;await rival.mouse.move(canvas.x+canvas.width*.8,canvas.y+canvas.height*.5);await rival.mouse.down({button:'right'});
+  const canvas=(await rival.locator('#game canvas').boundingBox())!;await rival.mouse.move(canvas.x+canvas.width*.8,canvas.y+canvas.height*.5);await rival.mouse.down({button:'right'});
   await expect(rival.locator('#stage')).toHaveAttribute('data-guardiNg'.toLowerCase(),'true');
   await rival.waitForTimeout(1400);await expect(rival.locator('#stage')).toHaveAttribute('data-guarding','true');
   await rival.mouse.down({button:'left'});await rival.mouse.up({button:'left'});await expect(rival.locator('#stage')).toHaveAttribute('data-guarding','false');await expect(rival.locator('#cd-sword')).toHaveText('⚔ Lista');
@@ -22,8 +22,8 @@ test('selección compartida, ataques de arquero y escudo con mouse',async({page,
 test('el mago aparece y muestra sus controles',async({page})=>{
   await page.goto('/');await expect(page.locator('#entry-classes [data-class="mage"]')).toContainText('Mago');
   await page.locator('#entry-classes [data-class="mage"]').click();
-  await expect(page.locator('#control-guide')).toContainText('Bola de fuego');
-  await expect(page.locator('#control-guide')).toContainText('Escudo mágico');
+  await expect(page.locator('#control-guide')).toContainText('Orbe de fuego');
+  await expect(page.locator('#control-guide')).toContainText('Égida de dos sellos');
   await page.locator('#practice-start').click();
   await expect(page.locator('#cd-guard')).toHaveText('⛨ 2/2 golpes');
   await expect(page.locator('#cd-sword')).toBeHidden();
@@ -31,14 +31,14 @@ test('el mago aparece y muestra sus controles',async({page})=>{
   await expect(iceCard).toBeVisible();
   await expect(iceCard).toContainText('CLIC 3');
   await expect(iceCard).toContainText('Flecha de hielo');
-  await page.locator('canvas').click({button:'middle'});
+  await page.locator('#game canvas').click({button:'middle'});
   await expect(page.locator('#cd-ice')).toHaveText(/❄ 0\.\ds/);
   await expect(iceCard).toHaveAttribute('data-ready','false');
   await expect(page.locator('#cd-shot')).toHaveText('✦ Lista');
   await page.waitForTimeout(250);
-  await page.locator('canvas').click({button:'right'});
+  await page.locator('#game canvas').click({button:'right'});
   await expect(page.locator('#stage')).toHaveAttribute('data-magic-shield','2');
-  await page.locator('canvas').click();
+  await page.locator('#game canvas').click();
   await expect(page.locator('#cd-shot')).toHaveText(/✦ 0\.\ds/);
 });
 test('el nigromante lanza fuego e invoca zombies con espacio y clic derecho',async({page,browser})=>{
@@ -47,9 +47,9 @@ test('el nigromante lanza fuego e invoca zombies con espacio y clic derecho',asy
   const context=await browser.newContext();const rival=await context.newPage();rival.on('pageerror',e=>errors.push(e.message));await enter(rival,page.url(),'Rival','guardian');
   await page.locator('#ready').click();await rival.locator('#ready').click();await expect(page.locator('#stage')).toHaveAttribute('data-phase','playing',{timeout:7000});
   await expect(page.locator('#cd-sword')).toBeHidden();await expect(page.locator('#cd-summon')).toHaveText('☠ 0/2 · Listo');
-  await page.locator('canvas').click({position:{x:400,y:300}});await expect(page.locator('#cd-shot')).toHaveText(/✺ [01]\.\ds/);await page.waitForTimeout(300);
+  await page.locator('#game canvas').click({position:{x:400,y:300}});await expect(page.locator('#cd-shot')).toHaveText(/✺ [01]\.\ds/);await page.waitForTimeout(300);
   await page.keyboard.press('Space');await expect(page.locator('#cd-summon')).toHaveText(/☠ 1\/2 · [34]\.\ds/);await page.waitForTimeout(5300);
-  await page.locator('canvas').click({button:'right',position:{x:400,y:300}});await expect(page.locator('#cd-summon')).toHaveText('☠ 2/2 · Llenas');
+  await page.locator('#game canvas').click({button:'right',position:{x:400,y:300}});await expect(page.locator('#cd-summon')).toHaveText('☠ 2/2 · Llenas');
   expect(errors).toEqual([]);await context.close();
 });
 test('escudo móvil con tres dedos, liberación y clase pesada',async({browser},info)=>{
@@ -57,12 +57,12 @@ test('escudo móvil con tres dedos, liberación y clase pesada',async({browser},
   const mobile=await browser.newContext({viewport:{width:844,height:390},isMobile:true,hasTouch:true,deviceScaleFactor:2});const page=await mobile.newPage();const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
   await enter(page,opponent.url(),'Shield','guardian');await page.screenshot({path:info.outputPath('clases-mobile.png')});await opponent.locator('#ready').click();await page.locator('#ready').click();await expect(page.locator('#stage')).toHaveAttribute('data-phase','playing',{timeout:7000});
   await expect(opponent.locator('#health')).toHaveText('♥ 5/5');await expect(opponent.locator('#cd-dash')).toBeVisible();
-  await opponent.locator('canvas').click();await expect(opponent.locator('#cd-sword')).toHaveText(/⚔ [01]\.\ds/);
-  const cdp=await mobile.newCDPSession(page);const boxes=await Promise.all(['#stick-move','#stick-aim','#touch-guard'].map(id=>page.locator(id).boundingBox()));
+  await opponent.locator('#game canvas').click();await expect(opponent.locator('#cd-sword')).toHaveText(/⚔ [01]\.\ds/);
+  const cdp=await mobile.newCDPSession(page);const boxes=await Promise.all(['#stick-move','#touch-sword','#touch-guard'].map(id=>page.locator(id).boundingBox()));
   const touches=boxes.map((b,i)=>({id:i+1,x:b!.x+b!.width/2,y:b!.y+b!.height/2}));
   await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:touches});touches[0].x-=25;touches[1].y-=25;await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:touches});
-  await expect(page.locator('#stage')).toHaveAttribute('data-guarding','true');await expect(page.locator('#stick-move')).toHaveAttribute('style',/--dx: -/);await expect(page.locator('#stick-aim')).toHaveAttribute('style',/--dy: -/);
+  await expect(page.locator('#stage')).toHaveAttribute('data-guarding','true');await expect(page.locator('#stick-move')).toHaveAttribute('style',/--dx: -/);await expect(page.locator('#touch-sword')).toHaveAttribute('style',/--aim-y: -/);
   await page.screenshot({path:info.outputPath('escudo-mobile.png')});await cdp.send('Input.dispatchTouchEvent',{type:'touchCancel',touchPoints:[]});await expect(page.locator('#stage')).toHaveAttribute('data-guarding','false');
-  await expect(page.locator('#stick-move')).toHaveAttribute('style',/--dx: 0px/);await expect(page.locator('#cd-shot')).toBeHidden();await expect(page.locator('#touch-dash')).toBeVisible();await expect(page.locator('#touch-trap')).toBeVisible();await expect(page.locator('#touch-volley')).toBeVisible();
+  await expect(page.locator('#stick-move')).toHaveAttribute('style',/--dx: 0px/);await expect(page.locator('#cd-shot')).toBeHidden();await expect(page.locator('#touch-dash')).toBeVisible();await expect(page.locator('#touch-shield-bash')).toBeVisible();await expect(page.locator('#touch-fury')).toBeVisible();
   expect(errors).toEqual([]);await mobile.close();await pc.close();
 });

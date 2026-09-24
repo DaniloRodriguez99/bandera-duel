@@ -9,7 +9,7 @@ test('mantener clic carga la bola de fuego y soltar la lanza; un clic corto sigu
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
   await practice(page, 'mage');
-  const box = (await page.locator('canvas').boundingBox())!;
+  const box = (await page.locator('#game canvas').boundingBox())!;
   await page.mouse.move(box.x + box.width * 0.7, box.y + box.height / 2);
   await page.mouse.down();
   await expect(page.locator('#cd-shot')).toContainText('Cargando', { timeout: 2000 });

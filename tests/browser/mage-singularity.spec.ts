@@ -57,3 +57,39 @@ test('el Mago muestra Parpadeo y Singularidad, y el casteo entra en enfriamiento
   await expect(singularity).toHaveAttribute('data-ready','false');
   expect(errors).toEqual([]);
 });
+
+test('en móvil Singularidad apunta al punto tocado y el reloj no cubre la arena', async ({ browser }, info) => {
+  const context = await browser.newContext({
+    viewport: { width: 844, height: 390 },
+    isMobile: true,
+    hasTouch: true,
+    deviceScaleFactor: 2,
+  });
+  try {
+    const page = await context.newPage();
+    await page.goto('/');
+    await page.locator('#entry-classes [data-class="mage"]').click();
+    await page.locator('#practice-start').click();
+    const timer = (await page.locator('#timer').boundingBox())!;
+    expect(timer.width).toBeLessThan(90);
+    expect(timer.height).toBeLessThan(30);
+    await expect(page.locator('#hud')).toHaveCSS('background-image', 'none');
+
+    const button = (await page.locator('#touch-black-hole').boundingBox())!;
+    const canvas = (await page.locator('#game canvas').boundingBox())!;
+    await page.mouse.move(button.x + button.width / 2, button.y + button.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(canvas.x + canvas.width / 2, canvas.y + canvas.height / 2, { steps: 12 });
+    await page.mouse.up();
+    await expect(page.locator('#cd-black-hole')).toContainText('Casteando');
+    await expect.poll(async () => Number(await page.locator('#stage').getAttribute('data-black-hole-target-x'))).toBeGreaterThan(350);
+    const targetX = Number(await page.locator('#stage').getAttribute('data-black-hole-target-x'));
+    const targetY = Number(await page.locator('#stage').getAttribute('data-black-hole-target-y'));
+    expect(targetX).toBeLessThan(610);
+    expect(targetY).toBeGreaterThan(180);
+    expect(targetY).toBeLessThan(360);
+    await page.screenshot({ path: info.outputPath('singularidad-movil.png') });
+  } finally {
+    await context.close();
+  }
+});

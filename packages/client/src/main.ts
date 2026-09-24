@@ -1264,6 +1264,8 @@ function render(s: Snapshot) {
     $('reward-time').textContent = s.phase === 'rewards' ? `${Math.ceil(pve.rewardLeft)} s` : '';
   }
   $('stage').dataset.phase = s.phase;
+  $('stage').dataset.blackHoleTargetX = String(s.blackHoles.at(-1)?.targetX ?? '');
+  $('stage').dataset.blackHoleTargetY = String(s.blackHoles.at(-1)?.targetY ?? '');
   const overlay = s.phase === 'lobby' || s.phase === 'finished';
   if (s.phase !== 'rewards' && currentOffer) $('pve-rewards').hidden = true;
   $('overlay').hidden = !overlay;
@@ -1479,7 +1481,7 @@ function render(s: Snapshot) {
         : `Comenzar expedición con ${participants.length} ${participants.length === 1 ? 'jugador' : 'jugadores'} ↗`;
     if (s.mode === 'pve' && s.phase === 'finished' && isHost) $('pve-start').hidden = false;
     $('room-picker').hidden =
-      s.mode === 'pve' && s.phase === 'finished' && s.reason === 'pveVictory';
+      !me || (s.mode === 'pve' && s.phase === 'finished' && s.reason === 'pveVictory');
     $('ready').textContent = me?.ready
       ? 'Listo ✓ · Esperando rivales'
       : s.phase === 'finished'

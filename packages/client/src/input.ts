@@ -327,7 +327,9 @@ export class Controls {
     gesture.element.style.setProperty('--aim-y', `${thumbY}px`);
     if (gesture.slot.directional && magnitude > 7) {
       this.angle = Math.atan2(dy, dx);
-      this.aimFromPointer = false;
+      // Singularidad targets the touched map point; other abilities use the drag direction.
+      if (gesture.slot.id !== 'black-hole' || magnitude <= 12 || !this.screenToWorld)
+        this.aimFromPointer = false;
     }
   }
 

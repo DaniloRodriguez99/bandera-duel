@@ -20,7 +20,7 @@ test('dos navegadores: invitación, tres capturas y revancha', async ({ page, br
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
   await page.goto('/');
-  await page.locator('canvas').waitFor();
+  await page.locator('#game canvas').waitFor();
   await page.screenshot({ path: info.outputPath('inicio.png'), fullPage: true });
   const url = await create(page, 'Aldric');
   const context = await browser.newContext();
@@ -82,7 +82,7 @@ test('celular horizontal, multitouch, cancelación y aviso vertical', async ({ b
   await expect(page.locator('#stage')).toHaveAttribute('data-phase', 'playing', { timeout: 7000 });
   await expect(page.locator('#touch-controls')).toBeVisible();
   const move = (await page.locator('#stick-move').boundingBox())!,
-    aim = (await page.locator('#stick-aim').boundingBox())!;
+    aim = (await page.locator('#touch-shot').boundingBox())!;
   const session = await mobile.newCDPSession(page);
   const touches = [
     { id: 1, x: move.x + move.width / 2, y: move.y + move.height / 2 },
@@ -93,7 +93,7 @@ test('celular horizontal, multitouch, cancelación y aviso vertical', async ({ b
   touches[1].x -= 30;
   await session.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: touches });
   await expect(page.locator('#stick-move')).toHaveAttribute('style', /--dx: -/);
-  await expect(page.locator('#stick-aim')).toHaveAttribute('style', /--dx: -/);
+  await expect(page.locator('#touch-shot')).toHaveAttribute('style', /--aim-x: -/);
   await page.screenshot({ path: info.outputPath('mobile.png') });
   await session.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   await expect(page.locator('#cd-shot')).toHaveText(/➶ 0\.\ds/);
@@ -101,7 +101,7 @@ test('celular horizontal, multitouch, cancelación y aviso vertical', async ({ b
   await session.send('Input.dispatchTouchEvent', { type: 'touchCancel', touchPoints: [] });
   await expect(page.locator('#stick-move')).toHaveAttribute('style', /--dx: 0px/);
   await page.waitForTimeout(250);
-  await page.locator('#touch-sword').tap();
+  await page.locator('#touch-dagger').tap();
   await expect(page.locator('#cd-sword')).toHaveText(/⚔ 0\.\ds/);
   await page.waitForTimeout(250);
   await page.locator('#touch-dash').tap();

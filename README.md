@@ -1,5 +1,7 @@
 # Bandera Duel
 
+[Registro de cambios](CHANGELOG.md).
+
 Juego web de captura de bandera para **duelos 1v1, equipos 2v2 o todos contra todos de 3–4 jugadores**, con espada, arco, magia y dash. Partidas de tres minutos, salas públicas o privadas por link, cuatro mapas, controles para PC y celular y servidor autoritativo. No requiere cuentas ni base de datos.
 
 ## Requisitos e inicio

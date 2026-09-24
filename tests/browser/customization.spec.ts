@@ -32,7 +32,7 @@ test('solo permite intercambiar o cancelar un binding ocupado',async({page})=>{
 test('la carta usa controles válidos y no anida botones',async({page})=>{
   await expect(page.locator('.class-card button button')).toHaveCount(0);
   await expect(page.locator('#entry-classes .customize-class')).toHaveCount(5);
-  await expect(page.locator('#entry-classes [data-class-card="mage"] .class-skill')).toHaveCount(4);
+  await expect(page.locator('#entry-classes [data-class-card="mage"] .class-skill')).toHaveCount(5);
   await page.locator('#entry-classes [data-class-card="mage"] .customize-class').click();
   await page.getByRole('button',{name:'Restablecer todo'}).click();
   await expect(page.locator('[data-slot="skill1"]')).toContainText('Saeta glacial');

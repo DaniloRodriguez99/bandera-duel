@@ -1,9 +1,9 @@
 import { test, expect, type Page } from '@playwright/test';
-async function practice(page: Page, classId: string) {
+async function practice(page: Page, classId: string, mobile = false) {
   await page.goto('/');
   await page.locator(`#entry-classes [data-class="${classId}"]`).click();
   await page.locator('#practice-start').click();
-  await expect(page.locator('#abilities')).toBeVisible();
+  await expect(page.locator(mobile ? '#touch-controls' : '#abilities')).toBeVisible();
 }
 test('panel de habilidades abajo a la izquierda con teclas y recargas', async ({ page }, info) => {
   const errors: string[] = [];
@@ -21,7 +21,7 @@ test('panel de habilidades abajo a la izquierda con teclas y recargas', async ({
   }
   await practice(page, 'mage');
   await page.screenshot({ path: info.outputPath('habilidades-mago.png') });
-  const canvas = (await page.locator('canvas').boundingBox())!;
+  const canvas = (await page.locator('#game canvas').boundingBox())!;
   await page.mouse.click(canvas.x + canvas.width * 0.7, canvas.y + canvas.height / 2);
   const shot = page.locator('#abilities [data-ability="shot"]');
   await expect(shot).toHaveAttribute('data-ready', 'false');
@@ -45,7 +45,7 @@ test('panel de habilidades abajo a la izquierda con teclas y recargas', async ({
   await page.screenshot({ path: info.outputPath('habilidades-nigromante.png') });
   expect(errors).toEqual([]);
 });
-test('en táctil el panel queda arriba a la izquierda sin tapar la palanca', async ({ browser }, info) => {
+test('en táctil los botones de habilidades no tapan la palanca', async ({ browser }, info) => {
   const context = await browser.newContext({
     viewport: { width: 844, height: 390 },
     isMobile: true,
@@ -53,8 +53,9 @@ test('en táctil el panel queda arriba a la izquierda sin tapar la palanca', asy
     deviceScaleFactor: 2,
   });
   const page = await context.newPage();
-  await practice(page, 'archer');
-  const panel = (await page.locator('#abilities').boundingBox())!,
+  await practice(page, 'archer', true);
+  await expect(page.locator('#abilities')).toBeHidden();
+  const panel = (await page.locator('#touch-actions').boundingBox())!,
     stick = (await page.locator('#stick-move').boundingBox())!;
   const overlap = !(
     panel.x + panel.width <= stick.x ||
@@ -63,7 +64,6 @@ test('en táctil el panel queda arriba a la izquierda sin tapar la palanca', asy
     stick.y + stick.height <= panel.y
   );
   expect(overlap).toBe(false);
-  expect(panel.y).toBeLessThan(stick.y);
   await page.screenshot({ path: info.outputPath('habilidades-movil.png') });
   await context.close();
 });
