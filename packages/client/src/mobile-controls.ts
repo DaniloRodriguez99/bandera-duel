@@ -1,4 +1,4 @@
-import { CLASSES, RULES, chargePower, type ClassId, type Player } from '@bandera/shared';
+import { CLASSES, RULES, chargePower, SKILL_SLOTS, type ClassId, type Player, type SkillSlot } from '@bandera/shared';
 import { abilitySlots, playerAbilitySlots, type AbilitySlot } from './abilities.js';
 
 export type TouchMode = 'charge' | 'hold' | 'release' | 'press';
@@ -7,12 +7,14 @@ export interface TouchAbilitySlot extends AbilitySlot {
   mode: TouchMode;
   directional: boolean;
   primary: boolean;
+  logicalSlot?: SkillSlot;
 }
 
 const TOUCH_META: Record<string, Omit<TouchAbilitySlot, keyof AbilitySlot>> = {
   shot: { mode: 'charge', directional: true, primary: true },
   sword: { mode: 'charge', directional: true, primary: true },
   dash: { mode: 'charge', directional: true, primary: false },
+  'black-hole': { mode: 'press', directional: true, primary: false },
   summon: { mode: 'charge', directional: true, primary: false },
   dagger: { mode: 'release', directional: true, primary: false },
   trap: { mode: 'release', directional: false, primary: false },
@@ -30,12 +32,14 @@ const TOUCH_META: Record<string, Omit<TouchAbilitySlot, keyof AbilitySlot>> = {
 export const touchMeta=(id:string,classId:ClassId)=>{const meta=TOUCH_META[id];if(!meta)throw new Error(`Falta configuración táctil para ${classId}/${id}`);return {...meta,mode:id==='dash'&&classId==='guardian'?'release' as const:meta.mode};};
 
 export function touchAbilitySlots(classId: ClassId,player?:Player): TouchAbilitySlot[] {
-  return (player?.classId==='mage'?playerAbilitySlots(player):abilitySlots(classId)).map((slot) => {
+  const equipped = player?.classId==='mage' ? SKILL_SLOTS.filter(key=>player.loadout[key]) : [];
+  return (player?.classId==='mage'?playerAbilitySlots(player):abilitySlots(classId)).map((slot,index) => {
     const meta = touchMeta(slot.id,classId);
     return {
       ...slot,
       ...meta,
-      mode: slot.id === 'dash' && classId === 'guardian' ? 'release' : meta.mode,
+      logicalSlot: equipped[index],
+      mode: slot.id === 'dash' && classId === 'mage' ? 'release' : slot.id === 'dash' && classId === 'guardian' ? 'release' : meta.mode,
     };
   });
 }
@@ -80,6 +84,7 @@ function button(slot: TouchAbilitySlot) {
   // specs address them the same way, so every button needs one.
   node.id = `touch-${slot.id}`;
   node.dataset.touchAbility = slot.id;
+  if (slot.logicalSlot) node.dataset.logicalSlot = slot.logicalSlot;
   node.dataset.mode = slot.mode;
   node.dataset.directional = String(slot.directional);
   node.setAttribute('aria-label', `${slot.name}${slot.directional ? ' · arrastrá para apuntar' : ''}`);

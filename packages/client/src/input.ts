@@ -7,6 +7,7 @@ const emptyActions = (): ActionState => ({
   sword: false,
   shot: false,
   dash: false,
+  blackHole: false,
   summon: false,
   trap: false,
   volley: false,
@@ -19,7 +20,7 @@ const emptyActions = (): ActionState => ({
 });
 
 interface TouchGesture {
-  slot: Pick<TouchAbilitySlot,'id'|'mode'|'directional'|'primary'>;
+   slot: Pick<TouchAbilitySlot,'id'|'mode'|'directional'|'primary'|'logicalSlot'>;
   source: string;
   element: HTMLElement;
   x: number;
@@ -55,6 +56,7 @@ export class Controls {
   private physical = new Set<PhysicalBinding>();
   private slotPressed = new Set<SkillSlot>();
   private slotReleased = new Set<SkillSlot>();
+  private touchHeld = new Set<SkillSlot>();
   private chargeSources = new Set<string>();
   private specialSources = new Set<string>();
   private guardSources = new Set<string>();
@@ -82,6 +84,7 @@ export class Controls {
   get targetingAbility(): string | null {
     const touches = [...this.gestures.values()];
     if (touches.length) return touches.at(-1)!.slot.id;
+    if (this.classId === 'mage' && this.physical.has(this.bindings.mobility) && this.loadout.mobility === 'mage.blink') return 'dash';
     if (this.chargeSources.has('mouse') || this.chargeSources.has('key'))
       return this.attackKind ? (this.attackKind === 'melee' ? 'sword' : 'shot') : primaryAbility(this.classId);
     if (this.specialSources.has('key')) return CLASSES[this.classId].summon ? 'summon' : 'dash';
@@ -199,7 +202,7 @@ export class Controls {
         this.chargeSources.clear();
       }
     }
-    if (event.code === 'Space' && !event.repeat) {
+    if (event.code === 'Space' && !event.repeat && this.classId !== 'mage') {
       if (this.classId === 'guardian') this.actions.dash = true;
       else this.pressSpecial('key');
     }
@@ -213,7 +216,7 @@ export class Controls {
       return;
     }
     const binding=this.keyBinding(event.code);if(binding)this.releasePhysical(binding);
-    if (event.code === 'Space') this.releaseSpecial('key');
+    if (event.code === 'Space' && this.classId !== 'mage') this.releaseSpecial('key');
     if (event.code === 'KeyE') this.counterSources.delete('key');
   }
 
@@ -251,7 +254,8 @@ export class Controls {
       const element = (event.target as HTMLElement).closest<HTMLElement>('[data-touch-ability]');
       if (!element || !this.enabled) return;
       const id=element.dataset.touchAbility!;
-      const slot={id,...touchMeta(id,this.classId)};
+       const logicalSlot=element.dataset.logicalSlot as SkillSlot|undefined;
+       const slot={id,...touchMeta(id,this.classId),logicalSlot};
       event.preventDefault();
       element.setPointerCapture(event.pointerId);
       const rect = element.getBoundingClientRect();
@@ -278,6 +282,12 @@ export class Controls {
 
   private beginTouch(gesture: TouchGesture) {
     const { id, mode } = gesture.slot;
+    if (gesture.slot.logicalSlot) {
+      if(id!=='black-hole')this.slotPressed.add(gesture.slot.logicalSlot);
+      this.touchHeld.add(gesture.slot.logicalSlot);
+      gesture.element.dataset.aiming = 'true';
+      return;
+    }
     if (mode === 'charge') {
       if (id === 'shot' || id === 'sword') {
         if (this.classId === 'guardian') this.guardSources.clear();
@@ -317,6 +327,19 @@ export class Controls {
     if (!gesture) return;
     const cast = released && !gesture.cancelled && this.enabled;
     const { id, mode } = gesture.slot;
+    if (gesture.slot.logicalSlot) {
+      this.touchHeld.delete(gesture.slot.logicalSlot);
+      if (cast) {
+        if(id==='black-hole')this.slotPressed.add(gesture.slot.logicalSlot);
+        else this.slotReleased.add(gesture.slot.logicalSlot);
+      }
+      gesture.element.dataset.aiming = 'false';
+      gesture.element.dataset.cancel = 'false';
+      gesture.element.style.setProperty('--aim-x', '0px');
+      gesture.element.style.setProperty('--aim-y', '0px');
+      this.gestures.delete(event.pointerId);
+      return;
+    }
     if (mode === 'charge') {
       if (id === 'shot' || id === 'sword') {
         const held = this.chargeSources.delete(gesture.source);
@@ -395,7 +418,7 @@ export class Controls {
       aimY: this.aimY,
       slots:idleSlots(),
     };
-    for(const slot of SKILL_SLOTS)if(this.loadout[slot])result.slots[slot]={pressed:this.slotPressed.has(slot),held:this.physical.has(this.bindings[slot]),released:this.slotReleased.has(slot)};
+    for(const slot of SKILL_SLOTS)if(this.loadout[slot])result.slots[slot]={pressed:this.slotPressed.has(slot),held:this.physical.has(this.bindings[slot])||this.touchHeld.has(slot),released:this.slotReleased.has(slot)};
     this.actions = emptyActions();
     this.slotPressed.clear();this.slotReleased.clear();
     this.guardPulse = false;
@@ -411,6 +434,7 @@ export class Controls {
     this.physical.clear();
     this.slotPressed.clear();
     this.slotReleased.clear();
+    this.touchHeld.clear();
     this.guardPulse = false;
     this.directionalDashPulse = false;
     this.actions = emptyActions();
@@ -429,7 +453,7 @@ export class Controls {
     this.counterSources.clear();
     this.chargeSources.clear();
     this.specialSources.clear();
-    this.physical.clear();this.slotPressed.clear();this.slotReleased.clear();
+    this.physical.clear();this.slotPressed.clear();this.slotReleased.clear();this.touchHeld.clear();
     this.guardPulse = false;
     this.directionalDashPulse = false;
     this.move = { x: 0, y: 0 };

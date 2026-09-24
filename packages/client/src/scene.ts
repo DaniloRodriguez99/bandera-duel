@@ -24,6 +24,7 @@ import {
   resolveSlotInput,
   newPlayer,
   lineClear,
+  blinkTarget,
   wet,
   type Snapshot,
   type Player,
@@ -115,6 +116,7 @@ export class Arena extends Phaser.Scene {
   private traps!: Phaser.GameObjects.Graphics;
   private arrows!: Phaser.GameObjects.Graphics;
   private mobs!: Phaser.GameObjects.Graphics;
+  private holes!: Phaser.GameObjects.Graphics;
   private aim!: Phaser.GameObjects.Graphics;
   private bases!: Phaser.GameObjects.Graphics;
   private baseLabels: Phaser.GameObjects.Text[] = [];
@@ -161,6 +163,7 @@ export class Arena extends Phaser.Scene {
     this.traps = this.add.graphics().setDepth(4);
     this.arrows = this.add.graphics().setDepth(9);
     this.mobs = this.add.graphics().setDepth(8);
+    this.holes = this.add.graphics().setDepth(7);
     this.aim = this.add.graphics().setDepth(4);
     this.duelRings = this.add.graphics().setDepth(3);
     this.controls = new Controls();
@@ -893,6 +896,33 @@ export class Arena extends Phaser.Scene {
       onComplete: () => target.destroy(),
     });
   }
+  /** A five-pointed seal inside its ring, drawn into the given graphics. */
+  /** A spinning rune circle marking where the blink will land. */
+  private blinkSeal(
+    g: Phaser.GameObjects.Graphics,
+    x: number,
+    y: number,
+    radius: number,
+    time: number,
+    color: number,
+    alpha = 0.9,
+  ) {
+    const spin = time * 0.004;
+    g.lineStyle(2, color, alpha);
+    g.strokeEllipse(x, y, radius * 2, radius * 0.8);
+    g.lineStyle(2, color, alpha);
+    for (let i = 0; i < 6; i++) {
+      const a = spin + (i * Math.PI) / 3;
+      g.lineBetween(
+        x + Math.cos(a) * radius * 0.55,
+        y + Math.sin(a) * radius * 0.22,
+        x + Math.cos(a) * radius,
+        y + Math.sin(a) * radius * 0.4,
+      );
+    }
+    g.lineStyle(1, color, alpha * 0.6);
+    g.strokeCircle(x, y, radius);
+  }
   private spellEffect(e: Snapshot['events'][number]) {
     if (e.kind === 'imbue') {
       // An imbued weapon's blow: sparks of the affinity's colour, and a crackle over a stunned head.
@@ -917,10 +947,12 @@ export class Arena extends Phaser.Scene {
         this.fade(bolt, { y: -4 }, 420);
       }
     } else if (e.kind === 'explosion') {
-      const radius = RULES.explosionRadius * (0.6 + 0.4 * (e.power ?? 1));
+      const blackHole = e.skillId === 'mage.blackHole';
+      const radius = blackHole ? RULES.blackHoleBurstRadius : RULES.explosionRadius * (0.6 + 0.4 * (e.power ?? 1));
       // A world skill brings its own colour: a lightning burst is not a fireball.
-      const tint = e.color ? Phaser.Display.Color.HexStringToColor(e.color).color : 0xff7a2f;
-      const ring = e.color ? Phaser.Display.Color.HexStringToColor(e.color).lighten(25).color : 0xffe08a;
+      const tint = blackHole ? 0x36105a : e.color ? Phaser.Display.Color.HexStringToColor(e.color).color : 0xff7a2f;
+      const ring = blackHole ? 0xd185ff : e.color ? Phaser.Display.Color.HexStringToColor(e.color).lighten(25).color : 0xffe08a;
+      if (blackHole) this.fade(this.add.circle(e.x,e.y,32,0x05020c,0.9).setDepth(18),{scale:0.1},180);
       this.fade(
         this.add.circle(e.x, e.y, 10, tint, 0.6).setDepth(16),
         { scale: radius / 10 },
@@ -1012,6 +1044,35 @@ export class Arena extends Phaser.Scene {
         260,
       );
       if (e.power) this.cameras.main.shake(90, 0.0025);
+    } else if (e.kind === 'blackhole') {
+      this.fade(this.add.circle(e.x,e.y,12).setStrokeStyle(3,0xb866ff,0.85).setDepth(16),{scale:5},450);
+    } else if (e.kind === 'blink') {
+      const tx = e.tx ?? e.x;
+      const ty = e.ty ?? e.y;
+      // A violet wisp at the origin and a violet ring where the mage rematerialises.
+      this.fade(this.add.circle(e.x, e.y, 12, 0xb9a4ff, 0.55).setDepth(8), { scale: 2.6 }, 280);
+      this.fade(
+        this.add.circle(tx, ty, 9).setStrokeStyle(3, 0xb9a4ff, 0.9).setDepth(16),
+        { scale: 2.8 },
+        320,
+      );
+      this.fade(this.add.circle(tx, ty, 14, 0xb9a4ff, 0.28).setDepth(7), { scale: 1.6 }, 260);
+      const bearing = Math.atan2(ty-e.y,tx-e.x);
+      for(let i=0;i<10;i++){
+        const a=bearing+(i-4.5)*0.26;
+        const from=this.add.rectangle(e.x,e.y,3,3,i%2?0x8e57e9:0xd1b9ff,0.9).setDepth(17);
+        this.fade(from,{x:e.x+Math.cos(a)*(12+i*2),y:e.y+Math.sin(a)*(12+i*2)},250);
+        const to=this.add.rectangle(tx+Math.cos(a)*(12+i),ty+Math.sin(a)*(12+i),3,3,i%2?0x8e57e9:0xd1b9ff,0.8).setDepth(17);
+        this.fade(to,{x:tx,y:ty},320);
+      }
+      // Snap the teleported body so it never slides across the gap.
+      if (e.playerId) {
+        const v = this.visuals.get(e.playerId);
+        if (v) {
+          v.x = tx;
+          v.y = ty;
+        }
+      }
     } else if (e.kind === 'bash') {
       const flash = this.add.graphics().setDepth(16);
       flash.lineStyle(7, 0xe1c37a, 0.9);
@@ -2184,6 +2245,28 @@ export class Arena extends Phaser.Scene {
     this.updateCamera(delta);
     if (!this.snapshot) return;
     let s = this.snapshot;
+    this.holes.clear();
+    for(const hole of s.blackHoles ?? []){
+      const spin=time*0.002+hole.id;
+      const pulse=0.5+0.5*Math.sin(time*0.006+hole.id);
+      this.holes.fillStyle(0x12071e,0.12);this.holes.fillCircle(hole.x,hole.y,hole.radius);
+      this.holes.lineStyle(2,0x8c4ac9,0.45+pulse*0.2);this.holes.strokeCircle(hole.x,hole.y,hole.radius);
+      this.holes.fillStyle(0x030208,0.92);this.holes.fillCircle(hole.x,hole.y,18);
+      this.holes.lineStyle(3,0xb657ed,0.86);this.holes.strokeCircle(hole.x,hole.y,21+pulse*3);
+      for(let i=0;i<12;i++){
+        const a=spin+i*Math.PI*2/12;
+        const travel=((time*0.06+i*31)%Math.max(1,hole.radius-26))+26;
+        const r=hole.radius-travel+22;
+        this.holes.fillStyle(i%3?0x9856da:0xd69cff,0.55);
+        this.holes.fillRect(hole.x+Math.cos(a)*r,hole.y+Math.sin(a)*r,3,3);
+      }
+    }
+    for(const caster of s.players)if(caster.blackHoleCast>0||caster.blackHoleTelegraph){
+      const x=caster.blackHoleTelegraph?.x??caster.blackHoleX,y=caster.blackHoleTelegraph?.y??caster.blackHoleY;
+      this.holes.fillStyle(0x180b27,0.14);this.holes.fillCircle(x,y,RULES.blackHoleRadius);
+      this.holes.lineStyle(2,0xb96afa,0.5);this.holes.strokeCircle(x,y,RULES.blackHoleRadius);
+      this.blinkSeal(this.holes,caster.x,caster.y,18,time,0x9f55df,0.8);
+    }
     this.accumulator += Math.min(delta, 100);
     if (this.predicted && !this.controls.aimFromPointer) {
       // Touch aiming has no cursor: project the aim direction into the arena instead.
@@ -2722,6 +2805,15 @@ export class Arena extends Phaser.Scene {
       this.aim.strokePoints(points, true);
       for (let index = 2; index < points.length - 1; index += 3)
         this.aim.lineBetween(p.x, p.y, points[index].x, points[index].y);
+    } else if (spec.kind === 'blink') {
+      const aimDist = p.aimX >= 0 && p.aimY >= 0 ? Math.hypot(p.aimX - p.x, p.aimY - p.y) : 0;
+      const hasAim = aimDist > 1;
+      const blinkAngle = hasAim ? Math.atan2(p.aimY - p.y, p.aimX - p.x) : angle;
+      const range = hasAim ? aimDist : spec.range;
+      const to = blinkTarget(p, blinkAngle, range, walls);
+      this.aim.lineStyle(1, 0xb9a4ff, 0.2);
+      this.aim.lineBetween(p.x, p.y, to.x, to.y);
+      this.blinkSeal(this.aim, to.x, to.y, 16 + pulse * 2, time, 0xb9a4ff, 0.82);
     } else if (spec.kind === 'circle') {
       this.aim.fillStyle(color, alpha * 0.8);
       this.aim.fillCircle(p.x, p.y, spec.radius);

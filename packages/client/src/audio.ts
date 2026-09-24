@@ -89,6 +89,8 @@ const SPELL_NOTES: Record<string, number[]> = {
   explosion: [82, 62],
   cast: [330, 494],
   dash: [180, 120],
+  blink: [220, 660],
+  blackhole: [110, 82, 55],
   bash: [130, 86],
   fury: [92, 138, 69],
 };

@@ -233,6 +233,7 @@ export function worldInput(input: Input, weapon: Weapon, rooted = false): Input 
     shot: !rooted && !dagger && input.shot,
     charge: !rooted && input.charge,
     dash: false,
+    blackHole: false,
     guard: false,
     summon: false,
     ice: false,

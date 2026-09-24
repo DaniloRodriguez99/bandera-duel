@@ -231,6 +231,15 @@ export const RULES = {
   dashDuration: 0.15,
   dashCooldown: 1.5,
   dashSpeed: 520,
+  mageBlinkRange: 110,
+  mageBlinkInvuln: 0.15,
+  blackHoleCast: 2,
+  blackHoleCooldown: 10,
+  blackHoleDuration: 4,
+  blackHoleRadius: 200,
+  blackHoleBurstRadius: 90,
+  blackHoleDamage: 1.5,
+  blackHolePull: 90,
   hurtProtection: 0.35,
   respawn: 3,
   spawnProtection: 1,
@@ -311,7 +320,7 @@ export const SKILL_SLOTS = ['primary', 'secondary', 'mobility', 'skill1', 'skill
 export type SkillSlot = (typeof SKILL_SLOTS)[number];
 export type SkillId =
   | 'archer.arrow' | 'archer.dagger' | 'archer.trap' | 'archer.volley'
-  | 'mage.fireball' | 'mage.magicShield' | 'mage.ice'
+  | 'mage.fireball' | 'mage.magicShield' | 'mage.ice' | 'mage.blink' | 'mage.blackHole'
   | 'necromancer.fire' | 'necromancer.summon'
   | 'guardian.sword' | 'guardian.guard' | 'guardian.dash' | 'guardian.shieldBash' | 'guardian.fury'
   | 'vanguard.sword' | 'vanguard.slash' | 'vanguard.counter'
@@ -328,7 +337,7 @@ export interface SkillDefinition {
   icon: string;
   compatibleClasses: readonly ClassId[];
   compatibleSlots: readonly SkillSlot[];
-  trigger: 'press' | 'hold-release' | 'hold';
+  trigger: 'press' | 'release' | 'hold-release' | 'hold';
   animationAction: AnimationAction;
   cooldown: number;
   damage: string;
@@ -343,6 +352,8 @@ export const SKILLS: Record<SkillId, SkillDefinition> = {
   'mage.fireball': skill({id:'mage.fireball',name:'Orbe de fuego',branch:'mage',description:'Esfera ígnea que explota al cargarla.',icon:'mage-fireball',compatibleClasses:['mage'],compatibleSlots:['primary'],trigger:'hold-release',animationAction:'castForward',cooldown:RULES.shotCooldown,damage:'1–2,5',grants:['ranged']}),
   'mage.magicShield': skill({id:'mage.magicShield',name:'Égida de dos sellos',branch:'mage',description:'Anula dos impactos.',icon:'mage-shield',compatibleClasses:['mage'],compatibleSlots:['secondary','skill1','skill2'],trigger:'press',animationAction:'castChannel',cooldown:RULES.magicShieldCooldown,damage:'0',grants:['shield']}),
   'mage.ice': skill({id:'mage.ice',name:'Saeta glacial',branch:'mage',description:'Inmoviliza durante un segundo.',icon:'mage-ice',compatibleClasses:['mage'],compatibleSlots:['secondary','skill1','skill2'],trigger:'press',animationAction:'castForward',cooldown:RULES.iceCooldown,damage:'0'}),
+  'mage.blink': skill({id:'mage.blink',name:'Parpadeo',branch:'mage',description:'Al soltar, aparecés en el punto válido más cercano al cursor; atravesás muros.',icon:'mage-blink',compatibleClasses:['mage'],compatibleSlots:['mobility'],trigger:'release',animationAction:'dash',cooldown:RULES.dashCooldown,damage:'0',grants:['mobility']}),
+  'mage.blackHole': skill({id:'mage.blackHole',name:'Singularidad',branch:'mage',description:'Canalizás 2 s; aparece donde apuntás, atrae enemigos durante 4 s y estalla.',icon:'mage-blackhole',compatibleClasses:['mage'],compatibleSlots:['secondary','skill1','skill2'],trigger:'press',animationAction:'castChannel',cooldown:RULES.blackHoleCooldown,damage:'1,5 en área'}),
   'necromancer.fire': skill({id:'necromancer.fire',name:'Llama de ultratumba',branch:'necromancer',description:'Fuego espectral que puede canalizarse.',icon:'necromancer-fire',compatibleClasses:['mage','necromancer'],compatibleSlots:['primary'],trigger:'hold-release',animationAction:'castForward',cooldown:RULES.fireCooldown,damage:'1–2',grants:['ranged']}),
   'necromancer.summon': skill({id:'necromancer.summon',name:'Alzar a los caídos',branch:'necromancer',description:'Invoca zombies, arcanistas y esclavos.',icon:'necromancer-summon',compatibleClasses:['mage','necromancer'],compatibleSlots:['secondary','skill1','skill2'],trigger:'hold-release',animationAction:'castGround',cooldown:RULES.summonCooldown,damage:'1 por golpe',grants:['summon','companionControl']}),
   'guardian.sword': skill({id:'guardian.sword',name:'Acero juramentado',branch:'guardian',description:'Tajo frontal cargable.',icon:'guardian-slash',compatibleClasses:['guardian'],compatibleSlots:['primary'],trigger:'hold-release',animationAction:'attack',cooldown:CLASSES.guardian.meleeCooldown,damage:'1–2',grants:['melee']}),
@@ -353,7 +364,7 @@ export const SKILLS: Record<SkillId, SkillDefinition> = {
   'vanguard.sword': skill({id:'vanguard.sword',name:'Mandoble colosal',branch:'vanguard',description:'Barrido pesado de gran alcance.',icon:'vanguard-sword',compatibleClasses:['vanguard'],compatibleSlots:['primary'],trigger:'hold-release',animationAction:'attack',cooldown:CLASSES.vanguard.meleeCooldown,damage:'2–4',grants:['melee']}),
   'vanguard.slash': skill({id:'vanguard.slash',name:'Creciente escarlata',branch:'vanguard',description:'Tajo que atraviesa enemigos.',icon:'vanguard-slash',compatibleClasses:['vanguard'],compatibleSlots:['skill1','skill2'],trigger:'press',animationAction:'attack',cooldown:RULES.slashCooldown,damage:'1,5'}),
   'vanguard.counter': skill({id:'vanguard.counter',name:'Revancha de hierro',branch:'vanguard',description:'Devuelve proyectiles.',icon:'vanguard-counter',compatibleClasses:['vanguard'],compatibleSlots:['skill1','skill2'],trigger:'hold',animationAction:'castChannel',cooldown:RULES.counterCooldown,damage:'×1–×2'}),
-  'common.dash': skill({id:'common.dash',name:'Traslación',branch:'common',description:'Desplazamiento cargable.',icon:'mage-dash',compatibleClasses:['archer','mage','vanguard'],compatibleSlots:['mobility'],trigger:'hold-release',animationAction:'dash',cooldown:RULES.dashCooldown,damage:'0',grants:['mobility']}),
+  'common.dash': skill({id:'common.dash',name:'Traslación',branch:'common',description:'Desplazamiento cargable.',icon:'mage-dash',compatibleClasses:['archer','vanguard'],compatibleSlots:['mobility'],trigger:'hold-release',animationAction:'dash',cooldown:RULES.dashCooldown,damage:'0',grants:['mobility']}),
 };
 export type PhysicalBinding = 'MouseLeft' | 'MouseRight' | 'MouseMiddle' | 'Space' | 'Shift' | 'Ctrl' | `Key${'Q'|'E'|'R'|'F'|'C'|'X'|'Z'|'V'|'G'|'T'}`;
 export const ALLOWED_BINDINGS:readonly PhysicalBinding[]=['MouseLeft','MouseRight','MouseMiddle','Space','Shift','Ctrl','KeyQ','KeyE','KeyR','KeyF','KeyC','KeyX','KeyZ','KeyV','KeyG','KeyT'];
@@ -429,16 +440,16 @@ export const CHARACTER_SKINS:Record<ClassId,CharacterSkinDefinition[]> = {
 };
 export const skinsForClass=(classId:ClassId)=>CHARACTER_SKINS[classId];
 const loadout = (primary:SkillId|null,secondary:SkillId|null,mobility:SkillId|null,skill1:SkillId|null,skill2:SkillId|null):CharacterLoadout => ({primary,secondary,mobility,skill1,skill2});
-const bindings = (secondary:PhysicalBinding, mobility:PhysicalBinding, skill1:PhysicalBinding, skill2:PhysicalBinding):InputBindings => ({primary:'MouseLeft',secondary,mobility,skill1,skill2,companionCommand:'KeyE'});
+const bindings = (secondary:PhysicalBinding, mobility:PhysicalBinding, skill1:PhysicalBinding, skill2:PhysicalBinding, companionCommand:PhysicalBinding='KeyE'):InputBindings => ({primary:'MouseLeft',secondary,mobility,skill1,skill2,companionCommand});
 export const DEFAULT_LOADOUTS: Record<ClassId, CharacterLoadout> = {
   archer:loadout('archer.arrow','archer.dagger','common.dash','archer.trap','archer.volley'),
-  mage:loadout('mage.fireball','mage.magicShield','common.dash','mage.ice',null),
+  mage:loadout('mage.fireball','mage.magicShield','mage.blink','mage.ice','mage.blackHole'),
   necromancer:loadout('necromancer.fire',null,null,'necromancer.summon',null),
   guardian:loadout('guardian.sword','guardian.guard','guardian.dash','guardian.shieldBash','guardian.fury'),
   vanguard:loadout('vanguard.sword',null,'common.dash','vanguard.slash','vanguard.counter'),
 };
 export const DEFAULT_BINDINGS: Record<ClassId, InputBindings> = {
-  archer:bindings('MouseRight','Space','KeyQ','KeyE'), mage:bindings('MouseRight','Space','MouseMiddle','KeyE'),
+  archer:bindings('MouseRight','Space','KeyQ','KeyE'), mage:bindings('MouseRight','Space','MouseMiddle','KeyE','KeyR'),
   necromancer:bindings('MouseRight','Space','Space','KeyQ'), guardian:bindings('MouseRight','Space','KeyQ','KeyE'),
   vanguard:bindings('MouseRight','Space','KeyQ','KeyE'),
 };
@@ -535,6 +546,7 @@ export interface Input {
   shot: boolean;
   charge: boolean;
   dash: boolean;
+  blackHole: boolean;
   guard: boolean;
   summon: boolean;
   ice: boolean;
@@ -575,6 +587,7 @@ export const idleInput = (seq = 0, angle = 0): Input => ({
   shot: false,
   charge: false,
   dash: false,
+  blackHole: false,
   guard: false,
   summon: false,
   ice: false,
@@ -635,6 +648,7 @@ export function sanitizeInput(raw: unknown): Input | null {
     shot: r.shot === true,
     charge: r.charge === true,
     dash: r.dash === true,
+    blackHole: r.blackHole === true,
     guard: r.guard === true,
     summon: r.summon === true,
     ice: r.ice === true,
@@ -679,6 +693,12 @@ export interface Player extends Vec {
   shotCd: number;
   shotCharge: number;
   dashCd: number;
+  blackHoleCast: number;
+  blackHoleCd: number;
+  blackHoleX: number;
+  blackHoleY: number;
+  /** World incantation preview; duel casting uses blackHoleCast and the fixed aim coordinates. */
+  blackHoleTelegraph?: { x:number; y:number; left:number; total:number };
   attackLock: number;
   dashLeft: number;
   dashX: number;
@@ -905,6 +925,8 @@ export interface GameEvent extends Vec {
     | 'slash'
     | 'counter'
     | 'dash'
+    | 'blink'
+    | 'blackhole'
     | 'bash'
     | 'fury'
     | 'levelup'
@@ -919,6 +941,11 @@ export interface GameEvent extends Vec {
   classId?: ClassId;
   skillId?: SkillId;
   power?: number;
+  /** Blink only: where the teleport lands (the event's x/y stay at the origin). */
+  tx?: number;
+  ty?: number;
+  /** Blink only: which player teleported, so the client can snap its body. */
+  playerId?: string;
   /** World only: the colour of the element or skill behind it, so an explosion of lightning is not fire. */
   color?: string;
 }
@@ -981,6 +1008,7 @@ export interface Snapshot {
   bases: Base[];
   flags: Flag[];
   arrows: Arrow[];
+  blackHoles: BlackHole[];
   zombies: Zombie[];
   mobs: Mob[];
   mobProjectiles: MobProjectile[];
@@ -1101,6 +1129,30 @@ export function translate(p: Vec, dx: number, dy: number, walls: Rect[] | Terrai
     if (!solid(p.x + dx / steps, p.y, RULES.radius, walls)) p.x += dx / steps;
     if (!solid(p.x, p.y + dy / steps, RULES.radius, walls)) p.y += dy / steps;
   }
+}
+export interface BlackHole extends Vec {
+  id: number;
+  owner: string;
+  team: Team;
+  radius: number;
+  burstRadius: number;
+  pull: number;
+  damage: number;
+  left: number;
+  total: number;
+}
+/** Where a blink lands: the far point, or the nearest free spot walking back toward the origin. */
+export function blinkTarget(from: Vec, angle: number, range: number, walls: Rect[] | Terrain = WALLS): Vec {
+  const tx = from.x + Math.cos(angle) * range;
+  const ty = from.y + Math.sin(angle) * range;
+  const steps = Math.max(1, Math.ceil(range / 6));
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    const x = from.x + (tx - from.x) * (1 - t);
+    const y = from.y + (ty - from.y) * (1 - t);
+    if (!solid(x, y, RULES.radius, walls)) return { x, y };
+  }
+  return { x: from.x, y: from.y };
 }
 export function lineClear(a: Vec, b: Vec, walls: Rect[] | Terrain = WALLS): boolean {
   const steps = Math.max(1, Math.ceil(distance(a, b) / 5));
@@ -1291,7 +1343,7 @@ const hasLogicalInput = (input: Input) => SKILL_SLOTS.some((slot) => {
 /** Server-side adapter from validated logical slots to the established simulation actions. */
 export function resolveSlotInput(p: Player, input: Input): Input {
   if (!hasLogicalInput(input)) return input;
-  const resolved: Input = { ...input, sword:false, shot:false, charge:false, dash:false, guard:false, summon:false,
+  const resolved: Input = { ...input, sword:false, shot:false, charge:false, dash:false, blackHole:false, guard:false, summon:false,
     ice:false, trap:false, volley:false, special:false, shieldBash:false, fury:false, slash:false, counter:false,
     command:false, mark:false };
   for (const slot of SKILL_SLOTS) {
@@ -1306,6 +1358,8 @@ export function resolveSlotInput(p: Player, input: Input): Input {
       case 'common.dash':
         resolved.special ||= state.held; resolved.dash ||= state.released; break;
       case 'guardian.dash': resolved.dash ||= state.pressed; break;
+      case 'mage.blink': resolved.dash ||= state.released; break;
+      case 'mage.blackHole': resolved.blackHole ||= state.pressed; break;
       case 'mage.magicShield': resolved.guard ||= state.pressed || state.held; break;
       case 'mage.ice': resolved.ice ||= pulse; break;
       case 'necromancer.summon': resolved.special ||= state.held; resolved.summon ||= state.released; break;
@@ -1349,6 +1403,8 @@ export function movePlayer(
     fury: false,
     dashStarted: false,
     dashing: false,
+    blackHole: false,
+    blink: null as { fromX: number; fromY: number; toX: number; toY: number } | null,
   };
   if (p.hp <= 0) return result;
   const stats = CLASSES[p.classId];
@@ -1362,6 +1418,7 @@ export function movePlayer(
     'swordCd',
     'shotCd',
     'dashCd',
+    'blackHoleCd',
     'attackLock',
     'invuln',
     'hitFlash',
@@ -1381,6 +1438,14 @@ export function movePlayer(
     p[key] = Math.max(0, p[key] - dt);
   p.furyLeft = Math.max(0, p.furyLeft - dt);
   if (p.furyLeft <= 1e-8) p.furyLeft = 0;
+  if (p.blackHoleCast > 0) {
+    p.blackHoleCast = Math.max(0, p.blackHoleCast - dt);
+    p.stunLeft = Math.max(0, p.stunLeft - dt);
+    p.shotCharge = 0;
+    p.specialCharge = 0;
+    result.blackHole = p.blackHoleCast <= 1e-8;
+    return result;
+  }
   if (p.stunLeft > 0) {
     p.stunLeft = Math.max(0, p.stunLeft - dt);
     p.shotCharge = 0;
@@ -1397,6 +1462,19 @@ export function movePlayer(
   p.angle = input.angle;
   p.aimX = input.aimX;
   p.aimY = input.aimY;
+  if (input.blackHole && equippedSkill(p, 'mage.blackHole') && p.blackHoleCd <= 0) {
+    const aimDist=input.aimX>=0&&input.aimY>=0?Math.hypot(input.aimX-p.x,input.aimY-p.y):0;
+    const aimAngle=aimDist>1?Math.atan2(input.aimY-p.y,input.aimX-p.x):input.angle;
+    const target=blinkTarget(p,aimAngle,aimDist>1?aimDist:150,walls);
+    p.blackHoleX=target.x;
+    p.blackHoleY=target.y;
+    p.blackHoleCast = RULES.blackHoleCast;
+    p.blackHoleCd = RULES.blackHoleCooldown;
+    p.shotCharge = 0;
+    p.specialCharge = 0;
+    p.dashLeft = 0;
+    return result;
+  }
   if (p.raiseCast > 0) {
     // Casting a raise roots the necromancer until the mandala opens.
     p.raiseCast = Math.max(0, p.raiseCast - dt);
@@ -1527,6 +1605,7 @@ export function movePlayer(
   // Space charges while held; the release pulse (dash or summon) spends the charge.
   const canDash = equippedSkill(p, 'common.dash') || equippedSkill(p, 'guardian.dash');
   const canSummon = equippedSkill(p, 'necromancer.summon');
+  const canBlink = equippedSkill(p, 'mage.blink');
   const specialReady =
     (canDash && p.classId !== 'guardian' && p.dashCd <= 0) || (canSummon && p.summonCd <= 0);
   if (specialReady && input.special && !input.dash && !input.summon)
@@ -1535,6 +1614,38 @@ export function movePlayer(
       p.specialCharge + dt,
     );
   else if (!specialReady || (!input.special && !input.dash && !input.summon)) p.specialCharge = 0;
+  if (
+    frozenDt === 0 &&
+    canBlink &&
+    input.dash &&
+    p.dashCd <= 0 &&
+    !wasWinding &&
+    p.attackLock <= 0 &&
+    !result.fury
+  ) {
+    // Land where the cursor is, capped at the blink range; without a cursor, use the movement
+    // direction (or the facing angle) for the full range.
+    const aimDist =
+      input.aimX >= 0 && input.aimY >= 0 ? Math.hypot(input.aimX - p.x, input.aimY - p.y) : 0;
+    const hasAim = aimDist > 1;
+    const mag = Math.hypot(input.x, input.y);
+    const angle = hasAim
+      ? Math.atan2(input.aimY - p.y, input.aimX - p.x)
+      : mag > 0.05
+        ? Math.atan2(input.y, input.x)
+        : input.angle;
+    const range = hasAim ? aimDist : RULES.mageBlinkRange;
+    const to = blinkTarget(p, angle, range, walls);
+    result.blink = { fromX: p.x, fromY: p.y, toX: to.x, toY: to.y };
+    p.x = to.x;
+    p.y = to.y;
+    // A short i-frame window through the dash timer, with no residual movement.
+    p.dashX = 0;
+    p.dashY = 0;
+    p.dashLeft = RULES.mageBlinkInvuln;
+    p.dashCd = RULES.dashCooldown;
+    p.specialCharge = 0;
+  }
   if (
     frozenDt === 0 &&
     canDash &&
@@ -1721,6 +1832,10 @@ export function newPlayer(
     shotCd: 0,
     shotCharge: 0,
     dashCd: 0,
+    blackHoleCast: 0,
+    blackHoleCd: 0,
+    blackHoleX: 0,
+    blackHoleY: 0,
     attackLock: 0,
     dashLeft: 0,
     dashX: 0,
@@ -1810,6 +1925,7 @@ export class Duel {
     bases: [],
     flags: [],
     arrows: [],
+    blackHoles: [],
     zombies: [],
     mobs: [],
     mobProjectiles: [],
@@ -1823,6 +1939,7 @@ export class Duel {
   };
   protected eventId = 0;
   protected arrowId = 0;
+  protected blackHoleId = 0;
   protected trapId = 0;
   protected zombieId = 0;
   private mobId = 0;
@@ -2072,6 +2189,7 @@ export class Duel {
   resetArena() {
     const s = this.state;
     s.arrows = [];
+    s.blackHoles = [];
     s.zombies = [];
     s.mobs = [];
     s.mobProjectiles = [];
@@ -2080,6 +2198,7 @@ export class Duel {
     this.fallen.clear();
     for (const p of s.players) {
       p.raiseCast = 0;
+      p.blackHoleCast = 0;
       p.fallenGuards = 0;
     }
     s.traps = [];
@@ -2200,6 +2319,7 @@ export class Duel {
       });
       target.respawnLeft = RULES.respawn;
       target.raiseCast = 0;
+      target.blackHoleCast = 0;
       target.furyLeft = 0;
       target.shieldBashLeft = 0;
       this.raising.delete(target.id);
@@ -2209,7 +2329,7 @@ export class Duel {
       lowerGuard(target);
       target.deaths++;
       this.event('death', target, target.team);
-    } else if (!options.pierce)
+    } else if (!options.pierce && target.blackHoleCast <= 0)
       translate(target, Math.cos(angle) * 24, Math.sin(angle) * 24, this.terrainFor(target));
     return true;
   }
@@ -2261,6 +2381,51 @@ export class Duel {
    */
   protected hostile(a: Allegiant, b: Allegiant): boolean {
     return a.team !== b.team;
+  }
+  protected spawnBlackHole(owner: Player, x: number, y: number, options: Partial<Pick<BlackHole, 'radius' | 'burstRadius' | 'pull' | 'damage' | 'total'>> = {}) {
+    const hole: BlackHole = {
+      id: ++this.blackHoleId, owner: owner.id, team: owner.team, x, y,
+      radius: options.radius ?? RULES.blackHoleRadius,
+      burstRadius: options.burstRadius ?? RULES.blackHoleBurstRadius,
+      pull: options.pull ?? RULES.blackHolePull,
+      damage: options.damage ?? RULES.blackHoleDamage,
+      left: options.total ?? RULES.blackHoleDuration,
+      total: options.total ?? RULES.blackHoleDuration,
+    };
+    this.state.blackHoles.push(hole);
+    this.event('blackhole', hole, owner.team, undefined, owner.classId, 1, 'mage.blackHole');
+    return hole;
+  }
+  protected stepBlackHoles(dt: number) {
+    for (const hole of this.state.blackHoles) {
+      const owner = this.state.players.find((p) => p.id === hole.owner);
+      const source: Allegiant = owner ?? { id: hole.owner, team: hole.team, x: hole.x, y: hole.y };
+      const pull = (target: Vec, terrain: Rect[] | Terrain) => {
+        const gap = distance(target, hole);
+        if (gap <= 1 || gap > hole.radius) return;
+        const stride = Math.min(gap, hole.pull * dt);
+        translate(target, (hole.x - target.x) / gap * stride, (hole.y - target.y) / gap * stride, terrain);
+      };
+      for (const p of this.state.players)
+        if (p.id !== hole.owner && p.hp > 0 && this.hostile(source, p)) pull(p, this.terrainFor(p));
+      for (const z of this.state.zombies)
+        if (z.hp > 0 && this.hostile(source, z)) pull(z, this.terrain);
+      for (const mob of this.state.mobs)
+        if (mob.hp > 0 && mob.spawnLeft <= 0) pull(mob, this.terrain);
+      hole.left = Math.max(0, hole.left - dt);
+      if (hole.left > 0) continue;
+      for (const p of this.state.players)
+        if (p.id !== hole.owner && p.hp > 0 && this.hostile(source, p) && distance(p, hole) <= hole.burstRadius)
+          this.damage(p, owner ?? { team: hole.team }, Math.atan2(p.y - hole.y, p.x - hole.x), hole.damage);
+      for (const z of this.state.zombies)
+        if (z.hp > 0 && this.hostile(source, z) && distance(z, hole) <= hole.burstRadius)
+          this.damageZombie(z, hole.team, hole.damage, Math.atan2(z.y - hole.y, z.x - hole.x), hole.owner);
+      if (owner) for (const mob of this.state.mobs)
+        if (mob.hp > 0 && mob.spawnLeft <= 0 && distance(mob, hole) <= hole.burstRadius)
+          this.damageMob(mob, owner, hole.damage);
+      this.event('explosion', hole, hole.team, undefined, owner?.classId, 1, 'mage.blackHole');
+    }
+    this.state.blackHoles = this.state.blackHoles.filter((hole) => hole.left > 0);
   }
   /** The ground a player's body moves on. The world lets some characters cross water. */
   protected terrainFor(_p: Player): Rect[] | Terrain {
@@ -3549,6 +3714,7 @@ export class Duel {
     }
     this.stepArrows(dt);
     this.stepZombies(dt);
+    this.stepBlackHoles(dt);
     this.stepTraps(placements, dt);
     if (s.winner) {
       this.syncParticipants();
@@ -3653,7 +3819,9 @@ export class Duel {
         action.raised ||
         action.bash ||
         action.fury ||
-        action.dashStarted
+        action.dashStarted ||
+        action.blink
+        || action.blackHole
       )
         p.revealLeft = 1.5;
       if (action.fury) this.event('fury', p, p.team, p.angle, p.classId);
@@ -3661,6 +3829,21 @@ export class Duel {
         this.guardianDashHits.set(p.id, new Set());
         this.event('dash', p, p.team, p.angle, p.classId);
       }
+      if (action.blink) {
+        this.event(
+          'blink',
+          { x: action.blink.fromX, y: action.blink.fromY },
+          p.team,
+          Math.atan2(action.blink.toY - action.blink.fromY, action.blink.toX - action.blink.fromX),
+          p.classId,
+          1,
+        );
+        const ev = this.state.events.at(-1)!;
+        ev.tx = action.blink.toX;
+        ev.ty = action.blink.toY;
+        ev.playerId = p.id;
+      }
+      if (action.blackHole) this.spawnBlackHole(p, p.blackHoleX, p.blackHoleY);
       if (action.dashing && p.classId === 'guardian') guardianDashers.push(p);
       else if (p.classId === 'guardian' && p.dashLeft <= 0) this.guardianDashHits.delete(p.id);
       if (action.bash) bashers.push(p);

@@ -8,6 +8,8 @@ import {
   newPlayer,
   projectileStats,
   translate,
+  terrainOf,
+  blinkTarget,
   solid,
   lineClear,
   blocked,
@@ -1080,9 +1082,12 @@ export class World extends Duel {
     }
     for (const [id, spell] of this.incantations) {
       spell.left -= dt;
+      const caster = this.state.players.find((q) => q.id === id);
+      if (caster?.blackHoleTelegraph) caster.blackHoleTelegraph.left=Math.max(0,spell.left);
       if (spell.left > 0) continue;
       this.incantations.delete(id);
       const p = this.state.players.find((q) => q.id === id);
+      if (p) delete p.blackHoleTelegraph;
       const character = this.characters.get(id);
       if (p && character && p.hp > 0)
         this.resolve(p, character, SKILLS_WORLD[spell.skillId], spell.aim);
@@ -1154,6 +1159,15 @@ export class World extends Duel {
     if (silent) this.resolve(p, character, skill, aim);
     else {
       this.incantations.set(id, { skillId: skill.id, aim, left: INCANTATION_TIME });
+      if(skill.effect.kind==='blackhole'){
+        const gap=distance(p,aim),reach=Math.min(360,skill.effect.range),fraction=gap>reach?reach/gap:1;
+        const bounds=terrainOf(this.terrain).bounds;
+        p.blackHoleTelegraph={
+          x:Math.max(bounds.minX,Math.min(bounds.maxX,p.x+(aim.x-p.x)*fraction)),
+          y:Math.max(bounds.minY,Math.min(bounds.maxY,p.y+(aim.y-p.y)*fraction)),
+          left:INCANTATION_TIME,total:INCANTATION_TIME,
+        };
+      }
       this.event('cast', p, p.team, Math.atan2(aim.y - p.y, aim.x - p.x), p.classId, 0);
     }
   }
@@ -1368,7 +1382,7 @@ export class World extends Duel {
     const staff = arcane && character.weapon === 'baston' ? 1.1 : 1;
     this.castingSchool = skill.school;
     try {
-      this.apply(p, character, skill, effect, angle, staff);
+      this.apply(p, character, skill, effect, angle, staff, aim);
     } finally {
       this.castingSchool = undefined;
     }
@@ -1381,9 +1395,24 @@ export class World extends Duel {
     effect: SkillEffect,
     angle: number,
     staff: number,
+    aim: Vec,
   ) {
     const s = this.state;
     switch (effect.kind) {
+      case 'blackhole': {
+        const distanceToAim = distance(p, aim);
+        const reach = Math.min(360, effect.range);
+        const fraction = distanceToAim > reach ? reach / distanceToAim : 1;
+        const bounds = terrainOf(this.terrain).bounds;
+        const x = Math.max(bounds.minX, Math.min(bounds.maxX, p.x + (aim.x - p.x) * fraction));
+        const y = Math.max(bounds.minY, Math.min(bounds.maxY, p.y + (aim.y - p.y) * fraction));
+        this.spawnBlackHole(p, x, y, {
+          radius: effect.radius, burstRadius: effect.burstRadius, pull: effect.pull,
+          damage: effect.damage * staff * this.attributeScale(character, skill.school),
+          total: effect.duration,
+        });
+        return;
+      }
       case 'bolt': {
         const look = BOLT_LOOK[effect.element];
         const pierce = !!effect.pierce && !look.wind;
@@ -1456,14 +1485,28 @@ export class World extends Duel {
         return;
       }
       case 'dash': {
-        translate(
-          p,
-          Math.cos(angle) * effect.distance,
-          Math.sin(angle) * effect.distance,
-          this.terrainFor(p),
-        );
+        const terrain = this.terrainFor(p);
+        if (p.classId === 'mage') {
+          // The mage blinks: instant, short, and through walls; only the landing spot must be free.
+          const from = { x: p.x, y: p.y };
+          const to = blinkTarget(p, angle, effect.distance, terrain);
+          p.x = to.x;
+          p.y = to.y;
+          this.event('blink', from, p.team, angle, p.classId, 1);
+          const ev = this.state.events.at(-1)!;
+          ev.tx = to.x;
+          ev.ty = to.y;
+          ev.playerId = p.id;
+        } else {
+          translate(
+            p,
+            Math.cos(angle) * effect.distance,
+            Math.sin(angle) * effect.distance,
+            terrain,
+          );
+          this.event('dash', p, p.team, angle, p.classId, 1);
+        }
         p.invuln = Math.max(p.invuln, 0.25);
-        this.event('dash', p, p.team, angle, p.classId, 1);
         return;
       }
       case 'buff': {
@@ -1867,6 +1910,7 @@ export class World extends Duel {
         maxHp: target.maxHp,
       });
     this.incantations.delete(target.id);
+    delete target.blackHoleTelegraph;
     this.buffs.delete(target.id);
     this.drains.delete(target.id);
     this.parries.delete(target.id);
@@ -2022,6 +2066,7 @@ export class World extends Duel {
     }
     this.stepArrows(dt);
     this.stepZombies(dt);
+    this.stepBlackHoles(dt);
     this.stepMonsters(dt);
     this.stepMobShots(dt);
     this.stepTraps(placements, dt);

@@ -12,7 +12,7 @@ import {
   type Vec,
 } from '@bandera/shared';
 
-export type BlueprintKind = 'line' | 'triple' | 'dash' | 'cone' | 'circle' | 'placement' | 'defense';
+export type BlueprintKind = 'line' | 'triple' | 'dash' | 'blink' | 'cone' | 'circle' | 'placement' | 'defense';
 
 export interface BlueprintSpec {
   kind: BlueprintKind;
@@ -45,6 +45,8 @@ export function blueprintSpec(p: Player, abilityId: string): BlueprintSpec | nul
     };
   }
   if (abilityId === 'dash') {
+    if (p.classId === 'mage')
+      return { kind: 'blink', range: RULES.mageBlinkRange, radius: RULES.radius };
     const duration =
       p.classId === 'guardian'
         ? RULES.guardianDashDuration

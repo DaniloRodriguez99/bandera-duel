@@ -67,6 +67,7 @@ export type SkillEffect =
   | { kind: 'heal'; amount: number; radius: number }
   | { kind: 'parry'; window: number; reflect: number }
   | { kind: 'dash'; distance: number; invulnerable?: boolean }
+  | { kind: 'blackhole'; radius: number; burstRadius: number; pull: number; damage: number; duration: number; range: number }
   | { kind: 'buff'; damage: number; speed: number; duration: number }
   | { kind: 'devour'; heal: number; radius: number }
   | { kind: 'steal'; range: number }
@@ -456,6 +457,20 @@ export const SKILLS_WORLD: Record<string, WorldSkill> = {
     firstLevelUses: 10,
     evolutions: [{ level: 5, name: 'Abismo Hambriento', line: 'La sombra ya no vuelve con las manos vacías.' }],
     tree: [node('sombra_voraz', 1, { name: 'Sed', level: 3, cost: 1, text: 'Roba más vida.', grants: { drain: 0.3 } })],
+  },
+  singularidad: {
+    id: 'singularidad', name: 'Singularidad', school: 'sombra', rarity: 'rara',
+    flavor: 'Hasta la luz aprende a caer.',
+    incantation: 'Sombra sin fondo, reuní cuanto te rodea…',
+    color: AFFINITY_COLORS.sombra, icon: 'mage-blackhole', weapon: 'baston',
+    mana: 14, cooldown: 10,
+    effect: { kind: 'blackhole', radius: 200, burstRadius: 90, pull: 90, damage: 1.5, duration: 4, range: 360 },
+    maxLevel: 8, firstLevelUses: 10,
+    evolutions: [{ level: 5, name: 'Abismo Resonante', line: 'La oscuridad ahora reclama lo que queda fuera del círculo.' }],
+    tree: [
+      node('singularidad', 1, { name: 'Horizonte amplio', level: 3, cost: 1, text: 'El vórtice atrae desde más lejos.', grants: { radius: 35 } }),
+      node('singularidad', 2, { name: 'Eco del vacío', level: 5, cost: 2, text: 'La atracción dura más.', grants: { duration: 1 } }),
+    ],
   },
   alzar: {
     id: 'alzar',
@@ -1558,6 +1573,8 @@ export function describeEffect(skill: WorldSkill, effect: SkillEffect = skill.ef
       return `Durante ${secs(effect.window)} parás lo que llegue y lo devolvés ×${effect.reflect}.`;
     case 'dash':
       return `Un salto rápido hacia donde apuntás${effect.invulnerable ? ', intocable' : ''}.`;
+    case 'blackhole':
+      return `Atrae enemigos durante ${secs(effect.duration)} en ${effect.radius} unidades y estalla por ${effect.damage.toFixed(1)} de daño en ${effect.burstRadius} unidades. Alcance ${effect.range}.`;
     case 'buff':
       return `Durante ${secs(effect.duration)}: +${pct(effect.damage)} de daño y +${pct(effect.speed)} de velocidad.`;
     case 'devour':

@@ -84,12 +84,12 @@ export function abilitySlots(classId: ClassId): AbilitySlot[] {
     slots.push({
       id: 'dash',
       key: 'ESPACIO',
-      name: classId === 'guardian' ? 'Embestida' : 'Esquivar',
+      name: classId === 'guardian' ? 'Embestida' : classId === 'mage' ? 'Parpadeo' : 'Esquivar',
       icon: skillIcon(
         classId === 'archer'
           ? 'archer-wind'
           : classId === 'mage'
-            ? 'mage-dash'
+            ? 'mage-blink'
             : classId === 'vanguard'
               ? 'vanguard-dash'
               : 'guardian-bash',
@@ -99,6 +99,8 @@ export function abilitySlots(classId: ClassId): AbilitySlot[] {
       tiers:
         classId === 'guardian'
           ? [{ label: '190 u · 1 daño · sin invulnerabilidad', active: (p) => p.dashLeft > 0 }]
+          : classId === 'mage'
+            ? [{ label: 'Pulsar · teletransporte corto', active: (p) => p.dashCd <= 0 }]
           : [
               { label: 'Toque · esquivar', active: (p) => tapped(p.specialCharge) },
               {
@@ -288,11 +290,11 @@ export function abilitySlots(classId: ClassId): AbilitySlot[] {
   return slots;
 }
 
-const dynamicCooldown=(id:SkillId,p:Player)=>id==='mage.magicShield'?p.magicShieldCd:id==='mage.ice'?p.iceCd:id==='necromancer.summon'?p.summonCd:id==='common.dash'?p.dashCd:p.shotCd;
+const dynamicCooldown=(id:SkillId,p:Player)=>id==='mage.magicShield'?p.magicShieldCd:id==='mage.ice'?p.iceCd:id==='mage.blackHole'?p.blackHoleCd:id==='necromancer.summon'?p.summonCd:id==='common.dash'||id==='mage.blink'?p.dashCd:p.shotCd;
 const shortBinding=(value:PhysicalBinding)=>({MouseLeft:'CLIC',MouseRight:'CLIC DER.',MouseMiddle:'CLIC 3',Space:'ESPACIO',Shift:'SHIFT',Ctrl:'CTRL'} as Record<string,string>)[value]??value.replace('Key','');
 export function playerAbilitySlots(p:Player,bindings?:InputBindings):AbilitySlot[]{
   const order=(['primary','mobility','secondary','skill1','skill2'] as const);
-  const legacyId:Partial<Record<SkillId,string>>={'mage.fireball':'shot','common.dash':'dash','mage.magicShield':'magic-shield','mage.ice':'ice','necromancer.fire':'shot','necromancer.summon':'summon'};
+  const legacyId:Partial<Record<SkillId,string>>={'mage.fireball':'shot','common.dash':'dash','mage.blink':'dash','mage.blackHole':'black-hole','mage.magicShield':'magic-shield','mage.ice':'ice','necromancer.fire':'shot','necromancer.summon':'summon'};
   const legacyName:Partial<Record<SkillId,string>>={'mage.ice':'Flecha de hielo'};
   const cards:AbilitySlot[]=order.flatMap(slot=>{const id=p.loadout[slot];if(!id)return[];const skill=SKILLS[id];return [{id:legacyId[id]??id,key:bindings?shortBinding(bindings[slot]):slot.toUpperCase(),name:legacyName[id]??skill.name,icon:skillIcon(skill.icon),cooldown:(player:Player)=>dynamicCooldown(id,player),max:skill.cooldown||1,detail:(player:Player)=>id==='mage.magicShield'&&player.magicShieldHits?`${player.magicShieldHits}/${RULES.magicShieldHits}`:null,tiers:id==='necromancer.summon'?[{label:'Incluye Mando, Marcar y todas las invocaciones'}]:undefined} satisfies AbilitySlot];});
   if(Object.values(p.loadout).includes('necromancer.summon'))cards.push({id:'command',key:bindings?shortBinding(bindings.companionCommand):'MANDO',name:'Mando / Marcar',icon:skillIcon('necromancer-resurrection'),cooldown:()=>0,max:1,tiers:[{label:'Toque: Mando · Ctrl + tecla: Marcar'}]});

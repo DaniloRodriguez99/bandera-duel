@@ -12,6 +12,8 @@ import {
   MODE_INFO,
   validName,
   activePreset,
+  SKILLS,
+  SKILL_SLOTS,
   type Snapshot,
   type ClassId,
   type Team,
@@ -107,6 +109,7 @@ function gateShowcase() {
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const arena = new Arena();
 $('cooldowns').insertAdjacentHTML('beforeend', '<span id="cd-ice" hidden></span>');
+$('cooldowns').insertAdjacentHTML('beforeend', '<span id="cd-black-hole" hidden></span>');
 /** A key or a tap on a skill slot: cast it at wherever the character is aiming right now. */
 const castSlot = (slot: CastSlot) => {
   if (!room || !online || !worldCharacterId) return;
@@ -368,16 +371,18 @@ mountClasses(
   (id) => customizer.open(id,customizationFor(id)),
 );
 for(const classId of CLASS_IDS){updateClassSkin($('entry-classes'),classId,customizationFor(classId).selectedSkin);updateClassSkin($('room-classes'),classId,customizationFor(classId).selectedSkin);}
-let displayedClass: ClassId | undefined;
+let displayedClass: string | undefined;
 function showClassControls(id: ClassId) {
-  if (displayedClass === id) return;
-  displayedClass = id;
+  const signature=id==='mage'?`${id}:${JSON.stringify(activePreset(customizationFor(id)))}`:id;
+  if (displayedClass === signature) return;
+  displayedClass = signature;
   const stats = CLASSES[id];
   const ranged = stats.ranged;
   const guardian = id === 'guardian';
   const mage = id === 'mage';
   mountTouchAbilities($('touch-actions'), id);
   $('cd-ice').hidden = !mage;
+  $('cd-black-hole').hidden = !mage;
   $('cd-shot').hidden = !ranged;
   $('cd-dash').hidden = !stats.dash;
   $('cd-guard').hidden = !stats.shield && !mage;
@@ -390,12 +395,15 @@ function showClassControls(id: ClassId) {
   const secondary = stats.summon ? 'Invocar zombies' : ranged ? melee : 'Mantener escudo';
   $('control-guide').innerHTML =
     `<span><kbd>W A S D</kbd> Mover</span><span><kbd>CLIC</kbd> ${ranged ? projectile : 'Espada'}</span>${id !== 'vanguard' ? `<span><kbd>CLIC DER.</kbd> ${secondary}</span>` : ''}${stats.dash ? `<span><kbd>ESPACIO</kbd> ${guardian ? 'Embestida' : 'Esquivar'}</span>` : ''}<span class="mobile-help">Mové con la palanca izquierda. Tocá una habilidad para usar la dirección actual, o arrastrá su botón para apuntar. Volvé al centro antes de soltar para cancelar.</span>`;
+  if(mage){
+    const preset=activePreset(customizationFor(id));
+    const label=(binding:string)=>({MouseLeft:'CLIC',MouseRight:'CLIC DER.',MouseMiddle:'CLIC CENTRAL',Space:'ESPACIO',Shift:'SHIFT',Ctrl:'CTRL'} as Record<string,string>)[binding]??binding.replace('Key','');
+    $('control-guide').innerHTML=`<span><kbd>W A S D</kbd> Mover</span>${SKILL_SLOTS.flatMap(slot=>{const skillId=preset.loadout[slot];return skillId?[`<span><kbd>${label(preset.bindings[slot])}</kbd> ${SKILLS[skillId].name}${skillId==='mage.blink'?' · soltar':''}</span>`]:[];}).join('')}<span class="mobile-help">Mové con la palanca izquierda. Arrastrá una habilidad para apuntar y soltá para usarla.</span>`;
+    return;
+  }
   if (id === 'archer')
     $('control-guide').innerHTML +=
       '<span><kbd>MANTENER CLIC</kbd> Cargar flecha · 0,8 s</span><span><kbd>Q</kbd> Trampa</span><span><kbd>E</kbd> Triple</span>';
-  if (mage)
-    $('control-guide').innerHTML +=
-      '<span><kbd>CLIC CENTRAL</kbd> Hielo</span><span><kbd>CLIC DER.</kbd> Escudo mágico</span>';
   if (stats.summon)
     $('control-guide').innerHTML +=
       '<span><kbd>ESPACIO</kbd> Invocar zombies</span><span><kbd>E</kbd> Mando</span><span><kbd>CTRL E</kbd> Marcar</span>';
@@ -1194,6 +1202,9 @@ function render(s: Snapshot) {
     $('stage').dataset.magicShield = String(me.magicShieldHits);
     $('stage').dataset.frozen = String(me.frozenLeft > 0);
     $('cd-ice').textContent = `❄ ${me.iceCd > 0 ? me.iceCd.toFixed(1) + 's' : 'Listo'}`;
+    $('cd-ice').hidden = !Object.values(me.loadout).includes('mage.ice');
+    $('cd-black-hole').hidden = !Object.values(me.loadout).includes('mage.blackHole');
+    $('cd-black-hole').textContent = `◉ ${me.blackHoleCast > 0 ? `Casteando ${me.blackHoleCast.toFixed(1)}s` : me.blackHoleCd > 0 ? `${me.blackHoleCd.toFixed(1)}s` : 'Lista'}`;
     $('stage').dataset.dashing = String(
       me.dashInvulnerable || (me.classId === 'guardian' && me.dashLeft > 0),
     );

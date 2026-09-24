@@ -695,6 +695,7 @@ export class WorldRoom extends Room {
       players: source.players.filter((p) => p.id === own.id || visible(p)).map(paint),
       zombies: source.zombies.filter(visible).map(paint),
       arrows: source.arrows.filter((a) => inside(leave, a)),
+      blackHoles: source.blackHoles.filter((hole) => inside(leave, hole)),
       graves: source.graves.filter((g) => inside(leave, g)),
       traps: source.traps.filter((t) => inside(leave, t)),
       chests: (source.chests ?? []).filter((c) => inside(leave, c)),

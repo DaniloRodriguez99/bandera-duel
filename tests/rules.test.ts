@@ -10,6 +10,7 @@ import {
   sanitizeInput,
   validName,
   blocked,
+  blinkTarget,
   movePlayer,
   type Player,
   type ClassId,
@@ -154,6 +155,28 @@ describe('combate y geometría', () => {
     movePlayer(p, { ...input, x: -1 }, false);
     expect(p.x).toBeGreaterThanOrEqual(32);
   });
+  it('el mago se teletransporta con espacio atravesando un muro', () => {
+    const d = duel('mage'),
+      p = d.state.players[0];
+    place(p, 200, 164);
+    movePlayer(p, { ...idleInput(), dash: true, x: 1 }, false);
+    expect(p.x).toBeGreaterThan(WALLS[0].x + WALLS[0].w);
+    expect(blocked(p.x, p.y)).toBe(false);
+    expect(p.dashCd).toBeGreaterThan(0);
+  });
+  it('el mago teletransporta exactamente al cursor, sin tope fijo', () => {
+    const d = duel('mage'),
+      p = d.state.players[0];
+    place(p, 400, 270);
+    movePlayer(p, { ...idleInput(), dash: true, aimX: 460, aimY: 270 }, false);
+    expect(p.x).toBeCloseTo(460);
+    expect(p.y).toBeCloseTo(270);
+    place(p, 400, 270);
+    p.dashCd = 0;
+    p.dashLeft = 0;
+    movePlayer(p, { ...idleInput(), dash: true, aimX: 600, aimY: 270 }, false);
+    expect(p.x).toBeCloseTo(600);
+  });
   it('el portador se mueve 15% más lento pero puede atacar sin soltar', () => {
     const d = duel(),
       p = d.state.players[0],
@@ -227,6 +250,29 @@ describe('combate y geometría', () => {
     expect(p.invuln).toBeGreaterThan(0);
     d.step(new Map([[p.id, { ...idleInput(1), sword: true }]]));
     expect(p.invuln).toBe(0);
+  });
+});
+
+describe('blinkTarget', () => {
+  it('aterriza en el destino libre', () => {
+    const to = blinkTarget({ x: 400, y: 270 }, 0, 100, WALLS);
+    expect(to.x).toBeCloseTo(500);
+    expect(to.y).toBeCloseTo(270);
+  });
+  it('retrocede al borde si el destino cae dentro de un muro', () => {
+    const from = { x: 200, y: 164 };
+    const to = blinkTarget(from, 0, 60, WALLS); // 200 + 60 = 260 cae dentro de WALLS[0]
+    expect(blocked(to.x, to.y)).toBe(false);
+    expect(to.x).toBeLessThan(WALLS[0].x);
+  });
+  it('no sale de los límites', () => {
+    const to = blinkTarget({ x: 33, y: 270 }, Math.PI, 300, WALLS);
+    expect(blocked(to.x, to.y)).toBe(false);
+    expect(to.x).toBeGreaterThanOrEqual(32);
+  });
+  it('queda en el origen cuando el recorrido es nulo', () => {
+    const from = { x: 400, y: 270 };
+    expect(blinkTarget(from, 0, 0, WALLS)).toEqual(from);
   });
 });
 describe('todos contra todos', () => {

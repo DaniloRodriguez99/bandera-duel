@@ -62,6 +62,23 @@ describe('creación del personaje', () => {
   });
 });
 
+describe('teletransporte del mago en el mundo', () => {
+  it('el bastón teletransporta su dash; la espada conserva el salto', () => {
+    const mago = setup('brisa', { viento: 3 }, 'baston');
+    const x = mago.p.x;
+    mago.world.cast('h', 'e', { x: mago.p.x + 300, y: mago.p.y });
+    run(mago.world, ticks(INCANTATION_TIME) + 2);
+    expect(mago.world.state.events.some((e) => e.kind === 'blink')).toBe(true);
+    expect(mago.p.x).toBeGreaterThan(x);
+
+    const espada = setup('paso_ligero', { fuerza: 3 }, 'espada');
+    espada.world.cast('h', 'e', { x: espada.p.x + 300, y: espada.p.y });
+    run(espada.world, 1);
+    expect(espada.world.state.events.some((e) => e.kind === 'blink')).toBe(false);
+    expect(espada.world.state.events.some((e) => e.kind === 'dash')).toBe(true);
+  });
+});
+
 describe('lanzar habilidades', () => {
   it('Chispa cuesta maná, se canta, y recién después sale el fuego; la recarga frena el segundo', () => {
     const { world, p, aim } = setup('chispa', { fuego: 3 }, 'baston');

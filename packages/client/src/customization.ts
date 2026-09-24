@@ -12,8 +12,20 @@ const branchTone=(branch:string)=>branch==='mage'?'#59bfff':branch==='necromance
 
 const storageKey=(classId:ClassId)=>classId==='mage'?STORAGE:`${STORAGE}:${classId}`;
 export function loadCustomization(classId:ClassId):CharacterCustomization {
-  try { const value=JSON.parse(localStorage.getItem(storageKey(classId))??'null'); if(validCustomization(classId,value))return value; } catch { /* corrupted profiles fall back safely */ }
+  try { const value=migrateCustomization(classId,JSON.parse(localStorage.getItem(storageKey(classId))??'null')); if(validCustomization(classId,value)){saveCustomization(value);return value;} } catch { /* corrupted profiles fall back safely */ }
   return defaultCustomization(classId);
+}
+export function migrateCustomization(classId:ClassId,raw:unknown):unknown {
+  if(classId!=='mage'||!raw||typeof raw!=='object')return raw;
+  const value=clone(raw) as CharacterCustomization;
+  if(value.version!==1||value.classId!=='mage'||!value.presets||typeof value.presets!=='object')return raw;
+  for(const preset of Object.values(value.presets)){
+    if(preset?.loadout?.mobility==='common.dash'){
+      preset.loadout.mobility='mage.blink';
+      preset.skillTreeSelection=preset.skillTreeSelection?.map(id=>id==='common.dash'?'mage.blink':id)??[];
+    }
+  }
+  return value;
 }
 export function saveCustomization(value:CharacterCustomization){ localStorage.setItem(storageKey(value.classId),JSON.stringify(value)); }
 
@@ -29,7 +41,7 @@ export function mountCharacterCustomization(root:HTMLElement, initial:CharacterC
       <div class="custom-preview" style="--cloth:${skin.cloth};--light:${skin.light};--accent:${skin.accent}"><div class="character-preview">${classIllustration(classId,skin.id)}</div><strong>${skin.name}</strong><small>${skin.description}</small></div>
       <nav><button data-tab="skins" aria-pressed="${tab==='skins'}">SKINS</button><button data-tab="skills" aria-pressed="${tab==='skills'}">HABILIDADES</button></nav>
       <section class="custom-center">${tab==='skins'?`<div class="skin-grid">${skins.map((item,index)=>`<button class="rpg-frame frame-${index%5}" data-skin="${item.id}" aria-pressed="${item.id===value.selectedSkin}" style="--swatch:${item.cloth};--frame:${item.accent};--frame-light:${item.light}"><span class="skin-emblem"><i></i></span><span class="skin-copy"><strong>${item.name}</strong><small>${item.description}</small></span><b aria-hidden="true">◆</b></button>`).join('')}</div>`:`<div class="skill-tree">${skillBranches()}</div>`}</section>
-      <aside class="skill-detail rpg-detail">${tab==='skins'?`<div class="detail-sigil" style="--swatch:${skin.cloth};--frame:${skin.accent};--frame-light:${skin.light}"><i></i></div><small>ASPECTO · ${CLASSES[classId].name.toUpperCase()}</small><h3>${skin.name}</h3><p>${skin.description}</p><dl><div><dt>VESTIMENTA</dt><dd><i class="color-chip" style="--chip:${skin.cloth}"></i>Principal</dd></div><div><dt>ORNAMENTOS</dt><dd><i class="color-chip" style="--chip:${skin.accent}"></i>Encantados</dd></div><div><dt>ESTADO</dt><dd>${skin.id===value.selectedSkin?'Equipado':'Disponible'}</dd></div></dl>`:`<img src="/assets/skills/${skill.icon}.png" alt=""><small>${skill.branch.toUpperCase()}</small><h3>${skill.name}</h3><p>${skill.description}</p><dl><div><dt>DAÑO</dt><dd>${skill.damage}</dd></div><div><dt>ENFRIAMIENTO</dt><dd>${String(skill.cooldown).replace('.',',')} s</dd></div><div><dt>ACTIVACIÓN</dt><dd>${skill.trigger==='hold-release'?'Mantener y soltar':skill.trigger==='hold'?'Mantener':'Pulsar'}</dd></div></dl>${selected==='necromancer.summon'?'<p class="included">INCLUYE · Mando, Marcar, zombie con espada, zombie mago y resurrección.</p>':''}`}</aside>
+      <aside class="skill-detail rpg-detail">${tab==='skins'?`<div class="detail-sigil" style="--swatch:${skin.cloth};--frame:${skin.accent};--frame-light:${skin.light}"><i></i></div><small>ASPECTO · ${CLASSES[classId].name.toUpperCase()}</small><h3>${skin.name}</h3><p>${skin.description}</p><dl><div><dt>VESTIMENTA</dt><dd><i class="color-chip" style="--chip:${skin.cloth}"></i>Principal</dd></div><div><dt>ORNAMENTOS</dt><dd><i class="color-chip" style="--chip:${skin.accent}"></i>Encantados</dd></div><div><dt>ESTADO</dt><dd>${skin.id===value.selectedSkin?'Equipado':'Disponible'}</dd></div></dl>`:`<img src="/assets/skills/${skill.icon}.png" alt=""><small>${skill.branch.toUpperCase()}</small><h3>${skill.name}</h3><p>${skill.description}</p><dl><div><dt>DAÑO</dt><dd>${skill.damage}</dd></div><div><dt>ENFRIAMIENTO</dt><dd>${String(skill.cooldown).replace('.',',')} s</dd></div><div><dt>ACTIVACIÓN</dt><dd>${skill.trigger==='hold-release'?'Mantener y soltar':skill.trigger==='release'?'Soltar':skill.trigger==='hold'?'Mantener':'Pulsar'}</dd></div></dl>${selected==='necromancer.summon'?'<p class="included">INCLUYE · Mando, Marcar, zombie con espada, zombie mago y resurrección.</p>':''}`}</aside>
       <footer><div class="loadout-title"><div><small>LOADOUT ACTIVO</small><strong>PRESET DEFAULT</strong></div><button data-reset="all">Restablecer todo</button></div><div class="loadout-grid">${SKILL_SLOTS.map(slot=>slotCard(slot)).join('')}</div>${Object.values(preset().loadout).includes('necromancer.summon')?`<div class="context-binding"><span><strong>Mando</strong><small>Marcar: Ctrl + este control</small></span><button class="binding" data-bind="companionCommand">${capture==='companionCommand'?'PULSÁ UNA TECLA…':bindingLabel(preset().bindings.companionCommand)}</button><button data-reset="companionCommand">↺</button></div>`:''}<p class="binding-note">Elegí una habilidad y luego un slot resaltado. Tocá una tecla para cambiar un control. WASD, flechas, Escape, Tab, Enter, sistema y F1–F12 están reservadas.</p><div class="binding-conflict" hidden></div></footer>
     </div>`;
     bind();

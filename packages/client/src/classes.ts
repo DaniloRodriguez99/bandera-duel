@@ -22,9 +22,10 @@ const CLASS_SKILLS: Record<ClassId, SkillPreview[]> = {
   ],
   mage: [
     { name: 'Orbe de fuego', icon: icon('mage-fireball'), description: 'Conjurá una esfera ígnea; a carga máxima explota al impactar.', damage: `${RULES.arrowDamage}–2,5`, cooldown: seconds(RULES.shotCooldown) },
-    { name: 'Traslación arcana', icon: icon('mage-dash'), description: 'Desplazamiento mágico que puede cargarse para ampliar su alcance.', damage: '0', cooldown: seconds(RULES.dashCooldown) },
+    { name: 'Parpadeo', icon: icon('mage-blink'), description: 'Apuntá y soltá: reaparecés en un lugar válido junto al cursor, incluso tras un muro.', damage: '0', cooldown: seconds(RULES.dashCooldown) },
     { name: 'Égida de dos sellos', icon: icon('mage-shield'), description: `Una barrera encantada que anula ${RULES.magicShieldHits} impactos.`, damage: '0', cooldown: seconds(RULES.magicShieldCooldown) },
     { name: 'Saeta glacial', icon: icon('mage-ice'), description: `Perfora con hielo arcano e inmoviliza durante ${seconds(RULES.freezeDuration)}.`, damage: '0', cooldown: seconds(RULES.iceCooldown) },
+    { name: 'Singularidad', icon: icon('mage-blackhole'), description: 'Apuntá y canalizá 2 s; el vórtice aparece allí, atrae enemigos durante 4 s y luego estalla.', damage: '1,5', cooldown: seconds(RULES.blackHoleCooldown) },
   ],
   necromancer: [
     { name: 'Llama de ultratumba', icon: icon('necromancer-fire'), description: 'Arrojá fuego espectral; canalizarlo aumenta su poder hasta el doble.', damage: `${RULES.fireDamage}–2`, cooldown: seconds(RULES.fireCooldown) },

@@ -1,5 +1,6 @@
 import { describe,expect,it } from 'vitest';
 import { CHARACTER_SKINS, CLASS_IDS, DEFAULT_LOADOUTS, Duel, MAGE_SKINS, SKILLS, activePreset, defaultCustomization, idleInput, newPlayer, projectileSkillStats, resolveSlotInput, validCustomization, validLoadout } from '@bandera/shared';
+import { migrateCustomization } from '../packages/client/src/customization';
 
 describe('character customization model',()=>{
   it('ships valid defaults for every class and ten distinct mage skins',()=>{
@@ -21,6 +22,32 @@ describe('character customization model',()=>{
     const cast=resolveSlotInput(player,fire);expect(cast.shot).toBe(true);
     const result=projectileSkillStats('necromancer.fire','mage');expect(result.damage).toBe(projectileSkillStats('necromancer.fire','necromancer').damage);
     const summon=idleInput();summon.slots.secondary.released=true;expect(resolveSlotInput(player,summon).summon).toBe(true);
+  });
+  it('dispara el parpadeo al soltar, no al presionar',()=>{
+    const player=newPlayer('m','Mago','blue','mage');
+    const pressed=idleInput();pressed.slots.mobility.pressed=true;
+    expect(resolveSlotInput(player,pressed).dash).toBe(false);
+    const released=idleInput();released.slots.mobility.released=true;
+    expect(resolveSlotInput(player,released).dash).toBe(true);
+  });
+  it('migra Parpadeo sin perder skin ni controles guardados',()=>{
+    const old=defaultCustomization('mage');old.selectedSkin=MAGE_SKINS[3].id;
+    old.presets.default.loadout.mobility='common.dash';old.presets.default.loadout.skill2=null;
+    old.presets.default.bindings.mobility='Shift';
+    const migrated=migrateCustomization('mage',old);
+    expect(validCustomization('mage',migrated)).toBe(true);
+    const profile=migrated as typeof old;
+    expect(profile.selectedSkin).toBe(old.selectedSkin);
+    expect(profile.presets.default.bindings.mobility).toBe('Shift');
+    expect(profile.presets.default.loadout.mobility).toBe('mage.blink');
+    expect(profile.presets.default.loadout.skill2).toBeNull();
+  });
+  it('resuelve Singularidad sólo cuando se pulsa su slot equipado',()=>{
+    const p=newPlayer('m','Mago','blue','mage');
+    const pressed=idleInput();pressed.slots.skill2.pressed=true;
+    expect(resolveSlotInput(p,pressed).blackHole).toBe(true);
+    const released=idleInput();released.slots.skill2.released=true;
+    expect(resolveSlotInput(p,released).blackHole).toBe(false);
   });
   it('ignores a manipulated logical slot when it is empty',()=>{
     const customization=defaultCustomization('mage');activePreset(customization).loadout.skill2=null;
