@@ -107,7 +107,7 @@ export class PostgresStore implements CharacterStore {
     );
     return rows.map((row) => {
       const c = this.read(account, row.id, row.data);
-      return { id: c.id, name: c.name, classId: c.classId, level: c.level, zoneId: c.zoneId };
+      return { id: c.id, name: c.name, classId: c.classId, level: c.level, zoneId: c.zoneId, weapon: c.weapon, affinity: (Object.keys(c.affinities)[0] as keyof Character['affinities']) ?? null };
     });
   }
 

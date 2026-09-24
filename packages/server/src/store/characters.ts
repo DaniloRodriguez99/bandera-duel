@@ -30,6 +30,8 @@ export interface CharacterSummary {
   classId: Character['classId'];
   level: number;
   zoneId: Character['zoneId'];
+  weapon: Character['weapon'];
+  affinity: keyof Character['affinities'] | null;
 }
 
 export const MAX_CHARACTERS = 5;
@@ -216,6 +218,8 @@ export class AccountBook {
         classId: character.classId,
         level: character.level,
         zoneId: character.zoneId,
+        weapon: character.weapon,
+        affinity: (Object.keys(character.affinities)[0] as keyof Character['affinities']) ?? null,
       };
     });
   }

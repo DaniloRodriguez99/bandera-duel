@@ -9,13 +9,16 @@ test('permite devolver chispas y cerrar la creación de personaje', async ({ pag
   await page.locator('#world-new').check();
   await page.locator('#world-enter').click();
 
+  await expect(page.locator('#world-selection')).toBeVisible({ timeout: 15000 });
+  await page.locator('#world-create').click();
   await expect(page.locator('#wh-creation')).toBeVisible({ timeout: 15000 });
   await page.locator('[data-affinity=fuego]').click();
   await page.locator('[data-remove-affinity=fuego]').click();
   await expect(page.locator('[data-affinity=fuego]')).toHaveAttribute('data-count', '0');
   await page.locator('#wh-creation-close').click();
   await expect(page.locator('#wh-creation')).toBeHidden();
-  await expect(page.locator('#intro')).toBeVisible();
+  await expect(page.locator('#world-selection')).toBeVisible();
+  await expect(page.locator('#world-create')).toBeVisible();
 });
 
 test('entra al mundo: nace en el vacío blanco, aparece en el valle y el Sistema le responde', async ({ page }) => {
@@ -36,8 +39,10 @@ test('entra al mundo: nace en el vacío blanco, aparece en el valle y el Sistema
   await page.locator('#world-new').check();
   await page.locator('#world-enter').click();
 
-  // A new account has nobody to come back with: it goes straight to the Man-God's white void,
-  // never through a duel lobby. Three sparks, a weapon, and fate picks the skill.
+  // A new account sees five empty pedestals before entering the Man-God's white void.
+  await expect(page.locator('#world-selection')).toBeVisible({ timeout: 15000 });
+  await expect(page.locator('.world-character.new')).toHaveCount(5);
+  await page.locator('#world-create').click();
   await expect(page.locator('#wh-creation')).toBeVisible({ timeout: 15000 });
   await expect(page.locator('#ready')).toBeHidden();
   await expect(page.locator('#wh-born')).toBeDisabled();
@@ -149,6 +154,8 @@ test('quien se queda quieto queda afuera con su personaje guardado, y vuelve con
   await page.locator('#world-pass').fill('mundo123');
   await page.locator('#world-new').check();
   await page.locator('#world-enter').click();
+  await expect(page.locator('#world-selection')).toBeVisible({ timeout: 15000 });
+  await page.locator('#world-create').click();
   await expect(page.locator('#wh-creation')).toBeVisible({ timeout: 15000 });
   for (const affinity of ['fuerza', 'fuerza', 'destreza']) await page.locator(`[data-affinity=${affinity}]`).click();
   await page.locator('#wh-born').click();
@@ -183,6 +190,8 @@ test('el Sistema muestra el equipo puesto, la bolsa y lo que da un cofre', async
   await page.locator('#world-pass').fill('mundo123');
   await page.locator('#world-new').check();
   await page.locator('#world-enter').click();
+  await expect(page.locator('#world-selection')).toBeVisible({ timeout: 15000 });
+  await page.locator('#world-create').click();
   await expect(page.locator('#wh-creation')).toBeVisible({ timeout: 15000 });
   for (const affinity of ['fuego', 'fuego', 'agua']) await page.locator(`[data-affinity=${affinity}]`).click();
   await page.locator('[data-weapon=baston]').click();
@@ -243,19 +252,66 @@ test('volver con la cuenta muestra tus personajes y los lugares libres, no una s
     await page.locator('#world-enter').click();
   };
   await login(true);
+  await expect(page.locator('#world-selection')).toBeVisible({ timeout: 15000 });
+  await expect(page.locator('.world-character.new')).toHaveCount(5);
+  await expect(page.locator('#world-selection-enter')).toBeDisabled();
+  await expect(page.locator('#game')).toBeHidden();
+  await page.locator('#world-create').click();
   await expect(page.locator('#wh-creation')).toBeVisible({ timeout: 15000 });
   for (const affinity of ['agua', 'agua', 'luz']) await page.locator(`[data-affinity=${affinity}]`).click();
   await page.locator('#wh-born').click();
   await expect(page.locator('#stage')).toHaveAttribute('data-x', /\d+/, { timeout: 15000 });
 
   await login(false);
-  await expect(page.locator('#overlay-title')).toHaveText('Tus personajes', { timeout: 15000 });
+  await expect(page.locator('#world-selection-title')).toHaveText('Elegí tu personaje', { timeout: 15000 });
   await expect(page.locator('.world-character:not(.new)')).toHaveCount(1);
   await expect(page.locator('.world-character:not(.new)')).toContainText('Subaru');
   await expect(page.locator('.world-character.new')).toHaveCount(4);
+  await expect(page.locator('.world-character:not(.new) svg')).toBeVisible();
+  await expect(page.locator('#world-selection-enter')).toBeDisabled();
+  await expect(page.locator('#overlay')).toBeHidden();
   for (const duel of ['#ready', '#invitation', '#room-picker']) await expect(page.locator(duel)).toBeHidden();
   await page.screenshot({ path: test.info().outputPath('1-personajes.png') });
-  await page.locator('.world-character:not(.new)').click();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.locator('#world-selection')).toBeVisible();
+  await expect(page.locator('#world-create')).toBeVisible();
+  await page.screenshot({ path: test.info().outputPath('2-personajes-movil.png') });
+  await page.setViewportSize({ width: 1366, height: 1000 });
+  await page.locator('.world-character:not(.new)').focus();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#world-selection-detail')).toContainText('Subaru');
+  await expect(page.locator('#world-selection-enter')).toBeEnabled();
+  await page.locator('#world-selection-enter').click();
   await expect(page.locator('#world-hud')).toBeVisible({ timeout: 15000 });
   expect(errors).toEqual([]);
+});
+
+test('cinco personajes ocupan los cinco pedestales sin ofrecer creación', async ({ page }) => {
+  test.setTimeout(120000);
+  const account = `cinco${Date.now().toString(36).slice(-6)}`;
+  for (let i = 0; i < 5; i++) {
+    await page.goto('/');
+    await page.locator('#world-open').click();
+    await page.locator('#world-name').fill(`Heroe ${i + 1}`);
+    await page.locator('#world-user').fill(account);
+    await page.locator('#world-pass').fill('mundo123');
+    if (i === 0) await page.locator('#world-new').check();
+    await page.locator('#world-enter').click();
+    await expect(page.locator('#world-selection')).toBeVisible({ timeout: 15000 });
+    await expect(page.locator('.world-character:not(.new)')).toHaveCount(i);
+    await expect(page.locator('.world-character.new')).toHaveCount(5 - i);
+    await page.locator('#world-create').click();
+    for (const affinity of ['fuego', 'agua', 'viento']) await page.locator(`[data-affinity=${affinity}]`).click();
+    await page.locator('#wh-born').click();
+    await expect(page.locator('#stage')).toHaveAttribute('data-mode', 'world', { timeout: 15000 });
+  }
+  await page.goto('/');
+  await page.locator('#world-open').click();
+  await page.locator('#world-name').fill('Heroe 1');
+  await page.locator('#world-user').fill(account);
+  await page.locator('#world-pass').fill('mundo123');
+  await page.locator('#world-enter').click();
+  await expect(page.locator('.world-character:not(.new)')).toHaveCount(5, { timeout: 15000 });
+  await expect(page.locator('.world-character.new')).toHaveCount(0);
+  await expect(page.locator('#world-selection-count')).toContainText('0 espacios libres');
 });

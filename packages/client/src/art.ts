@@ -1,6 +1,7 @@
 import { CHARACTER_SKINS, MAGE_SKINS, type ClassId, type MobKind } from '@bandera/shared';
 import type { MobFamilyId } from '@bandera/shared/rpg/zones';
 import type { WeaponLook } from '@bandera/shared/rpg/weapons';
+import type { WeaponId } from '@bandera/shared/rpg/weapons';
 // Original pixel matrices: 0 outline, 1 steel, 2 shadow, 3 cloth, 4 highlight,
 // 5 leather, 6 blade, 7 skin, 8 boots. Shared by class cards and in-game sprites.
 export const CLASS_ART: Record<ClassId, string[]> = {
@@ -85,11 +86,11 @@ export function pveMobPalette(kind: MobKind): Record<string, string> {
   if (kind === 'cryptGuardian') return {...zombiePalette('#55265f', '#be79d1'), 0:'#17131c', 1:'#74717c', 2:'#24182a', 4:'#d08ce3', 7:'#65725f', 9:'#ff395c'};
   return {...zombiePalette('#6e2b2b', '#c55c50'), 0:'#1d211d', 3:'#6e2b2b', 4:'#c55c50', 9:'#ff493d'};
 }
-export function classIllustration(classId:ClassId,skinId?:string):string {
+export function classIllustration(classId:ClassId,skinId?:string,weaponId?:WeaponId):string {
   const skin=CHARACTER_SKINS[classId].find(item=>item.id===skinId);
   const colors=palette(skin?.cloth??'#64897e',skin?.light??'#b6cbb0');
   const pixels=characterSkinArt(classId,skinId).flatMap((row,y)=>row.split('').map((c,x)=>c==='.'?'':`<rect x="${x+5}" y="${y+3}" width="1" height="1" fill="${colors[c]}"/>`)).join('');
-  const weapon=classId==='archer'?'<path d="M22 6Q30 13 22 20M22 6V20" stroke="#eac787" fill="none"/><path d="M22 13H29" stroke="#ede7d1"/>':classId==='mage'?`<path d="M24 5V21" stroke="#796452" stroke-width="2"/><path d="M24 4L27 7L24 10L21 7Z" fill="${skin?.accent??'#9edcff'}" stroke="#e8f7ff"/><circle cx="24" cy="7" r="1" fill="#fff"/>`:classId==='necromancer'?'<path d="M24 6V21" stroke="#4a3a2b" stroke-width="2"/><circle cx="24" cy="6" r="2.5" fill="#e8e2c8"/><path d="M23 6H23.5M24.5 6H25" stroke="#26353b"/><circle cx="24" cy="2.5" r="1.5" fill="#f08a4b"/>':classId==='guardian'?'<path d="M20 11H27V17L23.5 20L20 17Z" fill="#eac787" stroke="#655940"/><path d="M23.5 12V17M21 14H26" stroke="#596f63"/>':'<path d="M23 2L25 4V18H23Z" fill="#e3e5d5"/><path d="M20 17H28V19H20ZM23 19H25V23H23Z" fill="#eac787"/>';
+  const weapon=weaponId==='daga'?'<path d="M22 12L28 5L30 7L24 14Z" fill="#e3e5d5" stroke="#796452"/><path d="M21 13L25 17" stroke="#eac787" stroke-width="2"/>':classId==='archer'?'<path d="M22 6Q30 13 22 20M22 6V20" stroke="#eac787" fill="none"/><path d="M22 13H29" stroke="#ede7d1"/>':classId==='mage'?`<path d="M24 5V21" stroke="#796452" stroke-width="2"/><path d="M24 4L27 7L24 10L21 7Z" fill="${skin?.accent??'#9edcff'}" stroke="#e8f7ff"/><circle cx="24" cy="7" r="1" fill="#fff"/>`:classId==='necromancer'?'<path d="M24 6V21" stroke="#4a3a2b" stroke-width="2"/><circle cx="24" cy="6" r="2.5" fill="#e8e2c8"/><path d="M23 6H23.5M24.5 6H25" stroke="#26353b"/><circle cx="24" cy="2.5" r="1.5" fill="#f08a4b"/>':classId==='guardian'?'<path d="M20 11H27V17L23.5 20L20 17Z" fill="#eac787" stroke="#655940"/><path d="M23.5 12V17M21 14H26" stroke="#596f63"/>':'<path d="M23 2L25 4V18H23Z" fill="#e3e5d5"/><path d="M20 17H28V19H20ZM23 19H25V23H23Z" fill="#eac787"/>';
   return `<svg viewBox="0 0 32 25" aria-hidden="true" shape-rendering="crispEdges">${pixels}${weapon}</svg>`;
 }
 // The necromancer zombie is a revived person: wide-brimmed hat banded in the summoner's

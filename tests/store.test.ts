@@ -105,7 +105,7 @@ describe.each(drivers)('contrato del guardado: %s', (_nombre, crear) => {
     await store.createCharacter(cuenta, personaje);
     const lista = await store.listCharacters(cuenta);
     expect(lista).toHaveLength(1);
-    expect(lista[0]).toMatchObject({ id: 'p1', level: 7, classId: 'archer' });
+    expect(lista[0]).toMatchObject({ id: 'p1', level: 7, classId: 'archer', weapon: 'arco', affinity: null });
     expect(lista[0].zoneId).toBe(personaje.zoneId);
   });
 

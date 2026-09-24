@@ -9,6 +9,8 @@ async function born(page: Page) {
   await page.locator('#world-pass').fill('mundo123');
   await page.locator('#world-new').check();
   await page.locator('#world-enter').click();
+  await expect(page.locator('#world-selection')).toBeVisible({ timeout: 15000 });
+  await page.locator('#world-create').click();
   await expect(page.locator('#wh-creation')).toBeVisible({ timeout: 15000 });
   await page.locator('[data-affinity=viento]').click();
   await page.locator('[data-affinity=viento]').click();

@@ -1649,21 +1649,53 @@ body.world-mode #clock-note{color:#7fd6ff;letter-spacing:3px}
 .wh-map-portals li.locked{color:#ffb3bd;border-color:#ff4f6a66;background:#2a0a14}
 @media(max-width:760px){.wh-minimap{width:120px}}
 
-/* Elegir personaje del mundo: tarjetas de héroe y lugares libres, sin nada de la sala de duelo. */
-.overlay.world-select :is(#room-heading,#roster,#team-choice,#room-picker,#selection-status,#invitation,#ready,#pve-start,#world-return){display:none!important}
-.world-characters{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin:14px 0}
-.world-characters[hidden]{display:none}
-.world-character{display:grid;gap:4px;align-content:center;min-height:96px;padding:14px;text-align:left;border:1px solid var(--line);background:linear-gradient(160deg,#1b2b30,#132025);color:#e6e8d9;cursor:pointer;transition:transform .15s,border-color .15s,box-shadow .15s}
-.world-character:hover{transform:translateY(-2px);border-color:var(--gold);box-shadow:0 8px 24px #0008}
-.world-character b{font:800 22px 'Barlow Condensed',Impact,sans-serif;letter-spacing:.5px;color:#e6e8d9}
-.world-character span{font-size:12px;color:var(--muted)}
-.world-character small{margin-top:6px;font-size:10px;letter-spacing:2px;color:var(--gold)}
-.world-character.new{place-items:center;text-align:center;border-style:dashed;color:#7e8f92;background:#101b21}
-.world-character.new b{font-size:30px;color:#b9a4ff}
-.overlay.world-select{background:#07141aee;backdrop-filter:blur(3px)}
-.overlay.world-select .overlay-card{width:min(720px,94%)}
-.overlay.world-select #overlay-kicker{color:#b9a4ff}
-.overlay.world-select .world-characters{grid-template-columns:repeat(auto-fit,minmax(118px,1fr))}
+/* La selección del mundo vive fuera de la arena; sus cinco pedestales usan el mismo pixel art. */
+.world-selection[hidden]{display:none}
+body.world-choosing{overflow:hidden}
+body.world-choosing #game,body.world-choosing .hud,body.world-choosing .arena-heading{visibility:hidden}
+.world-selection{position:fixed;inset:0;z-index:110;overflow:auto;color:#ede9da;background:radial-gradient(ellipse at 50% 36%,#423056 0,#1b2335 38%,#0b151c 78%,#070f14 100%)}
+.world-selection-scene{position:fixed;inset:0;overflow:hidden;pointer-events:none;background:radial-gradient(circle at 51% 30%,#c6a6ff2e 0,transparent 24%),radial-gradient(circle at 18% 46%,#9170bc27 0,transparent 20%),radial-gradient(circle at 83% 43%,#9170bc27 0,transparent 20%)}
+.world-selection-scene:before{content:'';position:absolute;inset:0;opacity:.6;background-image:radial-gradient(#e5d5ff 1px,transparent 1px),radial-gradient(#c8b6ff 1px,transparent 1px);background-position:17px 29px,62px 88px;background-size:137px 119px,211px 173px;animation:worldStars 9s ease-in-out infinite alternate}
+.world-selection-scene:after{content:'';position:absolute;inset:auto -5% 0;height:37%;background:linear-gradient(transparent,#070e14 76%),repeating-linear-gradient(90deg,#0b1420 0 32px,#101728 32px 56px,#080f1a 56px 78px);clip-path:polygon(0 24%,5% 24%,5% 12%,9% 12%,9% 29%,17% 29%,17% 0,21% 0,21% 24%,32% 24%,32% 14%,36% 14%,36% 29%,49% 29%,49% 3%,54% 3%,54% 24%,66% 24%,66% 12%,70% 12%,70% 29%,81% 29%,81% 2%,85% 2%,85% 23%,94% 23%,94% 9%,98% 9%,98% 29%,100% 29%,100% 100%,0 100%)}
+.world-selection-moon{position:absolute;top:12%;left:50%;width:144px;height:144px;border-radius:50%;transform:translateX(-50%);background:radial-gradient(circle at 39% 38%,#f4e9f4,#bba9d9 63%,#8174b0);box-shadow:0 0 55px #c2a7ef88,0 0 150px #a983da44;opacity:.55}
+.world-selection-towers{position:absolute;inset:auto 0 0;height:20%;background:linear-gradient(transparent,#071017)}
+.world-selection-shell{position:relative;isolation:isolate;width:min(1240px,100%);min-height:100dvh;margin:auto;padding:clamp(18px,3vw,38px) clamp(18px,4vw,56px) 26px;display:flex;flex-direction:column}
+.world-selection-shell>header{display:flex;align-items:center;justify-content:space-between;gap:16px;padding-bottom:15px;border-bottom:1px solid #c5ae7866}
+.world-selection-kicker,.world-selection-rule{font:700 10px 'DM Sans',sans-serif;letter-spacing:3px;color:#e3c78c}
+#world-selection-exit{border:1px solid #877e8277;background:#101923aa;color:#e5decf;padding:9px 16px;font:700 11px 'DM Sans',sans-serif;letter-spacing:1px;cursor:pointer}
+#world-selection-exit:hover,#world-selection-exit:focus-visible{border-color:#e3c78c;color:#ffe8b0}
+.world-selection-heading{text-align:center;padding:clamp(24px,5vh,54px) 0 8px}
+.world-selection-heading h1{margin:8px 0;font:800 clamp(34px,5vw,62px) 'Barlow Condensed',Impact,sans-serif;letter-spacing:1px;text-shadow:0 3px 20px #000b}
+.world-selection-heading p{margin:0;color:#c7becb;font-size:12px}
+.world-characters{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));align-items:end;gap:clamp(8px,1.8vw,26px);flex:1;min-height:315px;margin:20px 0 12px}
+.world-character{--character-accent:#bd9cdd;position:relative;display:flex;flex-direction:column;align-items:center;justify-content:end;min-width:0;min-height:300px;padding:0 0 16px;border:0;background:transparent;color:#eee9e3;text-align:center;cursor:pointer;transition:transform .18s ease,filter .18s ease}
+.world-character:before{content:'';position:absolute;inset:5% 0 10%;border:1px solid transparent;background:radial-gradient(ellipse at 50% 70%,color-mix(in srgb,var(--character-accent) 22%,transparent),transparent 62%);pointer-events:none}
+.world-character:hover,.world-character:focus-visible,.world-character[aria-pressed=true]{transform:translateY(-7px);filter:drop-shadow(0 0 13px color-mix(in srgb,var(--character-accent) 75%,transparent));outline:none}
+.world-character:focus-visible:before,.world-character[aria-pressed=true]:before{border-color:var(--character-accent)}
+.world-character-figure{position:relative;z-index:1;display:grid;place-items:end center;width:100%;height:clamp(150px,22vh,230px);filter:drop-shadow(0 10px 9px #000b);animation:worldHeroFloat 3.5s ease-in-out infinite alternate}
+.world-character:nth-child(even) .world-character-figure{animation-delay:-1.6s}
+.world-character-figure svg{display:block;width:min(100%,180px);height:100%;image-rendering:pixelated;overflow:visible;transform:scale(1.5) translateY(60px);transform-origin:50% 100%;pointer-events:none}
+.world-character-pedestal{position:relative;z-index:2;width:94%;height:36px;margin-top:-8px;border:2px solid #ad91b2;border-top:5px solid #d3b8d0;border-radius:50% 50% 12% 12%/35% 35% 12% 12%;background:linear-gradient(#5b475f,#29283c 48%,#171e2a);box-shadow:inset 0 4px 0 #e0c5e44d,0 14px 20px #0009,0 0 16px color-mix(in srgb,var(--character-accent) 33%,transparent)}
+.world-character-pedestal:after{content:'✦';position:absolute;top:10px;left:50%;transform:translateX(-50%);color:#e6c5ed;font-size:13px}
+.world-character>b,.world-character>strong{position:relative;z-index:2;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:9px;font:800 clamp(18px,2.2vw,26px) 'Barlow Condensed',Impact,sans-serif}
+.world-character>span{position:relative;z-index:2;max-width:100%;margin-top:4px;color:#c7b9bf;font:700 9px 'DM Sans',sans-serif;letter-spacing:1px}
+.world-character.new{--character-accent:#a896c6}
+.world-character.new .world-character-figure{align-items:center}
+.world-character.new .world-character-figure b{display:grid;place-items:center;width:74px;height:74px;border:1px dashed #b9a4ff;border-radius:50%;color:#d2b8ff;font-size:36px;box-shadow:0 0 32px #ae85e455;background:#33254777}
+.world-character.new .world-character-pedestal{opacity:.6}
+.world-selection-bottom{display:flex;justify-content:space-between;align-items:center;gap:24px;margin-top:auto;padding:17px 20px;border:1px solid #8e7a6577;background:linear-gradient(110deg,#14232be8,#211e30e8);box-shadow:0 15px 40px #0009}
+.world-selection-detail{display:grid;gap:4px;min-height:40px;color:#bbc3c3;font-size:11px}
+.world-selection-detail strong{color:#f0e5ce;font:800 22px 'Barlow Condensed',Impact,sans-serif}
+.world-selection-actions{display:grid;gap:5px;justify-items:end}
+.world-selection-enter{min-width:205px;padding:12px 17px;border:1px solid #e8c486;background:#d3a85e;color:#172025;font:800 12px 'DM Sans',sans-serif;letter-spacing:1px;cursor:pointer}
+.world-selection-enter span{margin-left:10px}
+.world-selection-enter:disabled{opacity:.45;cursor:default}
+#world-selection-status{min-height:15px;margin:0;color:#f2b7bc;font-size:10px}
+@keyframes worldStars{to{opacity:.35;transform:translateY(8px)}}
+@keyframes worldHeroFloat{to{transform:translateY(-5px)}}
+@media(max-width:760px){.world-selection-shell{min-height:100dvh}.world-characters{grid-template-columns:repeat(5,minmax(118px,1fr));overflow-x:auto;scroll-snap-type:x mandatory;align-items:end;min-height:265px;margin:12px -10px;padding:0 10px 12px}.world-character{scroll-snap-align:center;min-height:248px}.world-character-figure{height:165px}.world-character-figure svg{transform:scale(1.2) translateY(50px)}.world-selection-heading{padding:24px 0 8px}.world-selection-bottom{flex-direction:column;align-items:stretch;gap:12px}.world-selection-actions{justify-items:stretch}.world-selection-enter{width:100%}}
+@media(max-height:600px){.world-characters{min-height:220px}.world-character{min-height:215px}.world-character-figure{height:135px}.world-selection-heading{padding:10px 0 3px}.world-selection-heading h1{font-size:32px}}
+@media(prefers-reduced-motion:reduce){.world-selection-scene:before,.world-character-figure{animation:none}}
 
 /* El Ojo del Impostor: lo que se le puede sacar a lo que estás mirando. */
 .wh-creation.robando{background:radial-gradient(circle at 50% 42%,#1b0f1ccc 0,#07141aee 55%,#04080ef2 100%);color:#e6ecff;backdrop-filter:blur(2px)}
