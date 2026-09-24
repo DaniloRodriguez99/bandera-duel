@@ -19,9 +19,12 @@ export class Practice {
     dummy.deaths = 0;
   }
   step(input: Input) {
+    const dummy = this.duel.state.players[1];
+    const wasDead = dummy.hp <= 0;
     this.duel.step(new Map([[PRACTICE_PLAYER, input]]));
-    // A stationary target: it takes damage and respawns, but never walks or attacks.
-    this.placeDummy();
+    // The dummy does not walk, but effects such as Singularidad must be able to pull it.
+    // Return it to its practice position only when it respawns.
+    if (wasDead && dummy.hp > 0) this.placeDummy();
     return structuredClone(this.duel.state);
   }
 }

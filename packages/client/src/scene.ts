@@ -167,6 +167,7 @@ export class Arena extends Phaser.Scene {
     this.aim = this.add.graphics().setDepth(4);
     this.duelRings = this.add.graphics().setDepth(3);
     this.controls = new Controls();
+    this.controls.screenToWorld = (x, y) => this.screenToWorld(x, y);
     this.input.mouse?.disableContextMenu();
     this.input.on('pointermove', (p: Phaser.Input.Pointer) => {
       if (p.wasTouch || !this.predicted) return;
@@ -896,6 +897,15 @@ export class Arena extends Phaser.Scene {
       onComplete: () => target.destroy(),
     });
   }
+
+  screenToWorld(clientX: number, clientY: number): { x: number; y: number } {
+    const rect = this.game.canvas.getBoundingClientRect();
+    const screenX = Math.max(0, Math.min(this.scale.width, (clientX - rect.left) * this.scale.width / rect.width));
+    const screenY = Math.max(0, Math.min(this.scale.height, (clientY - rect.top) * this.scale.height / rect.height));
+    const point = this.cameras.main.getWorldPoint(screenX, screenY);
+    const bounds = this.bounds();
+    return { x: Math.max(bounds.minX, Math.min(bounds.maxX, point.x)), y: Math.max(bounds.minY, Math.min(bounds.maxY, point.y)) };
+  }
   /** A five-pointed seal inside its ring, drawn into the given graphics. */
   /** A spinning rune circle marking where the blink will land. */
   private blinkSeal(
@@ -963,6 +973,16 @@ export class Arena extends Phaser.Scene {
         { scale: 6 },
         460,
       );
+    } else if (e.kind === 'disintegrate') {
+      const height = e.power === 2 ? 18 : 30;
+      const silhouette = this.add.ellipse(e.x, e.y - height / 2, 15, height, 0x3b2351, 0.86).setDepth(18);
+      this.fade(silhouette, { scaleX: 0.15, scaleY: 0.3, y: e.y - height }, 500);
+      for (let i = 0; i < 22; i++) {
+        const angle = i * 2.399;
+        const spread = 8 + (i % 6) * 4;
+        const shard = this.add.rectangle(e.x + Math.cos(angle) * 6, e.y - height / 2 + Math.sin(angle) * 9, 2 + i % 3, 2 + i % 2, i % 3 ? 0xb47ae5 : 0xe8c8ff, 0.9).setDepth(19);
+        this.fade(shard, { x: shard.x + Math.cos(angle) * spread, y: shard.y + Math.sin(angle) * spread - 13, scale: 0.1 }, 500 + i % 5 * 45);
+      }
     } else if (e.kind === 'icecone') {
       this.iceBreeze(e.x, e.y, e.angle ?? 0);
     } else if (e.kind === 'freeze') {
@@ -2249,23 +2269,37 @@ export class Arena extends Phaser.Scene {
     for(const hole of s.blackHoles ?? []){
       const spin=time*0.002+hole.id;
       const pulse=0.5+0.5*Math.sin(time*0.006+hole.id);
-      this.holes.fillStyle(0x12071e,0.12);this.holes.fillCircle(hole.x,hole.y,hole.radius);
-      this.holes.lineStyle(2,0x8c4ac9,0.45+pulse*0.2);this.holes.strokeCircle(hole.x,hole.y,hole.radius);
-      this.holes.fillStyle(0x030208,0.92);this.holes.fillCircle(hole.x,hole.y,18);
-      this.holes.lineStyle(3,0xb657ed,0.86);this.holes.strokeCircle(hole.x,hole.y,21+pulse*3);
+      const radius=hole.currentRadius??hole.radius;
+      const core=8+14*Math.min(1,radius/hole.radius);
+      if(hole.traveling){
+        const a=Math.atan2(hole.targetY-hole.y,hole.targetX-hole.x);
+        this.holes.lineStyle(3,0x9c62d0,0.44);this.holes.lineBetween(hole.x-Math.cos(a)*22,hole.y-Math.sin(a)*22,hole.x,hole.y);
+        this.holes.lineStyle(1,0xd29cfa,0.45);this.holes.strokeCircle(hole.targetX,hole.targetY,12+pulse*3);
+      }
+      this.holes.fillStyle(0x12071e,0.12);this.holes.fillCircle(hole.x,hole.y,radius);
+      this.holes.lineStyle(2,0x8c4ac9,0.45+pulse*0.2);this.holes.strokeCircle(hole.x,hole.y,radius);
+      this.holes.fillStyle(0x030208,0.92);this.holes.fillCircle(hole.x,hole.y,core);
+      this.holes.lineStyle(3,0xb657ed,0.86);this.holes.strokeCircle(hole.x,hole.y,core+3+pulse*3);
       for(let i=0;i<12;i++){
         const a=spin+i*Math.PI*2/12;
-        const travel=((time*0.06+i*31)%Math.max(1,hole.radius-26))+26;
-        const r=hole.radius-travel+22;
+        const travel=((time*0.06+i*31)%Math.max(1,radius-26))+26;
+        const r=radius-travel+22;
         this.holes.fillStyle(i%3?0x9856da:0xd69cff,0.55);
         this.holes.fillRect(hole.x+Math.cos(a)*r,hole.y+Math.sin(a)*r,3,3);
       }
     }
     for(const caster of s.players)if(caster.blackHoleCast>0||caster.blackHoleTelegraph){
       const x=caster.blackHoleTelegraph?.x??caster.blackHoleX,y=caster.blackHoleTelegraph?.y??caster.blackHoleY;
-      this.holes.fillStyle(0x180b27,0.14);this.holes.fillCircle(x,y,RULES.blackHoleRadius);
-      this.holes.lineStyle(2,0xb96afa,0.5);this.holes.strokeCircle(x,y,RULES.blackHoleRadius);
+      // Mark the impact point without covering the eventual pull radius during the cast.
+      const markerRadius=23+Math.sin(time*0.006)*2;
+      this.holes.fillStyle(0x180b27,0.36);this.holes.fillCircle(x,y,markerRadius);
+      this.holes.lineStyle(2,0xb96afa,0.8);this.holes.strokeCircle(x,y,markerRadius);
+      this.holes.lineStyle(1,0xd8a8ff,0.55);this.holes.strokeCircle(x,y,markerRadius*0.5);
+      this.holes.fillStyle(0x08030f,0.85);this.holes.fillCircle(x,y,4);
       this.blinkSeal(this.holes,caster.x,caster.y,18,time,0x9f55df,0.8);
+    }
+    if(this.controls.worldAimDragging&&this.controls.aimX>=0){
+      this.blinkSeal(this.holes,this.controls.aimX,this.controls.aimY,20,time,0xc278f5,0.9);
     }
     this.accumulator += Math.min(delta, 100);
     if (this.predicted && !this.controls.aimFromPointer) {

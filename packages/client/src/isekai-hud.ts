@@ -1,4 +1,4 @@
-import type { Player, Zombie } from '@bandera/shared';
+import { validName, type Player, type Zombie } from '@bandera/shared';
 import {
   AFFINITIES,
   AFFINITY_NAMES,
@@ -68,6 +68,8 @@ import {
 
 export interface WorldHudActions {
   cast(slot: CastSlot): void;
+  aimAt(clientX: number, clientY: number): void;
+  endAim(): void;
   learn(skillId: string, nodeId: string): void;
   slot(slot: CastSlot, skillId: string | null): void;
   spend(stat: StatId): void;
@@ -214,6 +216,10 @@ export class WorldHud {
     this.root.hidden = true;
     this.togglePanel(false);
     this.toggleMap(false);
+  }
+
+  cancelCreationReveal() {
+    this.revealPending = false;
   }
 
   get mapOpen() {
@@ -556,7 +562,34 @@ export class WorldHud {
       node.addEventListener('mouseenter', () => this.showTooltip(slot, node));
       node.addEventListener('mouseleave', () => (this.tooltip.hidden = true));
       // A tap or a click casts, like the key; the tree lives behind the System button.
-      node.addEventListener('click', () => this.actions.cast(slot));
+      let suppressClickUntil = 0;
+      let touchStart: { x: number; y: number; dragged: boolean } | null = null;
+      node.addEventListener('click', () => {
+        if (performance.now() < suppressClickUntil) return;
+        this.actions.cast(slot);
+      });
+      node.addEventListener('pointerdown', (event) => {
+        if (event.pointerType !== 'touch' || this.sheet?.slots[slot] !== 'singularidad') return;
+        event.preventDefault();
+        touchStart = { x: event.clientX, y: event.clientY, dragged: false };
+        node.setPointerCapture(event.pointerId);
+        node.dataset.targeting = 'true';
+      });
+      node.addEventListener('pointermove', (event) => {
+        if (node.dataset.targeting !== 'true') return;
+        if (touchStart && Math.hypot(event.clientX - touchStart.x, event.clientY - touchStart.y) > 12) touchStart.dragged = true;
+        if (touchStart?.dragged) this.actions.aimAt(event.clientX, event.clientY);
+      });
+      node.addEventListener('pointerup', (event) => {
+        if (node.dataset.targeting !== 'true') return;
+        if (touchStart?.dragged) this.actions.aimAt(event.clientX, event.clientY);
+        node.dataset.targeting = 'false';
+        touchStart = null;
+        suppressClickUntil = performance.now() + 500;
+        this.actions.cast(slot);
+        this.actions.endAim();
+      });
+      node.addEventListener('pointercancel', () => { node.dataset.targeting = 'false'; touchStart = null; this.actions.endAim(); });
       bar.append(node);
       this.slotEls.set(slot, node);
     }
@@ -1047,7 +1080,7 @@ export class WorldHud {
    * The Man-God's welcome. He has no class to give and grants nothing: the sparks are yours to
    * place, the weapon yours to pick, and the one skill fate hands over is not chosen by anyone.
    */
-  openCreation(onBorn: (creation: Creation) => void, onClose: () => void = () => {}) {
+  openCreation(onBorn: (creation: Creation, name: string) => void, onClose: () => void = () => {}, initialName = '') {
     this.creation.classList.remove('robando');
     const sparks: Partial<Record<Affinity, number>> = {};
     let weapon: Weapon = 'espada';
@@ -1059,6 +1092,10 @@ export class WorldHud {
         <p class="wh-god">Una voz sin cuerpo te habla como a un viejo amigo.</p>
         <h2>「Bienvenido al mundo.」</h2>
         <p class="wh-god-line">No, no soy tu dios. No tengo nada para darte. Solo vine a mirar.</p>
+        <label class="wh-birth-name" for="wh-character-name">Nombre de tu personaje
+          <input id="wh-character-name" type="text" maxlength="16" autocomplete="off" placeholder="Elegí un nombre" aria-describedby="wh-name-help">
+        </label>
+        <small id="wh-name-help" class="wh-name-help">Entre 1 y 16 caracteres: letras, números, espacios, puntos o guiones.</small>
         <h5>Chispas de afinidad <b id="wh-sparks"></b></h5>
         <div class="wh-sparks" id="wh-spark-grid"></div>
         <h5>Tu arma</h5>
@@ -1071,6 +1108,8 @@ export class WorldHud {
     const grid = this.creation.querySelector('#wh-spark-grid')!;
     const weapons = this.creation.querySelector('#wh-weapon-grid')!;
     const born = this.creation.querySelector<HTMLButtonElement>('#wh-born')!;
+    const nameInput = this.creation.querySelector<HTMLInputElement>('#wh-character-name')!;
+    nameInput.value = initialName;
     const close = this.creation.querySelector<HTMLButtonElement>('#wh-creation-close')!;
     let finished = false;
     const dismiss = () => {
@@ -1088,7 +1127,7 @@ export class WorldHud {
     document.addEventListener('keydown', onKeyDown);
     const render = () => {
       this.creation.querySelector('#wh-sparks')!.textContent = `${SPARKS - left()} / ${SPARKS}`;
-      born.disabled = left() !== 0;
+      born.disabled = left() !== 0 || !validName(nameInput.value);
       grid.querySelectorAll<HTMLElement>('[data-affinity]').forEach((chip) => {
         const affinity = chip.dataset.affinity as Affinity;
         const count = sparks[affinity] ?? 0;
@@ -1100,6 +1139,7 @@ export class WorldHud {
       });
       weapons.querySelectorAll<HTMLElement>('[data-weapon]').forEach((card) => (card.dataset.active = String(card.dataset.weapon === weapon)));
     };
+    nameInput.addEventListener('input', render);
     for (const affinity of AFFINITIES) {
       const chip = el('button', `wh-spark ${ARCANE.includes(affinity) ? 'arcana' : 'corporal'}`) as HTMLButtonElement;
       chip.type = 'button';
@@ -1142,13 +1182,14 @@ export class WorldHud {
       weapons.append(card);
     }
     born.onclick = () => {
-      if (left() !== 0) return;
+      const name = validName(nameInput.value);
+      if (left() !== 0 || !name) return;
       finished = true;
       document.removeEventListener('keydown', onKeyDown);
       const creation: Creation = { sparks: Object.fromEntries(Object.entries(sparks).filter(([, n]) => n)), weapon };
       this.creation.hidden = true;
       this.revealPending = true;
-      onBorn(creation);
+      onBorn(creation, name);
     };
     render();
   }

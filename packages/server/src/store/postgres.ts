@@ -136,6 +136,36 @@ export class PostgresStore implements CharacterStore {
     }
   }
 
+  async deleteCharacter(account: AccountId, id: CharacterId): Promise<void> {
+    await this.open();
+    const client = await this.pool.connect();
+    try {
+      await client.query('begin');
+      await client.query('select id from bandera_accounts where id = $1 for update', [account]);
+      const removed = await client.query('delete from bandera_characters where account_id = $1 and id = $2', [account, id]);
+      if (!removed.rowCount) throw new StoreError('no-existe', 'El personaje ya no existe');
+      const parties = await client.query<{ id: string; data: import('@bandera/shared/world').Party }>(
+        `select id, data from bandera_parties where data->'members' @> $1::jsonb for update`,
+        [JSON.stringify([{ id }])],
+      );
+      for (const row of parties.rows) {
+        const party = row.data;
+        party.members = party.members.filter((member) => member.id !== id);
+        if (!party.members.length) await client.query('delete from bandera_parties where id = $1', [row.id]);
+        else {
+          if (party.leaderId === id) party.leaderId = [...party.members].sort((a, b) => a.joinedAt - b.joinedAt)[0].id;
+          await client.query('update bandera_parties set data = $2, updated_at = now() where id = $1', [row.id, JSON.stringify(party)]);
+        }
+      }
+      await client.query('commit');
+    } catch (error) {
+      await client.query('rollback').catch(() => {});
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
   async load(account: AccountId, id: CharacterId): Promise<Character | null> {
     await this.open();
     const { rows } = await this.pool.query<{ data: unknown }>(

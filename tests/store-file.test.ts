@@ -24,7 +24,8 @@ describe('FileStore', () => {
     const store = new FileStore(path);
     await store.createAccount('Rudeus', 'roxy1234');
     await store.close();
-    expect((await stat(path)).mode & 0o777).toBe(0o600);
+    // Windows reports synthetic POSIX mode bits; its access control is enforced by ACLs.
+    if (process.platform !== 'win32') expect((await stat(path)).mode & 0o777).toBe(0o600);
   });
 
   it('lo guardado sobrevive a un FileStore nuevo sobre el mismo archivo', async () => {

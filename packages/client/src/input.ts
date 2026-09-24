@@ -36,6 +36,8 @@ export class Controls {
   aimX = -1;
   aimY = -1;
   aimFromPointer = false;
+  screenToWorld: ((clientX: number, clientY: number) => { x: number; y: number }) | null = null;
+  worldAimDragging = false;
   move = { x: 0, y: 0 };
   actions = emptyActions();
   enabled = false;
@@ -308,6 +310,13 @@ export class Controls {
     const dx = event.clientX - gesture.x;
     const dy = event.clientY - gesture.y;
     const magnitude = Math.hypot(dx, dy);
+    if (gesture.slot.id === 'black-hole' && magnitude > 12 && this.screenToWorld) {
+      const target = this.screenToWorld(event.clientX, event.clientY);
+      this.aimX = target.x;
+      this.aimY = target.y;
+      this.aimFromPointer = true;
+      this.worldAimDragging = true;
+    }
     if (magnitude > 12) gesture.dragged = true;
     gesture.cancelled = gesture.dragged && magnitude < 10;
     gesture.element.dataset.cancel = String(gesture.cancelled);
@@ -326,6 +335,7 @@ export class Controls {
     const gesture = this.gestures.get(event.pointerId);
     if (!gesture) return;
     const cast = released && !gesture.cancelled && this.enabled;
+    this.worldAimDragging = false;
     const { id, mode } = gesture.slot;
     if (gesture.slot.logicalSlot) {
       this.touchHeld.delete(gesture.slot.logicalSlot);

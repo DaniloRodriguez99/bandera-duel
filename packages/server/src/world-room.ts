@@ -1,4 +1,5 @@
 import { Client, Room, ServerError } from '@colyseus/core';
+import { randomUUID } from 'node:crypto';
 import { RULES, distance, sanitizeInput, validClass, validName, type Input, type Player, type Zombie } from '@bandera/shared';
 import {
   CAST_SLOTS,
@@ -80,6 +81,7 @@ export class WorldRoom extends Room {
   private worlds = new Map<ZoneId, World>();
   /** The zone each online character is standing in. */
   private zoneOf = new Map<string, ZoneId>();
+  private leaving = new Set<string>();
   private accounts = new Map<string, AccountId>();
   private characterOf = new Map<string, string>();
   private queues = new Map<string, Input[]>();
@@ -419,6 +421,57 @@ export class WorldRoom extends Room {
     this.onMessage('tradeCancel', (client) => { const id = this.characterOf.get(client.sessionId); if (id) this.cancelTrade(id); });
     this.onMessage('duelAbandon', (client) => { const id = this.characterOf.get(client.sessionId); if (id) this.worldOf(id)?.abandonDuel(id); });
 
+    this.onMessage('selectCharacter', async (client, message: unknown) => {
+      const account = this.accounts.get(client.sessionId);
+      const id = (message as { id?: unknown } | null)?.id;
+      if (!account || this.characterOf.has(client.sessionId) || typeof id !== 'string') return;
+      try {
+        await this.chooseCharacter(client, account, id, {});
+      } catch (error) {
+        client.send('characterResult', { error: (error as Error).message || 'No se pudo entrar con ese personaje.' });
+      }
+    });
+
+    this.onMessage('createCharacter', async (client, message: unknown) => {
+      const account = this.accounts.get(client.sessionId);
+      if (!account || this.characterOf.has(client.sessionId)) return;
+      const request = (message ?? {}) as Record<string, unknown>;
+      try {
+        const name = validName(request.name);
+        if (!name || !validCreation(request.creation)) throw new ServerError(400, 'Revisá el nombre, las afinidades y el arma.');
+        await this.chooseCharacter(client, account, `c${randomUUID()}`, {
+          createCharacter: true, name, classId: request.classId, creation: request.creation,
+        });
+      } catch (error) {
+        client.send('characterResult', { error: (error as Error).message || 'No se pudo crear el personaje.' });
+      }
+    });
+
+    this.onMessage('deleteCharacter', async (client, message: unknown) => {
+      const account = this.accounts.get(client.sessionId);
+      const id = (message as { id?: unknown } | null)?.id;
+      if (!account || this.characterOf.has(client.sessionId) || typeof id !== 'string') return;
+      try {
+        const character = await store.load(account, id);
+        if (!character) throw new StoreError('no-existe', 'El personaje ya no existe');
+        if (this.zoneOf.has(id) || this.leaving.has(id)) throw new StoreError('no-existe', 'Ese personaje está conectado o terminando de guardar. Intentá de nuevo al salir del mundo.');
+        const party = await store.partyFor(id);
+        await store.deleteCharacter(account, id);
+        if (party) {
+          party.members = party.members.filter((member) => member.id !== id);
+          if (!party.members.length) this.parties.delete(party.id);
+          else {
+            if (party.leaderId === id) party.leaderId = [...party.members].sort((a, b) => a.joinedAt - b.joinedAt)[0].id;
+            this.parties.set(party.id, party);
+            this.sendParty(party);
+          }
+        }
+        client.send('characters', { characters: await store.listCharacters(account), max: 5 });
+      } catch (error) {
+        client.send('deleteCharacterResult', { error: error instanceof StoreError ? error.message : 'No se pudo eliminar el personaje. Intentá de nuevo.' });
+      }
+    });
+
     // Colyseus closes the connection (code 4002) on any message type the room did not register.
     // The client pings every two seconds, and the shared bind() can send duel messages too, so
     // the world answers pings and quietly ignores anything else it does not know.
@@ -582,13 +635,17 @@ export class WorldRoom extends Room {
       client.send('characters', { characters: saved, max: 5 });
       return;
     }
+    await this.chooseCharacter(client, auth.account, chosen, options);
+  }
+
+  private async chooseCharacter(client: Client, account: AccountId, chosen: string, options: Record<string, unknown>) {
     // Already in the world: from another tab, or a connection that has not timed out yet. The new
     // session takes over the live character. Loading it from the store instead would put a second
     // entity with the same id in the zone, and two copies of one sheet saving over each other.
     if (this.zoneOf.has(chosen)) {
       const world = this.worldOf(chosen)!;
       const live = world.characters.get(chosen)!;
-      if (live.accountId !== auth.account) throw new ServerError(409, 'Ese personaje ya está en el mundo.');
+      if (live.accountId !== account) throw new ServerError(409, 'Ese personaje ya está en el mundo.');
       const old = this.clientOf(chosen);
       if (old) {
         // Detached first, so its onLeave finds nothing to remove and cannot take the new entity.
@@ -607,15 +664,18 @@ export class WorldRoom extends Room {
       old?.leave(4001);
       return;
     }
-    let character = await store.load(auth.account, chosen);
+    let character = await store.load(account, chosen);
     if (!character) {
+      if (options.createCharacter !== true)
+        throw new ServerError(404, 'Ese personaje ya no existe. Volvé a seleccionarlo.');
       const classId = validClass(options.classId) ? options.classId : 'guardian';
-      const name = validName(options.name) ?? 'Alguien';
+      const name = validName(options.name);
+      if (!name) throw new ServerError(400, 'Nombre de personaje inválido');
       // The dice are thrown here, on the server: a fated skill cannot be rerolled from a browser.
       const creation = validCreation(options.creation) ? options.creation : undefined;
       const destiny = creation ? rollDestiny(Math.random, creation) : undefined;
-      character = newCharacter(chosen, auth.account, name, classId, creation, destiny);
-      await store.createCharacter(auth.account, character);
+      character = newCharacter(chosen, account, name, classId, creation, destiny);
+      await store.createCharacter(account, character);
     }
     this.enter(client, character);
   }
@@ -648,12 +708,17 @@ export class WorldRoom extends Room {
     const world = this.worldOf(id);
     // `leave` writes the position back onto the sheet before the entity disappears.
     const character = world?.characters.get(id);
+    this.leaving.add(id);
     world?.leave(id);
     this.zoneOf.delete(id);
     this.queues.delete(id);
     this.seen.delete(id);
     const currentParty = this.partyOf(id); if (currentParty) this.sendParty(currentParty);
-    if (character) await store.save(character);
+    try {
+      if (character) await store.save(character);
+    } finally {
+      this.leaving.delete(id);
+    }
   }
 
   /** The private sheet: experience, points and stats never travel in everyone's snapshot. */

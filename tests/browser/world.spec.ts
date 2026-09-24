@@ -59,15 +59,25 @@ test('entra al mundo: nace en el vacío blanco, aparece en el valle y el Sistema
   await page.locator('[data-affinity=agua]').click();
   await expect(page.locator('[data-affinity=agua]')).toHaveAttribute('data-count', '0');
   await page.locator('[data-weapon=baston]').click();
+  await page.locator('#wh-character-name').fill('Selene');
   await page.screenshot({ path: test.info().outputPath('2-el-vacio-blanco.png') });
   await expect(page.locator('#wh-born')).toBeEnabled();
+  await page.evaluate(() => {
+    const observed = window as unknown as { __destinySeen?: boolean };
+    observed.__destinySeen = false;
+    new MutationObserver(() => {
+      if (document.querySelector('#wh-destiny')) observed.__destinySeen = true;
+    }).observe(document.body, { childList: true, subtree: true });
+  });
   await page.locator('#wh-born').click();
 
   await expect(page.locator('#stage')).toHaveAttribute('data-mode', 'world', { timeout: 15000 });
+  expect(new URL(page.url()).search).toBe('');
   await expect(page.locator('#stage')).toHaveAttribute('data-zone', 'umbral');
   await expect(page.locator('#stage')).toHaveAttribute('data-level', '1');
+  await expect(page.locator('#wh-name')).toHaveText('Selene');
   // Fate turns its card over, and the skill it gave sits in the E slot.
-  await expect(page.locator('#wh-destiny')).toBeVisible({ timeout: 15000 });
+  await expect.poll(() => page.evaluate(() => (window as unknown as { __destinySeen?: boolean }).__destinySeen)).toBe(true);
   await expect(page.locator('#skillbar [data-slot=e]')).toHaveAttribute('data-skill', /\w+/);
   await expect(page.locator('#skillbar [data-slot=x]')).toHaveAttribute('data-locked', 'true');
   await page.waitForTimeout(700);
@@ -314,4 +324,40 @@ test('cinco personajes ocupan los cinco pedestales sin ofrecer creación', async
   await expect(page.locator('.world-character:not(.new)')).toHaveCount(5, { timeout: 15000 });
   await expect(page.locator('.world-character.new')).toHaveCount(0);
   await expect(page.locator('#world-selection-count')).toContainText('0 espacios libres');
+});
+
+test('permite elegir nombre al nacer y eliminar el personaje desde el selector', async ({ page }) => {
+  const account = `borrar${Date.now().toString(36).slice(-6)}`;
+  const login = async (create: boolean) => {
+    await page.goto('/');
+    await page.locator('#world-open').click();
+    await page.locator('#world-name').fill('Nombre de entrada');
+    await page.locator('#world-user').fill(account);
+    await page.locator('#world-pass').fill('mundo123');
+    if (create) await page.locator('#world-new').check();
+    await page.locator('#world-enter').click();
+    await expect(page.locator('#world-selection')).toBeVisible({ timeout: 15000 });
+  };
+  await login(true);
+  await page.locator('#world-create').click();
+  await page.locator('#wh-character-name').fill('Luna');
+  for (const affinity of ['agua', 'agua', 'luz']) await page.locator(`[data-affinity=${affinity}]`).click();
+  await page.locator('#wh-born').click();
+  await expect(page.locator('#wh-name')).toHaveText('Luna', { timeout: 15000 });
+  await login(false);
+  await page.locator('#world-create').click();
+  await page.locator('#wh-character-name').fill('Sol');
+  for (const affinity of ['fuego', 'viento', 'luz']) await page.locator(`[data-affinity=${affinity}]`).click();
+  await page.locator('#wh-born').click();
+  await expect(page.locator('#wh-name')).toHaveText('Sol', { timeout: 15000 });
+  await login(false);
+  await page.locator('.world-character:not(.new)', { hasText: 'Luna' }).click();
+  await page.locator('.world-character-delete').click();
+  await expect(page.locator('#world-delete-dialog')).toContainText('Luna');
+  await page.locator('#world-delete-cancel').click();
+  await expect(page.locator('.world-character:not(.new)')).toHaveCount(2);
+  await page.locator('.world-character-delete').click();
+  await page.locator('#world-delete-confirm').click();
+  await expect(page.locator('.world-character:not(.new)')).toHaveCount(1, { timeout: 15000 });
+  await expect(page.locator('.world-character.new')).toHaveCount(4);
 });

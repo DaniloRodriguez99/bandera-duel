@@ -39,7 +39,7 @@ describe('apagado del servidor', () => {
 
     const sdk = new Client(`ws://127.0.0.1:${PORT}`);
     const room = await sdk.joinOrCreate('world', {
-      account: 'Apagon', password: 'apagon12', create: true,
+      account: 'Apagon', password: 'apagon12', create: true, createCharacter: true,
       characterId: 'apagon-1', name: 'Apagon', classId: 'guardian',
     });
     let sheet: Character | null = null;

@@ -1574,7 +1574,7 @@ export function describeEffect(skill: WorldSkill, effect: SkillEffect = skill.ef
     case 'dash':
       return `Un salto rápido hacia donde apuntás${effect.invulnerable ? ', intocable' : ''}.`;
     case 'blackhole':
-      return `Atrae enemigos durante ${secs(effect.duration)} en ${effect.radius} unidades y estalla por ${effect.damage.toFixed(1)} de daño en ${effect.burstRadius} unidades. Alcance ${effect.range}.`;
+      return `Viaja hacia donde apuntás atrayendo enemigos. Al llegar crece durante ${secs(effect.duration)} hasta ${effect.radius} unidades y estalla por ${effect.damage.toFixed(1)} de daño en ${effect.burstRadius} unidades. Alcance ${effect.range}.`;
     case 'buff':
       return `Durante ${secs(effect.duration)}: +${pct(effect.damage)} de daño y +${pct(effect.speed)} de velocidad.`;
     case 'devour':

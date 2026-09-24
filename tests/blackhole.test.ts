@@ -20,13 +20,18 @@ function arena(mode:'duel'|'teams'|'ffa3'='duel'){
 }
 
 describe('Singularidad en la arena',()=>{
-  it('fija el destino del cursor al comenzar y aparece allí aunque cambie el apuntado',()=>{
+  it('fija el destino al comenzar y viaja a 420 u/s aunque cambie el apuntado',()=>{
     const {duel,mage}=arena();
     cast(duel,700,270);
     expect(mage.blackHoleX).toBeCloseTo(700);
     expect(mage.blackHoleY).toBeCloseTo(270);
     for(let i=0;i<ticks(2)+1;i++)duel.step(new Map([['a',{...idleInput(),aimX:100,aimY:100}]]));
-    expect(duel.state.blackHoles[0]).toMatchObject({x:700,y:270});
+    expect(duel.state.blackHoles[0]).toMatchObject({targetX:700,targetY:270,traveling:true,currentRadius:40});
+    const start=duel.state.blackHoles[0].x;
+    advance(duel,ticks(0.5));
+    expect(duel.state.blackHoles[0].x-start).toBeCloseTo(210,0);
+    advance(duel,ticks(0.4));
+    expect(duel.state.blackHoles[0]).toMatchObject({x:700,y:270,traveling:false});
   });
   it('bloquea movimiento y ataque durante dos segundos, sin interrumpirse por golpe o stun',()=>{
     const {duel,mage,enemy}=arena();
@@ -43,19 +48,19 @@ describe('Singularidad en la arena',()=>{
     expect(mage.blackHoleCast).toBeGreaterThan(0);
     advance(duel,ticks(1)+1);
     expect(duel.state.blackHoles).toHaveLength(1);
-    expect(duel.state.blackHoles[0]).toMatchObject({x:480,y:270,radius:200,owner:'a'});
+    expect(duel.state.blackHoles[0]).toMatchObject({targetX:480,targetY:270,radius:200,owner:'a'});
   });
   it('arrastra enemigos y explota al final; el agujero persiste si muere el mago',()=>{
     const {duel,mage,enemy}=arena();
     cast(duel);advance(duel,ticks(2));
     const first=enemy.x;
-    advance(duel,ticks(1));
+    advance(duel,ticks(3));
     expect(enemy.x).toBeLessThan(first);
     mage.magicShieldHits=0;duel.damage(mage,enemy,0,100);
     expect(mage.hp).toBe(0);
     expect(duel.state.blackHoles).toHaveLength(1);
     const before=enemy.hp;
-    advance(duel,ticks(3)+2);
+    advance(duel,ticks(2)+2);
     expect(duel.state.blackHoles).toHaveLength(0);
     expect(enemy.hp).toBeLessThan(before);
     expect(duel.state.events.some(e=>e.kind==='explosion'&&e.skillId==='mage.blackHole')).toBe(true);
@@ -67,6 +72,25 @@ describe('Singularidad en la arena',()=>{
     expect(mage.blackHoleCd).toBeGreaterThan(0);
     advance(duel,ticks(2)+1);
     expect(duel.state.blackHoles).toHaveLength(0);
+  });
+  it('atrae durante el viaje, crece al llegar y desintegra solo bajas de la explosión',()=>{
+    const {duel,mage,enemy}=arena();
+    Object.assign(enemy,{x:420,y:270,hp:1,invuln:0});
+    cast(duel,700,270);
+    advance(duel,ticks(2)+1);
+    const hole=duel.state.blackHoles[0];
+    const before=enemy.x;
+    advance(duel,ticks(0.1));
+    expect(hole.traveling).toBe(true);
+    expect(enemy.x).not.toBe(before);
+    expect(hole.currentRadius).toBe(RULES.blackHoleStartRadius);
+    advance(duel,ticks(0.8));
+    expect(hole.traveling).toBe(false);
+    advance(duel,ticks(2));
+    expect(hole.currentRadius).toBeGreaterThan(100);
+    Object.assign(enemy,{x:700,y:270,hp:1,invuln:0});
+    advance(duel,ticks(2)+2);
+    expect(duel.state.events.some(e=>e.kind==='disintegrate'&&e.skillId==='mage.blackHole')).toBe(true);
   });
   it('en 2v2 respeta aliados y limpia el agujero al reiniciar',()=>{
     const {duel,mage}=arena('teams');
@@ -116,11 +140,12 @@ describe('Singularidad en Lugunica',()=>{
     expect(world.notices.some(n=>n.kind==='callout')).toBe(true);
     advance(world,ticks(INCANTATION_TIME)+1);
     expect(world.state.blackHoles).toHaveLength(1);
-    expect(Math.hypot(world.state.blackHoles[0].x-origin.x,world.state.blackHoles[0].y-origin.y)).toBeLessThanOrEqual(360.01);
+    expect(Math.hypot(world.state.blackHoles[0].targetX-origin.x,world.state.blackHoles[0].targetY-origin.y)).toBeLessThanOrEqual(360.01);
     const hole=world.state.blackHoles[0];
+    advance(world,ticks(1));
     const monster=world.state.zombies.find(z=>z.family&&z.hp>0);
     expect(monster).toBeDefined();
-    Object.assign(monster!,{x:hole.x+75,y:hole.y});
+    Object.assign(monster!,{x:hole.x+30,y:hole.y});
     const before=monster!.x;
     (world as unknown as {stepBlackHoles(dt:number):void}).stepBlackHoles(RULES.tick);
     expect(monster!.x).toBeLessThan(before);

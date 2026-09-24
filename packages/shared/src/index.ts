@@ -240,6 +240,8 @@ export const RULES = {
   blackHoleBurstRadius: 90,
   blackHoleDamage: 1.5,
   blackHolePull: 90,
+  blackHoleTravelSpeed: 420,
+  blackHoleStartRadius: 40,
   hurtProtection: 0.35,
   respawn: 3,
   spawnProtection: 1,
@@ -353,7 +355,7 @@ export const SKILLS: Record<SkillId, SkillDefinition> = {
   'mage.magicShield': skill({id:'mage.magicShield',name:'Égida de dos sellos',branch:'mage',description:'Anula dos impactos.',icon:'mage-shield',compatibleClasses:['mage'],compatibleSlots:['secondary','skill1','skill2'],trigger:'press',animationAction:'castChannel',cooldown:RULES.magicShieldCooldown,damage:'0',grants:['shield']}),
   'mage.ice': skill({id:'mage.ice',name:'Saeta glacial',branch:'mage',description:'Inmoviliza durante un segundo.',icon:'mage-ice',compatibleClasses:['mage'],compatibleSlots:['secondary','skill1','skill2'],trigger:'press',animationAction:'castForward',cooldown:RULES.iceCooldown,damage:'0'}),
   'mage.blink': skill({id:'mage.blink',name:'Parpadeo',branch:'mage',description:'Al soltar, aparecés en el punto válido más cercano al cursor; atravesás muros.',icon:'mage-blink',compatibleClasses:['mage'],compatibleSlots:['mobility'],trigger:'release',animationAction:'dash',cooldown:RULES.dashCooldown,damage:'0',grants:['mobility']}),
-  'mage.blackHole': skill({id:'mage.blackHole',name:'Singularidad',branch:'mage',description:'Canalizás 2 s; aparece donde apuntás, atrae enemigos durante 4 s y estalla.',icon:'mage-blackhole',compatibleClasses:['mage'],compatibleSlots:['secondary','skill1','skill2'],trigger:'press',animationAction:'castChannel',cooldown:RULES.blackHoleCooldown,damage:'1,5 en área'}),
+  'mage.blackHole': skill({id:'mage.blackHole',name:'Singularidad',branch:'mage',description:'Canalizás 2 s; viaja hacia donde apuntás y atrae enemigos mientras crece. Tras 4 s en destino, estalla.',icon:'mage-blackhole',compatibleClasses:['mage'],compatibleSlots:['secondary','skill1','skill2'],trigger:'press',animationAction:'castChannel',cooldown:RULES.blackHoleCooldown,damage:'1,5 en área'}),
   'necromancer.fire': skill({id:'necromancer.fire',name:'Llama de ultratumba',branch:'necromancer',description:'Fuego espectral que puede canalizarse.',icon:'necromancer-fire',compatibleClasses:['mage','necromancer'],compatibleSlots:['primary'],trigger:'hold-release',animationAction:'castForward',cooldown:RULES.fireCooldown,damage:'1–2',grants:['ranged']}),
   'necromancer.summon': skill({id:'necromancer.summon',name:'Alzar a los caídos',branch:'necromancer',description:'Invoca zombies, arcanistas y esclavos.',icon:'necromancer-summon',compatibleClasses:['mage','necromancer'],compatibleSlots:['secondary','skill1','skill2'],trigger:'hold-release',animationAction:'castGround',cooldown:RULES.summonCooldown,damage:'1 por golpe',grants:['summon','companionControl']}),
   'guardian.sword': skill({id:'guardian.sword',name:'Acero juramentado',branch:'guardian',description:'Tajo frontal cargable.',icon:'guardian-slash',compatibleClasses:['guardian'],compatibleSlots:['primary'],trigger:'hold-release',animationAction:'attack',cooldown:CLASSES.guardian.meleeCooldown,damage:'1–2',grants:['melee']}),
@@ -927,6 +929,7 @@ export interface GameEvent extends Vec {
     | 'dash'
     | 'blink'
     | 'blackhole'
+    | 'disintegrate'
     | 'bash'
     | 'fury'
     | 'levelup'
@@ -1135,6 +1138,10 @@ export interface BlackHole extends Vec {
   owner: string;
   team: Team;
   radius: number;
+  currentRadius: number;
+  targetX: number;
+  targetY: number;
+  traveling: boolean;
   burstRadius: number;
   pull: number;
   damage: number;
@@ -2384,8 +2391,10 @@ export class Duel {
   }
   protected spawnBlackHole(owner: Player, x: number, y: number, options: Partial<Pick<BlackHole, 'radius' | 'burstRadius' | 'pull' | 'damage' | 'total'>> = {}) {
     const hole: BlackHole = {
-      id: ++this.blackHoleId, owner: owner.id, team: owner.team, x, y,
+      id: ++this.blackHoleId, owner: owner.id, team: owner.team, x: owner.x, y: owner.y,
       radius: options.radius ?? RULES.blackHoleRadius,
+      currentRadius: RULES.blackHoleStartRadius,
+      targetX: x, targetY: y, traveling: distance(owner, { x, y }) > 1,
       burstRadius: options.burstRadius ?? RULES.blackHoleBurstRadius,
       pull: options.pull ?? RULES.blackHolePull,
       damage: options.damage ?? RULES.blackHoleDamage,
@@ -2398,11 +2407,27 @@ export class Duel {
   }
   protected stepBlackHoles(dt: number) {
     for (const hole of this.state.blackHoles) {
+      if (hole.traveling) {
+        const gap = Math.hypot(hole.targetX - hole.x, hole.targetY - hole.y);
+        const stride = Math.min(gap, RULES.blackHoleTravelSpeed * dt);
+        if (gap > 0) {
+          hole.x += (hole.targetX - hole.x) / gap * stride;
+          hole.y += (hole.targetY - hole.y) / gap * stride;
+        }
+        if (gap <= stride + 1e-8) {
+          hole.x = hole.targetX;
+          hole.y = hole.targetY;
+          hole.traveling = false;
+        }
+      } else {
+        hole.left = Math.max(0, hole.left - dt);
+        hole.currentRadius = RULES.blackHoleStartRadius + (hole.radius - RULES.blackHoleStartRadius) * (1 - hole.left / hole.total);
+      }
       const owner = this.state.players.find((p) => p.id === hole.owner);
       const source: Allegiant = owner ?? { id: hole.owner, team: hole.team, x: hole.x, y: hole.y };
       const pull = (target: Vec, terrain: Rect[] | Terrain) => {
         const gap = distance(target, hole);
-        if (gap <= 1 || gap > hole.radius) return;
+        if (gap <= 1 || gap > hole.currentRadius) return;
         const stride = Math.min(gap, hole.pull * dt);
         translate(target, (hole.x - target.x) / gap * stride, (hole.y - target.y) / gap * stride, terrain);
       };
@@ -2412,17 +2437,22 @@ export class Duel {
         if (z.hp > 0 && this.hostile(source, z)) pull(z, this.terrain);
       for (const mob of this.state.mobs)
         if (mob.hp > 0 && mob.spawnLeft <= 0) pull(mob, this.terrain);
-      hole.left = Math.max(0, hole.left - dt);
-      if (hole.left > 0) continue;
+      if (hole.traveling || hole.left > 0) continue;
       for (const p of this.state.players)
-        if (p.id !== hole.owner && p.hp > 0 && this.hostile(source, p) && distance(p, hole) <= hole.burstRadius)
+        if (p.id !== hole.owner && p.hp > 0 && this.hostile(source, p) && distance(p, hole) <= hole.burstRadius) {
           this.damage(p, owner ?? { team: hole.team }, Math.atan2(p.y - hole.y, p.x - hole.x), hole.damage);
+          if (p.hp <= 0) this.event('disintegrate', p, hole.team, undefined, p.classId, 0, 'mage.blackHole');
+        }
       for (const z of this.state.zombies)
-        if (z.hp > 0 && this.hostile(source, z) && distance(z, hole) <= hole.burstRadius)
+        if (z.hp > 0 && this.hostile(source, z) && distance(z, hole) <= hole.burstRadius) {
           this.damageZombie(z, hole.team, hole.damage, Math.atan2(z.y - hole.y, z.x - hole.x), hole.owner);
+          if (z.hp <= 0) this.event('disintegrate', z, hole.team, undefined, z.classId, 1, 'mage.blackHole');
+        }
       if (owner) for (const mob of this.state.mobs)
-        if (mob.hp > 0 && mob.spawnLeft <= 0 && distance(mob, hole) <= hole.burstRadius)
+        if (mob.hp > 0 && mob.spawnLeft <= 0 && distance(mob, hole) <= hole.burstRadius) {
           this.damageMob(mob, owner, hole.damage);
+          if (mob.hp <= 0) this.event('disintegrate', mob, hole.team, undefined, undefined, 2, 'mage.blackHole');
+        }
       this.event('explosion', hole, hole.team, undefined, owner?.classId, 1, 'mage.blackHole');
     }
     this.state.blackHoles = this.state.blackHoles.filter((hole) => hole.left > 0);

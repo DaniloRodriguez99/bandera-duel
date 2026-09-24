@@ -1,4 +1,4 @@
-import { CLASSES, RULES, SKILLS, SKILL_SLOTS, chargePower, projectileStats, type ClassId, type InputBindings, type PhysicalBinding, type Player, type SkillId } from '@bandera/shared';
+import { CLASSES, RULES, SKILLS, SKILL_SLOTS, chargePower, projectileStats, type ClassId, type InputBindings, type PhysicalBinding, type Player, type SkillId, type SkillSlot } from '@bandera/shared';
 
 /** One branch of an ability: what a tap, a hold or a full charge does. */
 export interface AbilityTier {
@@ -9,6 +9,7 @@ export interface AbilityTier {
 
 export interface AbilitySlot {
   id: string;
+  logicalSlot?: SkillSlot;
   key: string;
   name: string;
   icon: string;
@@ -296,7 +297,7 @@ export function playerAbilitySlots(p:Player,bindings?:InputBindings):AbilitySlot
   const order=(['primary','mobility','secondary','skill1','skill2'] as const);
   const legacyId:Partial<Record<SkillId,string>>={'mage.fireball':'shot','common.dash':'dash','mage.blink':'dash','mage.blackHole':'black-hole','mage.magicShield':'magic-shield','mage.ice':'ice','necromancer.fire':'shot','necromancer.summon':'summon'};
   const legacyName:Partial<Record<SkillId,string>>={'mage.ice':'Flecha de hielo'};
-  const cards:AbilitySlot[]=order.flatMap(slot=>{const id=p.loadout[slot];if(!id)return[];const skill=SKILLS[id];return [{id:legacyId[id]??id,key:bindings?shortBinding(bindings[slot]):slot.toUpperCase(),name:legacyName[id]??skill.name,icon:skillIcon(skill.icon),cooldown:(player:Player)=>dynamicCooldown(id,player),max:skill.cooldown||1,detail:(player:Player)=>id==='mage.magicShield'&&player.magicShieldHits?`${player.magicShieldHits}/${RULES.magicShieldHits}`:null,tiers:id==='necromancer.summon'?[{label:'Incluye Mando, Marcar y todas las invocaciones'}]:undefined} satisfies AbilitySlot];});
+  const cards:AbilitySlot[]=order.flatMap(slot=>{const id=p.loadout[slot];if(!id)return[];const skill=SKILLS[id];return [{id:legacyId[id]??id,logicalSlot:slot,key:bindings?shortBinding(bindings[slot]):slot.toUpperCase(),name:legacyName[id]??skill.name,icon:skillIcon(skill.icon),cooldown:(player:Player)=>dynamicCooldown(id,player),max:skill.cooldown||1,detail:(player:Player)=>id==='mage.magicShield'&&player.magicShieldHits?`${player.magicShieldHits}/${RULES.magicShieldHits}`:null,tiers:id==='necromancer.summon'?[{label:'Incluye Mando, Marcar y todas las invocaciones'}]:undefined} satisfies AbilitySlot];});
   if(Object.values(p.loadout).includes('necromancer.summon'))cards.push({id:'command',key:bindings?shortBinding(bindings.companionCommand):'MANDO',name:'Mando / Marcar',icon:skillIcon('necromancer-resurrection'),cooldown:()=>0,max:1,tiers:[{label:'Toque: Mando · Ctrl + tecla: Marcar'}]});
   return cards;
 }

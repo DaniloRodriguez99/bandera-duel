@@ -63,6 +63,7 @@ export interface CharacterStore {
   verify(name: string, password: string): Promise<AccountId | null>;
   listCharacters(account: AccountId): Promise<CharacterSummary[]>;
   createCharacter(account: AccountId, character: Character): Promise<void>;
+  deleteCharacter(account: AccountId, id: CharacterId): Promise<void>;
   load(account: AccountId, id: CharacterId): Promise<Character | null>;
   save(character: Character): Promise<void>;
   saveMany(characters: Character[]): Promise<void>;
@@ -232,6 +233,20 @@ export class AccountBook {
     entry.characters.set(character.id, envelope(character));
   }
 
+  deleteCharacter(account: AccountId, id: CharacterId): void {
+    const entry = this.owner(account);
+    if (!entry.characters.delete(id)) throw new StoreError('no-existe', 'El personaje ya no existe');
+    for (const party of this.parties.values()) {
+      if (!party.members.some((member) => member.id === id)) continue;
+      party.members = party.members.filter((member) => member.id !== id);
+      if (!party.members.length) this.parties.delete(party.id);
+      else {
+        if (party.leaderId === id) party.leaderId = [...party.members].sort((a, b) => a.joinedAt - b.joinedAt)[0].id;
+        this.parties.set(party.id, party);
+      }
+    }
+  }
+
   load(account: AccountId, id: CharacterId): Character | null {
     const entry = this.byId.get(account);
     const saved = entry ? this.saved(entry, id) : null;
@@ -280,6 +295,10 @@ export class MemoryStore implements CharacterStore {
 
   async createCharacter(account: AccountId, character: Character) {
     this.book.createCharacter(account, character);
+  }
+
+  async deleteCharacter(account: AccountId, id: CharacterId) {
+    this.book.deleteCharacter(account, id);
   }
 
   async load(account: AccountId, id: CharacterId) {

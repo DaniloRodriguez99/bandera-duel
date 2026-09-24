@@ -142,6 +142,20 @@ describe.each(drivers)('contrato del guardado: %s', (_nombre, crear) => {
     expect(await store.load(ajena, 'p1')).toBe(null);
   });
 
+  it('elimina definitivamente solo personajes propios y libera su espacio', async () => {
+    const store = await crear();
+    const mia = await store.createAccount('Noor', 'parry123');
+    const ajena = await store.createAccount('Otra', 'clave123');
+    await store.createCharacter(mia, newCharacter('p1', mia, 'Valorian', 'mage'));
+    await expect(store.deleteCharacter(ajena, 'p1')).rejects.toMatchObject({ code: 'no-existe' });
+    expect(await store.load(mia, 'p1')).not.toBeNull();
+    await store.deleteCharacter(mia, 'p1');
+    expect(await store.load(mia, 'p1')).toBeNull();
+    expect(await store.listCharacters(mia)).toHaveLength(0);
+    await store.createCharacter(mia, newCharacter('p2', mia, 'Nuevo', 'guardian'));
+    expect(await store.listCharacters(mia)).toHaveLength(1);
+  });
+
   it('lo guardado y lo que se juega no comparten objetos: el progreso sin guardar no se filtra', async () => {
     const store = await crear();
     const cuenta = await store.createAccount('Noor', 'parry123');

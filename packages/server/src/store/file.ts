@@ -193,6 +193,12 @@ export class FileStore implements CharacterStore {
     await this.persist(book);
   }
 
+  async deleteCharacter(account: AccountId, id: string): Promise<void> {
+    const book = await this.open();
+    book.deleteCharacter(account, id);
+    await this.persist(book);
+  }
+
   async load(account: AccountId, id: CharacterId): Promise<Character | null> {
     return (await this.open()).load(account, id);
   }

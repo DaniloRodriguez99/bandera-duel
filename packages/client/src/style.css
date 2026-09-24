@@ -1508,6 +1508,10 @@ body.world-mode #clock-note{color:#7fd6ff;letter-spacing:3px}
 .wh-god{margin:0;font-size:12px;color:#6a7488}
 .wh-birth h2{margin:0;font:800 italic clamp(26px,4vw,40px) 'Barlow Condensed',Impact,sans-serif;color:#0f1729}
 .wh-god-line{margin:0 0 6px;font-style:italic;color:#3c465b}
+.wh-birth-name{display:grid;gap:7px;width:min(350px,100%);text-align:left;font:700 11px 'DM Sans',sans-serif;letter-spacing:1px;color:#273247}
+.wh-birth-name input{width:100%;padding:11px 13px;border:2px solid #737a92;background:#fff;color:#172033;font:700 16px 'DM Sans',sans-serif;outline:none}
+.wh-birth-name input:focus{border-color:#62447d;box-shadow:0 0 0 3px #a88bc84a}
+.wh-name-help{font-size:10px;color:#5b6479}
 .wh-birth h5{margin:8px 0 2px;font:700 10px 'DM Sans',sans-serif;letter-spacing:3px;color:#56617a}
 .wh-birth h5 b{margin-left:6px;color:#0f1729}
 .wh-sparks{width:100%;display:grid;grid-template-columns:repeat(5,1fr);gap:6px}
@@ -1686,6 +1690,16 @@ body.world-choosing #game,body.world-choosing .hud,body.world-choosing .arena-he
 .world-selection-bottom{display:flex;justify-content:space-between;align-items:center;gap:24px;margin-top:auto;padding:17px 20px;border:1px solid #8e7a6577;background:linear-gradient(110deg,#14232be8,#211e30e8);box-shadow:0 15px 40px #0009}
 .world-selection-detail{display:grid;gap:4px;min-height:40px;color:#bbc3c3;font-size:11px}
 .world-selection-detail strong{color:#f0e5ce;font:800 22px 'Barlow Condensed',Impact,sans-serif}
+.world-character-delete{justify-self:start;margin-top:5px;padding:5px 0;border:0;border-bottom:1px solid #d58994;background:transparent;color:#f1aab3;font:700 10px 'DM Sans',sans-serif;cursor:pointer}
+.world-character-delete:hover,.world-character-delete:focus-visible{color:#fff;outline-color:#f1aab3}
+.world-delete-backdrop{position:fixed;inset:0;z-index:5;display:grid;place-items:center;padding:20px;background:#050910cc}
+.world-delete-backdrop[hidden]{display:none}
+.world-delete-dialog{width:min(430px,100%);padding:24px;border:1px solid #d58994;background:#1a202c;color:#f4eae2;box-shadow:0 20px 60px #000c}
+.world-delete-dialog h2{margin:0 0 8px;font:800 28px 'Barlow Condensed',Impact,sans-serif}
+.world-delete-dialog p{line-height:1.5;font-size:13px}
+.world-delete-dialog>div{display:flex;justify-content:flex-end;flex-wrap:wrap;gap:8px;margin-top:20px}
+.world-delete-dialog button{padding:10px 13px;border:1px solid #b5a9a8;background:#202b36;color:#f4eae2;cursor:pointer}
+#world-delete-confirm{border-color:#d58994;background:#763b48}
 .world-selection-actions{display:grid;gap:5px;justify-items:end}
 .world-selection-enter{min-width:205px;padding:12px 17px;border:1px solid #e8c486;background:#d3a85e;color:#172025;font:800 12px 'DM Sans',sans-serif;letter-spacing:1px;cursor:pointer}
 .world-selection-enter span{margin-left:10px}

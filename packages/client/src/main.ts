@@ -86,7 +86,7 @@ document.querySelector('#app')!.innerHTML = `
 <div class="arena-bottom"><span id="arena-hint">Robá la bandera rival y traela a tu base. La tuya debe estar en casa.</span><div id="cooldowns" hidden><span id="health" aria-label="Vida"></span><span id="lives" aria-label="Muertes"></span><span id="stealth-state"></span><span id="cd-sword"></span><span id="cd-shot"></span><span id="cd-dash"></span><span id="cd-guard" hidden></span><span id="cd-trap" hidden></span><span id="cd-volley" hidden></span><span id="cd-summon" hidden></span></div><span class="corner-detail">◆ &nbsp; ✚ &nbsp; ▲ &nbsp; ●</span></div></section>
 <section id="guide" class="guide"><article><span class="step">01 / ROBÁ</span><h3>Entrá en terreno rival.</h3><p>Tocá su bandera para llevarla. Podés pelear mientras la transportás.</p></article><article><span class="step">02 / RESISTÍ</span><h3>Un golpe cambia todo.</h3><p>Si te hieren, soltás la bandera. Recuperá la tuya con solo tocarla.</p></article><article><span class="step">03 / VOLVÉ</span><h3>Tu base. Tu victoria.</h3><p>Capturá con tu bandera en casa. Tres capturas deciden la partida; las reapariciones son ilimitadas.</p></article></section>
 <div id="control-guide" class="control-guide"></div>
-</main><footer><span>BANDERA DUEL <b> / </b> HECHO PARA LA REVANCHA.</span><span>HASTA 4 · V0.1</span></footer><section id="world-selection" class="world-selection" aria-labelledby="world-selection-title" hidden><div class="world-selection-scene" aria-hidden="true"><div class="world-selection-moon"></div><div class="world-selection-towers"></div></div><div class="world-selection-shell"><header><span class="world-selection-kicker">✦ LUGUNICA · EL MUNDO TE ESPERA</span><button id="world-selection-exit" type="button" aria-label="Salir de la selección">Salir ×</button></header><div class="world-selection-heading"><span class="world-selection-rule">TUS DESTINOS</span><h1 id="world-selection-title">Elegí tu personaje</h1><p id="world-selection-count"></p></div><div id="world-characters" class="world-characters" role="group" aria-label="Personajes y espacios disponibles"></div><div class="world-selection-bottom"><div id="world-selection-detail" class="world-selection-detail" aria-live="polite"></div><div class="world-selection-actions"><button id="world-selection-enter" class="world-selection-enter" type="button" disabled>Entrar al mundo <span>↗</span></button><p id="world-selection-status" role="status" aria-live="polite"></p></div></div></div></section><div id="customization" class="customization" hidden></div><div id="rotate"><span>↻</span><h2>Giralo para el duelo.</h2><p>La arena se juega con el celular horizontal.</p></div>`;
+</main><footer><span>BANDERA DUEL <b> / </b> HECHO PARA LA REVANCHA.</span><span>HASTA 4 · V0.1</span></footer><section id="world-selection" class="world-selection" aria-labelledby="world-selection-title" hidden><div class="world-selection-scene" aria-hidden="true"><div class="world-selection-moon"></div><div class="world-selection-towers"></div></div><div class="world-selection-shell"><header><span class="world-selection-kicker">✦ LUGUNICA · EL MUNDO TE ESPERA</span><button id="world-selection-exit" type="button" aria-label="Salir de la selección">Salir ×</button></header><div class="world-selection-heading"><span class="world-selection-rule">TUS DESTINOS</span><h1 id="world-selection-title">Elegí tu personaje</h1><p id="world-selection-count"></p></div><div id="world-characters" class="world-characters" role="group" aria-label="Personajes y espacios disponibles"></div><div class="world-selection-bottom"><div id="world-selection-detail" class="world-selection-detail" aria-live="polite"></div><div class="world-selection-actions"><button id="world-selection-enter" class="world-selection-enter" type="button" disabled>Entrar al mundo <span>↗</span></button><p id="world-selection-status" role="status" aria-live="polite"></p></div></div></div><div id="world-delete-dialog" class="world-delete-backdrop" hidden><div class="world-delete-dialog" role="dialog" aria-modal="true" aria-labelledby="world-delete-title"><h2 id="world-delete-title">¿Eliminar personaje?</h2><p id="world-delete-description"></p><div><button id="world-delete-cancel" type="button">Cancelar</button><button id="world-delete-confirm" type="button">Eliminar definitivamente</button></div></div></div></section><div id="customization" class="customization" hidden></div><div id="rotate"><span>↻</span><h2>Giralo para el duelo.</h2><p>La arena se juega con el celular horizontal.</p></div>`;
 
 /**
  * What the gate promises, shown instead of counted: the ten affinities in their own colours with
@@ -119,6 +119,14 @@ const castSlot = (slot: CastSlot) => {
 };
 const worldHud = new WorldHud($('stage'), {
   cast: castSlot,
+  aimAt: (clientX, clientY) => {
+    const point = arena.screenToWorld(clientX, clientY);
+    arena.controls.aimX = point.x;
+    arena.controls.aimY = point.y;
+    arena.controls.aimFromPointer = true;
+    arena.controls.worldAimDragging = true;
+  },
+  endAim: () => { arena.controls.worldAimDragging = false; },
   learn: (skillId, nodeId) => room?.send('learn', { skillId, nodeId }),
   slot: (slot, skillId) => room?.send('slot', { slot, skillId }),
   spend: (stat) => room?.send('spendPoint', { stat }),
@@ -656,8 +664,9 @@ function bind(joined: Room) {
   current = undefined;
   showUpgradeOffer(null);
   arena.reset();
-  target = room.roomId;
-  history.replaceState(null, '', `?sala=${room.roomId}`);
+  // Only duels have inviteable room URLs. A world room id must not become a duel link on reload.
+  target = worldMode ? null : room.roomId;
+  history.replaceState(null, '', worldMode ? location.pathname : `?sala=${room.roomId}`);
   sessionStorage.setItem('bandera-token', room.reconnectionToken);
   $('intro').hidden = true;
   $('world-gate').hidden = true;
@@ -685,6 +694,15 @@ function bind(joined: Room) {
   room.onMessage('upgradeOffer', (offer: UpgradeOffer | null) => showUpgradeOffer(offer));
   // World: the list to choose from, the sheet, and the moment the character walks in.
   room.onMessage('characters', (list: WorldCharacterList) => showCharacters(list));
+  room.onMessage('deleteCharacterResult', ({ error }: { error: string }) => {
+    $<HTMLButtonElement>('world-delete-confirm').disabled = false;
+    $('world-selection-status').textContent = error;
+  });
+  room.onMessage('characterResult', ({ error }: { error: string }) => {
+    $('world-selection-status').textContent = error;
+    $<HTMLButtonElement>('world-selection-enter').disabled = !$('world-characters').querySelector('.world-character[aria-pressed="true"]');
+    worldHud.cancelCreationReveal();
+  });
   room.onMessage('sheet', (sheet: Character) => showSheet(sheet));
   room.onMessage('system', (notice: Notice) => worldHud.notice(notice));
   room.onMessage('stealOffer', (offer: StealOffer) => worldHud.openSteal(offer));
@@ -803,6 +821,20 @@ function bind(joined: Room) {
       $('connection-label').textContent = '● DESCONECTADO';
       return;
     }
+    if (room === joined && worldMode) {
+      arena.controls.enabled = false;
+      arena.controls.clear();
+      worldHud.hide();
+      $('overlay').hidden = false;
+      $('overlay-kicker').textContent = 'MUNDO';
+      $('overlay-title').textContent = 'Se perdió la conexión con Lugunica';
+      $('overlay-description').textContent = 'Volvé al inicio para ingresar otra vez a tu cuenta.';
+      for (const id of ['ready', 'invitation', 'room-picker', 'roster', 'team-choice', 'world-return', 'pve-start']) $(id).hidden = true;
+      $('leave').textContent = 'Volver al inicio';
+      $('leave').hidden = false;
+      $('announcement').hidden = true;
+      return;
+    }
     if (room === joined) {
       arena.controls.enabled = false;
       arena.controls.clear();
@@ -874,8 +906,8 @@ async function join() {
           password: $<HTMLInputElement>('world-pass').value,
           create: $<HTMLInputElement>('world-new').checked,
           // Without a character named, the server answers with the list to choose from.
-          ...(chosenCharacter ? { characterId: chosenCharacter, classId: selectedClass, name } : {}),
-          ...(chosenCreation ? { creation: chosenCreation } : {}),
+          ...(chosenCharacter ? { characterId: chosenCharacter, classId: selectedClass, name: chosenWorldName ?? name } : {}),
+          ...(chosenCreation ? { creation: chosenCreation, createCharacter: true } : {}),
         })
       : await client.create('duel', {
           name,
@@ -922,6 +954,7 @@ let idleKicked = false;
 let replaced = false;
 /** The sparks and weapon placed in the Man-God's void, sent once with the new character. */
 let chosenCreation: Creation | null = null;
+let chosenWorldName: string | null = null;
 /**
  * In the world the entity id is the character id, not the connection's session id. Null in a
  * match, where everything keeps finding itself by session id as before.
@@ -938,6 +971,7 @@ $('world-form').onsubmit = (event) => {
   event.preventDefault();
   chosenCharacter = null;
   chosenCreation = null;
+  chosenWorldName = null;
   void enterWorld();
 };
 /** Joins the world with whatever is chosen so far: the list, a character, or a newborn. */
@@ -960,21 +994,21 @@ function showCharacters(list: WorldCharacterList) {
   const enter = $<HTMLButtonElement>('world-selection-enter');
   const detail = $('world-selection-detail');
   const status = $('world-selection-status');
+  $('world-delete-dialog').hidden = true;
   let selected: WorldCharacterList['characters'][number] | null = null;
   enter.disabled = true;
   enter.textContent = 'Entrar al mundo ↗';
   status.textContent = '';
   const create = () => {
-    // Birth happens before the join: the server rolls fate from the sparks and weapon it gets.
+    // The account is already authenticated in this room; birth must not reconnect or recheck its password.
     worldHud.openCreation(
-      (creation) => {
-        chosenCreation = creation;
-        chosenCharacter = `c${Date.now().toString(36)}`;
+      (creation, characterName) => {
         enter.disabled = true;
         status.textContent = 'Abriendo el camino al mundo…';
-        void enterWorld();
+        room?.send('createCharacter', { name: characterName, classId: selectedClass, creation });
       },
       () => showCharacters(list),
+      $<HTMLInputElement>('world-name').value,
     );
   };
   const box = $('world-characters');
@@ -1018,6 +1052,26 @@ function showCharacters(list: WorldCharacterList) {
       const description = document.createElement('span');
       description.textContent = `Nivel ${character.level} · ${WEAPONS[character.weapon].name} · ${place}${character.affinity ? ` · Afinidad: ${AFFINITY_NAMES[character.affinity]}` : ''}`;
       detail.append(heading, description);
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'world-character-delete';
+      remove.textContent = 'Eliminar personaje';
+      remove.onclick = () => {
+        const dialog = $('world-delete-dialog');
+        $('world-delete-description').textContent = `Vas a eliminar definitivamente a ${character.name} (nivel ${character.level}). Esta acción no se puede deshacer.`;
+        $<HTMLButtonElement>('world-delete-confirm').disabled = false;
+        dialog.hidden = false;
+        const cancel = $<HTMLButtonElement>('world-delete-cancel');
+        cancel.onclick = () => { dialog.hidden = true; remove.focus(); };
+        $<HTMLButtonElement>('world-delete-confirm').onclick = () => {
+          $<HTMLButtonElement>('world-delete-confirm').disabled = true;
+          status.textContent = 'Eliminando personaje…';
+          room?.send('deleteCharacter', { id: character.id });
+          dialog.hidden = true;
+        };
+        cancel.focus();
+      };
+      detail.append(remove);
       status.textContent = '';
       enter.disabled = false;
     };
@@ -1037,9 +1091,10 @@ function showCharacters(list: WorldCharacterList) {
     if (!selected || enter.disabled) return;
     chosenCharacter = selected.id;
     chosenCreation = null;
+    chosenWorldName = null;
     enter.disabled = true;
     status.textContent = 'Abriendo el camino al mundo…';
-    void enterWorld();
+    room?.send('selectCharacter', { id: selected.id });
   };
   $('world-selection-exit').onclick = () => $('leave').click();
   $('overlay').hidden = true;

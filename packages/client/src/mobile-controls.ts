@@ -1,4 +1,4 @@
-import { CLASSES, RULES, chargePower, SKILL_SLOTS, type ClassId, type Player, type SkillSlot } from '@bandera/shared';
+import { CLASSES, RULES, chargePower, type ClassId, type Player, type SkillSlot } from '@bandera/shared';
 import { abilitySlots, playerAbilitySlots, type AbilitySlot } from './abilities.js';
 
 export type TouchMode = 'charge' | 'hold' | 'release' | 'press';
@@ -32,13 +32,12 @@ const TOUCH_META: Record<string, Omit<TouchAbilitySlot, keyof AbilitySlot>> = {
 export const touchMeta=(id:string,classId:ClassId)=>{const meta=TOUCH_META[id];if(!meta)throw new Error(`Falta configuración táctil para ${classId}/${id}`);return {...meta,mode:id==='dash'&&classId==='guardian'?'release' as const:meta.mode};};
 
 export function touchAbilitySlots(classId: ClassId,player?:Player): TouchAbilitySlot[] {
-  const equipped = player?.classId==='mage' ? SKILL_SLOTS.filter(key=>player.loadout[key]) : [];
-  return (player?.classId==='mage'?playerAbilitySlots(player):abilitySlots(classId)).map((slot,index) => {
+  return (player?.classId==='mage'?playerAbilitySlots(player):abilitySlots(classId)).map((slot) => {
     const meta = touchMeta(slot.id,classId);
     return {
       ...slot,
       ...meta,
-      logicalSlot: equipped[index],
+      logicalSlot: slot.logicalSlot,
       mode: slot.id === 'dash' && classId === 'mage' ? 'release' : slot.id === 'dash' && classId === 'guardian' ? 'release' : meta.mode,
     };
   });

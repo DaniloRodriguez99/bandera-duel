@@ -45,7 +45,7 @@ const zoneWorld = (roomId: string, zoneId: string) =>
   (matchMaker.getLocalRoomById(roomId) as unknown as { worlds: Map<string, ZoneWorldForTests> }).worlds.get(zoneId)!;
 
 async function connect(options: Record<string, unknown>): Promise<Session> {
-  const room = await sdk.joinOrCreate('world', options);
+  const room = await sdk.joinOrCreate('world', { ...options, ...(options.create === true && options.characterId ? { createCharacter: true } : {}) });
   sessions.push(room);
   const session: Session = { room, snapshots: [], characters: null, sheet: null, entered: null, refused: null, system: [], socialInvites: [], socialResults: [], party: null };
   room.onMessage('system', (m: Session['system'][number]) => session.system.push(m));
