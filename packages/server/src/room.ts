@@ -199,7 +199,7 @@ export class DuelRoom extends Room {
         const input =
           next ??
           (Date.now() - (this.receivedAt.get(p.id) ?? 0) < 250
-            ? { ...old, sword: false, shot: false, dash: false, summon: false, trap: false, volley: false, command: false, mark: false, ice: false, slash: false, shieldBash: false, fury: false,
+            ? { ...old, sword: false, shot: false, dash: false, blackHoleRelease: false, blackHoleDetonate: false, blinkRelease: false, summon: false, trap: false, volley: false, command: false, mark: false, ice: false, slash: false, shieldBash: false, fury: false,
                 slots:Object.assign(idleSlots(),Object.fromEntries(SKILL_SLOTS.map(slot=>[slot,{pressed:false,held:old.slots[slot].held,released:false}])))}
             : idleInput(old.seq, p.angle));
         this.last.set(p.id, input);

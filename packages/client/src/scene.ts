@@ -25,6 +25,7 @@ import {
   newPlayer,
   lineClear,
   blinkTarget,
+  blackHoleStats,
   wet,
   type Snapshot,
   type Player,
@@ -958,7 +959,7 @@ export class Arena extends Phaser.Scene {
       }
     } else if (e.kind === 'explosion') {
       const blackHole = e.skillId === 'mage.blackHole';
-      const radius = blackHole ? RULES.blackHoleBurstRadius : RULES.explosionRadius * (0.6 + 0.4 * (e.power ?? 1));
+      const radius = blackHole ? (e.radius ?? RULES.blackHoleBurstRadius) : RULES.explosionRadius * (0.6 + 0.4 * (e.power ?? 1));
       // A world skill brings its own colour: a lightning burst is not a fireball.
       const tint = blackHole ? 0x36105a : e.color ? Phaser.Display.Color.HexStringToColor(e.color).color : 0xff7a2f;
       const ring = blackHole ? 0xd185ff : e.color ? Phaser.Display.Color.HexStringToColor(e.color).lighten(25).color : 0xffe08a;
@@ -2269,15 +2270,20 @@ export class Arena extends Phaser.Scene {
     for(const hole of s.blackHoles ?? []){
       const spin=time*0.002+hole.id;
       const pulse=0.5+0.5*Math.sin(time*0.006+hole.id);
+      // It never holds still: a quick squeeze-and-swell in flight, a slower breath once parked.
+      const breath=1+(hole.traveling?0.18:0.08)*Math.sin(time*(hole.traveling?0.014:0.007)+hole.id);
       const radius=hole.currentRadius??hole.radius;
-      const core=8+14*Math.min(1,radius/hole.radius);
+      const start=hole.startRadius??RULES.blackHoleStartRadius;
+      const grown=Math.max(0,Math.min(1,(radius-start)/Math.max(1,hole.radius-start)));
+      const core=(6+start*0.22+10*grown)*breath;
       if(hole.traveling){
         const a=Math.atan2(hole.targetY-hole.y,hole.targetX-hole.x);
-        this.holes.lineStyle(3,0x9c62d0,0.44);this.holes.lineBetween(hole.x-Math.cos(a)*22,hole.y-Math.sin(a)*22,hole.x,hole.y);
+        this.holes.lineStyle(3+core*0.25,0x9c62d0,0.4);this.holes.lineBetween(hole.x-Math.cos(a)*(18+core*1.4),hole.y-Math.sin(a)*(18+core*1.4),hole.x,hole.y);
         this.holes.lineStyle(1,0xd29cfa,0.45);this.holes.strokeCircle(hole.targetX,hole.targetY,12+pulse*3);
       }
       this.holes.fillStyle(0x12071e,0.12);this.holes.fillCircle(hole.x,hole.y,radius);
       this.holes.lineStyle(2,0x8c4ac9,0.45+pulse*0.2);this.holes.strokeCircle(hole.x,hole.y,radius);
+      this.holes.lineStyle(1,0xc58cff,0.35);this.holes.strokeCircle(hole.x,hole.y,Math.max(core+8,radius*0.55*(2-breath)));
       this.holes.fillStyle(0x030208,0.92);this.holes.fillCircle(hole.x,hole.y,core);
       this.holes.lineStyle(3,0xb657ed,0.86);this.holes.strokeCircle(hole.x,hole.y,core+3+pulse*3);
       for(let i=0;i<12;i++){
@@ -2288,31 +2294,64 @@ export class Arena extends Phaser.Scene {
         this.holes.fillRect(hole.x+Math.cos(a)*r,hole.y+Math.sin(a)*r,3,3);
       }
     }
-    for(const caster of s.players)if(caster.blackHoleCast>0||caster.blackHoleTelegraph){
-      const x=caster.blackHoleTelegraph?.x??caster.blackHoleX,y=caster.blackHoleTelegraph?.y??caster.blackHoleY;
-      // Mark the impact point without covering the eventual pull radius during the cast.
-      const markerRadius=23+Math.sin(time*0.006)*2;
-      this.holes.fillStyle(0x180b27,0.36);this.holes.fillCircle(x,y,markerRadius);
-      this.holes.lineStyle(2,0xb96afa,0.8);this.holes.strokeCircle(x,y,markerRadius);
-      this.holes.lineStyle(1,0xd8a8ff,0.55);this.holes.strokeCircle(x,y,markerRadius*0.5);
-      this.holes.fillStyle(0x08030f,0.85);this.holes.fillCircle(x,y,4);
-      this.blinkSeal(this.holes,caster.x,caster.y,18,time,0x9f55df,0.8);
+    for(const player of s.players){
+      // The local mage is drawn where its prediction is, so its own charge follows the key at once.
+      const caster=player.id===this.localId&&this.predicted?this.predicted:player;
+      if(caster.hp<=0)continue;
+      if(caster.blackHoleTelegraph){
+        // World incantation: mark the impact point without covering the eventual pull radius.
+        const {x,y}=caster.blackHoleTelegraph;
+        const markerRadius=23+Math.sin(time*0.006)*2;
+        this.holes.fillStyle(0x180b27,0.36);this.holes.fillCircle(x,y,markerRadius);
+        this.holes.lineStyle(2,0xb96afa,0.8);this.holes.strokeCircle(x,y,markerRadius);
+        this.holes.lineStyle(1,0xd8a8ff,0.55);this.holes.strokeCircle(x,y,markerRadius*0.5);
+        this.holes.fillStyle(0x08030f,0.85);this.holes.fillCircle(x,y,4);
+        this.blinkSeal(this.holes,caster.x,caster.y,18,time,0x9f55df,0.8);
+      }
+      if(caster.blackHoleCharge>0){
+        // Singularidad charging: a violet mandala as wide as the hole it will launch, seen by all.
+        const hole=blackHoleStats(caster.blackHoleCharge);
+        this.drawMandala(this.holes,caster.x,caster.y+9,hole.startRadius*1.15+6,time,0.35+hole.power*0.55,0x9b4dff,0xe3c6ff);
+        const orb=3+hole.power*6+Math.sin(time*0.02)*1.2;
+        const hx=caster.x+Math.cos(caster.angle)*14,hy=caster.y-6+Math.sin(caster.angle)*6;
+        this.holes.fillStyle(0xb657ed,0.35);this.holes.fillCircle(hx,hy,orb+4);
+        this.holes.fillStyle(0x05020c,0.95);this.holes.fillCircle(hx,hy,orb);
+      }
+      if(caster.blinkCharge>0){
+        // Parpadeo charging: a rune seal widens under the mage and turns bright once it can jump.
+        const grown=Math.min(1,caster.blinkCharge/RULES.mageBlinkChargeTime);
+        const ready=caster.blinkCharge>=RULES.mageBlinkMinCharge-1e-8;
+        this.blinkSeal(this.holes,caster.x,caster.y+9,12+grown*16,time,0xb9a4ff,ready?0.9:0.45);
+        for(let i=0;i<6;i++){
+          const rise=(time*0.0012+i/6)%1;
+          const a=i*1.047+time*0.001;
+          this.holes.fillStyle(i%2?0x8e57e9:0xd1b9ff,(1-rise)*(ready?0.9:0.5));
+          this.holes.fillRect(caster.x+Math.cos(a)*(8+grown*10),caster.y+6-rise*(22+grown*18),2,2);
+        }
+      }
     }
     if(this.controls.worldAimDragging&&this.controls.aimX>=0){
       this.blinkSeal(this.holes,this.controls.aimX,this.controls.aimY,20,time,0xc278f5,0.9);
     }
     this.accumulator += Math.min(delta, 100);
     if (this.predicted && !this.controls.aimFromPointer) {
-      // Touch aiming has no cursor: project the aim direction into the arena instead.
+      // Touch aiming has no cursor: project the aim direction into the arena instead. A charging
+      // Parpadeo or Singularidad projects to its full reach, so the charge alone decides the distance.
       const a = this.controls.angle;
       const b = this.bounds();
+      const reach =
+        this.predicted.blinkCharge > 0
+          ? RULES.mageBlinkRange
+          : this.predicted.blackHoleCharge > 0
+            ? RULES.blackHoleRangeMax
+            : 150;
       this.controls.aimX = Math.max(
         b.minX,
-        Math.min(b.maxX, this.predicted.x + Math.cos(a) * 150),
+        Math.min(b.maxX, this.predicted.x + Math.cos(a) * reach),
       );
       this.controls.aimY = Math.max(
         b.minY,
-        Math.min(b.maxY, this.predicted.y + Math.sin(a) * 150),
+        Math.min(b.maxY, this.predicted.y + Math.sin(a) * reach),
       );
     }
     while (this.accumulator >= 1000 / 30) {
@@ -2334,7 +2373,7 @@ export class Arena extends Phaser.Scene {
         if (this.predicted)
           movePlayer(
             this.predicted,
-            this.shape(input),
+            resolveSlotInput(this.predicted, this.shape(input)),
             s.flags.some((f) => f.carrier === this.localId),
             RULES.tick,
             this.terrain(),
@@ -2769,11 +2808,15 @@ export class Arena extends Phaser.Scene {
     const charge =
       abilityId === 'shot' || abilityId === 'sword'
         ? p.shotCharge / (p.classId === 'archer' ? RULES.chargeTime : RULES.overchargeTime)
-        : abilityId === 'dash' || abilityId === 'summon'
-          ? p.specialCharge / RULES.overchargeTime
-          : abilityId === 'counter'
-            ? p.counterCharge / RULES.counterChargeTime
-            : 0;
+        : abilityId === 'dash' && p.classId === 'mage'
+          ? p.blinkCharge / RULES.mageBlinkChargeTime
+          : abilityId === 'black-hole'
+            ? p.blackHoleCharge / RULES.blackHoleChargeTime
+            : abilityId === 'dash' || abilityId === 'summon'
+              ? p.specialCharge / RULES.overchargeTime
+              : abilityId === 'counter'
+                ? p.counterCharge / RULES.counterChargeTime
+                : 0;
     const ray = (offset = 0, radius = Math.max(1, spec.radius)) => ({
       angle: angle + offset,
       length: clipRay(p, angle + offset, spec.range, walls, radius),
@@ -2783,12 +2826,12 @@ export class Arena extends Phaser.Scene {
     const color = invalid ? 0xff6c68 : charge >= 1 ? 0x62e6ff : 0x79dce8;
     const bright = invalid ? 0xffb0a8 : 0xd9fbff;
     const alpha = Math.min(0.34, 0.14 + Math.max(0, charge) * 0.12) * pulse;
-    const corridor = (bearing: number, length: number, radius: number) => {
+    const corridor = (bearing: number, length: number, radius: number, fill = color, line = bright) => {
       const nx = -Math.sin(bearing) * radius;
       const ny = Math.cos(bearing) * radius;
       const ex = p.x + Math.cos(bearing) * length;
       const ey = p.y + Math.sin(bearing) * length;
-      this.aim.fillStyle(color, alpha);
+      this.aim.fillStyle(fill, alpha);
       this.aim.fillPoints(
         [
           { x: p.x + nx, y: p.y + ny },
@@ -2798,12 +2841,12 @@ export class Arena extends Phaser.Scene {
         ],
         true,
       );
-      this.aim.lineStyle(1.2, bright, 0.68);
+      this.aim.lineStyle(1.2, line, 0.68);
       this.aim.lineBetween(p.x, p.y, ex, ey);
       for (let distance = 60; distance < length; distance += 60) {
         const x = p.x + Math.cos(bearing) * distance;
         const y = p.y + Math.sin(bearing) * distance;
-        this.aim.lineStyle(1, bright, 0.26);
+        this.aim.lineStyle(1, line, 0.26);
         this.aim.lineBetween(
           x - Math.sin(bearing) * 5,
           y + Math.cos(bearing) * 5,
@@ -2811,7 +2854,7 @@ export class Arena extends Phaser.Scene {
           y - Math.cos(bearing) * 5,
         );
       }
-      this.aim.lineStyle(1.5, bright, 0.75);
+      this.aim.lineStyle(1.5, line, 0.75);
       this.aim.strokeCircle(ex, ey, Math.max(3, radius));
     };
     if (spec.kind === 'line' || spec.kind === 'dash')
@@ -2843,11 +2886,39 @@ export class Arena extends Phaser.Scene {
       const aimDist = p.aimX >= 0 && p.aimY >= 0 ? Math.hypot(p.aimX - p.x, p.aimY - p.y) : 0;
       const hasAim = aimDist > 1;
       const blinkAngle = hasAim ? Math.atan2(p.aimY - p.y, p.aimX - p.x) : angle;
-      const range = hasAim ? aimDist : spec.range;
+      // The cursor, but never past the reach charged so far; that reach is the ring around the mage.
+      const range = hasAim ? Math.min(aimDist, spec.range) : spec.range;
       const to = blinkTarget(p, blinkAngle, range, walls);
+      const full = spec.range >= RULES.mageBlinkRange - 1e-6;
+      this.aim.fillStyle(0xb9a4ff, 0.04 + Math.max(0, charge) * 0.05);
+      this.aim.fillCircle(p.x, p.y, spec.range);
+      this.aim.lineStyle(full ? 2 : 1, 0xb9a4ff, full ? 0.55 : 0.3);
+      this.aim.strokeCircle(p.x, p.y, spec.range);
       this.aim.lineStyle(1, 0xb9a4ff, 0.2);
       this.aim.lineBetween(p.x, p.y, to.x, to.y);
       this.blinkSeal(this.aim, to.x, to.y, 16 + pulse * 2, time, 0xb9a4ff, 0.82);
+    } else if (spec.kind === 'singularity') {
+      // Like the archer's arrow: a corridor to where the hole will go, as long as the charge allows.
+      const aimDist = p.aimX >= 0 && p.aimY >= 0 ? Math.hypot(p.aimX - p.x, p.aimY - p.y) : 0;
+      const bearing = aimDist > 1 ? Math.atan2(p.aimY - p.y, p.aimX - p.x) : angle;
+      const wanted = aimDist > 1 ? Math.min(aimDist, spec.range) : spec.range;
+      const length = clipRay(p, bearing, wanted, walls, RULES.blackHoleWallRadius);
+      const walled = length < wanted - 3;
+      const ex = p.x + Math.cos(bearing) * length;
+      const ey = p.y + Math.sin(bearing) * length;
+      this.aim.lineStyle(1, 0xc58cff, 0.22);
+      this.aim.strokeCircle(p.x, p.y, spec.range);
+      corridor(bearing, length, 6 + Math.max(0, charge) * 6, 0x9b4dff, 0xe3c6ff);
+      // Where it bursts: the explosion's reach, and a warning mark when a wall stops it early.
+      this.aim.fillStyle(0x6a2aa8, 0.12 + Math.max(0, charge) * 0.1);
+      this.aim.fillCircle(ex, ey, spec.radius);
+      this.aim.lineStyle(1.5, walled ? 0xff8fb0 : 0xd6a8ff, 0.7);
+      this.aim.strokeCircle(ex, ey, spec.radius);
+      if (walled) {
+        this.aim.lineStyle(2, 0xff8fb0, 0.85);
+        this.aim.lineBetween(ex - 7, ey - 7, ex + 7, ey + 7);
+        this.aim.lineBetween(ex - 7, ey + 7, ex + 7, ey - 7);
+      }
     } else if (spec.kind === 'circle') {
       this.aim.fillStyle(color, alpha * 0.8);
       this.aim.fillCircle(p.x, p.y, spec.radius);

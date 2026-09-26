@@ -40,7 +40,7 @@ describe('armas y permisos',()=>{
   it('el mago lanza fuego, rechaza báculo y puede esquivar',()=>{
     const {d,p,q}=setup('mage','vanguard');q.y=450;step(d,p,{shot:true});expect(d.state.arrows[0].classId).toBe('mage');
     step(d,p,{},28);Object.assign(q,{x:p.x+33,y:p.y});step(d,p,{sword:true});step(d,p,{},5);expect(q.hp).toBe(5);
-    step(d,p,{},15);step(d,p,{dash:true});expect(p.dashCd).toBeGreaterThan(0);
+    step(d,p,{},15);step(d,p,{blink:true,blinkRelease:true});step(d,p,{},Math.round(RULES.mageBlinkMinCharge*30));expect(p.dashCd).toBeGreaterThan(0);
   });
   it('flechas rápidas alcanzan como máximo 672 unidades',()=>{
     const {d,p,q}=setup('archer');p.x=80;q.y=450;step(d,p,{shot:true});const arrow=d.state.arrows[0];expect(arrow.x-80).toBeCloseTo(RULES.archerArrowSpeed/30);

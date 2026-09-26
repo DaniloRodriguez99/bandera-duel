@@ -14,7 +14,7 @@ const TOUCH_META: Record<string, Omit<TouchAbilitySlot, keyof AbilitySlot>> = {
   shot: { mode: 'charge', directional: true, primary: true },
   sword: { mode: 'charge', directional: true, primary: true },
   dash: { mode: 'charge', directional: true, primary: false },
-  'black-hole': { mode: 'press', directional: true, primary: false },
+  'black-hole': { mode: 'charge', directional: true, primary: false },
   summon: { mode: 'charge', directional: true, primary: false },
   dagger: { mode: 'release', directional: true, primary: false },
   trap: { mode: 'release', directional: false, primary: false },
@@ -38,7 +38,7 @@ export function touchAbilitySlots(classId: ClassId,player?:Player): TouchAbility
       ...slot,
       ...meta,
       logicalSlot: slot.logicalSlot,
-      mode: slot.id === 'dash' && classId === 'mage' ? 'release' : slot.id === 'dash' && classId === 'guardian' ? 'release' : meta.mode,
+      mode: slot.id === 'dash' && classId === 'guardian' ? 'release' : meta.mode,
     };
   });
 }

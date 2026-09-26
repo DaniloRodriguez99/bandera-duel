@@ -3,6 +3,7 @@ import { Client, type Room } from '@colyseus/sdk';
 import {
   RULES,
   chargePower,
+  blackHoleStats,
   CLASSES,
   CLASS_IDS,
   TEAMS,
@@ -408,7 +409,7 @@ function showClassControls(id: ClassId) {
   if(mage){
     const preset=activePreset(customizationFor(id));
     const label=(binding:string)=>({MouseLeft:'CLIC',MouseRight:'CLIC DER.',MouseMiddle:'CLIC CENTRAL',Space:'ESPACIO',Shift:'SHIFT',Ctrl:'CTRL'} as Record<string,string>)[binding]??binding.replace('Key','');
-    $('control-guide').innerHTML=`<span><kbd>W A S D</kbd> Mover</span>${SKILL_SLOTS.flatMap(slot=>{const skillId=preset.loadout[slot];return skillId?[`<span><kbd>${label(preset.bindings[slot])}</kbd> ${SKILLS[skillId].name}${skillId==='mage.blink'?' · soltar':''}</span>`]:[];}).join('')}<span class="mobile-help">Mové con la palanca izquierda. Arrastrá una habilidad para apuntar y soltá para usarla.</span>`;
+    $('control-guide').innerHTML=`<span><kbd>W A S D</kbd> Mover</span>${SKILL_SLOTS.flatMap(slot=>{const skillId=preset.loadout[slot];return skillId?[`<span><kbd>${label(preset.bindings[slot])}</kbd> ${SKILLS[skillId].name}${skillId==='mage.blink'||skillId==='mage.blackHole'?' · mantener y soltar':''}</span>`]:[];}).join('')}<span class="mobile-help">Mové con la palanca izquierda. Arrastrá una habilidad para apuntar y soltá para usarla.</span>`;
     return;
   }
   if (id === 'archer')
@@ -1302,7 +1303,7 @@ function render(s: Snapshot) {
     $('cd-ice').textContent = `❄ ${me.iceCd > 0 ? me.iceCd.toFixed(1) + 's' : 'Listo'}`;
     $('cd-ice').hidden = !Object.values(me.loadout).includes('mage.ice');
     $('cd-black-hole').hidden = !Object.values(me.loadout).includes('mage.blackHole');
-    $('cd-black-hole').textContent = `◉ ${me.blackHoleCast > 0 ? `Casteando ${me.blackHoleCast.toFixed(1)}s` : me.blackHoleCd > 0 ? `${me.blackHoleCd.toFixed(1)}s` : 'Lista'}`;
+    $('cd-black-hole').textContent = `◉ ${me.blackHoleCharge > 0 ? `Cargando ${Math.round(blackHoleStats(me.blackHoleCharge).power * 100)} %` : me.blackHoleCd > 0 ? `${me.blackHoleCd.toFixed(1)}s` : 'Lista'}`;
     $('stage').dataset.dashing = String(
       me.dashInvulnerable || (me.classId === 'guardian' && me.dashLeft > 0),
     );
@@ -1357,6 +1358,8 @@ function render(s: Snapshot) {
     $('cd-dash').textContent = `➟ ${me.dashCd > 0 ? me.dashCd.toFixed(1) + 's' : 'Listo'}`;
     if (me.specialCharge > 0 && CLASSES[me.classId].dash && me.classId !== 'guardian')
       $('cd-dash').textContent = `➟ Cargando ${Math.round(chargePower(me.specialCharge) * 100)} %`;
+    if (me.blinkCharge > 0)
+      $('cd-dash').textContent = `➟ Cargando ${Math.round(Math.min(1, me.blinkCharge / RULES.mageBlinkChargeTime) * 100)} %`;
     $('stage').dataset.trapLeft = String(me.trapLeft);
     $('stage').dataset.traps = String(s.traps.filter((t) => t.owner === me.id).length);
     $('cd-trap').textContent =

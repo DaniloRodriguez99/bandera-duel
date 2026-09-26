@@ -3,6 +3,8 @@ import {
   MAPS,
   RULES,
   blocked,
+  blackHoleStats,
+  blinkReach,
   chargePower,
   projectileStats,
   type MapId,
@@ -12,7 +14,7 @@ import {
   type Vec,
 } from '@bandera/shared';
 
-export type BlueprintKind = 'line' | 'triple' | 'dash' | 'blink' | 'cone' | 'circle' | 'placement' | 'defense';
+export type BlueprintKind = 'line' | 'triple' | 'dash' | 'blink' | 'singularity' | 'cone' | 'circle' | 'placement' | 'defense';
 
 export interface BlueprintSpec {
   kind: BlueprintKind;
@@ -45,8 +47,9 @@ export function blueprintSpec(p: Player, abilityId: string): BlueprintSpec | nul
     };
   }
   if (abilityId === 'dash') {
+    // The reach grows with the hold; even a tap waits for the minimum charge, so show that one.
     if (p.classId === 'mage')
-      return { kind: 'blink', range: RULES.mageBlinkRange, radius: RULES.radius };
+      return { kind: 'blink', range: blinkReach(Math.max(p.blinkCharge, RULES.mageBlinkMinCharge)), radius: RULES.radius };
     const duration =
       p.classId === 'guardian'
         ? RULES.guardianDashDuration
@@ -58,6 +61,10 @@ export function blueprintSpec(p: Player, abilityId: string): BlueprintSpec | nul
       range: duration * (p.classId === 'guardian' ? RULES.guardianDashSpeed : RULES.dashSpeed),
       radius: RULES.radius,
     };
+  }
+  if (abilityId === 'black-hole') {
+    const hole = blackHoleStats(p.blackHoleCharge);
+    return { kind: 'singularity', range: hole.range, radius: hole.burstRadius };
   }
   if (abilityId === 'sword') {
     const power = chargePower(p.shotCharge);
