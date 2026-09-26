@@ -1019,6 +1019,12 @@ select:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
 .ability[data-ready=true]{border-color:var(--gold);box-shadow:0 0 8px #eac78740}
 .ability-icon{position:relative;width:36px;height:36px;display:block;object-fit:cover;border:1px solid #66736c;border-radius:3px;background:#10191d;image-rendering:pixelated;box-shadow:inset 0 0 5px #000,0 1px 4px #0008}
 .ability-state{position:absolute;top:8px;left:0;right:0;font-size:11px;font-weight:700;color:#fff;text-shadow:0 1px 3px #000,0 0 2px #000}
+.ability-cd{position:absolute;top:2px;right:3px;font-size:8px;font-weight:700;color:#d6b8ff;text-shadow:0 1px 2px #000}
+.ability-cd:empty{display:none}
+.ability[data-live=true]{border-color:#c58cff;box-shadow:0 0 10px #a66cff99;animation:ability-live 1s ease-in-out infinite alternate}
+.ability[data-live=true] .ability-state{top:14px;color:#f1e3ff;font-size:10px;letter-spacing:.5px}
+@keyframes ability-live{to{box-shadow:0 0 16px #c58cffcc}}
+@media (prefers-reduced-motion:reduce){.ability[data-live=true]{animation:none}}
 .ability kbd{position:relative;font-size:7px;letter-spacing:.5px;padding:1px 4px;border:1px solid #8b8469;border-radius:3px;background:#1d2a2c;color:var(--gold);white-space:nowrap}
 .ability small{position:relative;font-size:7px;line-height:1.1;color:#c9cdb9}
 @media (pointer:coarse){.abilities{top:40px;bottom:auto;left:8px;transform:scale(.8);transform-origin:top left}.ability-tree{display:none}}
@@ -1265,6 +1271,7 @@ select:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
   .stage[data-class=guardian] [data-touch-ability=guard][data-active=true] { background: #8b744dde; color: #172226; }
   .stage[data-fury=true] [data-touch-ability=fury] { background: #631b26e8; box-shadow: 0 0 15px #d4384677; }
   .stage[data-class=necromancer] [data-touch-ability=summon] { box-shadow: 0 0 11px #a070e066; }
+  [data-touch-ability=black-hole][data-active=true] { border-color: #c58cff; box-shadow: 0 0 13px #a66cffaa; }
   #practice-toolbar {
     position: absolute;
     z-index: 34;

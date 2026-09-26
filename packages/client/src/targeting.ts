@@ -63,6 +63,8 @@ export function blueprintSpec(p: Player, abilityId: string): BlueprintSpec | nul
     };
   }
   if (abilityId === 'black-hole') {
+    // On cooldown the key only implodes the hole already out: nothing to aim.
+    if (p.blackHoleCd > 0 && p.blackHoleCharge <= 0) return null;
     const hole = blackHoleStats(p.blackHoleCharge);
     return { kind: 'singularity', range: hole.range, radius: hole.burstRadius };
   }
