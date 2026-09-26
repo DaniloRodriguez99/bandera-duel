@@ -20,9 +20,17 @@ it.each([650, 760])('Singularidad daña al dummy de práctica al apuntar a %i', 
   for (let i = 1; i < Math.ceil(1 / RULES.tick); i++) practice.step(key({ held: true }));
   practice.step(key({ released: true }));
 
-  for (let i = 0; i < Math.ceil(2 / RULES.tick); i++) practice.step(idleInput());
+  let lowest = dummy.hp;
+  for (let i = 0; i < Math.ceil(2 / RULES.tick); i++) {
+    practice.step(idleInput());
+    lowest = Math.min(lowest, dummy.hp);
+  }
   if (targetX !== 760) expect(dummy.x).toBeLessThan(760);
 
-  for (let i = 0; i < Math.ceil(1.5 / RULES.tick); i++) practice.step(idleInput());
-  expect(dummy.hp).toBeLessThan(dummy.maxHp);
+  // The dummy may be consumed by the core and respawn, so keep the lowest health it reached.
+  for (let i = 0; i < Math.ceil(1.5 / RULES.tick); i++) {
+    practice.step(idleInput());
+    lowest = Math.min(lowest, dummy.hp);
+  }
+  expect(lowest).toBeLessThan(dummy.maxHp);
 });

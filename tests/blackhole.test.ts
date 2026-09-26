@@ -116,10 +116,10 @@ describe('Singularidad en la arena',()=>{
     mage.magicShieldHits=0;duel.damage(mage,enemy,0,100);
     expect(mage.hp).toBe(0);
     expect(duel.state.blackHoles).toHaveLength(1);
-    const before=enemy.hp;
     advance(duel,ticks(RULES.blackHoleLinger));
     expect(duel.state.blackHoles).toHaveLength(0);
-    expect(enemy.hp).toBeLessThan(before);
+    expect(enemy.hp).toBe(0);
+    expect(enemy.deaths).toBe(1);
     expect(duel.state.events.some(e=>e.kind==='explosion'&&e.skillId==='mage.blackHole')).toBe(true);
   });
   it('un aturdimiento, morir o soltar sin lanzar cortan la carga sin gastar la recarga',()=>{
@@ -144,6 +144,31 @@ describe('Singularidad en la arena',()=>{
     advance(cancelled.duel,ticks(1));
     expect(cancelled.duel.state.blackHoles).toHaveLength(0);
   });
+  it('consume al rival al alcanzar el núcleo, aun con escudo e invulnerabilidad',()=>{
+    const {duel,mage,enemy}=arena();
+    Object.assign(enemy,{x:700,y:270,invuln:999,dashInvulnerable:true,magicShieldHits:2});
+    cast(duel,2,{x:700,y:270});
+    const mageHp=mage.hp;
+    advance(duel,ticks(1));
+    expect(enemy.hp).toBe(0);
+    expect(enemy.deaths).toBe(1);
+    expect(enemy.magicShieldHits).toBe(2);
+    expect(mage.hp).toBe(mageHp);
+    expect(duel.state.events.some(e=>e.kind==='disintegrate'&&e.skillId==='mage.blackHole')).toBe(true);
+  });
+  it('no consume a un rival fuera del núcleo ni a un aliado dentro',()=>{
+    const {duel,mage,enemy}=arena('teams');
+    const ally=duel.add('c','Aliado','guardian');
+    // A small, tapped hole parks on the ally; the rival stands beyond its pull.
+    Object.assign(mage,{x:560,y:270});
+    Object.assign(enemy,{x:750,y:270});
+    Object.assign(ally,{x:700,y:270});
+    send(duel,key({pressed:true,released:true},{x:700,y:270}));
+    advance(duel,ticks(0.5));
+    expect(duel.state.blackHoles[0]).toMatchObject({x:700,y:270,traveling:false});
+    expect(ally.hp).toBe(ally.maxHp);
+    expect(enemy.hp).toBe(enemy.maxHp);
+  });
   it('en 2v2 respeta aliados y limpia el agujero al reiniciar',()=>{
     const {duel,mage}=arena('teams');
     const ally=duel.add('c','Aliado','guardian');
@@ -161,16 +186,18 @@ describe('Singularidad en la arena',()=>{
   it('en FFA atrae a cada rival y el tirón no atraviesa un muro',()=>{
     const {duel,mage}=arena('ffa3');
     const third=duel.add('c','Tercero','guardian');
-    // A third player respawns everyone in their corner: place the bodies afterwards.
+    // A third player respawns everyone in their corner: place the bodies afterwards, and keep the
+    // third off the flight path, where the lethal core would simply consume it.
     Object.assign(mage,{x:370,y:270});
-    Object.assign(third,{x:430,y:270});
+    Object.assign(third,{x:560,y:300});
     const walled=duel.state.players.find(p=>p.id==='b')!;
     Object.assign(walled,{x:480,y:145});
     cast(duel,2);
     advance(duel,ticks(0.3));
-    const thirdX=third.x;
-    advance(duel,ticks(1));
-    expect(third.x).toBeGreaterThan(thirdX);
+    const hole=duel.state.blackHoles[0];
+    const gap=Math.hypot(third.x-hole.x,third.y-hole.y);
+    advance(duel,ticks(0.5));
+    expect(Math.hypot(third.x-hole.x,third.y-hole.y)).toBeLessThan(gap);
     expect(walled.y).toBeLessThanOrEqual(152.01);
   });
 });
@@ -206,5 +233,9 @@ describe('Singularidad en Lugunica',()=>{
     const before=monster!.x;
     (world as unknown as {stepBlackHoles(dt:number):void}).stepBlackHoles(RULES.tick);
     expect(monster!.x).toBeLessThan(before);
+    Object.assign(monster!,{x:hole.x,y:hole.y});
+    (world as unknown as {stepBlackHoles(dt:number):void}).stepBlackHoles(RULES.tick);
+    expect(monster!.hp).toBe(0);
+    expect(world.state.events.some(e=>e.kind==='disintegrate'&&e.skillId==='mage.blackHole')).toBe(true);
   });
 });

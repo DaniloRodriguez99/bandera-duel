@@ -1,7 +1,8 @@
 import { idleInput, idleSlots, CLASSES, DEFAULT_CLASS, DEFAULT_BINDINGS, DEFAULT_LOADOUTS, activePreset, SKILL_SLOTS, type CharacterCustomization, type ClassId, type Input, type PhysicalBinding, type SkillSlot } from '@bandera/shared';
 import { primaryAbility, touchMeta, type TouchAbilitySlot } from './mobile-controls.js';
+import { CAST_SLOTS, type CastSlot } from '@bandera/shared/world';
 
-type ActionState = Omit<Input, 'seq' | 'x' | 'y' | 'angle' | 'charge' | 'special' | 'guard' | 'counter' | 'aimX' | 'aimY' | 'slots'>;
+type ActionState = Omit<Input, 'seq' | 'x' | 'y' | 'angle' | 'charge' | 'special' | 'guard' | 'counter' | 'aimX' | 'aimY' | 'slots' | 'worldBlink'>;
 
 const emptyActions = (): ActionState => ({
   sword: false,
@@ -46,11 +47,11 @@ export class Controls {
   actions = emptyActions();
   enabled = false;
   /**
-   * Set in the world: E, X and C cast whatever skill sits in that slot, Q swings the weapon and
-   * the arrows aim, so the world plays without a mouse. Null in every match, where the keys keep
+   * Set in the world: E/X/C/R/F/V cast equipped skills, Q swings the weapon, Space blinks with a
+   * staff and the arrows aim. Null in every match, where the keys keep
    * meaning what they always meant (arrows move there).
    */
-  onCast: ((slot: 'e' | 'x' | 'c') => void) | null = null;
+  onCast: ((slot: CastSlot) => void) | null = null;
   /**
    * World only: what the equipped weapon's click is. A dagger aims a short cone, not the line of
    * the archer class that simulates it. Null in matches, where the class decides.
@@ -186,9 +187,11 @@ export class Controls {
       event.preventDefault();
     this.keys.add(event.code);
     if (this.onCast) {
-      const cast = event.code === 'KeyE' ? 'e' : event.code === 'KeyX' ? 'x' : event.code === 'KeyC' ? 'c' : null;
+      const cast = CAST_SLOTS.find((slot) => event.code === `Key${slot.toUpperCase()}`);
       if (cast) {
         if (!event.repeat) this.onCast(cast);
+      } else if (event.code === 'Space') {
+        if (!event.repeat && this.classId === 'mage') this.actions.dash = true;
       } else if (event.code === 'KeyQ') {
         // Held like the mouse button: holding charges, releasing strikes.
         if (!event.repeat) this.chargeSources.add('key');
@@ -436,6 +439,8 @@ export class Controls {
       counter: this.counterSources.size > 0,
       aimX: this.aimX,
       aimY: this.aimY,
+      // Only `worldInput` sets it, from Space with a staff; the network never carries it.
+      worldBlink: false,
       slots:idleSlots(),
     };
     for(const slot of SKILL_SLOTS)if(this.loadout[slot])result.slots[slot]={pressed:this.slotPressed.has(slot),held:this.physical.has(this.bindings[slot])||this.touchHeld.has(slot),released:this.slotReleased.has(slot)};

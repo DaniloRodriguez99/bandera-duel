@@ -5,7 +5,7 @@ import { World, newCharacter, worldInput, type Creation } from '@bandera/shared/
 import { WEAPON_IDS } from '@bandera/shared/rpg/character';
 import { WEAPON_PROFILE } from '@bandera/shared/rpg/weapons';
 import { COMBO_SKILLS, comboId } from '@bandera/shared/rpg/combos';
-import { AFFINITIES, AFFINITY_PASSIVES, CHANNEL_LEVEL, SKILLS_WORLD, affinityBonus, rollDestiny, type Affinity } from '@bandera/shared/rpg/skills';
+import { AFFINITIES, AFFINITY_PASSIVES, CHANNEL_LEVEL, DESTINY_POOL, SKILLS_WORLD, affinityBonus, destinyWeight, rollDestiny, type Affinity } from '@bandera/shared/rpg/skills';
 import { ITEMS } from '@bandera/shared/rpg/items';
 import { MOB_FAMILIES } from '@bandera/shared/rpg/mobs';
 import { worldTerrain } from '@bandera/shared/rpg/terrain';
@@ -119,6 +119,25 @@ describe('arma × afinidad: una habilidad por cada cruce', () => {
 });
 
 describe('el destino sigue las elecciones', () => {
+  it('sortea todas las habilidades propias del personaje en su rareza, sin duplicados', () => {
+    const ids = Object.values(DESTINY_POOL).flat();
+    expect(new Set(ids).size).toBe(ids.length);
+    for (const skill of Object.values(SKILLS_WORLD)) {
+      if (skill.school === 'monstruo' || skill.id.startsWith('combo_')) continue;
+      expect(DESTINY_POOL[skill.rarity].includes(skill.id), skill.id).toBe(true);
+    }
+    for (const [rarity, pool] of Object.entries(DESTINY_POOL))
+      for (const id of pool) expect(SKILLS_WORLD[id]?.rarity, id).toBe(rarity);
+  });
+
+  it('Singularidad entra al sorteo y a los grimorios solo para bastón con Sombra', () => {
+    const skill = SKILLS_WORLD.singularidad;
+    expect(DESTINY_POOL.rara).toContain(skill.id);
+    expect(destinyWeight(skill, { weapon: 'baston', sparks: { sombra: 3 } })).toBeGreaterThan(0);
+    expect(destinyWeight(skill, { weapon: 'espada', sparks: { sombra: 3 } })).toBe(0);
+    expect(destinyWeight(skill, { weapon: 'baston', sparks: { fuego: 3 } })).toBe(0);
+    expect(ITEMS['grimorio:singularidad']?.grimoire).toEqual({ kind: 'teach', skillId: 'singularidad' });
+  });
   it('para cada arma y cada reparto de chispas, casi todo lo que toca es de lo elegido', () => {
     const random = seeded(77);
     for (const weapon of WEAPON_IDS)

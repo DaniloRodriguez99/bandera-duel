@@ -1444,13 +1444,23 @@ export class World extends Duel {
         return;
       }
       case 'nova': {
+        const targeted = effect.range !== undefined;
+        const gap = distance(p, aim);
+        const fraction = targeted && gap > effect.range! ? effect.range! / gap : 1;
+        const bounds = terrainOf(this.terrain).bounds;
+        const centre = targeted
+          ? {
+              x: Math.max(bounds.minX, Math.min(bounds.maxX, p.x + (aim.x - p.x) * fraction)),
+              y: Math.max(bounds.minY, Math.min(bounds.maxY, p.y + (aim.y - p.y) * fraction)),
+            }
+          : p;
         for (const z of s.zombies) {
-          if (!this.hostile(p, z) || z.hp <= 0 || distance(p, z) > effect.radius) continue;
+          if (!this.hostile(p, z) || z.hp <= 0 || distance(centre, z) > effect.radius) continue;
           this.damageZombie(
             z,
             p.team,
             effect.damage * staff,
-            Math.atan2(z.y - p.y, z.x - p.x),
+            Math.atan2(z.y - centre.y, z.x - centre.x),
             p.id,
           );
           if (effect.freeze && z.hp > 0) {
@@ -1459,16 +1469,18 @@ export class World extends Duel {
           }
         }
         for (const q of s.players) {
-          if (q === p || q.hp <= 0 || !this.hostile(p, q) || distance(p, q) > effect.radius)
+          if (q === p || q.hp <= 0 || !this.hostile(p, q) || distance(centre, q) > effect.radius)
             continue;
           if (
-            this.damage(q, p, Math.atan2(q.y - p.y, q.x - p.x), effect.damage * staff) &&
+            this.damage(q, p, Math.atan2(q.y - centre.y, q.x - centre.x), effect.damage * staff) &&
             effect.freeze
           )
             this.freeze(q);
         }
-        this.event('explosion', p, p.team, angle, p.classId, 1);
-        this.state.events.at(-1)!.color = skill.color;
+        this.event(targeted ? 'fireRain' : 'explosion', centre, p.team, angle, p.classId, 1);
+        const event = this.state.events.at(-1)!;
+        event.color = skill.color;
+        event.radius = effect.radius;
         return;
       }
       case 'heal': {
@@ -1810,13 +1822,13 @@ export class World extends Duel {
     source: Pick<Player, 'team'>,
     angle: number,
     amount = 1,
-    options: { pierce?: boolean; ignoreInvuln?: boolean; freeze?: boolean } = {},
+    options: { pierce?: boolean; ignoreInvuln?: boolean; freeze?: boolean; execute?: boolean } = {},
   ): boolean {
     if (!this.hostile(source, target)) return false;
     const striker = source as Partial<Zombie>;
     const parry = this.parries.get(target.id);
     // A reflected blow cannot be parried back, or two parries would bounce it forever.
-    if (parry && target.hp > 0 && !this.reflecting) {
+    if (parry && target.hp > 0 && !this.reflecting && !options.execute) {
       if (striker.family && (striker.hp ?? 0) > 0) {
         this.damageZombie(
           striker as Zombie,
@@ -1860,17 +1872,17 @@ export class World extends Duel {
     const caster = (source as Partial<Player>).id;
     const howl = striker.family && striker.id ? (this.mobBuffs.get(striker.id)?.damage ?? 0) : 0;
     const attacker = caster ? this.characters.get(caster) : undefined;
-    const imbue = attacker && amount > 0 ? this.imbueFor(caster) : undefined;
+    const imbue = !options.execute && attacker && amount > 0 ? this.imbueFor(caster) : undefined;
     const base = imbue ? this.imbued(imbue, target, angle, amount) : amount;
     const crit = !!attacker && this.random() < this.critChance(attacker);
-    const scaled = attacker
+    const scaled = options.execute ? target.hp : attacker
       ? base * this.damageMultiplier(caster!) * (crit ? CRIT_MULTIPLIER : 1)
       : amount * (1 + howl);
     const alive = target.hp > 0;
     const landed = super.damage(target, source, angle, scaled, options);
     // A blow that lands takes the hands off the chest.
     if (landed) this.opening.delete(target.id);
-    if (landed && caster) this.heal(caster, scaled);
+    if (landed && caster && !options.execute) this.heal(caster, scaled);
     if (landed && imbue && alive) this.pour(caster!, target, angle, scaled);
     if (landed && alive && target.hp <= 0) {
       const duel = this.duelOf(target.id);
@@ -1994,17 +2006,17 @@ export class World extends Duel {
    * Experience for a kill goes to whoever struck it (`by`), not to whoever stood closest: a
    * bystander in the wild must not collect someone else's kill, buffs or drain.
    */
-  override damageZombie(z: Zombie, team: Team, amount = 1, angle?: number, by?: string) {
+  override damageZombie(z: Zombie, team: Team, amount = 1, angle?: number, by?: string, execute = false) {
     if (by && this.duelOf(by)) return;
     const alive = z.hp > 0;
     const credit = this.creditFor(z, by);
     const own = credit.own && credit.killer ? credit.killer : undefined;
-    const imbue = own && amount > 0 && alive ? this.imbueFor(own.id) : undefined;
+    const imbue = !execute && own && amount > 0 && alive ? this.imbueFor(own.id) : undefined;
     const towards = angle ?? (own ? Math.atan2(z.y - own.y, z.x - own.x) : 0);
     const base = imbue ? this.imbued(imbue, z, towards, amount) : amount;
-    const scaled = own ? base * this.damageMultiplier(own.id) : amount;
-    super.damageZombie(z, team, scaled, angle, by);
-    if (own && alive) this.heal(own.id, scaled);
+    const scaled = execute ? z.hp : own ? base * this.damageMultiplier(own.id) : amount;
+    super.damageZombie(z, team, scaled, angle, by, execute);
+    if (own && alive && !execute) this.heal(own.id, scaled);
     if (imbue && own) this.pour(own.id, z, towards, scaled);
     if (!alive || z.hp > 0 || !z.family) return;
     this.corpses.push({ x: z.x, y: z.y, left: CORPSE_LIFE });

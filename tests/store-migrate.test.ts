@@ -23,7 +23,7 @@ describe('migración de guardados', () => {
     expect(saved.character.level).toBe(8);
     expect(saved.character.trees).toEqual([]);
     expect(saved.character.bonusMana).toBe(0);
-    expect(saved.character.slots).toMatchObject({ x: null, c: null });
+    expect(saved.character.slots).toMatchObject({ x: null, c: null, r: null, f: null, v: null });
     expect(saved.character.weapon).toBe('espada');
   });
 
@@ -31,7 +31,7 @@ describe('migración de guardados', () => {
     const { character } = guardado();
     const viejo = { ...character, slots: { e: 'parada', q: 'refuerzo', space: null } };
     const saved = migrate({ version: 1, character: viejo, updatedAt: 0 });
-    expect(saved.character.slots).toEqual({ e: 'parada', x: 'refuerzo', c: null });
+    expect(saved.character.slots).toEqual({ e: 'parada', x: 'refuerzo', c: null, r: null, f: null, v: null });
   });
 
   it('un vínculo de Sombra roto se rechaza y uno ausente carga como null', () => {
