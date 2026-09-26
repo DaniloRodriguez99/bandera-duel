@@ -8,6 +8,10 @@ const emptyActions = (): ActionState => ({
   shot: false,
   dash: false,
   blackHole: false,
+  blackHoleRelease: false,
+  blackHoleDetonate: false,
+  blink: false,
+  blinkRelease: false,
   summon: false,
   trap: false,
   volley: false,
@@ -86,7 +90,13 @@ export class Controls {
   get targetingAbility(): string | null {
     const touches = [...this.gestures.values()];
     if (touches.length) return touches.at(-1)!.slot.id;
-    if (this.classId === 'mage' && this.physical.has(this.bindings.mobility) && this.loadout.mobility === 'mage.blink') return 'dash';
+    // Held Parpadeo or Singularidad show their reach while charging, whatever key they are bound to.
+    if (this.classId === 'mage')
+      for (const slot of SKILL_SLOTS)
+        if (this.physical.has(this.bindings[slot])) {
+          if (this.loadout[slot] === 'mage.blink') return 'dash';
+          if (this.loadout[slot] === 'mage.blackHole') return 'black-hole';
+        }
     if (this.chargeSources.has('mouse') || this.chargeSources.has('key'))
       return this.attackKind ? (this.attackKind === 'melee' ? 'sword' : 'shot') : primaryAbility(this.classId);
     if (this.specialSources.has('key')) return CLASSES[this.classId].summon ? 'summon' : 'dash';
@@ -285,7 +295,7 @@ export class Controls {
   private beginTouch(gesture: TouchGesture) {
     const { id, mode } = gesture.slot;
     if (gesture.slot.logicalSlot) {
-      if(id!=='black-hole')this.slotPressed.add(gesture.slot.logicalSlot);
+      this.slotPressed.add(gesture.slot.logicalSlot);
       this.touchHeld.add(gesture.slot.logicalSlot);
       gesture.element.dataset.aiming = 'true';
       return;
@@ -341,10 +351,8 @@ export class Controls {
     const { id, mode } = gesture.slot;
     if (gesture.slot.logicalSlot) {
       this.touchHeld.delete(gesture.slot.logicalSlot);
-      if (cast) {
-        if(id==='black-hole')this.slotPressed.add(gesture.slot.logicalSlot);
-        else this.slotReleased.add(gesture.slot.logicalSlot);
-      }
+      // Dragged back to the centre: no release, so a held charge is dropped without its cooldown.
+      if (cast) this.slotReleased.add(gesture.slot.logicalSlot);
       gesture.element.dataset.aiming = 'false';
       gesture.element.dataset.cancel = 'false';
       gesture.element.style.setProperty('--aim-x', '0px');

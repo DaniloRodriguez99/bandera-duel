@@ -234,6 +234,8 @@ export function worldInput(input: Input, weapon: Weapon, rooted = false): Input 
     charge: !rooted && input.charge,
     dash: false,
     blackHole: false,
+    blackHoleDetonate: false,
+    blink: false,
     guard: false,
     summon: false,
     ice: false,

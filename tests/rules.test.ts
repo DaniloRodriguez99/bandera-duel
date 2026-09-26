@@ -11,6 +11,8 @@ import {
   validName,
   blocked,
   blinkTarget,
+  blinkReach,
+  CLASSES,
   movePlayer,
   type Player,
   type ClassId,
@@ -155,27 +157,53 @@ describe('combate y geometría', () => {
     movePlayer(p, { ...input, x: -1 }, false);
     expect(p.x).toBeGreaterThanOrEqual(32);
   });
-  it('el mago se teletransporta con espacio atravesando un muro', () => {
+  it('un toque de Parpadeo espera 0,5 s y salta ~110 u, atravesando un muro', () => {
     const d = duel('mage'),
       p = d.state.players[0];
     place(p, 200, 164);
-    movePlayer(p, { ...idleInput(), dash: true, x: 1 }, false);
+    movePlayer(p, { ...idleInput(), blink: true, blinkRelease: true }, false);
+    expect(p.blinkCommitted).toBe(true);
+    const windup = Math.round(RULES.mageBlinkMinCharge / RULES.tick);
+    for (let i = 2; i < windup; i++) movePlayer(p, idleInput(), false);
+    expect(p.x).toBe(200);
+    expect(p.dashCd).toBe(0);
+    movePlayer(p, idleInput(), false);
+    expect(p.x).toBeCloseTo(200 + blinkReach(RULES.mageBlinkMinCharge));
     expect(p.x).toBeGreaterThan(WALLS[0].x + WALLS[0].w);
     expect(blocked(p.x, p.y)).toBe(false);
     expect(p.dashCd).toBeGreaterThan(0);
+    expect(p.blinkCharge).toBe(0);
   });
-  it('el mago teletransporta exactamente al cursor, sin tope fijo', () => {
+  it('Parpadeo cargado 2 s llega a 260 u como máximo, o al cursor si está más cerca', () => {
+    const d = duel('mage'),
+      p = d.state.players[0];
+    const jump = (aimX: number) => {
+      place(p, 400, 270);
+      p.dashCd = 0;
+      p.dashLeft = 0;
+      for (let i = 0; i < Math.ceil(RULES.mageBlinkChargeTime / RULES.tick) + 5; i++)
+        movePlayer(p, { ...idleInput(), blink: true, aimX, aimY: 270 }, false);
+      expect(p.x).toBe(400);
+      expect(p.blinkCharge).toBe(RULES.mageBlinkChargeTime);
+      movePlayer(p, { ...idleInput(), blinkRelease: true, aimX, aimY: 270 }, false);
+    };
+    jump(900);
+    expect(p.x).toBeCloseTo(400 + RULES.mageBlinkRange);
+    jump(460);
+    expect(p.x).toBeCloseTo(460);
+  });
+  it('cargando Parpadeo camina a media velocidad, y soltar sin lanzarlo lo cancela', () => {
     const d = duel('mage'),
       p = d.state.players[0];
     place(p, 400, 270);
-    movePlayer(p, { ...idleInput(), dash: true, aimX: 460, aimY: 270 }, false);
-    expect(p.x).toBeCloseTo(460);
-    expect(p.y).toBeCloseTo(270);
-    place(p, 400, 270);
-    p.dashCd = 0;
-    p.dashLeft = 0;
-    movePlayer(p, { ...idleInput(), dash: true, aimX: 600, aimY: 270 }, false);
-    expect(p.x).toBeCloseTo(600);
+    movePlayer(p, { ...idleInput(), blink: true, x: 1 }, false);
+    expect(p.x - 400).toBeCloseTo(CLASSES.mage.speed * RULES.chargeMoveSpeed * RULES.tick);
+    for (let i = 0; i < 20; i++) movePlayer(p, { ...idleInput(), blink: true }, false);
+    const x = p.x;
+    movePlayer(p, idleInput(), false);
+    expect(p.blinkCharge).toBe(0);
+    expect(p.x).toBe(x);
+    expect(p.dashCd).toBe(0);
   });
   it('el portador se mueve 15% más lento pero puede atacar sin soltar', () => {
     const d = duel(),

@@ -23,12 +23,14 @@ describe('character customization model',()=>{
     const result=projectileSkillStats('necromancer.fire','mage');expect(result.damage).toBe(projectileSkillStats('necromancer.fire','necromancer').damage);
     const summon=idleInput();summon.slots.secondary.released=true;expect(resolveSlotInput(player,summon).summon).toBe(true);
   });
-  it('dispara el parpadeo al soltar, no al presionar',()=>{
+  it('Parpadeo carga mientras se mantiene y se lanza al soltar',()=>{
     const player=newPlayer('m','Mago','blue','mage');
     const pressed=idleInput();pressed.slots.mobility.pressed=true;
-    expect(resolveSlotInput(player,pressed).dash).toBe(false);
+    expect(resolveSlotInput(player,pressed)).toMatchObject({blink:true,blinkRelease:false,dash:false});
+    const held=idleInput();held.slots.mobility.held=true;
+    expect(resolveSlotInput(player,held)).toMatchObject({blink:true,blinkRelease:false});
     const released=idleInput();released.slots.mobility.released=true;
-    expect(resolveSlotInput(player,released).dash).toBe(true);
+    expect(resolveSlotInput(player,released)).toMatchObject({blink:false,blinkRelease:true,dash:false});
   });
   it('migra Parpadeo sin perder skin ni controles guardados',()=>{
     const old=defaultCustomization('mage');old.selectedSkin=MAGE_SKINS[3].id;
@@ -42,12 +44,14 @@ describe('character customization model',()=>{
     expect(profile.presets.default.loadout.mobility).toBe('mage.blink');
     expect(profile.presets.default.loadout.skill2).toBeNull();
   });
-  it('resuelve Singularidad sólo cuando se pulsa su slot equipado',()=>{
+  it('Singularidad carga al mantener, se lanza al soltar y se detona al volver a pulsar',()=>{
     const p=newPlayer('m','Mago','blue','mage');
     const pressed=idleInput();pressed.slots.skill2.pressed=true;
-    expect(resolveSlotInput(p,pressed).blackHole).toBe(true);
+    expect(resolveSlotInput(p,pressed)).toMatchObject({blackHole:true,blackHoleDetonate:true,blackHoleRelease:false});
+    const held=idleInput();held.slots.skill2.held=true;
+    expect(resolveSlotInput(p,held)).toMatchObject({blackHole:true,blackHoleDetonate:false,blackHoleRelease:false});
     const released=idleInput();released.slots.skill2.released=true;
-    expect(resolveSlotInput(p,released).blackHole).toBe(false);
+    expect(resolveSlotInput(p,released)).toMatchObject({blackHole:false,blackHoleDetonate:false,blackHoleRelease:true});
   });
   it('ignores a manipulated logical slot when it is empty',()=>{
     const customization=defaultCustomization('mage');activePreset(customization).loadout.skill2=null;

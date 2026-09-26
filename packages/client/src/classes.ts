@@ -22,10 +22,10 @@ const CLASS_SKILLS: Record<ClassId, SkillPreview[]> = {
   ],
   mage: [
     { name: 'Orbe de fuego', icon: icon('mage-fireball'), description: 'Conjurá una esfera ígnea; a carga máxima explota al impactar.', damage: `${RULES.arrowDamage}–2,5`, cooldown: seconds(RULES.shotCooldown) },
-    { name: 'Parpadeo', icon: icon('mage-blink'), description: 'Apuntá y soltá: reaparecés en un lugar válido junto al cursor, incluso tras un muro.', damage: '0', cooldown: seconds(RULES.dashCooldown) },
+    { name: 'Parpadeo', icon: icon('mage-blink'), description: 'Mantené para ampliar el alcance hasta 260 u en 2 s y soltá: reaparecés junto al cursor, incluso tras un muro. Nunca antes de 0,5 s.', damage: '0', cooldown: seconds(RULES.dashCooldown) },
     { name: 'Égida de dos sellos', icon: icon('mage-shield'), description: `Una barrera encantada que anula ${RULES.magicShieldHits} impactos.`, damage: '0', cooldown: seconds(RULES.magicShieldCooldown) },
     { name: 'Saeta glacial', icon: icon('mage-ice'), description: `Perfora con hielo arcano e inmoviliza durante ${seconds(RULES.freezeDuration)}.`, damage: '0', cooldown: seconds(RULES.iceCooldown) },
-    { name: 'Singularidad', icon: icon('mage-blackhole'), description: 'Apuntá y canalizá 2 s; el vórtice viaja al objetivo atrayendo enemigos, crece durante 4 s y estalla.', damage: '1,5', cooldown: seconds(RULES.blackHoleCooldown) },
+    { name: 'Singularidad', icon: icon('mage-blackhole'), description: 'Mantené hasta 2 s para agrandarlo, dañar más y llegar más lejos. Soltá para lanzarlo: estalla contra un muro, al volver a pulsar o tras atraer 2,5 s en destino.', damage: '0,75–2,25', cooldown: seconds(RULES.blackHoleCooldown) },
   ],
   necromancer: [
     { name: 'Llama de ultratumba', icon: icon('necromancer-fire'), description: 'Arrojá fuego espectral; canalizarlo aumenta su poder hasta el doble.', damage: `${RULES.fireDamage}–2`, cooldown: seconds(RULES.fireCooldown) },

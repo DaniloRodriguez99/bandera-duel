@@ -1,4 +1,4 @@
-import { CLASSES, RULES, SKILLS, SKILL_SLOTS, chargePower, projectileStats, type ClassId, type InputBindings, type PhysicalBinding, type Player, type SkillId, type SkillSlot } from '@bandera/shared';
+import { CLASSES, RULES, SKILLS, SKILL_SLOTS, blackHoleStats, chargePower, projectileStats, type ClassId, type InputBindings, type PhysicalBinding, type Player, type SkillId, type SkillSlot } from '@bandera/shared';
 
 /** One branch of an ability: what a tap, a hold or a full charge does. */
 export interface AbilityTier {
@@ -101,7 +101,13 @@ export function abilitySlots(classId: ClassId): AbilitySlot[] {
         classId === 'guardian'
           ? [{ label: '190 u · 1 daño · sin invulnerabilidad', active: (p) => p.dashLeft > 0 }]
           : classId === 'mage'
-            ? [{ label: 'Pulsar · teletransporte corto', active: (p) => p.dashCd <= 0 }]
+            ? [
+                {
+                  label: 'Mantener y soltar · 0,5–2 s · hasta 260 u',
+                  active: (p) => p.blinkCharge > 0,
+                  state: (p) => (p.blinkCharge > 0 ? percent(p.blinkCharge / RULES.mageBlinkChargeTime) : null),
+                },
+              ]
           : [
               { label: 'Toque · esquivar', active: (p) => tapped(p.specialCharge) },
               {
@@ -292,12 +298,14 @@ export function abilitySlots(classId: ClassId): AbilitySlot[] {
 }
 
 const dynamicCooldown=(id:SkillId,p:Player)=>id==='mage.magicShield'?p.magicShieldCd:id==='mage.ice'?p.iceCd:id==='mage.blackHole'?p.blackHoleCd:id==='necromancer.summon'?p.summonCd:id==='common.dash'||id==='mage.blink'?p.dashCd:p.shotCd;
+/** A held skill shows how far its charge has come; the shield, its remaining seals. */
+const chargeDetail=(id:SkillId,p:Player)=>id==='mage.magicShield'&&p.magicShieldHits?`${p.magicShieldHits}/${RULES.magicShieldHits}`:id==='mage.blink'&&p.blinkCharge>0?percent(p.blinkCharge/RULES.mageBlinkChargeTime):id==='mage.blackHole'&&p.blackHoleCharge>0?percent(blackHoleStats(p.blackHoleCharge).power):null;
 const shortBinding=(value:PhysicalBinding)=>({MouseLeft:'CLIC',MouseRight:'CLIC DER.',MouseMiddle:'CLIC 3',Space:'ESPACIO',Shift:'SHIFT',Ctrl:'CTRL'} as Record<string,string>)[value]??value.replace('Key','');
 export function playerAbilitySlots(p:Player,bindings?:InputBindings):AbilitySlot[]{
   const order=(['primary','mobility','secondary','skill1','skill2'] as const);
   const legacyId:Partial<Record<SkillId,string>>={'mage.fireball':'shot','common.dash':'dash','mage.blink':'dash','mage.blackHole':'black-hole','mage.magicShield':'magic-shield','mage.ice':'ice','necromancer.fire':'shot','necromancer.summon':'summon'};
   const legacyName:Partial<Record<SkillId,string>>={'mage.ice':'Flecha de hielo'};
-  const cards:AbilitySlot[]=order.flatMap(slot=>{const id=p.loadout[slot];if(!id)return[];const skill=SKILLS[id];return [{id:legacyId[id]??id,logicalSlot:slot,key:bindings?shortBinding(bindings[slot]):slot.toUpperCase(),name:legacyName[id]??skill.name,icon:skillIcon(skill.icon),cooldown:(player:Player)=>dynamicCooldown(id,player),max:skill.cooldown||1,detail:(player:Player)=>id==='mage.magicShield'&&player.magicShieldHits?`${player.magicShieldHits}/${RULES.magicShieldHits}`:null,tiers:id==='necromancer.summon'?[{label:'Incluye Mando, Marcar y todas las invocaciones'}]:undefined} satisfies AbilitySlot];});
+  const cards:AbilitySlot[]=order.flatMap(slot=>{const id=p.loadout[slot];if(!id)return[];const skill=SKILLS[id];return [{id:legacyId[id]??id,logicalSlot:slot,key:bindings?shortBinding(bindings[slot]):slot.toUpperCase(),name:legacyName[id]??skill.name,icon:skillIcon(skill.icon),cooldown:(player:Player)=>dynamicCooldown(id,player),max:skill.cooldown||1,detail:(player:Player)=>chargeDetail(id,player),tiers:id==='necromancer.summon'?[{label:'Incluye Mando, Marcar y todas las invocaciones'}]:undefined} satisfies AbilitySlot];});
   if(Object.values(p.loadout).includes('necromancer.summon'))cards.push({id:'command',key:bindings?shortBinding(bindings.companionCommand):'MANDO',name:'Mando / Marcar',icon:skillIcon('necromancer-resurrection'),cooldown:()=>0,max:1,tiers:[{label:'Toque: Mando · Ctrl + tecla: Marcar'}]});
   return cards;
 }

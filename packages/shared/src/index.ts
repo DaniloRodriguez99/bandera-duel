@@ -231,10 +231,32 @@ export const RULES = {
   dashDuration: 0.15,
   dashCooldown: 1.5,
   dashSpeed: 520,
-  mageBlinkRange: 110,
+  /** Parpadeo charges while held: 0.5 s before it can fire, 2 s to reach its full 260 u. */
+  mageBlinkMinCharge: 0.5,
+  mageBlinkChargeTime: 2,
+  mageBlinkMinRange: 60,
+  mageBlinkRange: 260,
   mageBlinkInvuln: 0.15,
-  blackHoleCast: 2,
+  /** Held Singularidad and Parpadeo slow the mage to this share of its speed. */
+  chargeMoveSpeed: 0.5,
   blackHoleCooldown: 10,
+  /** Singularidad in the arena: every size, the damage and the reach scale with a 2 s charge. */
+  blackHoleChargeTime: 2,
+  blackHoleRangeMin: 140,
+  blackHoleRangeMax: 420,
+  blackHoleStartMin: 28,
+  blackHoleStartMax: 80,
+  blackHoleGrowMin: 110,
+  blackHoleGrowMax: 220,
+  blackHoleBurstMin: 55,
+  blackHoleBurstMax: 110,
+  blackHoleDamageMin: 0.75,
+  blackHoleDamageMax: 2.25,
+  /** Seconds a hole stays at its destination, growing and pulling, before it bursts. */
+  blackHoleLinger: 2.5,
+  /** A travelling hole bursts when a body this wide would touch a wall. */
+  blackHoleWallRadius: 8,
+  /** Defaults for a hole whose skill brings no numbers of its own (the world's incantation). */
   blackHoleDuration: 4,
   blackHoleRadius: 200,
   blackHoleBurstRadius: 90,
@@ -354,8 +376,8 @@ export const SKILLS: Record<SkillId, SkillDefinition> = {
   'mage.fireball': skill({id:'mage.fireball',name:'Orbe de fuego',branch:'mage',description:'Esfera ígnea que explota al cargarla.',icon:'mage-fireball',compatibleClasses:['mage'],compatibleSlots:['primary'],trigger:'hold-release',animationAction:'castForward',cooldown:RULES.shotCooldown,damage:'1–2,5',grants:['ranged']}),
   'mage.magicShield': skill({id:'mage.magicShield',name:'Égida de dos sellos',branch:'mage',description:'Anula dos impactos.',icon:'mage-shield',compatibleClasses:['mage'],compatibleSlots:['secondary','skill1','skill2'],trigger:'press',animationAction:'castChannel',cooldown:RULES.magicShieldCooldown,damage:'0',grants:['shield']}),
   'mage.ice': skill({id:'mage.ice',name:'Saeta glacial',branch:'mage',description:'Inmoviliza durante un segundo.',icon:'mage-ice',compatibleClasses:['mage'],compatibleSlots:['secondary','skill1','skill2'],trigger:'press',animationAction:'castForward',cooldown:RULES.iceCooldown,damage:'0'}),
-  'mage.blink': skill({id:'mage.blink',name:'Parpadeo',branch:'mage',description:'Al soltar, aparecés en el punto válido más cercano al cursor; atravesás muros.',icon:'mage-blink',compatibleClasses:['mage'],compatibleSlots:['mobility'],trigger:'release',animationAction:'dash',cooldown:RULES.dashCooldown,damage:'0',grants:['mobility']}),
-  'mage.blackHole': skill({id:'mage.blackHole',name:'Singularidad',branch:'mage',description:'Canalizás 2 s; viaja hacia donde apuntás y atrae enemigos mientras crece. Tras 4 s en destino, estalla.',icon:'mage-blackhole',compatibleClasses:['mage'],compatibleSlots:['secondary','skill1','skill2'],trigger:'press',animationAction:'castChannel',cooldown:RULES.blackHoleCooldown,damage:'1,5 en área'}),
+  'mage.blink': skill({id:'mage.blink',name:'Parpadeo',branch:'mage',description:'Mantené para ampliar el alcance hasta 260 u en 2 s y soltá: aparecés junto al cursor, incluso tras un muro. Tarda al menos 0,5 s.',icon:'mage-blink',compatibleClasses:['mage'],compatibleSlots:['mobility'],trigger:'hold-release',animationAction:'dash',cooldown:RULES.dashCooldown,damage:'0',grants:['mobility']}),
+  'mage.blackHole': skill({id:'mage.blackHole',name:'Singularidad',branch:'mage',description:'Mantené hasta 2 s: el agujero crece, pega más y llega más lejos. Soltá para lanzarlo; estalla contra un muro, al volver a pulsar o tras atraer en su destino.',icon:'mage-blackhole',compatibleClasses:['mage'],compatibleSlots:['secondary','skill1','skill2'],trigger:'hold-release',animationAction:'castChannel',cooldown:RULES.blackHoleCooldown,damage:'0,75–2,25 en área'}),
   'necromancer.fire': skill({id:'necromancer.fire',name:'Llama de ultratumba',branch:'necromancer',description:'Fuego espectral que puede canalizarse.',icon:'necromancer-fire',compatibleClasses:['mage','necromancer'],compatibleSlots:['primary'],trigger:'hold-release',animationAction:'castForward',cooldown:RULES.fireCooldown,damage:'1–2',grants:['ranged']}),
   'necromancer.summon': skill({id:'necromancer.summon',name:'Alzar a los caídos',branch:'necromancer',description:'Invoca zombies, arcanistas y esclavos.',icon:'necromancer-summon',compatibleClasses:['mage','necromancer'],compatibleSlots:['secondary','skill1','skill2'],trigger:'hold-release',animationAction:'castGround',cooldown:RULES.summonCooldown,damage:'1 por golpe',grants:['summon','companionControl']}),
   'guardian.sword': skill({id:'guardian.sword',name:'Acero juramentado',branch:'guardian',description:'Tajo frontal cargable.',icon:'guardian-slash',compatibleClasses:['guardian'],compatibleSlots:['primary'],trigger:'hold-release',animationAction:'attack',cooldown:CLASSES.guardian.meleeCooldown,damage:'1–2',grants:['melee']}),
@@ -548,7 +570,16 @@ export interface Input {
   shot: boolean;
   charge: boolean;
   dash: boolean;
+  /** Singularidad held (or just pressed): charging it. */
   blackHole: boolean;
+  /** Singularidad let go: launches the charged hole. A hold that ends without it cancels. */
+  blackHoleRelease: boolean;
+  /** Singularidad pressed again: bursts the hole already on its way. */
+  blackHoleDetonate: boolean;
+  /** Parpadeo held (or just pressed): charging the teleport. */
+  blink: boolean;
+  /** Parpadeo let go: commits to the jump. A hold that ends without it cancels. */
+  blinkRelease: boolean;
   guard: boolean;
   summon: boolean;
   ice: boolean;
@@ -590,6 +621,10 @@ export const idleInput = (seq = 0, angle = 0): Input => ({
   charge: false,
   dash: false,
   blackHole: false,
+  blackHoleRelease: false,
+  blackHoleDetonate: false,
+  blink: false,
+  blinkRelease: false,
   guard: false,
   summon: false,
   ice: false,
@@ -651,6 +686,10 @@ export function sanitizeInput(raw: unknown): Input | null {
     charge: r.charge === true,
     dash: r.dash === true,
     blackHole: r.blackHole === true,
+    blackHoleRelease: r.blackHoleRelease === true,
+    blackHoleDetonate: r.blackHoleDetonate === true,
+    blink: r.blink === true,
+    blinkRelease: r.blinkRelease === true,
     guard: r.guard === true,
     summon: r.summon === true,
     ice: r.ice === true,
@@ -695,11 +734,14 @@ export interface Player extends Vec {
   shotCd: number;
   shotCharge: number;
   dashCd: number;
-  blackHoleCast: number;
   blackHoleCd: number;
-  blackHoleX: number;
-  blackHoleY: number;
-  /** World incantation preview; duel casting uses blackHoleCast and the fixed aim coordinates. */
+  /** Seconds Singularidad has been held; everyone sees its mandala grow. */
+  blackHoleCharge: number;
+  /** Seconds Parpadeo has been held. */
+  blinkCharge: number;
+  /** Parpadeo released before its minimum charge: the jump goes out once that minimum is reached. */
+  blinkCommitted: boolean;
+  /** World incantation preview; the arena shows the charge instead. */
   blackHoleTelegraph?: { x:number; y:number; left:number; total:number };
   attackLock: number;
   dashLeft: number;
@@ -951,6 +993,8 @@ export interface GameEvent extends Vec {
   playerId?: string;
   /** World only: the colour of the element or skill behind it, so an explosion of lightning is not fire. */
   color?: string;
+  /** Singularidad's burst only: how wide it was, which the charge decides. */
+  radius?: number;
 }
 /** Zombies from the charged summon (hat, its minions, thrall) never use the normal cap. */
 export const countsTowardLimit = (z: Zombie) => !z.bonus;
@@ -1137,6 +1181,8 @@ export interface BlackHole extends Vec {
   id: number;
   owner: string;
   team: Team;
+  /** The size it launched with; it grows from here to `radius` once parked. */
+  startRadius: number;
   radius: number;
   currentRadius: number;
   targetX: number;
@@ -1180,6 +1226,23 @@ export function chargePower(seconds: number) {
     0,
     Math.min(1, (seconds - RULES.overchargeTap) / (RULES.overchargeTime - RULES.overchargeTap)),
   );
+}
+const lerp = (from: number, to: number, t: number) => from + (to - from) * t;
+/** How far Parpadeo reaches after holding it this long: 60 u at once, 260 u after 2 s. */
+export function blinkReach(seconds: number) {
+  return lerp(RULES.mageBlinkMinRange, RULES.mageBlinkRange, Math.max(0, Math.min(1, seconds / RULES.mageBlinkChargeTime)));
+}
+/** Everything a Singularidad released after this long a hold carries, from a tap to 2 s. */
+export function blackHoleStats(seconds: number) {
+  const power = Math.max(0, Math.min(1, seconds / RULES.blackHoleChargeTime));
+  return {
+    power,
+    range: lerp(RULES.blackHoleRangeMin, RULES.blackHoleRangeMax, power),
+    startRadius: lerp(RULES.blackHoleStartMin, RULES.blackHoleStartMax, power),
+    radius: lerp(RULES.blackHoleGrowMin, RULES.blackHoleGrowMax, power),
+    burstRadius: lerp(RULES.blackHoleBurstMin, RULES.blackHoleBurstMax, power),
+    damage: lerp(RULES.blackHoleDamageMin, RULES.blackHoleDamageMax, power),
+  };
 }
 /** Speed and hit radius of a projectile, covering the zombie mage's fireball and gusts and countered shots. */
 export function arrowMotion(a: Arrow) {
@@ -1350,7 +1413,7 @@ const hasLogicalInput = (input: Input) => SKILL_SLOTS.some((slot) => {
 /** Server-side adapter from validated logical slots to the established simulation actions. */
 export function resolveSlotInput(p: Player, input: Input): Input {
   if (!hasLogicalInput(input)) return input;
-  const resolved: Input = { ...input, sword:false, shot:false, charge:false, dash:false, blackHole:false, guard:false, summon:false,
+  const resolved: Input = { ...input, sword:false, shot:false, charge:false, dash:false, blackHole:false, blackHoleRelease:false, blackHoleDetonate:false, blink:false, blinkRelease:false, guard:false, summon:false,
     ice:false, trap:false, volley:false, special:false, shieldBash:false, fury:false, slash:false, counter:false,
     command:false, mark:false };
   for (const slot of SKILL_SLOTS) {
@@ -1365,8 +1428,12 @@ export function resolveSlotInput(p: Player, input: Input): Input {
       case 'common.dash':
         resolved.special ||= state.held; resolved.dash ||= state.released; break;
       case 'guardian.dash': resolved.dash ||= state.pressed; break;
-      case 'mage.blink': resolved.dash ||= state.released; break;
-      case 'mage.blackHole': resolved.blackHole ||= state.pressed; break;
+      // Pressed or held charges, released casts: a tap inside one tick still does both. A hold that
+      // ends with no release (a touch dragged back to the centre, a lost focus) cancels.
+      case 'mage.blink': resolved.blink ||= state.held || state.pressed; resolved.blinkRelease ||= state.released; break;
+      case 'mage.blackHole':
+        resolved.blackHole ||= state.held || state.pressed; resolved.blackHoleRelease ||= state.released;
+        resolved.blackHoleDetonate ||= state.pressed; break;
       case 'mage.magicShield': resolved.guard ||= state.pressed || state.held; break;
       case 'mage.ice': resolved.ice ||= pulse; break;
       case 'necromancer.summon': resolved.special ||= state.held; resolved.summon ||= state.released; break;
@@ -1410,8 +1477,11 @@ export function movePlayer(
     fury: false,
     dashStarted: false,
     dashing: false,
-    blackHole: false,
+    /** Singularidad released this tick: where it heads from the mage, and how long it was held. */
+    blackHole: null as { angle: number; reach: number; charge: number } | null,
     blink: null as { fromX: number; fromY: number; toX: number; toY: number } | null,
+    /** The first tick of a held Singularidad or Parpadeo, so everyone hears the charge begin. */
+    chargeStarted: undefined as SkillId | undefined,
   };
   if (p.hp <= 0) return result;
   const stats = CLASSES[p.classId];
@@ -1445,18 +1515,14 @@ export function movePlayer(
     p[key] = Math.max(0, p[key] - dt);
   p.furyLeft = Math.max(0, p.furyLeft - dt);
   if (p.furyLeft <= 1e-8) p.furyLeft = 0;
-  if (p.blackHoleCast > 0) {
-    p.blackHoleCast = Math.max(0, p.blackHoleCast - dt);
-    p.stunLeft = Math.max(0, p.stunLeft - dt);
-    p.shotCharge = 0;
-    p.specialCharge = 0;
-    result.blackHole = p.blackHoleCast <= 1e-8;
-    return result;
-  }
   if (p.stunLeft > 0) {
     p.stunLeft = Math.max(0, p.stunLeft - dt);
     p.shotCharge = 0;
     p.specialCharge = 0;
+    // A stun breaks a held Singularidad or Parpadeo; neither cooldown has started yet.
+    p.blackHoleCharge = 0;
+    p.blinkCharge = 0;
+    p.blinkCommitted = false;
     p.trapLeft = 0;
     p.windup = 0;
     p.dashLeft = 0;
@@ -1469,19 +1535,28 @@ export function movePlayer(
   p.angle = input.angle;
   p.aimX = input.aimX;
   p.aimY = input.aimY;
-  if (input.blackHole && equippedSkill(p, 'mage.blackHole') && p.blackHoleCd <= 0) {
-    const aimDist=input.aimX>=0&&input.aimY>=0?Math.hypot(input.aimX-p.x,input.aimY-p.y):0;
-    const aimAngle=aimDist>1?Math.atan2(input.aimY-p.y,input.aimX-p.x):input.angle;
-    const target=blinkTarget(p,aimAngle,aimDist>1?aimDist:150,walls);
-    p.blackHoleX=target.x;
-    p.blackHoleY=target.y;
-    p.blackHoleCast = RULES.blackHoleCast;
-    p.blackHoleCd = RULES.blackHoleCooldown;
-    p.shotCharge = 0;
-    p.specialCharge = 0;
-    p.dashLeft = 0;
-    return result;
-  }
+  // Singularidad: held it charges size, damage and reach; released it launches toward the aim.
+  if (equippedSkill(p, 'mage.blackHole')) {
+    if (input.blackHole && p.blackHoleCd <= 0 && p.blinkCharge <= 0) {
+      if (p.blackHoleCharge <= 0) result.chargeStarted = 'mage.blackHole';
+      p.blackHoleCharge = Math.min(RULES.blackHoleChargeTime, p.blackHoleCharge + dt);
+    }
+    if (p.blackHoleCharge > 0 && !input.blackHoleRelease && !input.blackHole) p.blackHoleCharge = 0;
+    else if (p.blackHoleCharge > 0 && input.blackHoleRelease) {
+      // Toward the cursor and no farther than the charge allows; without a cursor, the full reach.
+      const { range } = blackHoleStats(p.blackHoleCharge);
+      const aimDist =
+        input.aimX >= 0 && input.aimY >= 0 ? Math.hypot(input.aimX - p.x, input.aimY - p.y) : 0;
+      result.blackHole = {
+        angle: aimDist > 1 ? Math.atan2(input.aimY - p.y, input.aimX - p.x) : input.angle,
+        reach: aimDist > 1 ? Math.min(aimDist, range) : range,
+        charge: p.blackHoleCharge,
+      };
+      p.blackHoleCharge = 0;
+      p.blackHoleCd = RULES.blackHoleCooldown;
+      p.invuln = 0;
+    }
+  } else p.blackHoleCharge = 0;
   if (p.raiseCast > 0) {
     // Casting a raise roots the necromancer until the mandala opens.
     p.raiseCast = Math.max(0, p.raiseCast - dt);
@@ -1621,38 +1696,58 @@ export function movePlayer(
       p.specialCharge + dt,
     );
   else if (!specialReady || (!input.special && !input.dash && !input.summon)) p.specialCharge = 0;
-  if (
-    frozenDt === 0 &&
-    canBlink &&
-    input.dash &&
-    p.dashCd <= 0 &&
-    !wasWinding &&
-    p.attackLock <= 0 &&
-    !result.fury
-  ) {
-    // Land where the cursor is, capped at the blink range; without a cursor, use the movement
-    // direction (or the facing angle) for the full range.
-    const aimDist =
-      input.aimX >= 0 && input.aimY >= 0 ? Math.hypot(input.aimX - p.x, input.aimY - p.y) : 0;
-    const hasAim = aimDist > 1;
-    const mag = Math.hypot(input.x, input.y);
-    const angle = hasAim
-      ? Math.atan2(input.aimY - p.y, input.aimX - p.x)
-      : mag > 0.05
-        ? Math.atan2(input.y, input.x)
-        : input.angle;
-    const range = hasAim ? aimDist : RULES.mageBlinkRange;
-    const to = blinkTarget(p, angle, range, walls);
-    result.blink = { fromX: p.x, fromY: p.y, toX: to.x, toY: to.y };
-    p.x = to.x;
-    p.y = to.y;
-    // A short i-frame window through the dash timer, with no residual movement.
-    p.dashX = 0;
-    p.dashY = 0;
-    p.dashLeft = RULES.mageBlinkInvuln;
-    p.dashCd = RULES.dashCooldown;
-    p.specialCharge = 0;
+  // Parpadeo: held it widens its reach; released, it jumps once the minimum charge is in. A tap
+  // therefore still waits out that windup, so the teleport is never an instant escape.
+  // Once released it is committed: only a stun or death still cancels it.
+  if (canBlink) {
+    if (!p.blinkCommitted) {
+      if (input.blink && p.blackHoleCharge <= 0 && (p.blinkCharge > 0 || p.dashCd <= 0)) {
+        if (p.blinkCharge <= 0) result.chargeStarted = 'mage.blink';
+        p.blinkCharge = Math.min(RULES.mageBlinkChargeTime, p.blinkCharge + dt);
+      }
+      if (p.blinkCharge > 0 && input.blinkRelease) p.blinkCommitted = true;
+      else if (!input.blink) p.blinkCharge = 0;
+    } else if (p.blinkCharge < RULES.mageBlinkMinCharge)
+      // Released before the minimum: the windup runs on to it, never past it.
+      p.blinkCharge = Math.min(RULES.mageBlinkMinCharge, p.blinkCharge + dt);
+    if (
+      p.blinkCommitted &&
+      p.blinkCharge >= RULES.mageBlinkMinCharge - 1e-8 &&
+      frozenDt === 0 &&
+      !wasWinding &&
+      p.attackLock <= 0
+    ) {
+      // Land on the cursor when it is within reach, else at the reach toward it; without a
+      // cursor, the full reach along the movement direction (or the facing angle).
+      const reach = blinkReach(p.blinkCharge);
+      const aimDist =
+        input.aimX >= 0 && input.aimY >= 0 ? Math.hypot(input.aimX - p.x, input.aimY - p.y) : 0;
+      const hasAim = aimDist > 1;
+      const mag = Math.hypot(input.x, input.y);
+      const angle = hasAim
+        ? Math.atan2(input.aimY - p.y, input.aimX - p.x)
+        : mag > 0.05
+          ? Math.atan2(input.y, input.x)
+          : input.angle;
+      const to = blinkTarget(p, angle, hasAim ? Math.min(aimDist, reach) : reach, walls);
+      result.blink = { fromX: p.x, fromY: p.y, toX: to.x, toY: to.y };
+      p.x = to.x;
+      p.y = to.y;
+      // A short i-frame window through the dash timer, with no residual movement.
+      p.dashX = 0;
+      p.dashY = 0;
+      p.dashLeft = RULES.mageBlinkInvuln;
+      p.dashCd = RULES.dashCooldown;
+      p.specialCharge = 0;
+      p.blinkCharge = 0;
+      p.blinkCommitted = false;
+    }
+  } else {
+    p.blinkCharge = 0;
+    p.blinkCommitted = false;
   }
+  // Holding either spell slows the mage and keeps its hands busy: no attacks until it lets go.
+  const channeling = p.blackHoleCharge > 0 || p.blinkCharge > 0;
   if (
     frozenDt === 0 &&
     canDash &&
@@ -1701,7 +1796,8 @@ export function movePlayer(
     (1 + (p.pve?.speed ?? 0)) *
     (carrying ? RULES.carryMultiplier : 1) *
     (p.guarding ? RULES.guardSpeed + (p.pve?.classRanks.guardian ?? 0) * .04 : 1) *
-    (p.counterLeft > 0 ? RULES.counterSpeed : 1);
+    (p.counterLeft > 0 ? RULES.counterSpeed : 1) *
+    (channeling ? RULES.chargeMoveSpeed : 1);
   translate(
     p,
     input.x * speed * Math.max(0, dt - dashDt - frozenDt),
@@ -1726,6 +1822,7 @@ export function movePlayer(
   const dashAttackWindow = dashCombo || p.classId === 'vanguard';
   const canCharge =
     !p.guarding &&
+    !channeling &&
     (!p.dashInvulnerable || dashAttackWindow) &&
     !wasWinding &&
     p.attackLock <= 0 &&
@@ -1739,6 +1836,7 @@ export function movePlayer(
   else if (!canCharge || !(input.shot || input.sword)) p.shotCharge = 0;
   if (
     !p.guarding &&
+    !channeling &&
     p.guardRecovery <= 0 &&
     (!p.dashInvulnerable || dashAttackWindow) &&
     p.attackLock <= 0 &&
@@ -1839,10 +1937,10 @@ export function newPlayer(
     shotCd: 0,
     shotCharge: 0,
     dashCd: 0,
-    blackHoleCast: 0,
     blackHoleCd: 0,
-    blackHoleX: 0,
-    blackHoleY: 0,
+    blackHoleCharge: 0,
+    blinkCharge: 0,
+    blinkCommitted: false,
     attackLock: 0,
     dashLeft: 0,
     dashX: 0,
@@ -2205,7 +2303,9 @@ export class Duel {
     this.fallen.clear();
     for (const p of s.players) {
       p.raiseCast = 0;
-      p.blackHoleCast = 0;
+      p.blackHoleCharge = 0;
+      p.blinkCharge = 0;
+      p.blinkCommitted = false;
       p.fallenGuards = 0;
     }
     s.traps = [];
@@ -2326,7 +2426,9 @@ export class Duel {
       });
       target.respawnLeft = RULES.respawn;
       target.raiseCast = 0;
-      target.blackHoleCast = 0;
+      target.blackHoleCharge = 0;
+      target.blinkCharge = 0;
+      target.blinkCommitted = false;
       target.furyLeft = 0;
       target.shieldBashLeft = 0;
       this.raising.delete(target.id);
@@ -2336,7 +2438,7 @@ export class Duel {
       lowerGuard(target);
       target.deaths++;
       this.event('death', target, target.team);
-    } else if (!options.pierce && target.blackHoleCast <= 0)
+    } else if (!options.pierce)
       translate(target, Math.cos(angle) * 24, Math.sin(angle) * 24, this.terrainFor(target));
     return true;
   }
@@ -2389,11 +2491,13 @@ export class Duel {
   protected hostile(a: Allegiant, b: Allegiant): boolean {
     return a.team !== b.team;
   }
-  protected spawnBlackHole(owner: Player, x: number, y: number, options: Partial<Pick<BlackHole, 'radius' | 'burstRadius' | 'pull' | 'damage' | 'total'>> = {}) {
+  protected spawnBlackHole(owner: Player, x: number, y: number, options: Partial<Pick<BlackHole, 'startRadius' | 'radius' | 'burstRadius' | 'pull' | 'damage' | 'total'>> = {}) {
+    const startRadius = options.startRadius ?? RULES.blackHoleStartRadius;
     const hole: BlackHole = {
       id: ++this.blackHoleId, owner: owner.id, team: owner.team, x: owner.x, y: owner.y,
+      startRadius,
       radius: options.radius ?? RULES.blackHoleRadius,
-      currentRadius: RULES.blackHoleStartRadius,
+      currentRadius: startRadius,
       targetX: x, targetY: y, traveling: distance(owner, { x, y }) > 1,
       burstRadius: options.burstRadius ?? RULES.blackHoleBurstRadius,
       pull: options.pull ?? RULES.blackHolePull,
@@ -2405,14 +2509,55 @@ export class Duel {
     this.event('blackhole', hole, owner.team, undefined, owner.classId, 1, 'mage.blackHole');
     return hole;
   }
+  /** Bursts a hole where it is now: on arrival's end, against a wall, or pressed again by its mage. */
+  protected detonateBlackHole(hole: BlackHole) {
+    hole.traveling = false;
+    hole.left = 0;
+    const owner = this.state.players.find((p) => p.id === hole.owner);
+    const source: Allegiant = owner ?? { id: hole.owner, team: hole.team, x: hole.x, y: hole.y };
+    for (const p of this.state.players)
+      if (p.id !== hole.owner && p.hp > 0 && this.hostile(source, p) && distance(p, hole) <= hole.burstRadius) {
+        this.damage(p, owner ?? { team: hole.team }, Math.atan2(p.y - hole.y, p.x - hole.x), hole.damage);
+        if (p.hp <= 0) this.event('disintegrate', p, hole.team, undefined, p.classId, 0, 'mage.blackHole');
+      }
+    for (const z of this.state.zombies)
+      if (z.hp > 0 && this.hostile(source, z) && distance(z, hole) <= hole.burstRadius) {
+        this.damageZombie(z, hole.team, hole.damage, Math.atan2(z.y - hole.y, z.x - hole.x), hole.owner);
+        if (z.hp <= 0) this.event('disintegrate', z, hole.team, undefined, z.classId, 1, 'mage.blackHole');
+      }
+    if (owner) for (const mob of this.state.mobs)
+      if (mob.hp > 0 && mob.spawnLeft <= 0 && distance(mob, hole) <= hole.burstRadius) {
+        this.damageMob(mob, owner, hole.damage);
+        if (mob.hp <= 0) this.event('disintegrate', mob, hole.team, undefined, undefined, 2, 'mage.blackHole');
+      }
+    this.event('explosion', hole, hole.team, undefined, owner?.classId, 1, 'mage.blackHole');
+    this.state.events.at(-1)!.radius = hole.burstRadius;
+  }
   protected stepBlackHoles(dt: number) {
     for (const hole of this.state.blackHoles) {
+      // Already burst this tick: its mage pressed the key again.
+      if (hole.left <= 0) continue;
       if (hole.traveling) {
         const gap = Math.hypot(hole.targetX - hole.x, hole.targetY - hole.y);
         const stride = Math.min(gap, RULES.blackHoleTravelSpeed * dt);
-        if (gap > 0) {
-          hole.x += (hole.targetX - hole.x) / gap * stride;
-          hole.y += (hole.targetY - hole.y) / gap * stride;
+        // Small steps, so a fast hole cannot skip through a thin wall: touching one bursts it there.
+        const steps = Math.max(1, Math.ceil(stride / 6));
+        const ux = gap > 0 ? (hole.targetX - hole.x) / gap : 0;
+        const uy = gap > 0 ? (hole.targetY - hole.y) / gap : 0;
+        let walled = false;
+        for (let i = 0; i < steps && gap > 0; i++) {
+          const x = hole.x + ux * (stride / steps);
+          const y = hole.y + uy * (stride / steps);
+          if (blocked(x, y, RULES.blackHoleWallRadius, this.terrain)) {
+            walled = true;
+            break;
+          }
+          hole.x = x;
+          hole.y = y;
+        }
+        if (walled) {
+          this.detonateBlackHole(hole);
+          continue;
         }
         if (gap <= stride + 1e-8) {
           hole.x = hole.targetX;
@@ -2421,7 +2566,8 @@ export class Duel {
         }
       } else {
         hole.left = Math.max(0, hole.left - dt);
-        hole.currentRadius = RULES.blackHoleStartRadius + (hole.radius - RULES.blackHoleStartRadius) * (1 - hole.left / hole.total);
+        const grown = hole.total > 0 ? 1 - hole.left / hole.total : 1;
+        hole.currentRadius = hole.startRadius + (hole.radius - hole.startRadius) * grown;
       }
       const owner = this.state.players.find((p) => p.id === hole.owner);
       const source: Allegiant = owner ?? { id: hole.owner, team: hole.team, x: hole.x, y: hole.y };
@@ -2437,23 +2583,7 @@ export class Duel {
         if (z.hp > 0 && this.hostile(source, z)) pull(z, this.terrain);
       for (const mob of this.state.mobs)
         if (mob.hp > 0 && mob.spawnLeft <= 0) pull(mob, this.terrain);
-      if (hole.traveling || hole.left > 0) continue;
-      for (const p of this.state.players)
-        if (p.id !== hole.owner && p.hp > 0 && this.hostile(source, p) && distance(p, hole) <= hole.burstRadius) {
-          this.damage(p, owner ?? { team: hole.team }, Math.atan2(p.y - hole.y, p.x - hole.x), hole.damage);
-          if (p.hp <= 0) this.event('disintegrate', p, hole.team, undefined, p.classId, 0, 'mage.blackHole');
-        }
-      for (const z of this.state.zombies)
-        if (z.hp > 0 && this.hostile(source, z) && distance(z, hole) <= hole.burstRadius) {
-          this.damageZombie(z, hole.team, hole.damage, Math.atan2(z.y - hole.y, z.x - hole.x), hole.owner);
-          if (z.hp <= 0) this.event('disintegrate', z, hole.team, undefined, z.classId, 1, 'mage.blackHole');
-        }
-      if (owner) for (const mob of this.state.mobs)
-        if (mob.hp > 0 && mob.spawnLeft <= 0 && distance(mob, hole) <= hole.burstRadius) {
-          this.damageMob(mob, owner, hole.damage);
-          if (mob.hp <= 0) this.event('disintegrate', mob, hole.team, undefined, undefined, 2, 'mage.blackHole');
-        }
-      this.event('explosion', hole, hole.team, undefined, owner?.classId, 1, 'mage.blackHole');
+      if (!hole.traveling && hole.left <= 0) this.detonateBlackHole(hole);
     }
     this.state.blackHoles = this.state.blackHoles.filter((hole) => hole.left > 0);
   }
@@ -3850,10 +3980,14 @@ export class Duel {
         action.bash ||
         action.fury ||
         action.dashStarted ||
-        action.blink
-        || action.blackHole
+        action.blink ||
+        action.blackHole ||
+        // A charging mage glows through the leaves: the telegraph is the counterplay.
+        p.blackHoleCharge > 0 ||
+        p.blinkCharge > 0
       )
         p.revealLeft = 1.5;
+      if (action.chargeStarted) this.event('cast', p, p.team, p.angle, p.classId, 0, action.chargeStarted);
       if (action.fury) this.event('fury', p, p.team, p.angle, p.classId);
       if (action.dashStarted && p.classId === 'guardian') {
         this.guardianDashHits.set(p.id, new Set());
@@ -3873,7 +4007,28 @@ export class Duel {
         ev.ty = action.blink.toY;
         ev.playerId = p.id;
       }
-      if (action.blackHole) this.spawnBlackHole(p, p.blackHoleX, p.blackHoleY);
+      // Pressing Singularidad again bursts the hole already out. Its cooldown outlasts any hole,
+      // so this press can never be the start of a new charge. Checked before this tick's launch,
+      // so a tap that presses and releases within one tick never bursts its own new hole.
+      if (resolvedInput.blackHoleDetonate && p.hp > 0) {
+        const own = s.blackHoles.find((hole) => hole.owner === p.id && hole.left > 0);
+        if (own) this.detonateBlackHole(own);
+      }
+      if (action.blackHole) {
+        const stats = blackHoleStats(action.blackHole.charge);
+        this.spawnBlackHole(
+          p,
+          p.x + Math.cos(action.blackHole.angle) * action.blackHole.reach,
+          p.y + Math.sin(action.blackHole.angle) * action.blackHole.reach,
+          {
+            startRadius: stats.startRadius,
+            radius: stats.radius,
+            burstRadius: stats.burstRadius,
+            damage: stats.damage,
+            total: RULES.blackHoleLinger,
+          },
+        );
+      }
       if (action.dashing && p.classId === 'guardian') guardianDashers.push(p);
       else if (p.classId === 'guardian' && p.dashLeft <= 0) this.guardianDashHits.delete(p.id);
       if (action.bash) bashers.push(p);

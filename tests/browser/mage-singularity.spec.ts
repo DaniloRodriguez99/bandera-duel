@@ -33,12 +33,12 @@ test('Parpadeo se activa al soltar su botón táctil', async ({ browser }) => {
   }
 });
 
-test('el Mago muestra Parpadeo y Singularidad, y el casteo entra en enfriamiento',async({page},info)=>{
+test('el Mago carga Parpadeo y Singularidad manteniendo la tecla y las lanza al soltar',async({page},info)=>{
   const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
   await page.goto('/');
   await page.locator('#entry-classes [data-class="mage"]').click();
-  await expect(page.locator('#control-guide')).toContainText('Parpadeo');
-  await expect(page.locator('#control-guide')).toContainText('Singularidad');
+  await expect(page.locator('#control-guide')).toContainText('Parpadeo · mantener y soltar');
+  await expect(page.locator('#control-guide')).toContainText('Singularidad · mantener y soltar');
   await page.locator('#practice-start').click();
   const blink=page.locator('[data-ability="dash"]');
   const singularity=page.locator('[data-ability="black-hole"]');
@@ -49,11 +49,26 @@ test('el Mago muestra Parpadeo y Singularidad, y el casteo entra en enfriamiento
   expect(await singularity.locator('img').evaluate((image:HTMLImageElement)=>image.naturalWidth)).toBeGreaterThan(0);
   const canvas=(await page.locator('#game canvas').boundingBox())!;
   await page.mouse.move(canvas.x+canvas.width*0.65,canvas.y+canvas.height*0.5);
-  await page.keyboard.press('KeyE');
-  await expect(page.locator('#cd-black-hole')).toContainText('Casteando');
-  await page.screenshot({path:info.outputPath('singularidad-casteo.png')});
-  await expect(page.locator('#cd-black-hole')).toHaveText(/◉ [0-8]\.\ds/,{timeout:4000});
-  await page.screenshot({path:info.outputPath('singularidad-activa.png')});
+
+  // Parpadeo: holding charges its reach and nothing happens until the key is let go.
+  await page.keyboard.down('Space');
+  await expect(page.locator('#cd-dash')).toContainText('Cargando');
+  await page.waitForTimeout(700);
+  await expect(blink).toHaveAttribute('data-ready','true');
+  await page.screenshot({path:info.outputPath('parpadeo-carga.png')});
+  await page.keyboard.up('Space');
+  await expect(page.locator('#cd-dash')).toHaveText(/➟ \d\.\ds/);
+
+  // Singularidad: the charge grows the mandala; the cooldown only starts on release.
+  await page.keyboard.down('KeyE');
+  await expect(page.locator('#cd-black-hole')).toContainText('Cargando');
+  await expect(singularity.locator('.ability-state')).toHaveText(/\d+ %/);
+  await page.waitForTimeout(1500);
+  await expect(singularity).toHaveAttribute('data-ready','true');
+  await page.screenshot({path:info.outputPath('singularidad-carga.png')});
+  await page.keyboard.up('KeyE');
+  await expect(page.locator('#cd-black-hole')).toHaveText(/◉ \d\.\ds/);
+  await page.screenshot({path:info.outputPath('singularidad-viaje.png')});
   await expect(singularity).toHaveAttribute('data-ready','false');
   expect(errors).toEqual([]);
 });
@@ -80,8 +95,11 @@ test('en móvil Singularidad apunta al punto tocado y el reloj no cubre la arena
     await page.mouse.move(button.x + button.width / 2, button.y + button.height / 2);
     await page.mouse.down();
     await page.mouse.move(canvas.x + canvas.width / 2, canvas.y + canvas.height / 2, { steps: 12 });
+    await expect(page.locator('#cd-black-hole')).toContainText('Cargando');
+    // A full charge reaches the middle of the arena from the spawn.
+    await page.waitForTimeout(2100);
     await page.mouse.up();
-    await expect(page.locator('#cd-black-hole')).toContainText('Casteando');
+    await expect(page.locator('#cd-black-hole')).toHaveText(/◉ \d\.\ds/);
     await expect.poll(async () => Number(await page.locator('#stage').getAttribute('data-black-hole-target-x'))).toBeGreaterThan(350);
     const targetX = Number(await page.locator('#stage').getAttribute('data-black-hole-target-x'));
     const targetY = Number(await page.locator('#stage').getAttribute('data-black-hole-target-y'));
