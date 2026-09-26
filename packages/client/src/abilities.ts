@@ -1,4 +1,11 @@
-import { CLASSES, RULES, SKILLS, SKILL_SLOTS, blackHoleStats, chargePower, projectileStats, type ClassId, type InputBindings, type PhysicalBinding, type Player, type SkillId, type SkillSlot } from '@bandera/shared';
+import { CLASSES, RULES, SKILLS, SKILL_SLOTS, blackHoleStats, chargePower, projectileStats, type ClassId, type InputBindings, type PhysicalBinding, type Player, type SkillId, type SkillSlot, type Snapshot } from '@bandera/shared';
+
+/**
+ * Whether this player's Singularidad is still out. Its key then bursts the hole, so its card and
+ * button read as ready while the cooldown keeps running underneath.
+ */
+export const liveBlackHole = (s: Pick<Snapshot, 'blackHoles'>, id: string) =>
+  (s.blackHoles ?? []).some((hole) => hole.owner === id && hole.left > 0);
 
 /** One branch of an ability: what a tap, a hold or a full charge does. */
 export interface AbilityTier {
@@ -318,7 +325,7 @@ function element<K extends keyof HTMLElementTagNameMap>(tag: K, className: strin
 }
 
 /** Each ability is a card with its key and cooldown; its tap/hold branches grow above it. */
-export function updateAbilities(root: HTMLElement, p: Player,bindings?:InputBindings) {
+export function updateAbilities(root: HTMLElement, p: Player,bindings?:InputBindings,holeLive=false) {
   const slots = p.classId==='mage'?playerAbilitySlots(p,bindings):abilitySlots(p.classId);
   const signature=p.classId==='mage'?`${p.classId}:${SKILL_SLOTS.map(slot=>p.loadout[slot]).join('|')}:${bindings?SKILL_SLOTS.map(slot=>bindings[slot]).join('|'):''}`:p.classId;
   if (root.dataset.class !== signature) {
@@ -344,7 +351,7 @@ export function updateAbilities(root: HTMLElement, p: Player,bindings?:InputBind
         icon.src = slot.icon;
         icon.alt = '';
         icon.setAttribute('aria-hidden', 'true');
-        card.append(icon, element('span', 'ability-state'), element('kbd', '', slot.key), element('small', '', slot.name));
+        card.append(icon, element('span', 'ability-state'), element('span', 'ability-cd'), element('kbd', '', slot.key), element('small', '', slot.name));
         branch.append(card);
         return branch;
       }),
@@ -354,11 +361,15 @@ export function updateAbilities(root: HTMLElement, p: Player,bindings?:InputBind
     const slot = slots[i],
       card = branch.querySelector<HTMLElement>('.ability')!,
       left = slot.cooldown(p),
-      detail = slot.detail?.(p) ?? null;
-    card.dataset.ready = String(left <= 0);
-    card.style.setProperty('--cd', String(Math.min(1, left / slot.max)));
-    card.querySelector('.ability-state')!.textContent = left > 0 ? `${left.toFixed(1)}s` : (detail ?? '');
-    card.setAttribute('aria-label', `${slot.name} · ${slot.key} · ${left > 0 ? `${left.toFixed(1)} s` : 'lista'}`);
+      detail = slot.detail?.(p) ?? null,
+      // A Singularidad in flight: pressing again implodes it, while its cooldown runs in parallel.
+      live = holeLive && slot.id === 'black-hole';
+    card.dataset.ready = String(left <= 0 || live);
+    card.dataset.live = String(live);
+    card.style.setProperty('--cd', String(live ? 0 : Math.min(1, left / slot.max)));
+    card.querySelector('.ability-state')!.textContent = live ? 'Detonar' : left > 0 ? `${left.toFixed(1)}s` : (detail ?? '');
+    card.querySelector('.ability-cd')!.textContent = live && left > 0 ? `${left.toFixed(1)}s` : '';
+    card.setAttribute('aria-label', `${slot.name} · ${slot.key} · ${live ? `detonar · recarga ${left.toFixed(1)} s` : left > 0 ? `${left.toFixed(1)} s` : 'lista'}`);
     branch.querySelectorAll('li').forEach((item, j) => {
       const tier = slot.tiers![j];
       item.dataset.active = String(tier.active?.(p) ?? false);

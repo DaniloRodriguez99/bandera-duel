@@ -109,20 +109,22 @@ export function mountTouchAbilities(root: HTMLElement, classId: ClassId,player?:
   root.replaceChildren(...touchAbilitySlots(classId,player).map(button));
 }
 
-export function updateTouchAbilities(root: HTMLElement, p: Player) {
+export function updateTouchAbilities(root: HTMLElement, p: Player, holeLive = false) {
   mountTouchAbilities(root, p.classId,p);
   const slots = touchAbilitySlots(p.classId,p);
   root.querySelectorAll<HTMLElement>('[data-touch-ability]').forEach((node, index) => {
     const slot = slots[index];
     const cooldown = slot.cooldown(p);
     const charge = Math.max(0, Math.min(1, chargeFor(slot, p)));
-    const status = statusFor(slot, p, cooldown);
-    node.dataset.ready = String(cooldown <= 0);
-    node.dataset.active = String(activeFor(slot.id, p));
-    node.style.setProperty('--cd', String(Math.min(1, cooldown / Math.max(0.001, slot.max))));
+    // A Singularidad in flight: a tap implodes it, while its cooldown runs in parallel.
+    const live = holeLive && slot.id === 'black-hole';
+    const status = live ? 'DETONAR' : statusFor(slot, p, cooldown);
+    node.dataset.ready = String(cooldown <= 0 || live);
+    node.dataset.active = String(live || activeFor(slot.id, p));
+    node.style.setProperty('--cd', String(live ? 0 : Math.min(1, cooldown / Math.max(0.001, slot.max))));
     node.style.setProperty('--charge', String(charge));
     node.querySelector<HTMLElement>('.touch-ability-status')!.textContent = status;
-    node.setAttribute('aria-label', `${slot.name} · ${cooldown > 0 ? `${cooldown.toFixed(1)} segundos` : 'lista'}`);
+    node.setAttribute('aria-label', `${slot.name} · ${live ? 'tocá para detonar' : cooldown > 0 ? `${cooldown.toFixed(1)} segundos` : 'lista'}`);
   });
 }
 

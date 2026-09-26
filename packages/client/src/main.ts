@@ -38,7 +38,7 @@ import {
   setMusicMode,
 } from './audio.js';
 import { savedClass, saveClass, mountClasses, updateClasses, updateClassSkin } from './classes.js';
-import { updateAbilities } from './abilities.js';
+import { liveBlackHole, updateAbilities } from './abilities.js';
 import { mountTouchAbilities, updateTouchAbilities } from './mobile-controls.js';
 import './style.css';
 import { Practice, PRACTICE_PLAYER } from './practice.js';
@@ -1288,12 +1288,14 @@ function render(s: Snapshot) {
       me.classId,
       customizationFor(me.classId),
     );
+    const holeLive = liveBlackHole(s, me.id);
     updateAbilities(
       $('abilities'),
       me,
       activePreset(customizationFor(me.classId)).bindings,
+      holeLive,
     );
-    updateTouchAbilities($('touch-actions'), me);
+    updateTouchAbilities($('touch-actions'), me, holeLive);
     updateClasses($('room-classes'), me.classId, !overlay || s.paused);
     $('room-picker').hidden = !overlay;
     $('stage').dataset.class = me.classId;
@@ -1304,7 +1306,7 @@ function render(s: Snapshot) {
     $('cd-ice').textContent = `❄ ${me.iceCd > 0 ? me.iceCd.toFixed(1) + 's' : 'Listo'}`;
     $('cd-ice').hidden = !Object.values(me.loadout).includes('mage.ice');
     $('cd-black-hole').hidden = !Object.values(me.loadout).includes('mage.blackHole');
-    $('cd-black-hole').textContent = `◉ ${me.blackHoleCharge > 0 ? `Cargando ${Math.round(blackHoleStats(me.blackHoleCharge).power * 100)} %` : me.blackHoleCd > 0 ? `${me.blackHoleCd.toFixed(1)}s` : 'Lista'}`;
+    $('cd-black-hole').textContent = `◉ ${me.blackHoleCharge > 0 ? `Cargando ${Math.round(blackHoleStats(me.blackHoleCharge).power * 100)} %` : holeLive ? `Detonar · ${me.blackHoleCd.toFixed(1)}s` : me.blackHoleCd > 0 ? `${me.blackHoleCd.toFixed(1)}s` : 'Lista'}`;
     $('stage').dataset.dashing = String(
       me.dashInvulnerable || (me.classId === 'guardian' && me.dashLeft > 0),
     );

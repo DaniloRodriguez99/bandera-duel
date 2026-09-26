@@ -67,9 +67,17 @@ test('el Mago carga Parpadeo y Singularidad manteniendo la tecla y las lanza al 
   await expect(singularity).toHaveAttribute('data-ready','true');
   await page.screenshot({path:info.outputPath('singularidad-carga.png')});
   await page.keyboard.up('KeyE');
-  await expect(page.locator('#cd-black-hole')).toHaveText(/◉ \d\.\ds/);
+  // While the hole is out the card stays usable, to implode it; the cooldown runs underneath.
+  await expect(singularity).toHaveAttribute('data-live','true');
+  await expect(singularity).toHaveAttribute('data-ready','true');
+  await expect(singularity.locator('.ability-state')).toHaveText('Detonar');
+  await expect(singularity.locator('.ability-cd')).toHaveText(/^\d\.\ds$/);
+  await expect(page.locator('#cd-black-hole')).toContainText('Detonar ·');
   await page.screenshot({path:info.outputPath('singularidad-viaje.png')});
+  await page.keyboard.press('KeyE');
+  await expect(singularity).toHaveAttribute('data-live','false');
   await expect(singularity).toHaveAttribute('data-ready','false');
+  await expect(page.locator('#cd-black-hole')).toHaveText(/◉ \d\.\ds/);
   expect(errors).toEqual([]);
 });
 
@@ -99,7 +107,9 @@ test('en móvil Singularidad apunta al punto tocado y el reloj no cubre la arena
     // A full charge reaches the middle of the arena from the spawn.
     await page.waitForTimeout(2100);
     await page.mouse.up();
-    await expect(page.locator('#cd-black-hole')).toHaveText(/◉ \d\.\ds/);
+    await expect(page.locator('#cd-black-hole')).toContainText('Detonar ·');
+    await expect(page.locator('#touch-black-hole')).toHaveAttribute('data-ready', 'true');
+    await expect(page.locator('#touch-black-hole')).toContainText('DETONAR');
     await expect.poll(async () => Number(await page.locator('#stage').getAttribute('data-black-hole-target-x'))).toBeGreaterThan(350);
     const targetX = Number(await page.locator('#stage').getAttribute('data-black-hole-target-x'));
     const targetY = Number(await page.locator('#stage').getAttribute('data-black-hole-target-y'));
