@@ -242,6 +242,7 @@ export const RULES = {
   blackHolePull: 90,
   blackHoleTravelSpeed: 420,
   blackHoleStartRadius: 40,
+  blackHoleConsumeRadius: 12,
   hurtProtection: 0.35,
   respawn: 3,
   spawnProtection: 1,
@@ -355,7 +356,7 @@ export const SKILLS: Record<SkillId, SkillDefinition> = {
   'mage.magicShield': skill({id:'mage.magicShield',name:'Égida de dos sellos',branch:'mage',description:'Anula dos impactos.',icon:'mage-shield',compatibleClasses:['mage'],compatibleSlots:['secondary','skill1','skill2'],trigger:'press',animationAction:'castChannel',cooldown:RULES.magicShieldCooldown,damage:'0',grants:['shield']}),
   'mage.ice': skill({id:'mage.ice',name:'Saeta glacial',branch:'mage',description:'Inmoviliza durante un segundo.',icon:'mage-ice',compatibleClasses:['mage'],compatibleSlots:['secondary','skill1','skill2'],trigger:'press',animationAction:'castForward',cooldown:RULES.iceCooldown,damage:'0'}),
   'mage.blink': skill({id:'mage.blink',name:'Parpadeo',branch:'mage',description:'Al soltar, aparecés en el punto válido más cercano al cursor; atravesás muros.',icon:'mage-blink',compatibleClasses:['mage'],compatibleSlots:['mobility'],trigger:'release',animationAction:'dash',cooldown:RULES.dashCooldown,damage:'0',grants:['mobility']}),
-  'mage.blackHole': skill({id:'mage.blackHole',name:'Singularidad',branch:'mage',description:'Canalizás 2 s; viaja hacia donde apuntás y atrae enemigos mientras crece. Tras 4 s en destino, estalla.',icon:'mage-blackhole',compatibleClasses:['mage'],compatibleSlots:['secondary','skill1','skill2'],trigger:'press',animationAction:'castChannel',cooldown:RULES.blackHoleCooldown,damage:'1,5 en área'}),
+  'mage.blackHole': skill({id:'mage.blackHole',name:'Singularidad',branch:'mage',description:'Canalizás 2 s; viaja hacia donde apuntás y atrae enemigos mientras crece. El núcleo consume a quien llega al centro; tras 4 s en destino, estalla.',icon:'mage-blackhole',compatibleClasses:['mage'],compatibleSlots:['secondary','skill1','skill2'],trigger:'press',animationAction:'castChannel',cooldown:RULES.blackHoleCooldown,damage:'1,5 en área; letal en el centro'}),
   'necromancer.fire': skill({id:'necromancer.fire',name:'Llama de ultratumba',branch:'necromancer',description:'Fuego espectral que puede canalizarse.',icon:'necromancer-fire',compatibleClasses:['mage','necromancer'],compatibleSlots:['primary'],trigger:'hold-release',animationAction:'castForward',cooldown:RULES.fireCooldown,damage:'1–2',grants:['ranged']}),
   'necromancer.summon': skill({id:'necromancer.summon',name:'Alzar a los caídos',branch:'necromancer',description:'Invoca zombies, arcanistas y esclavos.',icon:'necromancer-summon',compatibleClasses:['mage','necromancer'],compatibleSlots:['secondary','skill1','skill2'],trigger:'hold-release',animationAction:'castGround',cooldown:RULES.summonCooldown,damage:'1 por golpe',grants:['summon','companionControl']}),
   'guardian.sword': skill({id:'guardian.sword',name:'Acero juramentado',branch:'guardian',description:'Tajo frontal cargable.',icon:'guardian-slash',compatibleClasses:['guardian'],compatibleSlots:['primary'],trigger:'hold-release',animationAction:'attack',cooldown:CLASSES.guardian.meleeCooldown,damage:'1–2',grants:['melee']}),
@@ -922,6 +923,7 @@ export interface GameEvent extends Vec {
     | 'raise'
     | 'cast'
     | 'explosion'
+    | 'fireRain'
     | 'wind'
     | 'mandala'
     | 'slash'
@@ -944,6 +946,8 @@ export interface GameEvent extends Vec {
   classId?: ClassId;
   skillId?: SkillId;
   power?: number;
+  /** World area spells: the actual radius used for damage and its visual effect. */
+  radius?: number;
   /** Blink only: where the teleport lands (the event's x/y stay at the origin). */
   tx?: number;
   ty?: number;
@@ -2275,16 +2279,16 @@ export class Duel {
     source: Pick<Player, 'team'>,
     angle: number,
     amount = 1,
-    options: { pierce?: boolean; ignoreInvuln?: boolean; freeze?: boolean } = {},
+    options: { pierce?: boolean; ignoreInvuln?: boolean; freeze?: boolean; execute?: boolean } = {},
   ): boolean {
     if (
       !this.hostile(source, target) ||
       target.hp <= 0 ||
       (target.invuln > 0 && !options.ignoreInvuln) ||
-      target.dashInvulnerable
+      (target.dashInvulnerable && !options.execute)
     )
       return false;
-    if ((target.classId === 'mage' || equippedSkill(target, 'mage.magicShield')) && target.magicShieldHits > 0 && (amount > 0 || options.freeze)) {
+    if (!options.execute && (target.classId === 'mage' || equippedSkill(target, 'mage.magicShield')) && target.magicShieldHits > 0 && (amount > 0 || options.freeze)) {
       target.magicShieldHits = options.pierce ? 0 : target.magicShieldHits - 1;
       if (target.magicShieldHits === 0) target.magicShieldCd = RULES.magicShieldCooldown;
       this.event('block', target, target.team, angle, target.classId);
@@ -2294,7 +2298,7 @@ export class Duel {
     // attacker's current position (arrows can arrive after their owner moves).
     const relative = angle + Math.PI - target.angle;
     const difference = Math.atan2(Math.sin(relative), Math.cos(relative));
-    if (target.guarding && Math.abs(difference) <= RULES.guardArc / 2 + 1e-8) {
+    if (!options.execute && target.guarding && Math.abs(difference) <= RULES.guardArc / 2 + 1e-8) {
       this.event('block', target, target.team, target.angle, target.classId);
       if (!options.pierce) return false;
       // Wind can pierce the knight's shield, but never tears down the held guard.
@@ -2427,16 +2431,34 @@ export class Duel {
       const source: Allegiant = owner ?? { id: hole.owner, team: hole.team, x: hole.x, y: hole.y };
       const pull = (target: Vec, terrain: Rect[] | Terrain) => {
         const gap = distance(target, hole);
-        if (gap <= 1 || gap > hole.currentRadius) return;
+        if (gap <= RULES.blackHoleConsumeRadius || gap > hole.currentRadius) return;
         const stride = Math.min(gap, hole.pull * dt);
         translate(target, (hole.x - target.x) / gap * stride, (hole.y - target.y) / gap * stride, terrain);
       };
       for (const p of this.state.players)
-        if (p.id !== hole.owner && p.hp > 0 && this.hostile(source, p)) pull(p, this.terrainFor(p));
+        if (p.id !== hole.owner && p.hp > 0 && this.hostile(source, p)) {
+          pull(p, this.terrainFor(p));
+          if (distance(p, hole) <= RULES.blackHoleConsumeRadius) {
+            this.damage(p, owner ?? { team: hole.team }, 0, p.hp, {pierce:true, ignoreInvuln:true, execute:true});
+            if (p.hp <= 0) this.event('disintegrate', p, hole.team, undefined, p.classId, 0, 'mage.blackHole');
+          }
+        }
       for (const z of this.state.zombies)
-        if (z.hp > 0 && this.hostile(source, z)) pull(z, this.terrain);
-      for (const mob of this.state.mobs)
-        if (mob.hp > 0 && mob.spawnLeft <= 0) pull(mob, this.terrain);
+        if (z.hp > 0 && this.hostile(source, z)) {
+          pull(z, this.terrain);
+          if (distance(z, hole) <= RULES.blackHoleConsumeRadius) {
+            this.damageZombie(z, hole.team, z.hp, undefined, hole.owner, true);
+            if (z.hp <= 0) this.event('disintegrate', z, hole.team, undefined, z.classId, 1, 'mage.blackHole');
+          }
+        }
+      if (owner) for (const mob of this.state.mobs)
+        if (mob.hp > 0 && mob.spawnLeft <= 0) {
+          pull(mob, this.terrain);
+          if (distance(mob, hole) <= RULES.blackHoleConsumeRadius) {
+            this.damageMob(mob, owner, mob.hp + 1_000_000);
+            if (mob.hp <= 0) this.event('disintegrate', mob, hole.team, undefined, undefined, 2, 'mage.blackHole');
+          }
+        }
       if (hole.traveling || hole.left > 0) continue;
       for (const p of this.state.players)
         if (p.id !== hole.owner && p.hp > 0 && this.hostile(source, p) && distance(p, hole) <= hole.burstRadius) {
@@ -2466,15 +2488,15 @@ export class Duel {
     return g.team !== raiser.team;
   }
   /** `by` names the striking entity (a player or a zombie id); matches ignore it, the world credits kills with it. */
-  damageZombie(z: Zombie, team: Team, amount = 1, angle?: number, _by?: string) {
+  damageZombie(z: Zombie, team: Team, amount = 1, angle?: number, _by?: string, execute = false) {
     // A revived mage's magic shield absorbs hits; a revived knight's raised guard blocks from the front.
-    if (z.shieldHits > 0 && amount > 0) {
+    if (!execute && z.shieldHits > 0 && amount > 0) {
       z.shieldHits--;
       if (z.shieldHits === 0) z.skillCd.shield = RULES.magicShieldCooldown;
       this.event('block', z, z.team, angle, z.classId);
       return;
     }
-    if (z.guardLeft > 0 && angle !== undefined) {
+    if (!execute && z.guardLeft > 0 && angle !== undefined) {
       const relative = angle + Math.PI - z.angle;
       if (
         Math.abs(Math.atan2(Math.sin(relative), Math.cos(relative))) <=

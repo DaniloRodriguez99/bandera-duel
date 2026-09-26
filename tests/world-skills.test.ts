@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { RULES, idleInput, type Input } from '@bandera/shared';
 import {
+  CAST_SLOTS,
+  SLOT_LEVEL,
   COPY_CHARGES_LIMITED,
   INCANTATION_TIME,
   World,
@@ -59,10 +61,49 @@ describe('creación del personaje', () => {
     expect(espada).toMatchObject({ x: 1, fury: false, dash: false, shieldBash: false, volley: false, shot: true });
     expect(worldInput(input, 'daga')).toMatchObject({ sword: true, shot: false });
     expect(worldInput(input, 'espada', true)).toMatchObject({ x: 0, shot: false, sword: false });
+    expect(worldInput(input, 'baston')).toMatchObject({ dash: true });
+    expect(worldInput(input, 'baston', true)).toMatchObject({ dash: false });
+  });
+
+  it('abre seis ranuras progresivamente sin perder el orden ni las habilidades guardadas', () => {
+    expect(CAST_SLOTS).toEqual(['e', 'x', 'c', 'r', 'f', 'v']);
+    expect(CAST_SLOTS.map((slot) => SLOT_LEVEL[slot])).toEqual([1, 5, 10, 15, 20, 25]);
+    const { world, character } = setup('chispa', { fuego: 3 }, 'baston');
+    character.skills.escarcha = { level: 1, uses: 0, nodes: [] };
+    character.affinities.agua = { points: 1, xp: 0, cultivation: 1 };
+    character.level = 14;
+    expect(world.setSlot('h', 'r', 'escarcha')).toBe(false);
+    character.level = 15;
+    expect(world.setSlot('h', 'r', 'escarcha')).toBe(true);
+    expect(character.slots.r).toBe('escarcha');
+    character.level = 19;
+    expect(world.setSlot('h', 'f', 'escarcha')).toBe(false);
+    character.level = 20;
+    expect(world.setSlot('h', 'f', 'escarcha')).toBe(true);
+    character.level = 24;
+    expect(world.setSlot('h', 'v', 'escarcha')).toBe(false);
+    character.level = 25;
+    expect(world.setSlot('h', 'v', 'escarcha')).toBe(true);
+    expect(character.slots.v).toBe('escarcha');
+    expect(character.slots.f).toBeNull();
+    world.cast('h', 'v', { x: 1000, y: 780 });
+    run(world, 1);
+    expect(seen(world, 'callout').at(-1)).toMatchObject({ title: 'Escarcha', slot: 'v' });
   });
 });
 
 describe('teletransporte del mago en el mundo', () => {
+  it('Parpadeo está siempre en Espacio para bastón y respeta su recarga', () => {
+    const { world, p } = setup('chispa', { fuego: 3 }, 'baston');
+    const from = { x: p.x, y: p.y };
+    run(world, 1, { dash: true, aimX: p.x + 160, aimY: p.y });
+    expect(p.x).toBeGreaterThan(from.x);
+    expect(p.dashCd).toBeGreaterThan(0);
+    expect(world.state.events.some((e) => e.kind === 'blink')).toBe(true);
+    const landed = p.x;
+    run(world, 1, { dash: true, aimX: p.x + 160, aimY: p.y });
+    expect(p.x).toBeCloseTo(landed);
+  });
   it('el bastón teletransporta su dash; la espada conserva el salto', () => {
     const mago = setup('brisa', { viento: 3 }, 'baston');
     const x = mago.p.x;
@@ -170,6 +211,28 @@ describe('lanzar habilidades', () => {
     world.cast('h', 'e', aim);
     run(world, 1);
     expect(cerca.some((z, i) => z.hp < antes[i])).toBe(true);
+  });
+
+  it('Lluvia de Brasas cae sobre el punto apuntado, no sobre el lanzador', () => {
+    const { world, character, p } = setup('lluvia_brasas', { fuego: 3 }, 'baston');
+    character.affinities.fuego!.xp = 700;
+    const [objetivo, cercano] = world.state.zombies;
+    Object.assign(objetivo, { x: p.x + 250, y: p.y, hp: 20, maxHp: 20 });
+    Object.assign(cercano, { x: p.x + 25, y: p.y, hp: 20, maxHp: 20 });
+    const aim = { x: objetivo.x, y: objetivo.y };
+    world.cast('h', 'e', aim);
+    run(world, 1);
+    expect(objetivo.hp).toBeLessThan(20);
+    expect(cercano.hp).toBe(20);
+    expect(world.state.events.find((e) => e.kind === 'fireRain')).toMatchObject({ radius: 140, x: aim.x, y: aim.y });
+  });
+
+  it('Lluvia de Brasas limita su centro a 360 unidades del lanzador', () => {
+    const { world, character, p } = setup('lluvia_brasas', { fuego: 3 }, 'baston');
+    character.affinities.fuego!.xp = 700;
+    world.cast('h', 'e', { x: p.x + 1000, y: p.y });
+    run(world, 1);
+    expect(world.state.events.find((e) => e.kind === 'fireRain')).toMatchObject({ x: p.x + 360, y: p.y });
   });
 
   it('Cura Menor cura al que la canta', () => {

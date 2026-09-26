@@ -119,6 +119,7 @@ const castSlot = (slot: CastSlot) => {
 };
 const worldHud = new WorldHud($('stage'), {
   cast: castSlot,
+  blink: () => { if (arena.controls) arena.controls.actions.dash = true; },
   aimAt: (clientX, clientY) => {
     const point = arena.screenToWorld(clientX, clientY);
     arena.controls.aimX = point.x;
@@ -723,7 +724,7 @@ function bind(joined: Room) {
     $('stage').dataset.mode = 'world';
     document.body.classList.add('world-mode');
     worldHud.show();
-    // In the world E, Q and Space belong to the skill slots, not to a class kit.
+    // In the world the six keys cast skills, Q uses the weapon and Space blinks with a staff.
     if (arena.controls) arena.controls.onCast = castSlot;
   });
   room.onMessage('snapshot', (s: Snapshot) => {
@@ -1198,7 +1199,7 @@ function renderWorldChrome(s: Snapshot, me: Snapshot['players'][number] | undefi
   const guide = $('control-guide');
   if (!guide.querySelector('[data-world]'))
     guide.innerHTML =
-      '<span data-world><span><kbd>WASD</kbd> Moverse</span><span><kbd>←↑↓→</kbd> Apuntar</span><span><kbd>Q</kbd> Tu arma</span><span><kbd>E</kbd><kbd>X</kbd><kbd>C</kbd> Habilidades</span><span><kbd>K</kbd> Sistema</span><span><kbd>M</kbd> Mapa</span></span>';
+      '<span data-world><span><kbd>WASD</kbd> Moverse</span><span><kbd>←↑↓→</kbd> Apuntar</span><span><kbd>Q</kbd> Tu arma</span><span><kbd>E</kbd><kbd>X</kbd><kbd>C</kbd><kbd>R</kbd><kbd>F</kbd><kbd>V</kbd> Habilidades</span><span><kbd>ESPACIO</kbd> Parpadeo (bastón)</span><span><kbd>K</kbd> Sistema</span><span><kbd>M</kbd> Mapa</span></span>';
   $('cooldowns').hidden = true;
   $('abilities').hidden = true;
   $('overlay').hidden = true;

@@ -1,5 +1,19 @@
 # Registro de cambios
 
+## 2026-09-25
+
+### Lugunica
+
+- Seis ranuras de habilidades, con desbloqueos progresivos y migración de personajes guardados.
+- El Mago con bastón usa Parpadeo con Espacio sin ocupar una ranura.
+- Lluvia de Brasas cae sobre el punto apuntado dentro de su alcance, en vez de exigir que el enemigo esté junto al personaje.
+- Singularidad aparece correctamente en el sorteo de habilidades raras y sus grimorios solo se ofrecen a personajes que pueden usarlos.
+- El aviso de inactividad del mundo espera cinco minutos de forma predeterminada.
+
+### Combate
+
+- Singularidad consume instantáneamente a los enemigos que alcanzan su núcleo, incluso si tienen escudo o invulnerabilidad temporal. Conserva el tirón, la explosión final y el efecto de desintegración.
+
 ## 2026-09-24
 
 ### Juego e interfaz

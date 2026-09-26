@@ -68,7 +68,7 @@ const RARITY_ORDER: Rarity[] = ['comun', 'rara', 'epica', 'legendaria', 'unica']
 export interface LootRoll {
   tier: ChestTier;
   campLevel: number;
-  character: Pick<Character, 'skills' | 'affinities' | 'trees' | 'copyCharges'>;
+  character: Pick<Character, 'skills' | 'affinities' | 'trees' | 'copyCharges' | 'weapon'>;
   random: () => number;
 }
 
@@ -138,6 +138,7 @@ function grimoirePool(rarity: Rarity, character: LootRoll['character'], already:
     if (effect.kind === 'teach') {
       const skill = SKILLS_WORLD[effect.skillId];
       if (!skill || character.skills[skill.id] || already.includes(item.id)) continue;
+      if (skill.weapon && skill.weapon !== character.weapon) continue;
       // A book of a closed door is a skill you could never cast: chests only teach what fits you.
       // Doors are opened by tomes, not by spell books.
       const open = skill.school === 'cuerpo' || schoolOpen(skill, character.affinities, character.trees);

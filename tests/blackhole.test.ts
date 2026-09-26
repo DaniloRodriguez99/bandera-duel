@@ -59,10 +59,10 @@ describe('Singularidad en la arena',()=>{
     mage.magicShieldHits=0;duel.damage(mage,enemy,0,100);
     expect(mage.hp).toBe(0);
     expect(duel.state.blackHoles).toHaveLength(1);
-    const before=enemy.hp;
     advance(duel,ticks(2)+2);
     expect(duel.state.blackHoles).toHaveLength(0);
-    expect(enemy.hp).toBeLessThan(before);
+    expect(enemy.hp).toBe(0);
+    expect(enemy.deaths).toBe(1);
     expect(duel.state.events.some(e=>e.kind==='explosion'&&e.skillId==='mage.blackHole')).toBe(true);
   });
   it('morir durante el casteo lo cancela sin devolver la recarga',()=>{
@@ -73,7 +73,7 @@ describe('Singularidad en la arena',()=>{
     advance(duel,ticks(2)+1);
     expect(duel.state.blackHoles).toHaveLength(0);
   });
-  it('atrae durante el viaje, crece al llegar y desintegra solo bajas de la explosión',()=>{
+  it('atrae durante el viaje, crece al llegar y desintegra las bajas',()=>{
     const {duel,mage,enemy}=arena();
     Object.assign(enemy,{x:420,y:270,hp:1,invuln:0});
     cast(duel,700,270);
@@ -82,7 +82,7 @@ describe('Singularidad en la arena',()=>{
     const before=enemy.x;
     advance(duel,ticks(0.1));
     expect(hole.traveling).toBe(true);
-    expect(enemy.x).not.toBe(before);
+    expect(enemy.x!==before || enemy.hp===0).toBe(true);
     expect(hole.currentRadius).toBe(RULES.blackHoleStartRadius);
     advance(duel,ticks(0.8));
     expect(hole.traveling).toBe(false);
@@ -91,6 +91,28 @@ describe('Singularidad en la arena',()=>{
     Object.assign(enemy,{x:700,y:270,hp:1,invuln:0});
     advance(duel,ticks(2)+2);
     expect(duel.state.events.some(e=>e.kind==='disintegrate'&&e.skillId==='mage.blackHole')).toBe(true);
+  });
+  it('consume al rival al alcanzar el núcleo, aun con escudo e invulnerabilidad',()=>{
+    const {duel,mage,enemy}=arena();
+    Object.assign(enemy,{x:700,y:270,invuln:999,dashInvulnerable:true,magicShieldHits:2});
+    cast(duel,700,270);advance(duel,ticks(2)+1);
+    const mageHp=mage.hp;
+    advance(duel,ticks(1));
+    expect(enemy.hp).toBe(0);
+    expect(enemy.deaths).toBe(1);
+    expect(enemy.magicShieldHits).toBe(2);
+    expect(mage.hp).toBe(mageHp);
+    expect(duel.state.events.some(e=>e.kind==='disintegrate'&&e.skillId==='mage.blackHole')).toBe(true);
+  });
+  it('no consume a un rival fuera del núcleo ni a un aliado dentro',()=>{
+    const {duel,enemy}=arena('teams');
+    const ally=duel.add('c','Aliado','guardian');
+    Object.assign(enemy,{x:750,y:270});
+    Object.assign(ally,{x:700,y:270});
+    cast(duel,700,270);advance(duel,ticks(2)+1);
+    advance(duel,ticks(1));
+    expect(ally.hp).toBe(ally.maxHp);
+    expect(enemy.hp).toBe(enemy.maxHp);
   });
   it('en 2v2 respeta aliados y limpia el agujero al reiniciar',()=>{
     const {duel,mage}=arena('teams');
@@ -149,5 +171,9 @@ describe('Singularidad en Lugunica',()=>{
     const before=monster!.x;
     (world as unknown as {stepBlackHoles(dt:number):void}).stepBlackHoles(RULES.tick);
     expect(monster!.x).toBeLessThan(before);
+    Object.assign(monster!,{x:hole.x,y:hole.y});
+    (world as unknown as {stepBlackHoles(dt:number):void}).stepBlackHoles(RULES.tick);
+    expect(monster!.hp).toBe(0);
+    expect(world.state.events.some(e=>e.kind==='disintegrate'&&e.skillId==='mage.blackHole')).toBe(true);
   });
 });

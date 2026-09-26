@@ -172,7 +172,7 @@ test('quien se queda quieto queda afuera con su personaje guardado, y vuelve con
   await expect(page.locator('#world-hud')).toBeVisible({ timeout: 15000 });
   await expect(page.locator('#stage')).toHaveAttribute('data-x', /\d+/, { timeout: 15000 });
 
-  // The Playwright server disconnects after 12 s without moving (60 s in production).
+  // The Playwright server disconnects after 12 s without moving (5 min by default in production).
   await expect(page.locator('#overlay-title')).toHaveText('Te desconectamos por inactividad', { timeout: 30000 });
   await expect(page.locator('#world-hud')).toBeHidden();
   await page.screenshot({ path: test.info().outputPath('inactivo.png') });

@@ -37,11 +37,11 @@ const WEAPON_OF_CLASS: Record<ClassId, Weapon> = {
  * The keys a skill can live in. Q always belongs to the weapon, and the arrows aim, so the whole
  * world plays from the keyboard: the left hand moves, casts and strikes, the right hand points.
  */
-export type CastSlot = 'e' | 'x' | 'c';
-export const CAST_SLOTS: CastSlot[] = ['e', 'x', 'c'];
-/** The fated skill sits in E from the first minute; X and C open as the character grows. */
-export const SLOT_LEVEL: Record<CastSlot, number> = { e: 1, x: 5, c: 10 };
-export const SLOT_NAMES: Record<CastSlot, string> = { e: 'E', x: 'X', c: 'C' };
+export type CastSlot = 'e' | 'x' | 'c' | 'r' | 'f' | 'v';
+export const CAST_SLOTS: CastSlot[] = ['e', 'x', 'c', 'r', 'f', 'v'];
+/** The fated skill sits in E; further slots open as the character grows. */
+export const SLOT_LEVEL: Record<CastSlot, number> = { e: 1, x: 5, c: 10, r: 15, f: 20, v: 25 };
+export const SLOT_NAMES: Record<CastSlot, string> = { e: 'E', x: 'X', c: 'C', r: 'R', f: 'F', v: 'V' };
 /** Where each slot lived before the keyboard layout: Q became X, Space became C. */
 const LEGACY_SLOTS: Record<string, CastSlot> = { q: 'x', space: 'c' };
 export const slotOpen = (slot: CastSlot, level: number) => level >= SLOT_LEVEL[slot];
@@ -155,7 +155,7 @@ export function newCharacter(
     weapon,
     affinities,
     skills: { [skill.id]: { level: 1, uses: 0, nodes: [] } },
-    slots: { e: skill.id, x: null, c: null },
+    slots: { e: skill.id, x: null, c: null, r: null, f: null, v: null },
     skillPoints: 0,
     copyCharges: skill.effect.kind === 'steal' ? 1 : 0,
     trees: [],
@@ -218,8 +218,8 @@ export function normalizeCharacter(raw: Character): Character {
 }
 
 /**
- * The duel's class kits do not exist in the world: E, Q and Space belong to skills, not to Fury or
- * a shield bash. Movement, aim and the weapon's click pass through; every class ability is off.
+ * World skill slots replace the duel's class actions; Space keeps the staff's innate Parpadeo.
+ * Movement, aim and the weapon's click pass through; other class abilities stay off.
  * A rooted character (mid incantation) cannot walk or swing. Shared by the server and the client's
  * prediction, so both sides agree on what a key press did.
  */
@@ -232,7 +232,7 @@ export function worldInput(input: Input, weapon: Weapon, rooted = false): Input 
     sword: !rooted && (input.sword || (dagger && input.shot)),
     shot: !rooted && !dagger && input.shot,
     charge: !rooted && input.charge,
-    dash: false,
+    dash: !rooted && weapon === 'baston' && input.dash,
     blackHole: false,
     guard: false,
     summon: false,
