@@ -93,7 +93,7 @@ export class WorldRoom extends Room {
    * A character standing still this long is disconnected (and saved), so an idle tab cannot keep
    * the server — and its bill — running. Choosing or creating a character gets more time.
    */
-  static idleSeconds = Number(process.env.WORLD_IDLE_SECONDS) || 60;
+  static idleSeconds = Number(process.env.WORLD_IDLE_SECONDS) || 300;
   static choosingIdleSeconds = 300;
   /** Last time each connection did something: walked, struck, cast, learned. */
   private lastActive = new Map<string, number>();

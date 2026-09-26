@@ -9,8 +9,20 @@
 - Al soltar, el agujero viaja hacia el cursor latiendo, se contrae y se expande sin parar. Estalla al tocar un muro, al volver a pulsar la tecla o tras 2,5 s atrayendo en su destino. La recarga empieza al soltar.
 - Parpadeo también se carga manteniendo su tecla. El alcance crece de 60 u a 260 u en 2 s, y ya no hay teletransporte ilimitado al cursor. Nunca sale antes de 0,5 s: un toque espera ese mínimo y salta unas 110 u.
 - Mientras se carga Parpadeo, todos ven un sello rúnico bajo el Mago, y ambas cargas suenan al empezar. Un aturdimiento o soltar sin lanzar (arrastrar el botón táctil de vuelta al centro) cancela la carga sin gastar la recarga.
-- Los agujeros de Singularidad de Lugunica también estallan al tocar un muro.
+- En Lugunica, los agujeros de Singularidad también estallan al tocar un muro. El Parpadeo con bastón sigue siendo instantáneo.
 - La predicción local del jugador resuelve las teclas configuradas en cada cuadro, no solo al recibir el estado del servidor.
+
+### Lugunica
+
+- Seis ranuras de habilidades, con desbloqueos progresivos y migración de personajes guardados.
+- El Mago con bastón usa Parpadeo con Espacio sin ocupar una ranura.
+- Lluvia de Brasas cae sobre el punto apuntado dentro de su alcance, en vez de exigir que el enemigo esté junto al personaje.
+- Singularidad aparece correctamente en el sorteo de habilidades raras y sus grimorios solo se ofrecen a personajes que pueden usarlos.
+- El aviso de inactividad del mundo espera cinco minutos de forma predeterminada.
+
+### Combate
+
+- Singularidad consume instantáneamente a los enemigos que alcanzan su núcleo, incluso si tienen escudo o invulnerabilidad temporal. Conserva el tirón, la explosión final y el efecto de desintegración.
 
 ## 2026-09-24
 

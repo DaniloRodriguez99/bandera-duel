@@ -68,6 +68,7 @@ import {
 
 export interface WorldHudActions {
   cast(slot: CastSlot): void;
+  blink(): void;
   aimAt(clientX: number, clientY: number): void;
   endAim(): void;
   learn(skillId: string, nodeId: string): void;
@@ -125,7 +126,7 @@ export class WorldHud {
   private sheet: Character | null = null;
   private player: Player | null = null;
   private cooldowns = new Map<CastSlot, { until: number; total: number }>();
-  private slotEls = new Map<CastSlot | 'click', HTMLElement>();
+  private slotEls = new Map<CastSlot | 'click' | 'blink', HTMLElement>();
   private callout: HTMLElement;
   private calloutTimer = 0;
   private notices: HTMLElement;
@@ -510,6 +511,11 @@ export class WorldHud {
     mp.style.width = `${Math.max(0, Math.min(100, (p.mana / Math.max(1, p.maxMana)) * 100))}%`;
     this.root.querySelector('#wh-hp-text')!.textContent = `${Math.ceil(p.hp)} / ${Math.round(p.maxHp)}`;
     this.root.querySelector('#wh-mp-text')!.textContent = `${Math.floor(p.mana)} / ${Math.round(p.maxMana)}`;
+    const blink = this.slotEls.get('blink')!;
+    blink.dataset.cooling = String(p.dashCd > 0);
+    blink.dataset.ready = String(p.dashCd <= 0);
+    blink.style.setProperty('--cd', String(Math.max(0, p.dashCd) / 1.5));
+    blink.querySelector('.slot-cd')!.textContent = p.dashCd > 0 ? p.dashCd.toFixed(1) : '';
     this.tick();
   }
 
@@ -552,6 +558,37 @@ export class WorldHud {
     weapon.innerHTML = `<span class="slot-frame"><img alt="" aria-hidden="true"></span><kbd>Q</kbd>`;
     bar.append(weapon);
     this.slotEls.set('click', weapon);
+    const blink = el('button', 'skill-slot wh-blink') as HTMLButtonElement;
+    blink.type = 'button';
+    blink.dataset.slot = 'blink';
+    blink.title = 'Parpadeo · Espacio · teletransporte hacia el punto apuntado';
+    blink.setAttribute('aria-label', blink.title);
+    blink.innerHTML = '<span class="slot-frame"><img src="/assets/skills/mage-blink.png" alt="" aria-hidden="true"><span class="slot-cd"></span></span><kbd>ESPACIO</kbd>';
+    let suppressBlinkClickUntil = 0;
+    blink.onclick = () => { if (performance.now() >= suppressBlinkClickUntil) this.actions.blink(); };
+    let blinkStart: { x: number; y: number; dragged: boolean } | null = null;
+    blink.addEventListener('pointerdown', (event) => {
+      if (event.pointerType !== 'touch') return;
+      event.preventDefault();
+      blinkStart = { x: event.clientX, y: event.clientY, dragged: false };
+      blink.setPointerCapture(event.pointerId);
+    });
+    blink.addEventListener('pointermove', (event) => {
+      if (!blinkStart) return;
+      if (Math.hypot(event.clientX - blinkStart.x, event.clientY - blinkStart.y) > 12) blinkStart.dragged = true;
+      if (blinkStart.dragged) this.actions.aimAt(event.clientX, event.clientY);
+    });
+    blink.addEventListener('pointerup', (event) => {
+      if (!blinkStart) return;
+      if (blinkStart.dragged) this.actions.aimAt(event.clientX, event.clientY);
+      blinkStart = null;
+      suppressBlinkClickUntil = performance.now() + 500;
+      this.actions.blink();
+      this.actions.endAim();
+    });
+    blink.addEventListener('pointercancel', () => { blinkStart = null; this.actions.endAim(); });
+    bar.append(blink);
+    this.slotEls.set('blink', blink);
     for (const slot of CAST_SLOTS) {
       const node = el('button', 'skill-slot');
       (node as HTMLButtonElement).type = 'button';
@@ -569,7 +606,9 @@ export class WorldHud {
         this.actions.cast(slot);
       });
       node.addEventListener('pointerdown', (event) => {
-        if (event.pointerType !== 'touch' || this.sheet?.slots[slot] !== 'singularidad') return;
+        const equipped = SKILLS_WORLD[this.sheet?.slots[slot] ?? ''];
+        const targetedArea = equipped?.effect.kind === 'nova' && equipped.effect.range !== undefined;
+        if (event.pointerType !== 'touch' || (!targetedArea && equipped?.id !== 'singularidad')) return;
         event.preventDefault();
         touchStart = { x: event.clientX, y: event.clientY, dragged: false };
         node.setPointerCapture(event.pointerId);
@@ -597,6 +636,7 @@ export class WorldHud {
 
   private refreshSlots() {
     const sheet = this.sheet!;
+    this.slotEls.get('blink')!.hidden = sheet.weapon !== 'baston';
     const weapon = this.slotEls.get('click')!;
     // A staff's click is its element's; every other weapon keeps its own picture.
     weapon.querySelector('img')!.src =

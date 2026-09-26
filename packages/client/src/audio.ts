@@ -87,6 +87,7 @@ const SPELL_NOTES: Record<string, number[]> = {
   freeze: [988, 1319],
   raise: [98, 147, 196, 294],
   explosion: [82, 62],
+  fireRain: [330, 220, 110],
   cast: [330, 494],
   dash: [180, 120],
   blink: [220, 660],

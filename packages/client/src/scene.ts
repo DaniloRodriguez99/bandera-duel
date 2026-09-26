@@ -957,6 +957,24 @@ export class Arena extends Phaser.Scene {
         bolt.strokePath();
         this.fade(bolt, { y: -4 }, 420);
       }
+    } else if (e.kind === 'fireRain') {
+      const radius = e.radius ?? 140;
+      const field = this.add.circle(e.x, e.y, radius, 0xff6728, 0.13)
+        .setStrokeStyle(2, 0xffb35f, 0.75).setDepth(15);
+      this.fade(field, { scale: 1.08 }, 650);
+      for (let i = 0; i < 22; i++) {
+        const angle = i * 2.39996;
+        const spread = radius * Math.sqrt((i + 0.5) / 22);
+        const x = e.x + Math.cos(angle) * spread;
+        const y = e.y + Math.sin(angle) * spread;
+        const ember = this.add.rectangle(x + 15, y - 65 - i % 4 * 12, 3, 9, i % 3 ? 0xff8a35 : 0xffdc82)
+          .setRotation(0.22).setDepth(18);
+        this.tweens.add({
+          targets: ember, x, y, alpha: 0, scaleY: 0.25,
+          delay: i % 5 * 35, duration: 380,
+          onComplete: () => ember.destroy(),
+        });
+      }
     } else if (e.kind === 'explosion') {
       const blackHole = e.skillId === 'mage.blackHole';
       const radius = blackHole ? (e.radius ?? RULES.blackHoleBurstRadius) : RULES.explosionRadius * (0.6 + 0.4 * (e.power ?? 1));

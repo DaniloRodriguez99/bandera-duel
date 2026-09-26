@@ -1330,6 +1330,8 @@ body.world-mode #clock-note{color:#7fd6ff;letter-spacing:3px}
 /* Barra de habilidades */
 .skillbar{position:absolute;left:50%;bottom:10px;transform:translateX(-50%);display:flex;align-items:flex-end;gap:clamp(8px,1.3vw,16px);padding:8px 16px 6px;background:radial-gradient(ellipse at 50% 100%,#04101fcc,transparent 70%)}
 .skill-slot{--slot:clamp(40px,5.6vw,62px);--rarity:#44545c;--element:#44545c;--cd:0;position:relative;display:grid;justify-items:center;gap:4px;padding:0;border:0;background:none;color:#dff4ff;cursor:pointer;pointer-events:auto}
+.skill-slot.wh-blink{--rarity:#7150a4;--element:#b997ed}
+.skill-slot.wh-blink[hidden]{display:none}
 .skill-slot.weapon{--rarity:#c9a86a;--element:#f3ce86;cursor:default}
 .skill-slot::before{content:'';position:absolute;left:50%;top:calc(var(--slot)/2);width:calc(var(--slot)*1.5);height:calc(var(--slot)*1.5);transform:translate(-50%,-50%);border-radius:50%;background:radial-gradient(circle,var(--element),transparent 62%);opacity:.18;pointer-events:none;transition:opacity .2s}
 .skill-slot[data-ready=true]::before{opacity:.32}
@@ -1352,6 +1354,7 @@ body.world-mode #clock-note{color:#7fd6ff;letter-spacing:3px}
 .skill-slot.slot-return .slot-frame{animation:whReturn .55s cubic-bezier(.2,1.4,.4,1)}
 .skill-slot.slot-return::after{content:'';position:absolute;left:50%;top:calc(var(--slot)/2);width:var(--slot);height:var(--slot);transform:translate(-50%,-50%);clip-path:var(--octa);background:radial-gradient(circle,transparent 45%,var(--element) 70%,transparent 72%);animation:whRing .55s ease-out forwards;pointer-events:none}
 .skill-slot:not(.weapon):not([data-locked=true]):hover .slot-frame{filter:brightness(1.25)}
+@media(max-width:560px){.skillbar{gap:3px;max-width:100%;padding:6px 4px}.skill-slot{--slot:clamp(30px,8vw,40px)}.skill-slot kbd{font-size:7px;letter-spacing:0;padding:1px 2px}.slot-lock{font-size:7px}}
 
 /* Ventana del Sistema al pasar el mouse */
 .wh-tooltip{position:absolute;bottom:calc(clamp(40px,5.6vw,62px) + 44px);width:min(270px,70%);transform:translateX(-50%);padding:9px 11px;z-index:9}

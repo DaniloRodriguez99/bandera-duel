@@ -1,7 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 
 /** A newborn with a bow in the valley, ready to be played without ever touching the mouse. */
-async function born(page: Page) {
+async function born(page: Page, weapon: 'arco' | 'baston' = 'arco') {
   await page.goto('/');
   await page.locator('#world-open').click();
   await page.locator('#world-name').fill('Teclas');
@@ -15,22 +15,22 @@ async function born(page: Page) {
   await page.locator('[data-affinity=viento]').click();
   await page.locator('[data-affinity=viento]').click();
   await page.locator('[data-affinity=destreza]').click();
-  await page.locator('[data-weapon=arco]').click();
+  await page.locator(`[data-weapon=${weapon}]`).click();
   await page.locator('#wh-born').click();
   await expect(page.locator('#stage')).toHaveAttribute('data-x', /\d+/, { timeout: 15000 });
   await expect(page.locator('#skillbar [data-slot=e]')).toHaveAttribute('data-skill', /\w+/);
 }
 
-test('el mundo se juega entero con el teclado: WASD mueve, flechas apuntan, Q arma, E X C habilidades', async ({ page }) => {
+test('el mundo se juega entero con el teclado: WASD mueve, flechas apuntan, Q arma y seis teclas de habilidades', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
   await born(page);
   const stage = page.locator('#stage');
   const pos = async () => [Number(await stage.getAttribute('data-x')), Number(await stage.getAttribute('data-y'))];
 
-  // The bar names the keys: Q for the weapon, E, X and C for skills.
+  // The bar names the keys: Q for the weapon, E/X/C/R/F/V for skills.
   await expect(page.locator('#skillbar [data-slot=click] kbd')).toHaveText('Q');
-  for (const slot of ['e', 'x', 'c']) await expect(page.locator(`#skillbar [data-slot=${slot}]`)).toBeVisible();
+  for (const slot of ['e', 'x', 'c', 'r', 'f', 'v']) await expect(page.locator(`#skillbar [data-slot=${slot}]`)).toBeVisible();
   await expect(page.locator('#skillbar [data-slot=x]')).toHaveAttribute('data-locked', 'true');
   await expect(page.locator('#control-guide')).toContainText('Apuntar');
 
@@ -70,4 +70,15 @@ test('el mundo se juega entero con el teclado: WASD mueve, flechas apuntan, Q ar
   await page.keyboard.press('KeyX');
   await expect(page.locator('.wh-notice[data-kind=denied]', { hasText: 'nivel 5' }).first()).toBeVisible({ timeout: 15000 });
   expect(errors).toEqual([]);
+});
+
+test('el bastón muestra Parpadeo y Espacio teletransporta sin ocupar una ranura', async ({ page }) => {
+  await born(page, 'baston');
+  await expect(page.locator('#skillbar [data-slot=blink]')).toBeVisible();
+  const stage = page.locator('#stage');
+  const from = Number(await stage.getAttribute('data-x'));
+  await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('Space');
+  await expect.poll(async () => Number(await stage.getAttribute('data-x'))).toBeGreaterThan(from + 40);
+  await expect(page.locator('#skillbar [data-slot=blink]')).toHaveAttribute('data-cooling', 'true');
 });

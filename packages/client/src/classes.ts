@@ -25,7 +25,7 @@ const CLASS_SKILLS: Record<ClassId, SkillPreview[]> = {
     { name: 'Parpadeo', icon: icon('mage-blink'), description: 'Mantené para ampliar el alcance hasta 260 u en 2 s y soltá: reaparecés junto al cursor, incluso tras un muro. Nunca antes de 0,5 s.', damage: '0', cooldown: seconds(RULES.dashCooldown) },
     { name: 'Égida de dos sellos', icon: icon('mage-shield'), description: `Una barrera encantada que anula ${RULES.magicShieldHits} impactos.`, damage: '0', cooldown: seconds(RULES.magicShieldCooldown) },
     { name: 'Saeta glacial', icon: icon('mage-ice'), description: `Perfora con hielo arcano e inmoviliza durante ${seconds(RULES.freezeDuration)}.`, damage: '0', cooldown: seconds(RULES.iceCooldown) },
-    { name: 'Singularidad', icon: icon('mage-blackhole'), description: 'Mantené hasta 2 s para agrandarlo, dañar más y llegar más lejos. Soltá para lanzarlo: estalla contra un muro, al volver a pulsar o tras atraer 2,5 s en destino.', damage: '0,75–2,25', cooldown: seconds(RULES.blackHoleCooldown) },
+    { name: 'Singularidad', icon: icon('mage-blackhole'), description: 'Mantené hasta 2 s para agrandarlo, dañar más y llegar más lejos. Soltá para lanzarlo: su núcleo consume a quien llega al centro y estalla contra un muro, al volver a pulsar o tras atraer 2,5 s en destino.', damage: '0,75–2,25; letal en el centro', cooldown: seconds(RULES.blackHoleCooldown) },
   ],
   necromancer: [
     { name: 'Llama de ultratumba', icon: icon('necromancer-fire'), description: 'Arrojá fuego espectral; canalizarlo aumenta su poder hasta el doble.', damage: `${RULES.fireDamage}–2`, cooldown: seconds(RULES.fireCooldown) },

@@ -70,6 +70,7 @@ const AFFINITY_BADGE = {
 for (const skill of Object.values(SKILLS_WORLD)) {
   if (skill.weapon) {
     comboIcon(`skill-${skill.id}`, WEAPON_GLYPH[skill.weapon], AFFINITY_BADGE[skill.school], skill.color);
+    if (!skill.id.startsWith('combo_')) icon(`grimorio-${skill.id}`, glyphs.grimorio, affinityColor(skill.school));
     continue;
   }
   const glyph = glyphs[skill.id];

@@ -63,7 +63,7 @@ export type SkillEffect =
       /** Share of the damage dealt that comes back as health. */
       drain?: number;
     }
-  | { kind: 'nova'; element: Element; damage: number; radius: number; freeze?: number }
+  | { kind: 'nova'; element: Element; damage: number; radius: number; freeze?: number; range?: number }
   | { kind: 'heal'; amount: number; radius: number }
   | { kind: 'parry'; window: number; reflect: number }
   | { kind: 'dash'; distance: number; invulnerable?: boolean }
@@ -806,7 +806,7 @@ export const SKILLS_WORLD: Record<string, WorldSkill> = {
     icon: 'skill-lluvia_brasas',
     mana: 14,
     cooldown: 8,
-    effect: { kind: 'nova', element: 'fuego', damage: 3, radius: 140 },
+    effect: { kind: 'nova', element: 'fuego', damage: 3, radius: 140, range: 360 },
     maxLevel: 8,
     firstLevelUses: 20,
     evolutions: [{ level: 5, name: 'Tormenta de Ceniza', line: 'Donde estuviste, crece pasto negro.' }],
@@ -1237,7 +1237,7 @@ export const MONSTER_TREES: Record<MobFamilyId, { passive: Passive; skills: stri
 /** What the dice can hand you at birth, by rarity. The eye and the monster trees stay out. */
 export const DESTINY_POOL: Record<Exclude<Rarity, 'unica'>, string[]> = {
   comun: ['parada', 'refuerzo', 'paso_ligero', 'chispa', 'cura_menor', 'brisa', 'guijarro', 'chispazo', 'luz_tenue', 'zarpa_sombria', 'paso_sombrio', 'estocada'],
-  rara: ['escarcha', 'rafaga', 'sismo', 'sombra_voraz', 'emboscada', 'ojo_impostor', 'bola_fuego', 'descarga', 'destello', 'danza_filos', 'furia'],
+  rara: ['escarcha', 'rafaga', 'sismo', 'sombra_voraz', 'singularidad', 'emboscada', 'ojo_impostor', 'bola_fuego', 'descarga', 'destello', 'danza_filos', 'furia'],
   epica: ['golpe_divino', 'trueno', 'alzar', 'lluvia_brasas', 'marea', 'vendaval', 'terremoto', 'mil_sombras', 'contraataque', 'golpe_titanico'],
   legendaria: ['mil_espadas', 'sol_caido', 'tormenta_eterna', 'abrazo_abismo', 'juicio_celestial'],
 };
@@ -1566,7 +1566,7 @@ export function describeEffect(skill: WorldSkill, effect: SkillEffect = skill.ef
     case 'bolt':
       return `Proyectil de ${effect.damage.toFixed(1)} de daño${effect.pierce ? ' que atraviesa' : ''}${effect.freeze ? `, congela ${secs(effect.freeze)}` : ''}${effect.explode ? ', estalla al impactar' : ''}${effect.drain ? `, te cura el ${pct(effect.drain)}` : ''}.`;
     case 'nova':
-      return `Golpea a todo lo que esté cerca: ${effect.damage.toFixed(1)} de daño${effect.freeze ? `, congela ${secs(effect.freeze)}` : ''}.`;
+      return `${effect.range !== undefined ? `Golpea alrededor del punto apuntado (alcance ${effect.range}, radio ${effect.radius})` : 'Golpea a todo lo que esté cerca'}: ${effect.damage.toFixed(1)} de daño${effect.freeze ? `, congela ${secs(effect.freeze)}` : ''}.`;
     case 'heal':
       return `Cura ${effect.amount.toFixed(1)} de vida a vos y a los aliados cerca.`;
     case 'parry':
@@ -1574,7 +1574,7 @@ export function describeEffect(skill: WorldSkill, effect: SkillEffect = skill.ef
     case 'dash':
       return `Un salto rápido hacia donde apuntás${effect.invulnerable ? ', intocable' : ''}.`;
     case 'blackhole':
-      return `Viaja hacia donde apuntás atrayendo enemigos. Al llegar crece durante ${secs(effect.duration)} hasta ${effect.radius} unidades y estalla por ${effect.damage.toFixed(1)} de daño en ${effect.burstRadius} unidades. Alcance ${effect.range}.`;
+      return `Viaja hacia donde apuntás atrayendo enemigos y consume a quienes lleguen al centro. Al llegar crece durante ${secs(effect.duration)} hasta ${effect.radius} unidades y estalla por ${effect.damage.toFixed(1)} de daño en ${effect.burstRadius} unidades. Alcance ${effect.range}.`;
     case 'buff':
       return `Durante ${secs(effect.duration)}: +${pct(effect.damage)} de daño y +${pct(effect.speed)} de velocidad.`;
     case 'devour':
