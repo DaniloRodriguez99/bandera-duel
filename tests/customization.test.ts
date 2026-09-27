@@ -1,5 +1,5 @@
 import { describe,expect,it } from 'vitest';
-import { CHARACTER_SKINS, CLASS_IDS, DEFAULT_LOADOUTS, Duel, MAGE_SKINS, SKILLS, activePreset, defaultCustomization, idleInput, newPlayer, projectileSkillStats, resolveSlotInput, validCustomization, validLoadout } from '@bandera/shared';
+import { CHARACTER_SKINS, CLASS_IDS, DEFAULT_BINDINGS, DEFAULT_LOADOUTS, Duel, MAGE_SKINS, SKILLS, SKILL_SLOTS, UNIVERSAL_BINDINGS, activePreset, defaultCustomization, idleInput, newPlayer, projectileSkillStats, resolveSlotInput, validCustomization, validLoadout, type CharacterCustomization, type ClassId } from '@bandera/shared';
 import { migrateCustomization } from '../packages/client/src/customization';
 
 describe('character customization model',()=>{
@@ -10,18 +10,20 @@ describe('character customization model',()=>{
     for(const classId of CLASS_IDS){expect(CHARACTER_SKINS[classId].length).toBeGreaterThanOrEqual(5);expect(new Set(CHARACTER_SKINS[classId].map(s=>s.id)).size).toBe(CHARACTER_SKINS[classId].length);}
   });
   it('rejects duplicates, reserved bindings and incompatible skills',()=>{
-    const duplicate=defaultCustomization('mage');duplicate.presets.default.loadout.skill2='mage.ice';expect(validCustomization('mage',duplicate)).toBe(false);
+    const duplicate=defaultCustomization('mage');duplicate.presets.default.loadout.secondary='mage.ice';expect(validCustomization('mage',duplicate)).toBe(false);
     const reserved=defaultCustomization('mage');reserved.presets.default.bindings.primary='KeyW' as never;expect(validCustomization('mage',reserved)).toBe(false);
     const incompatible=defaultCustomization('mage');incompatible.presets.default.loadout.primary='guardian.sword';expect(validCustomization('mage',incompatible)).toBe(false);
   });
   it('maps logical slots through a validated hybrid mage loadout',()=>{
     const customization=defaultCustomization('mage');const preset=activePreset(customization);
-    preset.loadout.primary='necromancer.fire';preset.loadout.secondary='necromancer.summon';preset.loadout.skill1='mage.ice';
+    preset.loadout.primary='necromancer.fire';preset.loadout.f='necromancer.summon';
+    // The mage's free R and M2 hold Mando and Marcar, so the hybrid is valid out of the box.
+    expect(validCustomization('mage',customization)).toBe(true);
     const player=newPlayer('m','Mago','blue','mage',undefined,customization);
     const fire=idleInput();fire.slots.primary.released=true;
     const cast=resolveSlotInput(player,fire);expect(cast.shot).toBe(true);
     const result=projectileSkillStats('necromancer.fire','mage');expect(result.damage).toBe(projectileSkillStats('necromancer.fire','necromancer').damage);
-    const summon=idleInput();summon.slots.secondary.released=true;expect(resolveSlotInput(player,summon).summon).toBe(true);
+    const summon=idleInput();summon.slots.f.released=true;expect(resolveSlotInput(player,summon).summon).toBe(true);
   });
   it('Parpadeo carga mientras se mantiene y se lanza al soltar',()=>{
     const player=newPlayer('m','Mago','blue','mage');
@@ -32,30 +34,75 @@ describe('character customization model',()=>{
     const released=idleInput();released.slots.mobility.released=true;
     expect(resolveSlotInput(player,released)).toMatchObject({blink:false,blinkRelease:true,dash:false});
   });
-  it('migra Parpadeo sin perder skin ni controles guardados',()=>{
-    const old=defaultCustomization('mage');old.selectedSkin=MAGE_SKINS[3].id;
-    old.presets.default.loadout.mobility='common.dash';old.presets.default.loadout.skill2=null;
-    old.presets.default.bindings.mobility='Shift';
-    const migrated=migrateCustomization('mage',old);
-    expect(validCustomization('mage',migrated)).toBe(true);
-    const profile=migrated as typeof old;
-    expect(profile.selectedSkin).toBe(old.selectedSkin);
-    expect(profile.presets.default.bindings.mobility).toBe('Shift');
-    expect(profile.presets.default.loadout.mobility).toBe('mage.blink');
-    expect(profile.presets.default.loadout.skill2).toBeNull();
+  it('migra perfiles de la versión 1 a la disposición universal, conservando la skin',()=>{
+    const v1=(classId:ClassId,loadout:Record<string,string|null>,bindings:Record<string,string>)=>({
+      version:1,classId,selectedSkin:CHARACTER_SKINS[classId][2].id,activePresetId:'default',
+      presets:{default:{loadout,bindings:{primary:'MouseLeft',companionCommand:'KeyE',...bindings},skillTreeSelection:Object.values(loadout).filter(Boolean)}},
+    });
+    const mage=migrateCustomization('mage',v1('mage',
+      {primary:'mage.fireball',secondary:'mage.magicShield',mobility:'common.dash',skill1:'mage.ice',skill2:null},
+      {secondary:'MouseRight',mobility:'Shift',skill1:'MouseMiddle',skill2:'KeyE'})) as CharacterCustomization;
+    expect(validCustomization('mage',mage)).toBe(true);
+    expect(mage.version).toBe(2);
+    expect(mage.selectedSkin).toBe(CHARACTER_SKINS.mage[2].id);
+    // Each skill lands where the universal layout puts it; the old dash became Parpadeo.
+    expect(mage.presets.default.loadout).toEqual({primary:'mage.fireball',secondary:null,mobility:'mage.blink',q:'mage.ice',e:'mage.magicShield',f:null,r:null});
+    // The controls reset to the universal keys: ice leaves the middle click for Q.
+    expect(mage.presets.default.bindings).toEqual(DEFAULT_BINDINGS.mage);
+    expect(mage.presets.default.skillTreeSelection).toContain('mage.blink');
+
+    const knight=migrateCustomization('guardian',v1('guardian',
+      {primary:'guardian.sword',secondary:'guardian.guard',mobility:'guardian.dash',skill1:'guardian.shieldBash',skill2:'guardian.fury'},
+      {secondary:'MouseRight',mobility:'Space',skill1:'KeyQ',skill2:'KeyE'})) as CharacterCustomization;
+    expect(validCustomization('guardian',knight)).toBe(true);
+    expect(knight.presets.default.loadout).toMatchObject({q:'guardian.shieldBash',r:'guardian.fury',e:null});
+
+    const archer=migrateCustomization('archer',v1('archer',
+      {primary:'archer.arrow',secondary:'archer.dagger',mobility:'common.dash',skill1:'archer.trap',skill2:'archer.volley'},
+      {secondary:'MouseRight',mobility:'Space',skill1:'KeyQ',skill2:'KeyE'})) as CharacterCustomization;
+    expect(archer.presets.default.loadout).toMatchObject({q:'archer.volley',e:'archer.trap'});
+    // A profile already on version 2 is left alone.
+    expect(migrateCustomization('mage',defaultCustomization('mage'))).toEqual(defaultCustomization('mage'));
+  });
+  it('todas las clases comparten los mismos siete controles',()=>{
+    for(const classId of CLASS_IDS)
+      for(const slot of SKILL_SLOTS)expect(DEFAULT_BINDINGS[classId][slot]).toBe(UNIVERSAL_BINDINGS[slot]);
+    expect(UNIVERSAL_BINDINGS).toEqual({primary:'MouseLeft',secondary:'MouseRight',mobility:'Space',q:'KeyQ',e:'KeyE',f:'KeyF',r:'KeyR'});
+    // Every mobility skill lives on Space, and the powerful ones on F.
+    for(const classId of CLASS_IDS){
+      const mobility=DEFAULT_LOADOUTS[classId].mobility;
+      if(mobility)expect(SKILLS[mobility].grants).toContain('mobility');
+    }
+    expect(DEFAULT_LOADOUTS.mage.f).toBe('mage.blackHole');
+    expect(DEFAULT_LOADOUTS.necromancer).toMatchObject({f:'necromancer.summon',mobility:null});
+    expect(DEFAULT_LOADOUTS.guardian.r).toBe('guardian.fury');
+  });
+  it('Mando y Marcar necesitan teclas propias cuando está la invocación',()=>{
+    const clash=defaultCustomization('necromancer');activePreset(clash).bindings.companionCommand='KeyF';
+    expect(validCustomization('necromancer',clash)).toBe(false);
+    const same=defaultCustomization('necromancer');activePreset(same).bindings.companionMark='KeyE';
+    expect(validCustomization('necromancer',same)).toBe(false);
+    // Without the summon the companion keys are never read, so they may overlap anything.
+    const archer=defaultCustomization('archer');activePreset(archer).bindings.companionCommand='KeyQ';
+    expect(validCustomization('archer',archer)).toBe(true);
+  });
+  it('Mando y Marcar pasan aunque haya otra tecla mantenida',()=>{
+    const p=newPlayer('n','Nigromante','blue','necromancer');
+    const input={...idleInput(),command:true,mark:true};input.slots.primary.held=true;
+    expect(resolveSlotInput(p,input)).toMatchObject({command:true,mark:true,charge:true});
   });
   it('Singularidad carga al mantener, se lanza al soltar y se detona al volver a pulsar',()=>{
     const p=newPlayer('m','Mago','blue','mage');
-    const pressed=idleInput();pressed.slots.skill2.pressed=true;
+    const pressed=idleInput();pressed.slots.f.pressed=true;
     expect(resolveSlotInput(p,pressed)).toMatchObject({blackHole:true,blackHoleDetonate:true,blackHoleRelease:false});
-    const held=idleInput();held.slots.skill2.held=true;
+    const held=idleInput();held.slots.f.held=true;
     expect(resolveSlotInput(p,held)).toMatchObject({blackHole:true,blackHoleDetonate:false,blackHoleRelease:false});
-    const released=idleInput();released.slots.skill2.released=true;
+    const released=idleInput();released.slots.f.released=true;
     expect(resolveSlotInput(p,released)).toMatchObject({blackHole:false,blackHoleDetonate:false,blackHoleRelease:true});
   });
   it('ignores a manipulated logical slot when it is empty',()=>{
-    const customization=defaultCustomization('mage');activePreset(customization).loadout.skill2=null;
-    const player=newPlayer('m','Mago','blue','mage',undefined,customization);const input=idleInput();input.slots.skill2.pressed=true;
+    const customization=defaultCustomization('mage');activePreset(customization).loadout.f=null;
+    const player=newPlayer('m','Mago','blue','mage',undefined,customization);const input=idleInput();input.slots.f.pressed=true;
     const resolved=resolveSlotInput(player,input);expect(resolved.ice||resolved.summon||resolved.shot||resolved.guard).toBe(false);
   });
   it('applies profiles only in configurable phases and clears ready state',()=>{
@@ -66,6 +113,6 @@ describe('character customization model',()=>{
   });
   it('keeps contextual necromancer actions inside the summon skill',()=>{
     expect(SKILLS['necromancer.summon'].grants).toContain('companionControl');
-    expect(Object.keys(DEFAULT_LOADOUTS.mage)).toEqual(['primary','secondary','mobility','skill1','skill2']);
+    expect(Object.keys(DEFAULT_LOADOUTS.mage)).toEqual(['primary','secondary','mobility','q','e','f','r']);
   });
 });

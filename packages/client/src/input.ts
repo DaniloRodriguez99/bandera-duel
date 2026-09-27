@@ -1,6 +1,10 @@
 import { idleInput, idleSlots, CLASSES, DEFAULT_CLASS, DEFAULT_BINDINGS, DEFAULT_LOADOUTS, activePreset, SKILL_SLOTS, type CharacterCustomization, type ClassId, type Input, type PhysicalBinding, type SkillSlot } from '@bandera/shared';
 import { primaryAbility, touchMeta, type TouchAbilitySlot } from './mobile-controls.js';
+import { ABILITY_IDS } from './abilities.js';
 import { CAST_SLOTS, type CastSlot } from '@bandera/shared/world';
+
+/** Which held key's aim preview wins: mobility and the big abilities over the steady attacks. */
+const TARGET_ORDER: readonly SkillSlot[] = ['mobility', 'f', 'r', 'e', 'q', 'secondary', 'primary'];
 
 type ActionState = Omit<Input, 'seq' | 'x' | 'y' | 'angle' | 'charge' | 'special' | 'guard' | 'counter' | 'aimX' | 'aimY' | 'slots' | 'worldBlink'>;
 
@@ -85,24 +89,31 @@ export class Controls {
 
   private mouseBinding(button:number):PhysicalBinding|undefined{return button===0?'MouseLeft':button===1?'MouseMiddle':button===2?'MouseRight':undefined;}
   private keyBinding(code:string):PhysicalBinding|undefined{const value=code==='ControlLeft'||code==='ControlRight'?'Ctrl':code==='ShiftLeft'||code==='ShiftRight'?'Shift':code;return Object.values(this.bindings).includes(value as PhysicalBinding)?value as PhysicalBinding:undefined;}
-  private pressPhysical(binding:PhysicalBinding){this.physical.add(binding);for(const slot of SKILL_SLOTS)if(this.loadout[slot]&&this.bindings[slot]===binding)this.slotPressed.add(slot);}
+  private pressPhysical(binding:PhysicalBinding){
+    this.physical.add(binding);
+    for(const slot of SKILL_SLOTS)if(this.loadout[slot]&&this.bindings[slot]===binding)this.slotPressed.add(slot);
+    // The summon's Mando and Marcar have keys of their own: one key, one action, no combinations.
+    if(this.enabled&&!this.onCast&&Object.values(this.loadout).includes('necromancer.summon')){
+      if(binding===this.bindings.companionCommand)this.actions.command=true;
+      if(binding===this.bindings.companionMark)this.actions.mark=true;
+    }
+  }
   private releasePhysical(binding:PhysicalBinding){this.physical.delete(binding);for(const slot of SKILL_SLOTS)if(this.loadout[slot]&&this.bindings[slot]===binding)this.slotReleased.add(slot);}
 
   get targetingAbility(): string | null {
     const touches = [...this.gestures.values()];
     if (touches.length) return touches.at(-1)!.slot.id;
-    // Held Parpadeo or Singularidad show their reach while charging, whatever key they are bound to.
-    if (this.classId === 'mage')
-      for (const slot of SKILL_SLOTS)
-        if (this.physical.has(this.bindings[slot])) {
-          if (this.loadout[slot] === 'mage.blink') return 'dash';
-          if (this.loadout[slot] === 'mage.blackHole') return 'black-hole';
-        }
+    if (!this.onCast) {
+      // Matches: whichever bound key is held shows its reach, mobility and the big abilities first.
+      for (const slot of TARGET_ORDER) {
+        const id = this.loadout[slot];
+        if (id && this.physical.has(this.bindings[slot])) return ABILITY_IDS[id];
+      }
+      return null;
+    }
+    // The world has no class kit: Q and the click swing the equipped weapon.
     if (this.chargeSources.has('mouse') || this.chargeSources.has('key'))
       return this.attackKind ? (this.attackKind === 'melee' ? 'sword' : 'shot') : primaryAbility(this.classId);
-    if (this.specialSources.has('key')) return CLASSES[this.classId].summon ? 'summon' : 'dash';
-    if (this.guardSources.has('mouse')) return this.classId === 'mage' ? 'magic-shield' : 'guard';
-    if (this.counterSources.has('key')) return 'counter';
     return null;
   }
 
@@ -133,15 +144,13 @@ export class Controls {
     if (CLASSES[this.classId].dash) this.actions.dash = true;
     else if (CLASSES[this.classId].summon) this.actions.summon = true;
   }
-  tertiary() {
-    if (this.enabled && this.classId === 'mage') this.actions.ice = true;
-  }
+  /** World only: the right button follows the class there. In matches it is just the M2 binding. */
   secondary(held: boolean) {
     if (!held) {
       this.guardSources.delete('mouse');
       return;
     }
-    if (!this.enabled) return;
+    if (!this.enabled || !this.onCast) return;
     if (CLASSES[this.classId].summon) this.actions.summon = true;
     else if (this.classId === 'mage') this.guardSources.add('mouse');
     else if (CLASSES[this.classId].ranged) this.actions.sword = true;
@@ -199,28 +208,9 @@ export class Controls {
       // No class kit in the world: every other key is movement or nothing.
       return;
     }
-    const binding=this.keyBinding(event.code);if(binding&&!event.repeat)this.pressPhysical(binding);
-    if (binding === this.bindings.companionCommand && Object.values(this.loadout).includes('necromancer.summon')) {
-      event.preventDefault();
-      if (!event.repeat) this.actions[event.metaKey || event.ctrlKey ? 'mark' : 'command'] = true;
-    }
-    if (event.code === 'KeyQ' && !event.repeat && this.classId === 'vanguard') this.actions.slash = true;
-    if (event.code === 'KeyE' && this.classId === 'vanguard') this.counterSources.add('key');
-    if (!event.repeat && this.classId === 'guardian') {
-      if (event.code === 'KeyQ') this.actions.shieldBash = true;
-      if (event.code === 'KeyE') this.actions.fury = true;
-    }
-    if (!event.repeat && this.classId === 'archer') {
-      if (event.code === 'KeyQ') this.actions.trap = true;
-      if (event.code === 'KeyE') {
-        this.actions.volley = true;
-        this.chargeSources.clear();
-      }
-    }
-    if (event.code === 'Space' && !event.repeat && this.classId !== 'mage') {
-      if (this.classId === 'guardian') this.actions.dash = true;
-      else this.pressSpecial('key');
-    }
+    // Matches speak one language for every class: each bound key drives its slot, nothing else.
+    const binding=this.keyBinding(event.code);
+    if(binding){event.preventDefault();if(!event.repeat)this.pressPhysical(binding);}
   }
 
   private keyUp(event: KeyboardEvent) {
@@ -231,8 +221,6 @@ export class Controls {
       return;
     }
     const binding=this.keyBinding(event.code);if(binding)this.releasePhysical(binding);
-    if (event.code === 'Space' && this.classId !== 'mage') this.releaseSpecial('key');
-    if (event.code === 'KeyE') this.counterSources.delete('key');
   }
 
   private bindMovement() {
@@ -298,8 +286,12 @@ export class Controls {
   private beginTouch(gesture: TouchGesture) {
     const { id, mode } = gesture.slot;
     if (gesture.slot.logicalSlot) {
-      this.slotPressed.add(gesture.slot.logicalSlot);
-      this.touchHeld.add(gesture.slot.logicalSlot);
+      // Charges and holds start with the finger; aimed taps wait for the release, after the drag
+      // has pointed them.
+      if (mode !== 'release') {
+        this.slotPressed.add(gesture.slot.logicalSlot);
+        this.touchHeld.add(gesture.slot.logicalSlot);
+      }
       gesture.element.dataset.aiming = 'true';
       return;
     }
@@ -355,7 +347,10 @@ export class Controls {
     if (gesture.slot.logicalSlot) {
       this.touchHeld.delete(gesture.slot.logicalSlot);
       // Dragged back to the centre: no release, so a held charge is dropped without its cooldown.
-      if (cast) this.slotReleased.add(gesture.slot.logicalSlot);
+      if (cast) {
+        if (mode === 'release') this.slotPressed.add(gesture.slot.logicalSlot);
+        this.slotReleased.add(gesture.slot.logicalSlot);
+      }
       gesture.element.dataset.aiming = 'false';
       gesture.element.dataset.cancel = 'false';
       gesture.element.style.setProperty('--aim-x', '0px');

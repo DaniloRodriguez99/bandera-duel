@@ -25,18 +25,18 @@ test('mantener clic carga la bola de fuego y soltar la lanza; un clic corto sigu
   await expect(page.locator('#cd-shot')).toHaveText(/✦ 0\.\ds/);
   expect(errors).toEqual([]);
 });
-test('nigromante: mantener espacio invoca al zombie con gorro', async ({ page }, info) => {
+test('nigromante: mantener F invoca al zombie con gorro', async ({ page }, info) => {
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
   await practice(page, 'necromancer');
   await page.keyboard.down('KeyD');
   await page.waitForTimeout(2200);
   await page.keyboard.up('KeyD');
-  await page.keyboard.down('Space');
+  await page.keyboard.down('KeyF');
   await expect(page.locator('#cd-summon')).toContainText('Cargando', { timeout: 2000 });
   await page.waitForTimeout(700);
   await page.screenshot({ path: info.outputPath('carga-nigromante.png') });
-  await page.keyboard.up('Space');
+  await page.keyboard.up('KeyF');
   await expect(page.locator('#cd-summon')).toHaveText(/☠ \d\/2 · [34]\.\ds/);
   await page.waitForTimeout(1600);
   await page.screenshot({ path: info.outputPath('zombie-con-gorro.png') });

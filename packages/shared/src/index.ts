@@ -341,7 +341,11 @@ export const RULES = {
   zombieGuardRadius: 110,
 } as const;
 
-export const SKILL_SLOTS = ['primary', 'secondary', 'mobility', 'skill1', 'skill2'] as const;
+/**
+ * One control language for every class: M1 basic attack, M2 secondary, Space mobility, Q and E the
+ * core loop, F the powerful ability and R the ultimate. The character changes; the keys do not.
+ */
+export const SKILL_SLOTS = ['primary', 'secondary', 'mobility', 'q', 'e', 'f', 'r'] as const;
 export type SkillSlot = (typeof SKILL_SLOTS)[number];
 export type SkillId =
   | 'archer.arrow' | 'archer.dagger' | 'archer.trap' | 'archer.volley'
@@ -367,34 +371,43 @@ export interface SkillDefinition {
   cooldown: number;
   damage: string;
   grants?: readonly ('ranged' | 'melee' | 'mobility' | 'shield' | 'summon' | 'companionControl')[];
+  /** One line on how to use it; `{key}` becomes whatever the player bound it to. */
+  howTo: string;
+  /** Slots it keeps busy while charging: a charging F keeps the hands off M1 and M2. */
+  blocks?: readonly SkillSlot[];
+  /** Movement speed factor while it charges. Several charges never stack: the slowest wins. */
+  chargeSlow?: number;
+  /** Mana it costs, for modes with mana. Arenas have none yet, so no skill sets it. */
+  mana?: number;
 }
 const skill = (definition: SkillDefinition) => definition;
 export const SKILLS: Record<SkillId, SkillDefinition> = {
-  'archer.arrow': skill({id:'archer.arrow',name:'Flecha del cazador',branch:'archer',description:'Disparo preciso que puede cargarse.',icon:'archer-arrow',compatibleClasses:['archer'],compatibleSlots:['primary'],trigger:'hold-release',animationAction:'attack',cooldown:RULES.shotCooldown,damage:'1–1,3',grants:['ranged']}),
-  'archer.dagger': skill({id:'archer.dagger',name:'Daga veloz',branch:'archer',description:'Corte corto para enemigos cercanos.',icon:'guardian-slash',compatibleClasses:['archer'],compatibleSlots:['secondary'],trigger:'press',animationAction:'attack',cooldown:CLASSES.archer.meleeCooldown,damage:'0,5',grants:['melee']}),
-  'archer.trap': skill({id:'archer.trap',name:'Cepo del bosque',branch:'archer',description:'Hiere e inmoviliza al rival.',icon:'archer-trap',compatibleClasses:['archer'],compatibleSlots:['skill1','skill2'],trigger:'press',animationAction:'castGround',cooldown:RULES.trapCooldown,damage:'0,5'}),
-  'archer.volley': skill({id:'archer.volley',name:'Salva triple',branch:'archer',description:'Libera tres flechas en sucesión.',icon:'archer-volley',compatibleClasses:['archer'],compatibleSlots:['skill1','skill2'],trigger:'press',animationAction:'attack',cooldown:RULES.volleyCooldown,damage:'3 × 1'}),
-  'mage.fireball': skill({id:'mage.fireball',name:'Orbe de fuego',branch:'mage',description:'Esfera ígnea que explota al cargarla.',icon:'mage-fireball',compatibleClasses:['mage'],compatibleSlots:['primary'],trigger:'hold-release',animationAction:'castForward',cooldown:RULES.shotCooldown,damage:'1–2,5',grants:['ranged']}),
-  'mage.magicShield': skill({id:'mage.magicShield',name:'Égida de dos sellos',branch:'mage',description:'Anula dos impactos.',icon:'mage-shield',compatibleClasses:['mage'],compatibleSlots:['secondary','skill1','skill2'],trigger:'press',animationAction:'castChannel',cooldown:RULES.magicShieldCooldown,damage:'0',grants:['shield']}),
-  'mage.ice': skill({id:'mage.ice',name:'Saeta glacial',branch:'mage',description:'Inmoviliza durante un segundo.',icon:'mage-ice',compatibleClasses:['mage'],compatibleSlots:['secondary','skill1','skill2'],trigger:'press',animationAction:'castForward',cooldown:RULES.iceCooldown,damage:'0'}),
-  'mage.blink': skill({id:'mage.blink',name:'Parpadeo',branch:'mage',description:'Mantené para ampliar el alcance hasta 260 u en 2 s y soltá: aparecés junto al cursor, incluso tras un muro. Tarda al menos 0,5 s.',icon:'mage-blink',compatibleClasses:['mage'],compatibleSlots:['mobility'],trigger:'hold-release',animationAction:'dash',cooldown:RULES.dashCooldown,damage:'0',grants:['mobility']}),
-  'mage.blackHole': skill({id:'mage.blackHole',name:'Singularidad',branch:'mage',description:'Mantené hasta 2 s: el agujero crece, pega más y llega más lejos. Soltá para lanzarlo; su núcleo consume a quien llega al centro y estalla contra un muro, al volver a pulsar o tras atraer en su destino.',icon:'mage-blackhole',compatibleClasses:['mage'],compatibleSlots:['secondary','skill1','skill2'],trigger:'hold-release',animationAction:'castChannel',cooldown:RULES.blackHoleCooldown,damage:'0,75–2,25 en área; letal en el centro'}),
-  'necromancer.fire': skill({id:'necromancer.fire',name:'Llama de ultratumba',branch:'necromancer',description:'Fuego espectral que puede canalizarse.',icon:'necromancer-fire',compatibleClasses:['mage','necromancer'],compatibleSlots:['primary'],trigger:'hold-release',animationAction:'castForward',cooldown:RULES.fireCooldown,damage:'1–2',grants:['ranged']}),
-  'necromancer.summon': skill({id:'necromancer.summon',name:'Alzar a los caídos',branch:'necromancer',description:'Invoca zombies, arcanistas y esclavos.',icon:'necromancer-summon',compatibleClasses:['mage','necromancer'],compatibleSlots:['secondary','skill1','skill2'],trigger:'hold-release',animationAction:'castGround',cooldown:RULES.summonCooldown,damage:'1 por golpe',grants:['summon','companionControl']}),
-  'guardian.sword': skill({id:'guardian.sword',name:'Acero juramentado',branch:'guardian',description:'Tajo frontal cargable.',icon:'guardian-slash',compatibleClasses:['guardian'],compatibleSlots:['primary'],trigger:'hold-release',animationAction:'attack',cooldown:CLASSES.guardian.meleeCooldown,damage:'1–2',grants:['melee']}),
-  'guardian.guard': skill({id:'guardian.guard',name:'Muralla de acero',branch:'guardian',description:'Bloqueo frontal continuo.',icon:'guardian-shield',compatibleClasses:['guardian'],compatibleSlots:['secondary'],trigger:'hold',animationAction:'castChannel',cooldown:RULES.guardCooldown,damage:'0',grants:['shield']}),
-  'guardian.dash': skill({id:'guardian.dash',name:'Carga del bastión',branch:'guardian',description:'Arremetida que daña y empuja.',icon:'guardian-bash',compatibleClasses:['guardian'],compatibleSlots:['mobility'],trigger:'press',animationAction:'dash',cooldown:RULES.guardianDashCooldown,damage:'1',grants:['mobility']}),
-  'guardian.shieldBash': skill({id:'guardian.shieldBash',name:'Impacto del baluarte',branch:'guardian',description:'Empuja y aturde al rival.',icon:'guardian-bash',compatibleClasses:['guardian'],compatibleSlots:['skill1','skill2'],trigger:'press',animationAction:'attack',cooldown:RULES.shieldBashCooldown,damage:'0,5'}),
-  'guardian.fury': skill({id:'guardian.fury',name:'Furia dorada',branch:'guardian',description:'Aumenta el daño de espada.',icon:'guardian-fury',compatibleClasses:['guardian'],compatibleSlots:['skill1','skill2'],trigger:'press',animationAction:'castChannel',cooldown:RULES.furyCooldown,damage:'+40 %'}),
-  'vanguard.sword': skill({id:'vanguard.sword',name:'Mandoble colosal',branch:'vanguard',description:'Barrido pesado de gran alcance.',icon:'vanguard-sword',compatibleClasses:['vanguard'],compatibleSlots:['primary'],trigger:'hold-release',animationAction:'attack',cooldown:CLASSES.vanguard.meleeCooldown,damage:'2–4',grants:['melee']}),
-  'vanguard.slash': skill({id:'vanguard.slash',name:'Creciente escarlata',branch:'vanguard',description:'Tajo que atraviesa enemigos.',icon:'vanguard-slash',compatibleClasses:['vanguard'],compatibleSlots:['skill1','skill2'],trigger:'press',animationAction:'attack',cooldown:RULES.slashCooldown,damage:'1,5'}),
-  'vanguard.counter': skill({id:'vanguard.counter',name:'Revancha de hierro',branch:'vanguard',description:'Devuelve proyectiles.',icon:'vanguard-counter',compatibleClasses:['vanguard'],compatibleSlots:['skill1','skill2'],trigger:'hold',animationAction:'castChannel',cooldown:RULES.counterCooldown,damage:'×1–×2'}),
-  'common.dash': skill({id:'common.dash',name:'Traslación',branch:'common',description:'Desplazamiento cargable.',icon:'mage-dash',compatibleClasses:['archer','vanguard'],compatibleSlots:['mobility'],trigger:'hold-release',animationAction:'dash',cooldown:RULES.dashCooldown,damage:'0',grants:['mobility']}),
+  'archer.arrow': skill({id:'archer.arrow',name:'Flecha del cazador',branch:'archer',description:'Disparo preciso que puede cargarse.',icon:'archer-arrow',compatibleClasses:['archer'],compatibleSlots:['primary'],trigger:'hold-release',animationAction:'attack',cooldown:RULES.shotCooldown,damage:'1–1,3',grants:['ranged'],howTo:'Pulsá {key} para disparar; mantené 0,8 s para una flecha cargada.'}),
+  'archer.dagger': skill({id:'archer.dagger',name:'Daga veloz',branch:'archer',description:'Corte corto para enemigos cercanos.',icon:'guardian-slash',compatibleClasses:['archer'],compatibleSlots:['secondary'],trigger:'press',animationAction:'attack',cooldown:CLASSES.archer.meleeCooldown,damage:'0,5',grants:['melee'],howTo:'Pulsá {key} para un corte corto.'}),
+  'archer.trap': skill({id:'archer.trap',name:'Cepo del bosque',branch:'archer',description:'Hiere e inmoviliza al rival.',icon:'archer-trap',compatibleClasses:['archer'],compatibleSlots:['e','q'],trigger:'press',animationAction:'castGround',cooldown:RULES.trapCooldown,damage:'0,5',howTo:'Pulsá {key} para colocar un cepo a tus pies.'}),
+  'archer.volley': skill({id:'archer.volley',name:'Salva triple',branch:'archer',description:'Libera tres flechas en sucesión.',icon:'archer-volley',compatibleClasses:['archer'],compatibleSlots:['q','e'],trigger:'press',animationAction:'attack',cooldown:RULES.volleyCooldown,damage:'3 × 1',howTo:'Pulsá {key} para tres flechas en fila; durante el esquive salen de viento.'}),
+  'mage.fireball': skill({id:'mage.fireball',name:'Orbe de fuego',branch:'mage',description:'Esfera ígnea que explota al cargarla.',icon:'mage-fireball',compatibleClasses:['mage'],compatibleSlots:['primary'],trigger:'hold-release',animationAction:'castForward',cooldown:RULES.shotCooldown,damage:'1–2,5',grants:['ranged'],howTo:'Pulsá {key} para una bola de fuego; mantené para una gran bola explosiva.'}),
+  'mage.magicShield': skill({id:'mage.magicShield',name:'Égida de dos sellos',branch:'mage',description:'Anula dos impactos.',icon:'mage-shield',compatibleClasses:['mage'],compatibleSlots:['e','q','secondary'],trigger:'press',animationAction:'castChannel',cooldown:RULES.magicShieldCooldown,damage:'0',grants:['shield'],howTo:'Pulsá {key} para un escudo que anula dos golpes.'}),
+  'mage.ice': skill({id:'mage.ice',name:'Saeta glacial',branch:'mage',description:'Inmoviliza durante un segundo.',icon:'mage-ice',compatibleClasses:['mage'],compatibleSlots:['q','e','secondary'],trigger:'press',animationAction:'castForward',cooldown:RULES.iceCooldown,damage:'0',howTo:'Pulsá {key} para una saeta que inmoviliza 1 s.'}),
+  'mage.blink': skill({id:'mage.blink',name:'Parpadeo',branch:'mage',description:'Mantené para ampliar el alcance hasta 260 u en 2 s y soltá: aparecés junto al cursor, incluso tras un muro. Tarda al menos 0,5 s.',icon:'mage-blink',compatibleClasses:['mage'],compatibleSlots:['mobility'],trigger:'hold-release',animationAction:'dash',cooldown:RULES.dashCooldown,damage:'0',grants:['mobility'],howTo:'Mantené {key} para ampliar el alcance y soltá: aparecés junto al cursor.',chargeSlow:RULES.chargeMoveSpeed}),
+  'mage.blackHole': skill({id:'mage.blackHole',name:'Singularidad',branch:'mage',description:'Mantené hasta 2 s: el agujero crece, pega más y llega más lejos. Soltá para lanzarlo; su núcleo consume a quien llega al centro y estalla contra un muro, al volver a pulsar o tras atraer en su destino.',icon:'mage-blackhole',compatibleClasses:['mage'],compatibleSlots:['f','r'],trigger:'hold-release',animationAction:'castChannel',cooldown:RULES.blackHoleCooldown,damage:'0,75–2,25 en área; letal en el centro',howTo:'Mantené {key} para cargar; soltá para lanzar. Volvé a pulsar para detonar.',blocks:['primary','secondary'],chargeSlow:RULES.chargeMoveSpeed}),
+  'necromancer.fire': skill({id:'necromancer.fire',name:'Llama de ultratumba',branch:'necromancer',description:'Fuego espectral que puede canalizarse.',icon:'necromancer-fire',compatibleClasses:['mage','necromancer'],compatibleSlots:['primary'],trigger:'hold-release',animationAction:'castForward',cooldown:RULES.fireCooldown,damage:'1–2',grants:['ranged'],howTo:'Pulsá {key} para fuego espectral; mantené para canalizarlo.'}),
+  'necromancer.summon': skill({id:'necromancer.summon',name:'Alzar a los caídos',branch:'necromancer',description:'Invoca zombies, arcanistas y esclavos.',icon:'necromancer-summon',compatibleClasses:['mage','necromancer'],compatibleSlots:['f','r'],trigger:'hold-release',animationAction:'castGround',cooldown:RULES.summonCooldown,damage:'1 por golpe',grants:['summon','companionControl'],howTo:'Pulsá {key} para 2 zombies; mantené para el zombie mago, y hasta el final para resucitar.'}),
+  'guardian.sword': skill({id:'guardian.sword',name:'Acero juramentado',branch:'guardian',description:'Tajo frontal cargable.',icon:'guardian-slash',compatibleClasses:['guardian'],compatibleSlots:['primary'],trigger:'hold-release',animationAction:'attack',cooldown:CLASSES.guardian.meleeCooldown,damage:'1–2',grants:['melee'],howTo:'Pulsá {key} para un tajo; mantené para cargarlo.'}),
+  'guardian.guard': skill({id:'guardian.guard',name:'Muralla de acero',branch:'guardian',description:'Bloqueo frontal continuo.',icon:'guardian-shield',compatibleClasses:['guardian'],compatibleSlots:['secondary'],trigger:'hold',animationAction:'castChannel',cooldown:RULES.guardCooldown,damage:'0',grants:['shield'],howTo:'Mantené {key} para bloquear de frente.'}),
+  'guardian.dash': skill({id:'guardian.dash',name:'Carga del bastión',branch:'guardian',description:'Arremetida que daña y empuja.',icon:'guardian-bash',compatibleClasses:['guardian'],compatibleSlots:['mobility'],trigger:'press',animationAction:'dash',cooldown:RULES.guardianDashCooldown,damage:'1',grants:['mobility'],howTo:'Pulsá {key} para embestir hacia donde te movés.'}),
+  'guardian.shieldBash': skill({id:'guardian.shieldBash',name:'Impacto del baluarte',branch:'guardian',description:'Empuja y aturde al rival.',icon:'guardian-bash',compatibleClasses:['guardian'],compatibleSlots:['q','e'],trigger:'press',animationAction:'attack',cooldown:RULES.shieldBashCooldown,damage:'0,5',howTo:'Pulsá {key} para empujar y aturdir con el escudo.'}),
+  'guardian.fury': skill({id:'guardian.fury',name:'Furia dorada',branch:'guardian',description:'Aumenta el daño de espada.',icon:'guardian-fury',compatibleClasses:['guardian'],compatibleSlots:['r','f','e'],trigger:'press',animationAction:'castChannel',cooldown:RULES.furyCooldown,damage:'+40 %',howTo:'Pulsá {key} para 5 s de espada más fuerte.'}),
+  'vanguard.sword': skill({id:'vanguard.sword',name:'Mandoble colosal',branch:'vanguard',description:'Barrido pesado de gran alcance.',icon:'vanguard-sword',compatibleClasses:['vanguard'],compatibleSlots:['primary'],trigger:'hold-release',animationAction:'attack',cooldown:CLASSES.vanguard.meleeCooldown,damage:'2–4',grants:['melee'],howTo:'Pulsá {key} para un barrido; mantené para cargarlo.'}),
+  'vanguard.slash': skill({id:'vanguard.slash',name:'Creciente escarlata',branch:'vanguard',description:'Tajo que atraviesa enemigos.',icon:'vanguard-slash',compatibleClasses:['vanguard'],compatibleSlots:['q','e'],trigger:'press',animationAction:'attack',cooldown:RULES.slashCooldown,damage:'1,5',howTo:'Pulsá {key} para un tajo que viaja y atraviesa.'}),
+  'vanguard.counter': skill({id:'vanguard.counter',name:'Revancha de hierro',branch:'vanguard',description:'Devuelve proyectiles.',icon:'vanguard-counter',compatibleClasses:['vanguard'],compatibleSlots:['e','q'],trigger:'hold',animationAction:'castChannel',cooldown:RULES.counterCooldown,damage:'×1–×2',howTo:'Mantené {key} para devolver proyectiles; 1 s lo duplica.'}),
+  'common.dash': skill({id:'common.dash',name:'Traslación',branch:'common',description:'Desplazamiento cargable.',icon:'mage-dash',compatibleClasses:['archer','vanguard'],compatibleSlots:['mobility'],trigger:'hold-release',animationAction:'dash',cooldown:RULES.dashCooldown,damage:'0',grants:['mobility'],howTo:'Pulsá {key} para esquivar hacia donde te movés; mantené para ir más lejos.'}),
 };
 export type PhysicalBinding = 'MouseLeft' | 'MouseRight' | 'MouseMiddle' | 'Space' | 'Shift' | 'Ctrl' | `Key${'Q'|'E'|'R'|'F'|'C'|'X'|'Z'|'V'|'G'|'T'}`;
 export const ALLOWED_BINDINGS:readonly PhysicalBinding[]=['MouseLeft','MouseRight','MouseMiddle','Space','Shift','Ctrl','KeyQ','KeyE','KeyR','KeyF','KeyC','KeyX','KeyZ','KeyV','KeyG','KeyT'];
 export const validBinding=(value:unknown):value is PhysicalBinding=>typeof value==='string'&&(ALLOWED_BINDINGS as readonly string[]).includes(value);
-export type BindableAction = SkillSlot | 'companionCommand';
+/** The summon's own actions: Mando toggles automatic zombies, Marcar moves the one under the cursor. */
+export type BindableAction = SkillSlot | 'companionCommand' | 'companionMark';
 export type InputBindings = Record<BindableAction, PhysicalBinding>;
 export type CharacterLoadout = Record<SkillSlot, SkillId | null>;
 export interface CharacterPreset {
@@ -403,7 +416,8 @@ export interface CharacterPreset {
   skillTreeSelection: SkillId[];
 }
 export interface CharacterCustomization {
-  version: 1;
+  /** 2: the universal layout (Q/E/F/R). Version 1 profiles are migrated by the client. */
+  version: 2;
   classId: ClassId;
   selectedSkin: string;
   activePresetId: string;
@@ -464,24 +478,28 @@ export const CHARACTER_SKINS:Record<ClassId,CharacterSkinDefinition[]> = {
   ]),
 };
 export const skinsForClass=(classId:ClassId)=>CHARACTER_SKINS[classId];
-const loadout = (primary:SkillId|null,secondary:SkillId|null,mobility:SkillId|null,skill1:SkillId|null,skill2:SkillId|null):CharacterLoadout => ({primary,secondary,mobility,skill1,skill2});
-const bindings = (secondary:PhysicalBinding, mobility:PhysicalBinding, skill1:PhysicalBinding, skill2:PhysicalBinding, companionCommand:PhysicalBinding='KeyE'):InputBindings => ({primary:'MouseLeft',secondary,mobility,skill1,skill2,companionCommand});
+const loadout = (slots:Partial<CharacterLoadout>):CharacterLoadout => ({primary:null,secondary:null,mobility:null,q:null,e:null,f:null,r:null,...slots});
+/** Every class, every slot: the same key. Only the summon's two actions sit where each kit leaves room. */
+export const UNIVERSAL_BINDINGS: Record<SkillSlot, PhysicalBinding> = {primary:'MouseLeft',secondary:'MouseRight',mobility:'Space',q:'KeyQ',e:'KeyE',f:'KeyF',r:'KeyR'};
+const bindings = (companionCommand:PhysicalBinding, companionMark:PhysicalBinding):InputBindings => ({...UNIVERSAL_BINDINGS,companionCommand,companionMark});
 export const DEFAULT_LOADOUTS: Record<ClassId, CharacterLoadout> = {
-  archer:loadout('archer.arrow','archer.dagger','common.dash','archer.trap','archer.volley'),
-  mage:loadout('mage.fireball','mage.magicShield','mage.blink','mage.ice','mage.blackHole'),
-  necromancer:loadout('necromancer.fire',null,null,'necromancer.summon',null),
-  guardian:loadout('guardian.sword','guardian.guard','guardian.dash','guardian.shieldBash','guardian.fury'),
-  vanguard:loadout('vanguard.sword',null,'common.dash','vanguard.slash','vanguard.counter'),
+  archer:loadout({primary:'archer.arrow',secondary:'archer.dagger',mobility:'common.dash',q:'archer.volley',e:'archer.trap'}),
+  mage:loadout({primary:'mage.fireball',mobility:'mage.blink',q:'mage.ice',e:'mage.magicShield',f:'mage.blackHole'}),
+  // No mobility of its own: Space stays empty. The summon is its powerful F.
+  necromancer:loadout({primary:'necromancer.fire',f:'necromancer.summon'}),
+  guardian:loadout({primary:'guardian.sword',secondary:'guardian.guard',mobility:'guardian.dash',q:'guardian.shieldBash',r:'guardian.fury'}),
+  vanguard:loadout({primary:'vanguard.sword',mobility:'common.dash',q:'vanguard.slash',e:'vanguard.counter'}),
 };
 export const DEFAULT_BINDINGS: Record<ClassId, InputBindings> = {
-  archer:bindings('MouseRight','Space','KeyQ','KeyE'), mage:bindings('MouseRight','Space','MouseMiddle','KeyE','KeyR'),
-  necromancer:bindings('MouseRight','Space','Space','KeyQ'), guardian:bindings('MouseRight','Space','KeyQ','KeyE'),
-  vanguard:bindings('MouseRight','Space','KeyQ','KeyE'),
+  // The necromancer's E and M2 are free, so Mando and Marcar take them; a mage who equips the summon
+  // finds them on its free R and M2.
+  necromancer:bindings('KeyE','MouseRight'), mage:bindings('KeyR','MouseRight'),
+  archer:bindings('KeyR','KeyF'), guardian:bindings('KeyE','KeyF'), vanguard:bindings('KeyR','KeyF'),
 };
 export const defaultSkin = (classId:ClassId) => CHARACTER_SKINS[classId][0].id;
 export function defaultCustomization(classId:ClassId):CharacterCustomization {
   const preset={loadout:{...DEFAULT_LOADOUTS[classId]},bindings:{...DEFAULT_BINDINGS[classId]},skillTreeSelection:Object.values(DEFAULT_LOADOUTS[classId]).filter(Boolean) as SkillId[]};
-  return {version:1,classId,selectedSkin:defaultSkin(classId),activePresetId:'default',presets:{default:preset}};
+  return {version:2,classId,selectedSkin:defaultSkin(classId),activePresetId:'default',presets:{default:preset}};
 }
 export const activePreset = (customization:CharacterCustomization) => customization.presets[customization.activePresetId] ?? customization.presets.default;
 export const validSkill = (value:unknown):value is SkillId => typeof value === 'string' && value in SKILLS;
@@ -492,17 +510,34 @@ export function validLoadout(classId:ClassId,value:unknown):value is CharacterLo
 }
 export function validCustomization(classId:ClassId,value:unknown):value is CharacterCustomization {
   if(!value||typeof value!=='object')return false;const c=value as CharacterCustomization;
-  if(c.version!==1||c.classId!==classId||typeof c.activePresetId!=='string'||!c.presets||typeof c.presets!=='object')return false;
+  if(c.version!==2||c.classId!==classId||typeof c.activePresetId!=='string'||!c.presets||typeof c.presets!=='object')return false;
   if(!CHARACTER_SKINS[classId].some(s=>s.id===c.selectedSkin))return false;
   const presets=Object.values(c.presets);if(!presets.length||!c.presets[c.activePresetId])return false;
   return presets.every(preset=>{
     if(!validLoadout(classId,preset.loadout)||!preset.bindings||!Array.isArray(preset.skillTreeSelection)||!preset.skillTreeSelection.every(validSkill))return false;
     const used=new Set<string>();for(const slot of SKILL_SLOTS){if(!preset.loadout[slot])continue;const binding=preset.bindings[slot];if(!validBinding(binding)||used.has(binding))return false;used.add(binding);}
-    if(!validBinding(preset.bindings.companionCommand))return false;
-    return !Object.values(preset.loadout).includes('necromancer.summon')||!used.has(preset.bindings.companionCommand);
+    const {companionCommand,companionMark}=preset.bindings;
+    if(!validBinding(companionCommand)||!validBinding(companionMark))return false;
+    // With the summon equipped, Mando and Marcar need keys of their own.
+    return !Object.values(preset.loadout).includes('necromancer.summon')||(!used.has(companionCommand)&&!used.has(companionMark)&&companionCommand!==companionMark);
   });
 }
 export const equippedSkill = (p:{loadout:CharacterLoadout},id:SkillId) => Object.values(p.loadout).includes(id);
+/** Which slot holds this skill, if the player has it equipped. */
+export const slotOf = (p:{loadout:CharacterLoadout},id:SkillId):SkillSlot|undefined => SKILL_SLOTS.find((slot)=>p.loadout[slot]===id);
+/** The held abilities charging right now, whose `blocks` and `chargeSlow` apply. */
+export function chargingSkills(p:Pick<Player,'blackHoleCharge'|'blinkCharge'>):SkillId[] {
+  const charging:SkillId[]=[];
+  if(p.blackHoleCharge>0)charging.push('mage.blackHole');
+  if(p.blinkCharge>0)charging.push('mage.blink');
+  return charging;
+}
+/**
+ * Whether the player can pay for a skill. Always true while a mode has no mana (the arenas today):
+ * a skill without a cost, or a player without a pool, never blocks. When mana arrives, an ability
+ * that cannot be paid does not start at all rather than half-activating.
+ */
+export const affordable = (p:{mana?:number},id:SkillId) => SKILLS[id].mana===undefined||p.mana===undefined||p.mana>=SKILLS[id].mana!;
 export const TEAMS: Team[] = ['blue', 'red', 'green', 'violet'];
 export const TEAM_NAMES: Record<Team, string> = {
   blue: 'AZUL',
@@ -612,9 +647,8 @@ export interface Input {
 export interface SlotInputState { pressed: boolean; held: boolean; released: boolean }
 export type SlotInputMap = Record<SkillSlot, SlotInputState>;
 const idleSlot = (): SlotInputState => ({ pressed: false, held: false, released: false });
-export const idleSlots = (): SlotInputMap => ({
-  primary: idleSlot(), secondary: idleSlot(), mobility: idleSlot(), skill1: idleSlot(), skill2: idleSlot(),
-});
+export const idleSlots = (): SlotInputMap =>
+  Object.fromEntries(SKILL_SLOTS.map((slot) => [slot, idleSlot()])) as SlotInputMap;
 /** Guards stay in the red circle around their necromancer; cursor zombies follow the mouse. */
 export type ZombieRole = 'guard' | 'cursor';
 export const idleInput = (seq = 0, angle = 0): Input => ({
@@ -1424,7 +1458,8 @@ export function resolveSlotInput(p: Player, input: Input): Input {
   if (!hasLogicalInput(input)) return input;
   const resolved: Input = { ...input, sword:false, shot:false, charge:false, dash:false, blackHole:false, blackHoleRelease:false, blackHoleDetonate:false, blink:false, blinkRelease:false, worldBlink:false, guard:false, summon:false,
     ice:false, trap:false, volley:false, special:false, shieldBash:false, fury:false, slash:false, counter:false,
-    command:false, mark:false };
+    // Mando and Marcar are the summon's own keys, not slots: they pass through untouched.
+    command:input.command, mark:input.mark };
   for (const slot of SKILL_SLOTS) {
     const skillId = p.loadout[slot], state = input.slots[slot];
     if (!skillId) continue;
@@ -1546,7 +1581,7 @@ export function movePlayer(
   p.aimY = input.aimY;
   // Singularidad: held it charges size, damage and reach; released it launches toward the aim.
   if (equippedSkill(p, 'mage.blackHole')) {
-    if (input.blackHole && p.blackHoleCd <= 0 && p.blinkCharge <= 0) {
+    if (input.blackHole && p.blackHoleCd <= 0) {
       if (p.blackHoleCharge <= 0) result.chargeStarted = 'mage.blackHole';
       p.blackHoleCharge = Math.min(RULES.blackHoleChargeTime, p.blackHoleCharge + dt);
     }
@@ -1739,7 +1774,8 @@ export function movePlayer(
   // Once released it is committed: only a stun or death still cancels it.
   else if (canBlink) {
     if (!p.blinkCommitted) {
-      if (input.blink && p.blackHoleCharge <= 0 && (p.blinkCharge > 0 || p.dashCd <= 0)) {
+      // Mobility is never blocked: the mage can blink in the middle of charging Singularidad.
+      if (input.blink && (p.blinkCharge > 0 || p.dashCd <= 0)) {
         if (p.blinkCharge <= 0) result.chargeStarted = 'mage.blink';
         p.blinkCharge = Math.min(RULES.mageBlinkChargeTime, p.blinkCharge + dt);
       }
@@ -1755,8 +1791,17 @@ export function movePlayer(
     p.blinkCharge = 0;
     p.blinkCommitted = false;
   }
-  // Holding either spell slows the mage and keeps its hands busy: no attacks until it lets go.
-  const channeling = p.blackHoleCharge > 0 || p.blinkCharge > 0;
+  // Each held ability says what it keeps busy (a charging F keeps the hands off M1 and M2) and how
+  // much it slows; everything else, mobility and the quick Q/E included, stays free.
+  const charging = chargingSkills(p);
+  const busy = new Set(charging.flatMap((id) => SKILLS[id].blocks ?? []));
+  const chargeSlow = Math.min(1, ...charging.map((id) => SKILLS[id].chargeSlow ?? 1));
+  const free = (id: SkillId | null | undefined) => {
+    const slot = id ? slotOf(p, id) : undefined;
+    return !slot || !busy.has(slot);
+  };
+  // The archer's melee is its dagger on M2; the melee classes swing their M1.
+  const swordSkill = p.classId === 'archer' ? 'archer.dagger' : p.loadout.primary;
   if (
     frozenDt === 0 &&
     canDash &&
@@ -1806,7 +1851,7 @@ export function movePlayer(
     (carrying ? RULES.carryMultiplier : 1) *
     (p.guarding ? RULES.guardSpeed + (p.pve?.classRanks.guardian ?? 0) * .04 : 1) *
     (p.counterLeft > 0 ? RULES.counterSpeed : 1) *
-    (channeling ? RULES.chargeMoveSpeed : 1);
+    chargeSlow;
   translate(
     p,
     input.x * speed * Math.max(0, dt - dashDt - frozenDt),
@@ -1831,7 +1876,7 @@ export function movePlayer(
   const dashAttackWindow = dashCombo || p.classId === 'vanguard';
   const canCharge =
     !p.guarding &&
-    !channeling &&
+    free(p.loadout.primary) &&
     (!p.dashInvulnerable || dashAttackWindow) &&
     !wasWinding &&
     p.attackLock <= 0 &&
@@ -1845,14 +1890,13 @@ export function movePlayer(
   else if (!canCharge || !(input.shot || input.sword)) p.shotCharge = 0;
   if (
     !p.guarding &&
-    !channeling &&
     p.guardRecovery <= 0 &&
     (!p.dashInvulnerable || dashAttackWindow) &&
     p.attackLock <= 0 &&
     !wasWinding &&
     !result.fury
   ) {
-    if (input.volley && p.classId === 'archer' && p.volleyCd <= 0) {
+    if (input.volley && p.classId === 'archer' && p.volleyCd <= 0 && free('archer.volley')) {
       p.invuln = 0;
       p.volleyCd = RULES.volleyCooldown;
       p.attackLock = RULES.attackLock;
@@ -1862,27 +1906,27 @@ export function movePlayer(
       result.volleyPower = heldCharge >= RULES.overchargeTap ? RULES.volleyChargedPower : 0;
       result.angle = p.angle;
       if (dashCombo) p.windDash = 0;
-    } else if (input.slash && p.classId === 'vanguard' && p.slashCd <= 0) {
+    } else if (input.slash && p.classId === 'vanguard' && p.slashCd <= 0 && free('vanguard.slash')) {
       p.invuln = 0;
       p.slashCd = RULES.slashCooldown;
       p.attackLock = RULES.attackLock;
       result.slash = true;
       result.angle = p.angle;
-    } else if (input.sword && stats.melee && p.swordCd <= 0) {
+    } else if (input.sword && stats.melee && p.swordCd <= 0 && free(swordSkill)) {
       p.invuln = 0;
       p.windup = stats.windup;
       p.swingAngle = p.angle;
       p.swingPower = p.classId === 'archer' ? 0 : chargePower(p.shotCharge);
       p.swordCd = stats.meleeCooldown;
       p.attackLock = RULES.attackLock;
-    } else if (input.ice && p.classId === 'mage' && equippedSkill(p, 'mage.ice') && p.iceCd <= 0) {
+    } else if (input.ice && p.classId === 'mage' && equippedSkill(p, 'mage.ice') && p.iceCd <= 0 && free('mage.ice')) {
       p.invuln = 0;
       p.iceCd = RULES.iceCooldown;
       p.attackLock = RULES.attackLock;
       result.ice = true;
       result.skillId = 'mage.ice';
       result.angle = p.angle;
-    } else if (input.shot && (equippedSkill(p, 'mage.fireball') || equippedSkill(p, 'necromancer.fire') || equippedSkill(p, 'archer.arrow')) && p.shotCd <= 0) {
+    } else if (input.shot && (equippedSkill(p, 'mage.fireball') || equippedSkill(p, 'necromancer.fire') || equippedSkill(p, 'archer.arrow')) && p.shotCd <= 0 && free(p.loadout.primary)) {
       p.invuln = 0;
       result.skillId = p.loadout.primary ?? undefined;
       p.shotCd = projectileSkillStats(result.skillId, p.classId).cooldown;

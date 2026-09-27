@@ -30,22 +30,31 @@ El cliente deduce el servidor desde el hostname de la página si `VITE_SERVER_UR
 
 ## Controles y reglas
 
-El mago también lanza un proyectil de hielo con clic central (presionar la rueda, botón 3) o el botón táctil ❄. Inmoviliza al objetivo durante 1 segundo, sin daño adicional, y tiene 0,5 segundos de recarga independiente del fuego. Bloquea caminar y dash, pero permite apuntar y atacar. Los escudos y la invulnerabilidad bloquean el efecto.
+El mago también lanza un proyectil de hielo con Q o el botón táctil ❄. Inmoviliza al objetivo durante 1 segundo, sin daño adicional, y tiene 0,5 segundos de recarga independiente del fuego. Bloquea caminar y dash, pero permite apuntar y atacar. Los escudos y la invulnerabilidad bloquean el efecto.
 
 La banda sonora es original y sintetizada: melodía medieval en el menú, ritmo de aventura durante el duelo, más intensidad en los últimos 30 segundos y un cierre musical al terminar. Comienza tras la primera interacción y se pausa al ocultar la pestaña. El control «Música» ajusta su volumen sin cambiar los efectos; el botón de sonido silencia todo. Ambas preferencias se guardan en el navegador.
 
-| Acción            | PC             | Celular horizontal                                      |
-| ----------------- | -------------- | ------------------------------------------------------- |
-| Mover             | WASD o flechas | Palanca izquierda                                       |
-| Apuntar           | Mouse          | Arrastrar desde el botón de la habilidad                 |
-| Ataque normal     | Clic izquierdo | Botón principal de la clase                              |
-| Acción secundaria | Clic derecho   | Botón de daga, escudo, guardia o invocación              |
-| Dash              | Espacio        | Botón de dash; arrastrar muestra y elige el recorrido    |
-| Habilidad Q/E     | Q / E          | Botones propios con ícono, carga y recarga               |
+Todas las clases hablan el mismo lenguaje de controles: cambia el personaje, no las teclas.
+
+| Tecla          | Para qué                     | Arquero       | Mago          | Nigromante          | Caballero        | Guerrero       |
+| -------------- | ---------------------------- | ------------- | ------------- | ------------------- | ---------------- | -------------- |
+| WASD / flechas | Mover                        | ·             | ·             | ·                   | ·                | ·              |
+| Mouse          | Apuntar                      | ·             | ·             | ·                   | ·                | ·              |
+| Clic izquierdo | Ataque básico                | Flecha        | Orbe de fuego | Fuego               | Espada           | Espada pesada  |
+| Clic derecho   | Secundario                   | Daga          | —             | Marcar (un zombie)  | Guardia continua | —              |
+| Espacio        | Movilidad                    | Esquivar      | Parpadeo      | —                   | Embestida        | Esquivar       |
+| Q              | Básica, de uso frecuente     | Triple        | Saeta glacial | —                   | Golpe de escudo  | Tajo viajero   |
+| E              | Secundaria                   | Cepo          | Égida         | Mando               | —                | Contraataque   |
+| F              | Poderosa                     | —             | Singularidad  | Invocar zombies     | —                | —              |
+| R              | Definitiva                   | —             | —             | —                   | Furia            | —              |
+
+Tocar una tecla usa las habilidades instantáneas; mantenerla carga las que se cargan (la flecha, el orbe, Parpadeo, Singularidad, la invocación) y soltarla las lanza. Las habilidades se combinan: por ejemplo, el mago puede caminar, parpadear con Espacio y seguir cargando Singularidad con F. Cada una declara qué deja ocupado mientras carga: Singularidad deja las manos ocupadas para los clics, pero no para Q, E ni Espacio. El panel de habilidades muestra siempre las siete posiciones (las vacías, con «—») y, debajo de la arena, cómo se usa cada una con tus teclas. Los controles se pueden reasignar en Personalizar.
+
+En celular: palanca izquierda para moverse; cada habilidad tiene su botón con ícono, carga y recarga, y arrastrarlo apunta.
 
 En celular, tocar y soltar un botón usa la dirección actual. Arrastrarlo permite apuntar como con una pequeña palanca; si el dedo vuelve al centro después de haber arrastrado, soltar cancela sin gastar la habilidad. Movimiento, carga y defensa admiten varios dedos simultáneos. La arena usa todo el viewport horizontal y, cuando su proporción no permite ver el mapa completo, la cámara sigue al jugador y muestra indicadores para las banderas fuera de pantalla.
 
-El arquero dispara flechas y usa una daga. El mago lanza bolas de fuego con clic izquierdo y comienza con un escudo mágico que absorbe dos golpes desde cualquier dirección, sin perder vida ni soltar la bandera. Al romperse, hay que esperar 5 segundos y hacer un nuevo clic derecho (o tocar ⛨) para recuperarlo; no se repone automáticamente ni permite recargar una carga restante. Reaparecer o reiniciar la arena restaura las dos cargas. Ambos pueden usar dash. El nigromante lanza fuego (clic izquierdo o botón principal táctil) e invoca dos zombies con espacio, clic derecho o el botón ☠ (recarga de 5 s). Cada invocación es una ejecución de 2 zombies y puede haber como máximo 2 ejecuciones activas a la vez (4 zombies); una tercera no se inicia hasta que terminen los 2 zombies de alguna. Los zombies emergen del suelo escalonados, son más lentos que cualquier clase, persiguen al rival más cercano al cursor del nigromante (o el más cercano a ellos), no hacen fila: los que van tras el mismo objetivo se reparten a su alrededor (en pinza de a dos o en círculo de a más), cada uno se acerca por su lado y recién desde su lugar se lanza al ataque; sin rival cerca del cursor ocupan puestos separados alrededor de esa zona, y toman caminos distintos alrededor de los muros; duran 20 s y cualquier ataque los destruye. Sus golpes cuentan como daño del nigromante: sueltan banderas y suman muertes. La espada usa la última dirección apuntada. El dash usa el movimiento actual o el apuntado si estás quieto. El botón de sonido está en la cabecera; su elección se conserva en el dispositivo. El audio comienza después de una interacción del usuario.
+El arquero dispara flechas y usa una daga. El mago lanza bolas de fuego con clic izquierdo y comienza con un escudo mágico que absorbe dos golpes desde cualquier dirección, sin perder vida ni soltar la bandera. Al romperse, hay que esperar 5 segundos y pulsar E de nuevo (o tocar ⛨) para recuperarlo; no se repone automáticamente ni permite recargar una carga restante. Reaparecer o reiniciar la arena restaura las dos cargas. Ambos pueden usar dash. El nigromante lanza fuego (clic izquierdo o botón principal táctil) e invoca dos zombies con F o el botón ☠ (recarga de 5 s); E alterna Mando y el clic derecho sobre un zombie lo Marca. Cada invocación es una ejecución de 2 zombies y puede haber como máximo 2 ejecuciones activas a la vez (4 zombies); una tercera no se inicia hasta que terminen los 2 zombies de alguna. Los zombies emergen del suelo escalonados, son más lentos que cualquier clase, persiguen al rival más cercano al cursor del nigromante (o el más cercano a ellos), no hacen fila: los que van tras el mismo objetivo se reparten a su alrededor (en pinza de a dos o en círculo de a más), cada uno se acerca por su lado y recién desde su lugar se lanza al ataque; sin rival cerca del cursor ocupan puestos separados alrededor de esa zona, y toman caminos distintos alrededor de los muros; duran 20 s y cualquier ataque los destruye. Sus golpes cuentan como daño del nigromante: sueltan banderas y suman muertes. La espada usa la última dirección apuntada. El dash usa el movimiento actual o el apuntado si estás quieto. El botón de sonido está en la cabecera; su elección se conserva en el dispositivo. El audio comienza después de una interacción del usuario.
 
 - Robá la bandera enemiga al tocarla y volvé al círculo de tu base. **Tu bandera debe estar en casa para anotar.**
 - Llevarla reduce 15 % la velocidad normal; permite atacar y hacer dash.

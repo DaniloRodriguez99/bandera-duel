@@ -1,5 +1,23 @@
 # Registro de cambios
 
+## 2026-09-26
+
+### Controles universales
+
+- Todas las clases usan el mismo lenguaje de controles: WASD mueve, el mouse apunta, clic izquierdo es el ataque básico, clic derecho el secundario, Espacio la movilidad, Q y E las habilidades de uso frecuente, F la poderosa y R la definitiva.
+- Cambios de tecla por clase:
+  - Arquero: la salva triple pasa a Q y el cepo a E.
+  - Mago: la saeta glacial pasa a Q, el escudo a E y Singularidad a F.
+  - Nigromante: la invocación pasa a F y Espacio queda libre, porque no tiene movilidad propia. Mando queda en E y Marcar es clic derecho sobre un zombie; se acabó Ctrl+E.
+  - Caballero: la Furia pasa a R.
+- El panel de habilidades muestra siempre las siete posiciones (clic izq., clic der., Q, E, F, R y Espacio debajo) con la tecla real de cada una. Las posiciones vacías aparecen bloqueadas con «—».
+- Debajo de la arena, una guía explica cómo se usa cada habilidad con las teclas del jugador.
+- Las habilidades declaran qué dejan ocupado mientras cargan. La movilidad nunca se bloquea: el Mago puede parpadear mientras carga Singularidad y seguir cargándola. Cargar Singularidad ocupa los clics, pero deja libres Q y E. Las lentitudes de dos cargas no se suman.
+- En celular, los botones que se apuntan arrastrando se lanzan al soltar, después de apuntar.
+- Los perfiles guardados se migran solos a la nueva disposición: cada habilidad va a su posición nueva, los controles vuelven a las teclas universales y se conserva la skin.
+- Todo queda preparado para el maná: una habilidad con costo lo muestra en su carta y aparece no disponible si no alcanza. Las arenas todavía no usan maná.
+- Mando y Marcar ya funcionan aunque se esté manteniendo otra tecla (antes se perdían).
+
 ## 2026-09-25
 
 ### Juego e interfaz

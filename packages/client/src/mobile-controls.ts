@@ -1,5 +1,8 @@
-import { CLASSES, RULES, chargePower, type ClassId, type Player, type SkillSlot } from '@bandera/shared';
-import { abilitySlots, playerAbilitySlots, type AbilitySlot } from './abilities.js';
+import { CLASSES, DEFAULT_LOADOUTS, RULES, type ClassId, type Player, type SkillSlot } from '@bandera/shared';
+import { abilityCards, type AbilitySlot } from './abilities.js';
+
+/** Thumb order: the big attack button first, mobility beside it, then the class's abilities. */
+const TOUCH_ORDER: readonly SkillSlot[] = ['primary', 'mobility', 'secondary', 'q', 'e', 'f', 'r'];
 
 export type TouchMode = 'charge' | 'hold' | 'release' | 'press';
 
@@ -31,23 +34,29 @@ const TOUCH_META: Record<string, Omit<TouchAbilitySlot, keyof AbilitySlot>> = {
 };
 export const touchMeta=(id:string,classId:ClassId)=>{const meta=TOUCH_META[id];if(!meta)throw new Error(`Falta configuración táctil para ${classId}/${id}`);return {...meta,mode:id==='dash'&&classId==='guardian'?'release' as const:meta.mode};};
 
-export function touchAbilitySlots(classId: ClassId,player?:Player): TouchAbilitySlot[] {
-  return (player?.classId==='mage'?playerAbilitySlots(player):abilitySlots(classId)).map((slot) => {
-    const meta = touchMeta(slot.id,classId);
-    return {
+/**
+ * Every class's buttons come from the same cards as the ability bar. Empty positions have no button,
+ * and Marcar has none either: a long press on Mando marks, since a finger cannot right-click.
+ */
+export function touchAbilitySlots(classId: ClassId,player?:Pick<Player,'loadout'>): TouchAbilitySlot[] {
+  const loadout = player?.loadout ?? DEFAULT_LOADOUTS[classId];
+  return abilityCards({ classId, loadout }, undefined, TOUCH_ORDER)
+    .filter((slot) => !slot.locked && slot.companion !== 'companionMark')
+    .map((slot) => ({
       ...slot,
-      ...meta,
-      logicalSlot: slot.logicalSlot,
-      mode: slot.id === 'dash' && classId === 'guardian' ? 'release' : meta.mode,
-    };
-  });
+      ...touchMeta(slot.id, classId),
+      // Mando is not a slot: its button keeps its own tap / long-press path.
+      logicalSlot: slot.companion ? undefined : slot.logicalSlot,
+    }));
 }
 
 function chargeFor(slot: TouchAbilitySlot, p: Player) {
   if (slot.id === 'shot' || slot.id === 'sword')
     return p.shotCharge / (p.classId === 'archer' ? RULES.chargeTime : RULES.overchargeTime);
-  if (slot.id === 'dash' || slot.id === 'summon')
-    return p.specialCharge / (CLASSES[p.classId].summon ? RULES.raiseCharge : RULES.overchargeTime);
+  if (slot.skillId === 'mage.blink') return p.blinkCharge / RULES.mageBlinkChargeTime;
+  if (slot.id === 'black-hole') return p.blackHoleCharge / RULES.blackHoleChargeTime;
+  if (slot.id === 'summon') return p.specialCharge / RULES.raiseCharge;
+  if (slot.id === 'dash') return p.specialCharge / RULES.overchargeTime;
   if (slot.id === 'counter') return p.counterCharge / RULES.counterChargeTime;
   return 0;
 }
@@ -102,8 +111,8 @@ function button(slot: TouchAbilitySlot) {
   return node;
 }
 
-export function mountTouchAbilities(root: HTMLElement, classId: ClassId,player?:Player) {
-  const signature=player?.classId==='mage'?`${classId}:${Object.values(player.loadout).join('|')}`:classId;
+export function mountTouchAbilities(root: HTMLElement, classId: ClassId,player?:Pick<Player,'loadout'>) {
+  const signature=`${classId}:${Object.values(player?.loadout ?? DEFAULT_LOADOUTS[classId]).join('|')}`;
   if (root.dataset.class === signature) return;
   root.dataset.class = signature;
   root.replaceChildren(...touchAbilitySlots(classId,player).map(button));

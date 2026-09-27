@@ -1,4 +1,4 @@
-import { CLASSES, RULES, SKILLS, SKILL_SLOTS, blackHoleStats, chargePower, projectileStats, type ClassId, type InputBindings, type PhysicalBinding, type Player, type SkillId, type SkillSlot, type Snapshot } from '@bandera/shared';
+import { CLASSES, DEFAULT_BINDINGS, RULES, SKILLS, affordable, blackHoleStats, chargePower, projectileSkillStats, type ClassId, type InputBindings, type PhysicalBinding, type Player, type SkillId, type SkillSlot, type Snapshot } from '@bandera/shared';
 
 /**
  * Whether this player's Singularidad is still out. Its key then bursts the hole, so its card and
@@ -16,7 +16,10 @@ export interface AbilityTier {
 
 export interface AbilitySlot {
   id: string;
+  skillId?: SkillId;
   logicalSlot?: SkillSlot;
+  /** The summon's Mando or Marcar, which have keys of their own rather than slots. */
+  companion?: 'companionCommand' | 'companionMark';
   key: string;
   name: string;
   icon: string;
@@ -24,6 +27,14 @@ export interface AbilitySlot {
   max: number;
   detail?: (p: Player) => string | null;
   tiers?: AbilityTier[];
+  /** An empty position of the universal layout. */
+  locked?: boolean;
+  /** How to use it, with the bound key already in. */
+  howTo?: string;
+  /** The same line for a finger, which presses a button rather than a key. */
+  howToTouch?: string;
+  /** Its mana cost, for modes with mana. */
+  mana?: number;
 }
 
 const skillIcon = (name: string) => `/assets/skills/${name}.png`;
@@ -33,287 +44,273 @@ const tapped = (charge: number) => charge > 0 && charge < RULES.overchargeTap;
 /** A full primary charge becomes wind; every active archer dash empowers the triple shot. */
 const windFull = (p: Player) => p.shotCharge >= RULES.chargeTime - 1e-8;
 
-/** Abilities in panel order: click first, then space, then the class extras. */
-export function abilitySlots(classId: ClassId): AbilitySlot[] {
-  const stats = CLASSES[classId];
-  const slots: AbilitySlot[] = [];
-  if (stats.ranged) {
-    const [name, icon] =
-      classId === 'mage'
-        ? ['Bola de fuego', skillIcon('mage-fireball')]
-        : classId === 'necromancer'
-          ? ['Fuego', skillIcon('necromancer-fire')]
-          : ['Flecha', skillIcon('archer-arrow')];
-    slots.push({
-      id: 'shot',
-      key: 'CLIC',
-      name,
-      icon,
-      cooldown: (p) => p.shotCd,
-      max: projectileStats(classId).cooldown,
-      tiers:
-        classId === 'archer'
-          ? [
-              { label: 'Toque · flecha', active: (p) => tapped(p.shotCharge) },
-              {
-                label: 'Mantener 0,8 s · flecha cargada',
-                active: (p) => p.shotCharge >= RULES.overchargeTap && !windFull(p),
-                state: (p) => (p.shotCharge > 0 ? percent(p.shotCharge / RULES.chargeTime) : null),
-              },
-              { label: 'Carga completa · flecha de viento', active: windFull },
-            ]
-          : [
-              { label: `Toque · ${name.toLowerCase()}`, active: (p) => tapped(p.shotCharge) },
-              {
-                label: classId === 'mage' ? 'Mantener · gran bola explosiva' : 'Mantener · bola de fuego gigante',
-                active: (p) => p.shotCharge >= RULES.overchargeTap,
-                state: (p) => (p.shotCharge > 0 ? percent(chargePower(p.shotCharge)) : null),
-              },
-            ],
-    });
-  } else
-    slots.push({
-      id: 'sword',
-      key: 'CLIC',
-      name: classId === 'vanguard' ? 'Espada pesada' : 'Espada',
-      icon: skillIcon(classId === 'vanguard' ? 'vanguard-sword' : 'guardian-slash'),
-      cooldown: (p) => p.swordCd,
-      max: stats.meleeCooldown,
-      tiers: [
+/**
+ * The HUD's fixed positions, the same for every class: M1 M2 · Q E F R, and Space below. An empty
+ * position still shows its key, so the layout itself teaches the control language.
+ */
+export const LAYOUT: readonly SkillSlot[] = ['primary', 'secondary', 'q', 'e', 'f', 'r', 'mobility'];
+const COMPANIONS = ['companionCommand', 'companionMark'] as const;
+type Companion = (typeof COMPANIONS)[number];
+
+/** The ids the scene's aim previews, the touch buttons and the stylesheet know each skill by. */
+export const ABILITY_IDS: Record<SkillId, string> = {
+  'archer.arrow': 'shot', 'archer.dagger': 'dagger', 'archer.trap': 'trap', 'archer.volley': 'volley',
+  'mage.fireball': 'shot', 'mage.magicShield': 'magic-shield', 'mage.ice': 'ice', 'mage.blink': 'dash',
+  'mage.blackHole': 'black-hole', 'necromancer.fire': 'shot', 'necromancer.summon': 'summon',
+  'guardian.sword': 'sword', 'guardian.guard': 'guard', 'guardian.dash': 'dash',
+  'guardian.shieldBash': 'shield-bash', 'guardian.fury': 'fury', 'vanguard.sword': 'sword',
+  'vanguard.slash': 'slash', 'vanguard.counter': 'counter', 'common.dash': 'dash',
+};
+/** Short names that fit a card. */
+const CARD_NAMES: Record<SkillId, string> = {
+  'archer.arrow': 'Flecha', 'archer.dagger': 'Daga', 'archer.trap': 'Trampa', 'archer.volley': 'Triple',
+  'mage.fireball': 'Orbe de fuego', 'mage.magicShield': 'Égida de dos sellos', 'mage.ice': 'Flecha de hielo',
+  'mage.blink': 'Parpadeo', 'mage.blackHole': 'Singularidad', 'necromancer.fire': 'Fuego',
+  'necromancer.summon': 'Invocar zombies', 'guardian.sword': 'Espada', 'guardian.guard': 'Guardia continua',
+  'guardian.dash': 'Embestida', 'guardian.shieldBash': 'Golpe de escudo', 'guardian.fury': 'Furia',
+  'vanguard.sword': 'Espada pesada', 'vanguard.slash': 'Tajo viajero', 'vanguard.counter': 'Contraataque',
+  'common.dash': 'Esquivar',
+};
+const COMPANION_NAMES: Record<Companion, string> = { companionCommand: 'Mando', companionMark: 'Marcar' };
+const COMPANION_HOW_TO: Record<Companion, string> = {
+  companionCommand: 'Pulsá {key} para alternar zombies automáticos o a tu mando.',
+  companionMark: 'Pulsá {key} sobre un zombie para cambiarlo de círculo.',
+};
+/** The shared dash wears each class's own art. */
+const iconFor = (classId: ClassId, id: SkillId) =>
+  skillIcon(id === 'common.dash' ? (classId === 'archer' ? 'archer-wind' : 'vanguard-dash') : SKILLS[id].icon);
+export const bindingLabel = (value: PhysicalBinding) =>
+  ({ MouseLeft: 'CLIC', MouseRight: 'CLIC DER.', MouseMiddle: 'CLIC 3', Space: 'ESPACIO', Shift: 'SHIFT', Ctrl: 'CTRL' } as Record<string, string>)[value] ?? value.replace('Key', '');
+/** A skill's how-to line with the player's own key in it; on touch, its button. */
+export const howToLine = (text: string, key: string) => text.replaceAll('{key}', key);
+
+function cooldownOf(id: SkillId, p: Player): number {
+  switch (id) {
+    case 'mage.magicShield': return p.magicShieldCd;
+    case 'mage.ice': return p.iceCd;
+    case 'mage.blackHole': return p.blackHoleCd;
+    case 'necromancer.summon': return p.summonCd;
+    case 'common.dash': case 'mage.blink': case 'guardian.dash': return p.dashCd;
+    case 'archer.trap': return p.trapCd;
+    case 'archer.volley': return p.volleyCd;
+    case 'archer.dagger': case 'guardian.sword': case 'vanguard.sword': return p.swordCd;
+    case 'guardian.guard': return p.guardCd;
+    case 'guardian.shieldBash': return p.shieldBashCd;
+    case 'guardian.fury': return p.furyCd;
+    case 'vanguard.slash': return p.slashCd;
+    case 'vanguard.counter': return p.counterCd;
+    default: return p.shotCd;
+  }
+}
+function maxCooldown(id: SkillId, classId: ClassId) {
+  if (id === 'archer.arrow' || id === 'mage.fireball' || id === 'necromancer.fire')
+    return projectileSkillStats(id, classId).cooldown;
+  if (id === 'archer.dagger' || id === 'guardian.sword' || id === 'vanguard.sword') return CLASSES[classId].meleeCooldown;
+  return SKILLS[id].cooldown || 1;
+}
+/** What a card says when it is off cooldown: a charge, the shield's seals, an active state. */
+function detailOf(id: SkillId, p: Player): string | null {
+  if (id === 'mage.magicShield') return p.magicShieldHits ? `${p.magicShieldHits}/${RULES.magicShieldHits}` : null;
+  if (id === 'mage.blink') return p.blinkCharge > 0 ? percent(p.blinkCharge / RULES.mageBlinkChargeTime) : null;
+  if (id === 'mage.blackHole') return p.blackHoleCharge > 0 ? percent(blackHoleStats(p.blackHoleCharge).power) : null;
+  if (id === 'archer.trap') return p.trapLeft > 0 ? 'Preparando' : null;
+  if (id === 'guardian.guard') return p.guarding ? 'Bloqueando · 45 % velocidad' : null;
+  if (id === 'guardian.shieldBash') return p.shieldBashLeft > 0 ? 'Golpeando' : null;
+  if (id === 'guardian.fury') return p.furyLeft > 0 ? `${p.furyLeft.toFixed(1)}s activa` : null;
+  if (id === 'vanguard.counter') return p.counterLeft > 0 ? 'Activo' : null;
+  return null;
+}
+/** Each ability's branches: what a tap, a hold or a full charge does, lit while it applies. */
+function tiersOf(id: SkillId, classId: ClassId): AbilityTier[] | undefined {
+  const name = CARD_NAMES[id].toLowerCase();
+  switch (id) {
+    case 'archer.arrow':
+      return [
+        { label: 'Toque · flecha', active: (p) => tapped(p.shotCharge) },
+        {
+          label: 'Mantener 0,8 s · flecha cargada',
+          active: (p) => p.shotCharge >= RULES.overchargeTap && !windFull(p),
+          state: (p) => (p.shotCharge > 0 ? percent(p.shotCharge / RULES.chargeTime) : null),
+        },
+        { label: 'Carga completa · flecha de viento', active: windFull },
+      ];
+    case 'mage.fireball': case 'necromancer.fire':
+      return [
+        { label: `Toque · ${name}`, active: (p) => tapped(p.shotCharge) },
+        {
+          label: classId === 'mage' ? 'Mantener · gran bola explosiva' : 'Mantener · bola de fuego gigante',
+          active: (p) => p.shotCharge >= RULES.overchargeTap,
+          state: (p) => (p.shotCharge > 0 ? percent(chargePower(p.shotCharge)) : null),
+        },
+      ];
+    case 'guardian.sword': case 'vanguard.sword':
+      return [
         { label: 'Toque · golpe', active: (p) => tapped(p.shotCharge) },
         {
           label: 'Mantener · golpe cargado',
           active: (p) => p.shotCharge >= RULES.overchargeTap,
           state: (p) => (p.shotCharge > 0 ? percent(chargePower(p.shotCharge)) : null),
         },
-      ],
-    });
-  if (stats.dash)
-    slots.push({
-      id: 'dash',
-      key: 'ESPACIO',
-      name: classId === 'guardian' ? 'Embestida' : classId === 'mage' ? 'Parpadeo' : 'Esquivar',
-      icon: skillIcon(
-        classId === 'archer'
-          ? 'archer-wind'
-          : classId === 'mage'
-            ? 'mage-blink'
-            : classId === 'vanguard'
-              ? 'vanguard-dash'
-              : 'guardian-bash',
-      ),
-      cooldown: (p) => p.dashCd,
-      max: classId === 'guardian' ? RULES.guardianDashCooldown : RULES.dashCooldown,
-      tiers:
-        classId === 'guardian'
-          ? [{ label: '190 u · 1 daño · sin invulnerabilidad', active: (p) => p.dashLeft > 0 }]
-          : classId === 'mage'
-            ? [
-                {
-                  label: 'Mantener y soltar · 0,5–2 s · hasta 260 u',
-                  active: (p) => p.blinkCharge > 0,
-                  state: (p) => (p.blinkCharge > 0 ? percent(p.blinkCharge / RULES.mageBlinkChargeTime) : null),
-                },
-              ]
-          : [
-              { label: 'Toque · esquivar', active: (p) => tapped(p.specialCharge) },
-              {
-                label: 'Mantener · dash largo',
-                active: (p) => p.specialCharge >= RULES.overchargeTap,
-                state: (p) => (p.specialCharge > 0 ? percent(chargePower(p.specialCharge)) : null),
-              },
-            ],
-    });
-  if (stats.summon)
-    slots.push(
-      {
-        id: 'summon',
-        key: 'ESPACIO',
-        name: 'Invocar zombies',
-        icon: skillIcon('necromancer-summon'),
-        cooldown: (p) => p.summonCd,
-        max: RULES.summonCooldown,
-        tiers: [
-          {
-            label: 'Toque · 2 zombies',
-            active: (p) => tapped(p.specialCharge) && p.fallenGuards === 0,
-            state: (p) => `${p.activeExecutions}/${RULES.zombieExecutions}`,
-          },
-          {
-            label: 'Cayó uno del círculo rojo · zombie con espada',
-            active: (p) => p.fallenGuards > 0,
-            state: (p) => (p.fallenGuards > 0 ? `×${p.fallenGuards}` : null),
-          },
-          {
-            label: 'Mantener · zombie mago',
-            active: (p) => p.specialCharge >= RULES.overchargeTap && p.specialCharge < RULES.overchargeTime,
-            state: (p) => (p.hatAlive ? 'Vivo' : null),
-          },
-          {
-            label: 'Aura llena · resucitar (0,5 s quieto)',
-            active: (p) => p.specialCharge >= RULES.overchargeTime,
-            state: (p) =>
-              p.specialCharge >= RULES.overchargeTime
-                ? percent(p.specialCharge / RULES.raiseCharge)
-                : p.thrallAlive
-                  ? 'Esclavo'
-                  : p.thrallCd > 0
-                    ? `${Math.ceil(p.thrallCd)}s`
-                    : null,
-          },
-        ],
-      },
-      {
-        id: 'command',
-        key: 'E',
-        name: 'Mando',
-        icon: skillIcon('necromancer-mage'),
-        cooldown: () => 0,
-        max: 1,
-        detail: (p) => (p.zombieAuto ? 'Auto' : 'Mando'),
-        tiers: [
-          { label: 'Zombies normales · círculo rojo contigo', active: (p) => !p.zombieAuto },
-          { label: 'Mago, lacayos y esclavo · mouse', active: (p) => !p.zombieAuto },
-          { label: 'Automático · atacan solos', active: (p) => p.zombieAuto },
-        ],
-      },
-      {
-        id: 'mark',
-        key: '⌘ E',
-        name: 'Marcar',
-        icon: skillIcon('necromancer-resurrection'),
-        cooldown: () => 0,
-        max: 1,
-        tiers: [{ label: 'Sobre un zombie · cambia de círculo' }, { label: 'Rojo contigo ↔ violeta al mouse' }],
-      },
-    );
-  if (classId === 'archer')
-    slots.push(
-      { id: 'dagger', key: 'CLIC DER.', name: 'Daga', icon: skillIcon('archer-arrow'), cooldown: (p) => p.swordCd, max: stats.meleeCooldown },
-      {
-        id: 'trap',
-        key: 'Q',
-        name: 'Trampa',
-        icon: skillIcon('archer-trap'),
-        cooldown: (p) => p.trapCd,
-        max: RULES.trapCooldown,
-        detail: (p) => (p.trapLeft > 0 ? 'Preparando' : null),
-      },
-      {
-        id: 'volley',
-        key: 'E',
-        name: 'Triple',
-        icon: skillIcon('archer-volley'),
-        cooldown: (p) => p.volleyCd,
-        max: RULES.volleyCooldown,
-        tiers: [
-          { label: 'Toque · 3 flechas en fila' },
-          { label: 'Cargando clic · 3 al 33 %', active: (p) => p.shotCharge >= RULES.overchargeTap && !windFull(p) },
-          { label: 'Durante el dash · 3 flechas de viento', active: (p) => p.windDash > 0 },
-        ],
-      },
-    );
-  if (classId === 'mage')
-    slots.push({
-      id: 'magic-shield',
-      key: 'CLIC DER.',
-      name: 'Escudo mágico',
-      icon: skillIcon('mage-shield'),
-      cooldown: (p) => p.magicShieldCd,
-      max: RULES.magicShieldCooldown,
-      detail: (p) => (p.magicShieldHits > 0 ? `${p.magicShieldHits}/${RULES.magicShieldHits}` : null),
-    });
-  if (classId === 'mage')
-    slots.push({
-      id: 'ice',
-      key: 'CLIC 3',
-      name: 'Flecha de hielo',
-      icon: skillIcon('mage-ice'),
-      cooldown: (p) => p.iceCd,
-      max: RULES.iceCooldown,
-      tiers: [{ label: 'Clic central · inmoviliza 1 s' }],
-    });
-  if (stats.shield)
-    slots.push({
-      id: 'guard',
-      key: 'CLIC DER.',
-      name: 'Guardia continua',
-      icon: skillIcon('guardian-shield'),
-      cooldown: (p) => p.guardCd,
-      max: RULES.guardCooldown,
-      detail: (p) => (p.guarding ? 'Bloqueando · 45 % velocidad' : null),
-      tiers: [{ label: 'Mantener · bloqueo frontal de 120°', active: (p) => p.guarding }],
-    });
-  if (classId === 'guardian')
-    slots.push(
-      {
-        id: 'shield-bash',
-        key: 'Q',
-        name: 'Golpe de escudo',
-        icon: skillIcon('guardian-bash'),
-        cooldown: (p) => p.shieldBashCd,
-        max: RULES.shieldBashCooldown,
-        detail: (p) => (p.shieldBashLeft > 0 ? 'Golpeando' : null),
-        tiers: [{ label: '0,5 daño · empujón · aturde 1,5 s', active: (p) => p.shieldBashLeft > 0 }],
-      },
-      {
-        id: 'fury',
-        key: 'E',
-        name: 'Furia',
-        icon: skillIcon('guardian-fury'),
-        cooldown: (p) => p.furyCd,
-        max: RULES.furyCooldown,
-        detail: (p) => (p.furyLeft > 0 ? `${p.furyLeft.toFixed(1)}s activa` : null),
-        tiers: [
-          {
-            label: '5 s · espada +40 % daño',
-            active: (p) => p.furyLeft > 0,
-            state: (p) => (p.furyLeft > 0 ? `${p.furyLeft.toFixed(1)}s` : null),
-          },
-        ],
-      },
-    );
-  if (classId === 'vanguard')
-    slots.push({
-      id: 'slash',
-      key: 'Q',
-      name: 'Tajo viajero',
-      icon: skillIcon('vanguard-slash'),
-      cooldown: (p) => p.slashCd,
-      max: RULES.slashCooldown,
-    }, {
-      id: 'counter',
-      key: 'E',
-      name: 'Contraataque',
-      icon: skillIcon('vanguard-counter'),
-      cooldown: (p) => p.counterCd,
-      max: RULES.counterCooldown,
-      detail: (p) => (p.counterLeft > 0 ? 'Activo' : null),
-      tiers: [
+      ];
+    case 'guardian.dash':
+      return [{ label: '190 u · 1 daño · sin invulnerabilidad', active: (p) => p.dashLeft > 0 }];
+    case 'mage.blink':
+      return [
         {
-          label: 'Toque · devuelve proyectiles',
-          active: (p) => p.counterLeft > 0 && p.counterCharge < RULES.counterChargeTime - 1e-8,
+          label: 'Mantener y soltar · 0,5–2 s · hasta 260 u',
+          active: (p) => p.blinkCharge > 0,
+          state: (p) => (p.blinkCharge > 0 ? percent(p.blinkCharge / RULES.mageBlinkChargeTime) : null),
         },
+      ];
+    case 'common.dash':
+      return [
+        { label: 'Toque · esquivar', active: (p) => tapped(p.specialCharge) },
+        {
+          label: 'Mantener · dash largo',
+          active: (p) => p.specialCharge >= RULES.overchargeTap,
+          state: (p) => (p.specialCharge > 0 ? percent(chargePower(p.specialCharge)) : null),
+        },
+      ];
+    case 'necromancer.summon':
+      return [
+        {
+          label: 'Toque · 2 zombies',
+          active: (p) => tapped(p.specialCharge) && p.fallenGuards === 0,
+          state: (p) => `${p.activeExecutions}/${RULES.zombieExecutions}`,
+        },
+        {
+          label: 'Cayó uno del círculo rojo · zombie con espada',
+          active: (p) => p.fallenGuards > 0,
+          state: (p) => (p.fallenGuards > 0 ? `×${p.fallenGuards}` : null),
+        },
+        {
+          label: 'Mantener · zombie mago',
+          active: (p) => p.specialCharge >= RULES.overchargeTap && p.specialCharge < RULES.overchargeTime,
+          state: (p) => (p.hatAlive ? 'Vivo' : null),
+        },
+        {
+          label: 'Aura llena · resucitar (0,5 s quieto)',
+          active: (p) => p.specialCharge >= RULES.overchargeTime,
+          state: (p) =>
+            p.specialCharge >= RULES.overchargeTime
+              ? percent(p.specialCharge / RULES.raiseCharge)
+              : p.thrallAlive
+                ? 'Esclavo'
+                : p.thrallCd > 0
+                  ? `${Math.ceil(p.thrallCd)}s`
+                  : null,
+        },
+      ];
+    case 'archer.volley':
+      return [
+        { label: 'Toque · 3 flechas en fila' },
+        { label: 'Cargando clic · 3 al 33 %', active: (p) => p.shotCharge >= RULES.overchargeTap && !windFull(p) },
+        { label: 'Durante el dash · 3 flechas de viento', active: (p) => p.windDash > 0 },
+      ];
+    case 'mage.ice':
+      return [{ label: 'Inmoviliza 1 s' }];
+    case 'guardian.guard':
+      return [{ label: 'Mantener · bloqueo frontal de 120°', active: (p) => p.guarding }];
+    case 'guardian.shieldBash':
+      return [{ label: '0,5 daño · empujón · aturde 1,5 s', active: (p) => p.shieldBashLeft > 0 }];
+    case 'guardian.fury':
+      return [
+        {
+          label: '5 s · espada +40 % daño',
+          active: (p) => p.furyLeft > 0,
+          state: (p) => (p.furyLeft > 0 ? `${p.furyLeft.toFixed(1)}s` : null),
+        },
+      ];
+    case 'vanguard.counter':
+      return [
+        { label: 'Toque · devuelve proyectiles', active: (p) => p.counterLeft > 0 && p.counterCharge < RULES.counterChargeTime - 1e-8 },
         {
           label: 'Mantener 1 s · doble de rápido y fuerte',
           active: (p) => p.counterCharge >= RULES.counterChargeTime - 1e-8,
           state: (p) => (p.counterLeft > 0 ? percent(p.counterCharge / RULES.counterChargeTime) : null),
         },
-      ],
-    });
-  return slots;
+      ];
+    default:
+      return undefined;
+  }
 }
 
-const dynamicCooldown=(id:SkillId,p:Player)=>id==='mage.magicShield'?p.magicShieldCd:id==='mage.ice'?p.iceCd:id==='mage.blackHole'?p.blackHoleCd:id==='necromancer.summon'?p.summonCd:id==='common.dash'||id==='mage.blink'?p.dashCd:p.shotCd;
-/** A held skill shows how far its charge has come; the shield, its remaining seals. */
-const chargeDetail=(id:SkillId,p:Player)=>id==='mage.magicShield'&&p.magicShieldHits?`${p.magicShieldHits}/${RULES.magicShieldHits}`:id==='mage.blink'&&p.blinkCharge>0?percent(p.blinkCharge/RULES.mageBlinkChargeTime):id==='mage.blackHole'&&p.blackHoleCharge>0?percent(blackHoleStats(p.blackHoleCharge).power):null;
-const shortBinding=(value:PhysicalBinding)=>({MouseLeft:'CLIC',MouseRight:'CLIC DER.',MouseMiddle:'CLIC 3',Space:'ESPACIO',Shift:'SHIFT',Ctrl:'CTRL'} as Record<string,string>)[value]??value.replace('Key','');
-export function playerAbilitySlots(p:Player,bindings?:InputBindings):AbilitySlot[]{
-  const order=(['primary','mobility','secondary','skill1','skill2'] as const);
-  const legacyId:Partial<Record<SkillId,string>>={'mage.fireball':'shot','common.dash':'dash','mage.blink':'dash','mage.blackHole':'black-hole','mage.magicShield':'magic-shield','mage.ice':'ice','necromancer.fire':'shot','necromancer.summon':'summon'};
-  const legacyName:Partial<Record<SkillId,string>>={'mage.ice':'Flecha de hielo'};
-  const cards:AbilitySlot[]=order.flatMap(slot=>{const id=p.loadout[slot];if(!id)return[];const skill=SKILLS[id];return [{id:legacyId[id]??id,logicalSlot:slot,key:bindings?shortBinding(bindings[slot]):slot.toUpperCase(),name:legacyName[id]??skill.name,icon:skillIcon(skill.icon),cooldown:(player:Player)=>dynamicCooldown(id,player),max:skill.cooldown||1,detail:(player:Player)=>chargeDetail(id,player),tiers:id==='necromancer.summon'?[{label:'Incluye Mando, Marcar y todas las invocaciones'}]:undefined} satisfies AbilitySlot];});
-  if(Object.values(p.loadout).includes('necromancer.summon'))cards.push({id:'command',key:bindings?shortBinding(bindings.companionCommand):'MANDO',name:'Mando / Marcar',icon:skillIcon('necromancer-resurrection'),cooldown:()=>0,max:1,tiers:[{label:'Toque: Mando · Ctrl + tecla: Marcar'}]});
+function skillCard(classId: ClassId, id: SkillId, slot: SkillSlot, key: string): AbilitySlot {
+  return {
+    id: ABILITY_IDS[id],
+    skillId: id,
+    logicalSlot: slot,
+    key,
+    name: CARD_NAMES[id],
+    icon: iconFor(classId, id),
+    cooldown: (p) => cooldownOf(id, p),
+    max: maxCooldown(id, classId),
+    detail: (p) => detailOf(id, p),
+    tiers: tiersOf(id, classId),
+    howTo: howToLine(SKILLS[id].howTo, key),
+    howToTouch: howToLine(SKILLS[id].howTo, 'su botón'),
+    mana: SKILLS[id].mana,
+  };
+}
+function companionCard(action: Companion, key: string): AbilitySlot {
+  return {
+    id: action === 'companionCommand' ? 'command' : 'mark',
+    companion: action,
+    key,
+    name: COMPANION_NAMES[action],
+    icon: skillIcon(action === 'companionCommand' ? 'necromancer-mage' : 'necromancer-resurrection'),
+    cooldown: () => 0,
+    max: 1,
+    detail: action === 'companionCommand' ? (p) => (p.zombieAuto ? 'Auto' : 'Mando') : undefined,
+    tiers:
+      action === 'companionCommand'
+        ? [
+            { label: 'Zombies normales · círculo rojo contigo', active: (p) => !p.zombieAuto },
+            { label: 'Mago, lacayos y esclavo · mouse', active: (p) => !p.zombieAuto },
+            { label: 'Automático · atacan solos', active: (p) => p.zombieAuto },
+          ]
+        : [{ label: 'Sobre un zombie · cambia de círculo' }, { label: 'Rojo contigo ↔ violeta al mouse' }],
+    howTo: howToLine(COMPANION_HOW_TO[action], key),
+    howToTouch:
+      action === 'companionCommand'
+        ? 'Tocá su botón para alternar zombies automáticos o a tu mando; mantenelo para marcar.'
+        : undefined,
+  };
+}
+const lockedCard = (slot: SkillSlot, key: string): AbilitySlot => ({
+  id: `locked-${slot}`,
+  logicalSlot: slot,
+  key,
+  name: '—',
+  icon: '',
+  cooldown: () => 0,
+  max: 1,
+  locked: true,
+});
+
+/**
+ * Every class's cards, in the universal positions. An empty position becomes a locked card, unless
+ * the summon's Mando or Marcar is bound to its key (the necromancer's free E and M2); a companion
+ * bound anywhere else gets a card of its own at the end.
+ */
+export function abilityCards(
+  p: Pick<Player, 'classId' | 'loadout'>,
+  bindings: InputBindings = DEFAULT_BINDINGS[p.classId],
+  order: readonly SkillSlot[] = LAYOUT,
+): AbilitySlot[] {
+  const summon = Object.values(p.loadout).includes('necromancer.summon');
+  const placed = new Set<Companion>();
+  const cards = order.map((slot) => {
+    const id = p.loadout[slot];
+    const key = bindingLabel(bindings[slot]);
+    if (id) return skillCard(p.classId, id, slot, key);
+    const companion = summon ? COMPANIONS.find((action) => !placed.has(action) && bindings[action] === bindings[slot]) : undefined;
+    if (!companion) return lockedCard(slot, key);
+    placed.add(companion);
+    return { ...companionCard(companion, key), logicalSlot: slot };
+  });
+  if (summon)
+    for (const action of COMPANIONS) if (!placed.has(action)) cards.push(companionCard(action, bindingLabel(bindings[action])));
   return cards;
 }
 
@@ -324,15 +321,21 @@ function element<K extends keyof HTMLElementTagNameMap>(tag: K, className: strin
   return node;
 }
 
-/** Each ability is a card with its key and cooldown; its tap/hold branches grow above it. */
-export function updateAbilities(root: HTMLElement, p: Player,bindings?:InputBindings,holeLive=false) {
-  const slots = p.classId==='mage'?playerAbilitySlots(p,bindings):abilitySlots(p.classId);
-  const signature=p.classId==='mage'?`${p.classId}:${SKILL_SLOTS.map(slot=>p.loadout[slot]).join('|')}:${bindings?SKILL_SLOTS.map(slot=>bindings[slot]).join('|'):''}`:p.classId;
+/**
+ * The ability bar: the same seven positions for every class (M1 M2 · Q E F R, Space below), each
+ * card with its icon, name, real key, cooldown, availability and, where a mode has mana, its cost.
+ * Tap and hold branches grow above the cards.
+ */
+export function updateAbilities(root: HTMLElement, p: Player, bindings: InputBindings = DEFAULT_BINDINGS[p.classId], holeLive = false) {
+  const slots = abilityCards(p, bindings);
+  const signature = `${p.classId}:${Object.values(p.loadout).join('|')}:${Object.values(bindings).join('|')}`;
   if (root.dataset.class !== signature) {
     root.dataset.class = signature;
     root.replaceChildren(
       ...slots.map((slot) => {
         const branch = element('div', 'ability-branch');
+        // Its place in the universal layout (the customizer's cards own `data-slot`).
+        if (slot.logicalSlot) branch.dataset.position = slot.logicalSlot;
         if (slot.tiers)
           branch.append(
             Object.assign(element('ul', 'ability-tree'), {
@@ -346,12 +349,23 @@ export function updateAbilities(root: HTMLElement, p: Player,bindings?:InputBind
         }
         const card = element('div', 'ability');
         card.dataset.ability = slot.id;
-        const icon = document.createElement('img');
-        icon.className = 'ability-icon';
-        icon.src = slot.icon;
-        icon.alt = '';
+        card.dataset.locked = String(!!slot.locked);
+        if (slot.howTo) card.title = slot.howTo;
+        const icon = slot.locked ? element('span', 'ability-icon ability-empty', '—') : document.createElement('img');
+        if (icon instanceof HTMLImageElement) {
+          icon.className = 'ability-icon';
+          icon.src = slot.icon;
+          icon.alt = '';
+        }
         icon.setAttribute('aria-hidden', 'true');
-        card.append(icon, element('span', 'ability-state'), element('span', 'ability-cd'), element('kbd', '', slot.key), element('small', '', slot.name));
+        card.append(
+          icon,
+          element('span', 'ability-state'),
+          element('span', 'ability-cd'),
+          element('span', 'ability-mana', slot.mana !== undefined ? `${slot.mana} M` : ''),
+          element('kbd', '', slot.key),
+          element('small', '', slot.locked ? 'Sin habilidad' : slot.name),
+        );
         branch.append(card);
         return branch;
       }),
@@ -359,17 +373,25 @@ export function updateAbilities(root: HTMLElement, p: Player,bindings?:InputBind
   }
   root.querySelectorAll<HTMLElement>('.ability-branch').forEach((branch, i) => {
     const slot = slots[i],
-      card = branch.querySelector<HTMLElement>('.ability')!,
-      left = slot.cooldown(p),
+      card = branch.querySelector<HTMLElement>('.ability')!;
+    if (slot.locked) {
+      card.dataset.ready = 'false';
+      card.setAttribute('aria-label', `${slot.key} · sin habilidad`);
+      return;
+    }
+    const left = slot.cooldown(p),
       detail = slot.detail?.(p) ?? null,
       // A Singularidad in flight: pressing again implodes it, while its cooldown runs in parallel.
-      live = holeLive && slot.id === 'black-hole';
-    card.dataset.ready = String(left <= 0 || live);
+      live = holeLive && slot.id === 'black-hole',
+      // Only modes with mana can leave a skill unpaid; the arenas never do.
+      paid = !slot.skillId || affordable(p as Player & { mana?: number }, slot.skillId);
+    card.dataset.ready = String(paid && (left <= 0 || live));
     card.dataset.live = String(live);
+    card.dataset.unpaid = String(!paid);
     card.style.setProperty('--cd', String(live ? 0 : Math.min(1, left / slot.max)));
     card.querySelector('.ability-state')!.textContent = live ? 'Detonar' : left > 0 ? `${left.toFixed(1)}s` : (detail ?? '');
     card.querySelector('.ability-cd')!.textContent = live && left > 0 ? `${left.toFixed(1)}s` : '';
-    card.setAttribute('aria-label', `${slot.name} · ${slot.key} · ${live ? `detonar · recarga ${left.toFixed(1)} s` : left > 0 ? `${left.toFixed(1)} s` : 'lista'}`);
+    card.setAttribute('aria-label', `${slot.name} · ${slot.key} · ${!paid ? `sin maná (${slot.mana} M)` : live ? `detonar · recarga ${left.toFixed(1)} s` : left > 0 ? `${left.toFixed(1)} s` : 'lista'}`);
     branch.querySelectorAll('li').forEach((item, j) => {
       const tier = slot.tiers![j];
       item.dataset.active = String(tier.active?.(p) ?? false);

@@ -11,9 +11,8 @@ test('panel de habilidades abajo a la izquierda con teclas y recargas', async ({
   for (const classId of ['archer', 'mage', 'necromancer', 'guardian', 'vanguard']) {
     await practice(page, classId);
     const panel = page.locator('#abilities');
-    await expect(panel.locator('kbd').first()).toHaveText('CLIC');
-    if (['archer', 'mage', 'necromancer'].includes(classId))
-      await expect(panel.locator('kbd').nth(1)).toHaveText('ESPACIO');
+    // Every class, the same seven positions and keys: M1 M2 · Q E F R, and Space.
+    await expect(panel.locator('.ability kbd')).toHaveText(['CLIC', 'CLIC DER.', 'Q', 'E', 'F', 'R', 'ESPACIO']);
     const stage = (await page.locator('#stage').boundingBox())!,
       box = (await panel.boundingBox())!;
     expect(box.x - stage.x).toBeLessThan(40);
@@ -30,10 +29,13 @@ test('panel de habilidades abajo a la izquierda con teclas y recargas', async ({
   await page.keyboard.press('Space');
   await expect(page.locator('#abilities [data-ability="dash"]')).toHaveAttribute('data-ready', 'false');
   await practice(page, 'necromancer');
-  await page.keyboard.press('Space');
+  // No mobility of its own: Space is a locked position, and the summon is its powerful F.
+  await expect(page.locator('#abilities [data-position="mobility"] .ability')).toHaveAttribute('data-locked', 'true');
+  await page.keyboard.press('KeyF');
   const summon = page.locator('#abilities [data-ability="summon"]');
   await expect(summon).toHaveAttribute('data-ready', 'false');
-  await expect(summon.locator('kbd')).toHaveText('ESPACIO');
+  await expect(summon.locator('kbd')).toHaveText('F');
+  await expect(page.locator('#abilities [data-ability="mark"] kbd')).toHaveText('CLIC DER.');
   await expect(page.locator('#abilities .ability-tree li', { hasText: 'zombie mago' })).toBeVisible();
   const command = page.locator('#abilities [data-ability="command"] .ability-state');
   await expect(command).toHaveText('Mando');
@@ -77,7 +79,9 @@ test('el caballero muestra y activa embestida, golpe de escudo y furia', async (
   await expect(abilities.locator('[data-ability="guard"]')).toContainText('Guardia continua');
   await expect(abilities.locator('[data-ability="shield-bash"]')).toContainText('Golpe de escudo');
   await expect(abilities.locator('[data-ability="fury"]')).toContainText('Furia');
-  await page.keyboard.press('KeyE');
+  // Furia is the knight's ultimate: R.
+  await expect(abilities.locator('[data-ability="fury"] kbd')).toHaveText('R');
+  await page.keyboard.press('KeyR');
   await expect(page.locator('#stage')).toHaveAttribute('data-fury', 'true');
   await expect(abilities.locator('[data-ability="fury"]')).toHaveAttribute('data-ready', 'false');
   await page.keyboard.press('KeyQ');
