@@ -140,6 +140,35 @@ describe('habilidades simultáneas', () => {
     expect(Math.hypot(duel.state.blackHoles[0].x - from.x, duel.state.blackHoles[0].y - from.y)).toBeLessThan(20);
   });
 
+  it('el Mago mantiene el clic cargado, parpadea y lo suelta al aparecer', () => {
+    const { duel, p, step } = arena('mage');
+    step({ primary: { pressed: true, held: true } });
+    step({ primary: hold }, {}, ticks(RULES.overchargeTime));
+    expect(p.shotCharge).toBe(RULES.overchargeTime);
+    // Space while the click stays held: the charge survives the windup and the jump.
+    step({ primary: hold, mobility: tap });
+    step({ primary: hold }, {}, ticks(RULES.mageBlinkMinCharge) + 1);
+    expect(duel.state.events.some((e) => e.kind === 'blink')).toBe(true);
+    expect(p.shotCharge).toBe(RULES.overchargeTime);
+    step({ primary: { released: true } });
+    const orb = duel.state.arrows.find((a) => a.skillId === 'mage.fireball');
+    expect(orb?.power).toBe(1);
+  });
+
+  it('soltar el clic cargado en pleno aterrizaje también dispara y corta la invulnerabilidad', () => {
+    const { duel, p, step } = arena('mage');
+    step({ primary: { pressed: true, held: true } });
+    step({ primary: hold }, {}, ticks(RULES.overchargeTime));
+    step({ primary: hold, mobility: tap });
+    // Step until the blink lands, then release while its i-frames still run.
+    for (let i = 0; i < ticks(1) && !duel.state.events.some((e) => e.kind === 'blink'); i++) step({ primary: hold });
+    expect(p.dashInvulnerable).toBe(true);
+    step({ primary: { released: true } });
+    expect(duel.state.arrows.find((a) => a.skillId === 'mage.fireball')?.power).toBe(1);
+    expect(p.dashInvulnerable).toBe(false);
+    expect(p.dashLeft).toBe(0);
+  });
+
   it('cargar F ocupa las manos para M1 pero deja libre la Q', () => {
     const { duel, p, step } = arena('mage');
     step({ f: { pressed: true, held: true } });
