@@ -13,10 +13,9 @@ import {
   MODE_INFO,
   validName,
   activePreset,
-  SKILLS,
-  SKILL_SLOTS,
   type Snapshot,
   type ClassId,
+  type SkillId,
   type Team,
   type MapId,
   type GameMode,
@@ -38,7 +37,7 @@ import {
   setMusicMode,
 } from './audio.js';
 import { savedClass, saveClass, mountClasses, updateClasses, updateClassSkin } from './classes.js';
-import { liveBlackHole, updateAbilities } from './abilities.js';
+import { abilityCards, liveBlackHole, updateAbilities } from './abilities.js';
 import { mountTouchAbilities, updateTouchAbilities } from './mobile-controls.js';
 import './style.css';
 import { Practice, PRACTICE_PLAYER } from './practice.js';
@@ -385,49 +384,34 @@ mountClasses(
 for(const classId of CLASS_IDS){updateClassSkin($('entry-classes'),classId,customizationFor(classId).selectedSkin);updateClassSkin($('room-classes'),classId,customizationFor(classId).selectedSkin);}
 let displayedClass: string | undefined;
 function showClassControls(id: ClassId) {
-  const signature=id==='mage'?`${id}:${JSON.stringify(activePreset(customizationFor(id)))}`:id;
+  const preset = activePreset(customizationFor(id));
+  const signature = `${id}:${JSON.stringify(preset)}`;
   if (displayedClass === signature) return;
   displayedClass = signature;
   const stats = CLASSES[id];
-  const ranged = stats.ranged;
-  const guardian = id === 'guardian';
-  const mage = id === 'mage';
-  mountTouchAbilities($('touch-actions'), id);
-  $('cd-ice').hidden = !mage;
-  $('cd-black-hole').hidden = !mage;
-  $('cd-shot').hidden = !ranged;
-  $('cd-dash').hidden = !stats.dash;
-  $('cd-guard').hidden = !stats.shield && !mage;
-  $('cd-trap').hidden = id !== 'archer';
-  $('cd-volley').hidden = id !== 'archer';
-  $('cd-summon').hidden = !stats.summon;
+  const equipped = (skill: SkillId) => Object.values(preset.loadout).includes(skill);
+  mountTouchAbilities($('touch-actions'), id, preset);
+  $('cd-ice').hidden = !equipped('mage.ice');
+  $('cd-black-hole').hidden = !equipped('mage.blackHole');
+  $('cd-shot').hidden = !stats.ranged;
+  $('cd-dash').hidden = !preset.loadout.mobility;
+  $('cd-guard').hidden = !equipped('guardian.guard') && !equipped('mage.magicShield');
+  $('cd-trap').hidden = !equipped('archer.trap');
+  $('cd-volley').hidden = !equipped('archer.volley');
+  $('cd-summon').hidden = !equipped('necromancer.summon');
   $('cd-sword').hidden = !stats.melee;
-  const projectile = mage ? 'Bola de fuego' : id === 'necromancer' ? 'Fuego' : 'Flecha';
-  const melee = mage ? 'Báculo' : 'Daga';
-  const secondary = stats.summon ? 'Invocar zombies' : ranged ? melee : 'Mantener escudo';
+  // How to play, generated from the same cards as the ability bar: every class reads the same way,
+  // with the player's own keys (or, on touch, its buttons) in each line.
+  const cards = abilityCards({ classId: id, loadout: preset.loadout }, preset.bindings).filter((card) => !card.locked);
   $('control-guide').innerHTML =
-    `<span><kbd>W A S D</kbd> Mover</span><span><kbd>CLIC</kbd> ${ranged ? projectile : 'Espada'}</span>${id !== 'vanguard' ? `<span><kbd>CLIC DER.</kbd> ${secondary}</span>` : ''}${stats.dash ? `<span><kbd>ESPACIO</kbd> ${guardian ? 'Embestida' : 'Esquivar'}</span>` : ''}<span class="mobile-help">Mové con la palanca izquierda. Tocá una habilidad para usar la dirección actual, o arrastrá su botón para apuntar. Volvé al centro antes de soltar para cancelar.</span>`;
-  if(mage){
-    const preset=activePreset(customizationFor(id));
-    const label=(binding:string)=>({MouseLeft:'CLIC',MouseRight:'CLIC DER.',MouseMiddle:'CLIC CENTRAL',Space:'ESPACIO',Shift:'SHIFT',Ctrl:'CTRL'} as Record<string,string>)[binding]??binding.replace('Key','');
-    $('control-guide').innerHTML=`<span><kbd>W A S D</kbd> Mover</span>${SKILL_SLOTS.flatMap(slot=>{const skillId=preset.loadout[slot];return skillId?[`<span><kbd>${label(preset.bindings[slot])}</kbd> ${SKILLS[skillId].name}${skillId==='mage.blink'||skillId==='mage.blackHole'?' · mantener y soltar':''}</span>`]:[];}).join('')}<span class="mobile-help">Mové con la palanca izquierda. Arrastrá una habilidad para apuntar y soltá para usarla.</span>`;
-    return;
-  }
-  if (id === 'archer')
-    $('control-guide').innerHTML +=
-      '<span><kbd>MANTENER CLIC</kbd> Cargar flecha · 0,8 s</span><span><kbd>Q</kbd> Trampa</span><span><kbd>E</kbd> Triple</span>';
-  if (stats.summon)
-    $('control-guide').innerHTML +=
-      '<span><kbd>ESPACIO</kbd> Invocar zombies</span><span><kbd>E</kbd> Mando</span><span><kbd>CTRL E</kbd> Marcar</span>';
-  if (!ranged) $('control-guide').innerHTML += '<span><kbd>MANTENER CLIC</kbd> Cargar golpe</span>';
-  if (stats.dash && !guardian)
-    $('control-guide').innerHTML += '<span><kbd>MANTENER ESPACIO</kbd> Dash más largo</span>';
-  if (guardian)
-    $('control-guide').innerHTML +=
-      '<span><kbd>Q</kbd> Golpe de escudo</span><span><kbd>E</kbd> Furia</span>';
-  if (id === 'vanguard')
-    $('control-guide').innerHTML +=
-      '<span><kbd>Q</kbd> Tajo viajero</span><span><kbd>E</kbd> Contraataque</span>';
+    '<span class="guide-move"><kbd>W A S D</kbd> Mover · <kbd>MOUSE</kbd> Apuntar</span>' +
+    cards
+      .map(
+        (card) =>
+          `<span class="guide-skill" data-guide="${card.id}"><kbd>${card.key}</kbd> <strong>${card.name}</strong> <small class="how-key">${card.howTo ?? ''}</small><small class="how-touch">${card.howToTouch ?? ''}</small></span>`,
+      )
+      .join('') +
+    '<span class="mobile-help">Mové con la palanca izquierda. Arrastrá una habilidad para apuntar y soltá para usarla; volvé al centro antes de soltar para cancelar.</span>';
 }
 showClassControls(selectedClass);
 function entryMode() {

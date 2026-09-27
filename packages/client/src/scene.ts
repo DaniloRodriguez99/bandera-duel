@@ -89,6 +89,42 @@ const CLOTH: Record<Team, string> = {
   green: '#4f9a68',
   violet: '#8062a8',
 };
+/**
+ * The arena's layers, bottom to top. Actions stack rather than replace one another: a mage who
+ * blinks while charging Singularidad shows the body moving, the mandala beneath it, the blink's
+ * trail and the charge at once, each drawn on its own layer.
+ */
+const LAYER = {
+  /** The map's own floor marks and the bases. */
+  floor: 1,
+  /** Shadows, auras and duel rings, under everything that stands. */
+  underlay: 3,
+  /** Traps and the caster's aim previews. */
+  ground: 4,
+  flags: 5,
+  /** Ground spells: black holes, the charging mandala and seals, a blink's landing glow. */
+  groundFx: 7,
+  /** Monsters' ground graphics, smoke and a blink's departure wisp. */
+  lowFx: 8,
+  projectiles: 9,
+  /** Locomotion: the walking bodies. */
+  bodies: 10,
+  /** The hand: weapon and casting pose, above its body. */
+  weapons: 11,
+  /** Names and health bars. */
+  overhead: 13,
+  bodyFx: 14,
+  /** Swings and area fields. */
+  strikes: 15,
+  /** Impacts and ability flashes. */
+  effects: 16,
+  sparks: 17,
+  bursts: 18,
+  particles: 19,
+  celebration: 20,
+  /** Whole-screen flashes. */
+  screen: 25,
+} as const;
 export class Arena extends Phaser.Scene {
   onPlayerContext: ((player: Player, clientX: number, clientY: number) => void) | null = null;
   controls!: Controls;
@@ -158,15 +194,15 @@ export class Arena extends Phaser.Scene {
   }
   create() {
     this.drawMap(this.currentMapId);
-    this.bases = this.add.graphics().setDepth(1);
+    this.bases = this.add.graphics().setDepth(LAYER.floor);
     this.makeTextures();
-    this.flags = this.add.graphics().setDepth(5);
-    this.traps = this.add.graphics().setDepth(4);
-    this.arrows = this.add.graphics().setDepth(9);
-    this.mobs = this.add.graphics().setDepth(8);
-    this.holes = this.add.graphics().setDepth(7);
-    this.aim = this.add.graphics().setDepth(4);
-    this.duelRings = this.add.graphics().setDepth(3);
+    this.flags = this.add.graphics().setDepth(LAYER.flags);
+    this.traps = this.add.graphics().setDepth(LAYER.ground);
+    this.arrows = this.add.graphics().setDepth(LAYER.projectiles);
+    this.mobs = this.add.graphics().setDepth(LAYER.lowFx);
+    this.holes = this.add.graphics().setDepth(LAYER.groundFx);
+    this.aim = this.add.graphics().setDepth(LAYER.ground);
+    this.duelRings = this.add.graphics().setDepth(LAYER.underlay);
     this.controls = new Controls();
     this.controls.screenToWorld = (x, y) => this.screenToWorld(x, y);
     this.input.mouse?.disableContextMenu();
@@ -182,8 +218,9 @@ export class Arena extends Phaser.Scene {
       if (p.wasTouch || !this.controls.enabled) return;
       // Use the button that triggered this event. `rightButtonDown()` also stays true
       // while a left click is pressed during guard and would swallow that attack.
-      if (p.button === 1) this.controls.tertiary();
-      else if (p.button === 2 && this.currentZoneId && this.contextPlayer(p)) {
+      // Middle and right clicks in a match are plain bindings, read by the controls themselves.
+      if (p.button === 1) return;
+      if (p.button === 2 && this.currentZoneId && this.contextPlayer(p)) {
         const target = this.contextPlayer(p)!;
         this.onPlayerContext?.(target, (p.event as MouseEvent).clientX, (p.event as MouseEvent).clientY);
       }
@@ -323,7 +360,7 @@ export class Arena extends Phaser.Scene {
           letterSpacing: 2,
         })
         .setOrigin(0.5)
-        .setDepth(1);
+        .setDepth(LAYER.floor);
     });
   }
   /** The stonework of a wall, shared by the arena and the world. */
@@ -832,7 +869,7 @@ export class Arena extends Phaser.Scene {
       this.lastEvent = e.id;
       sound(e.kind);
       if (e.kind === 'sword') {
-        const slash = this.add.graphics().setDepth(15);
+        const slash = this.add.graphics().setDepth(LAYER.strikes);
         const power = e.power ?? 0;
         slash.lineStyle(4 + power * 5, power > 0.05 ? 0xffc86b : 0xffe7b1, 0.9);
         slash.beginPath();
@@ -856,7 +893,7 @@ export class Arena extends Phaser.Scene {
         const color = e.kind === 'block' ? GOLD : COLORS[e.team];
         for (let i = 0; i < (e.kind === 'capture' ? 24 : 7); i++) {
           const a = i * 2.4,
-            rect = this.add.rectangle(e.x, e.y, 3, 3, color).setDepth(20);
+            rect = this.add.rectangle(e.x, e.y, 3, 3, color).setDepth(LAYER.celebration);
           this.tweens.add({
             targets: rect,
             x: e.x + Math.cos(a) * (e.kind === 'capture' ? 100 : 30),
@@ -868,7 +905,7 @@ export class Arena extends Phaser.Scene {
         }
       }
       if (e.kind === 'summon') {
-        const smoke = this.add.circle(e.x, e.y, 12, 0x6a4c93, 0.4).setDepth(8);
+        const smoke = this.add.circle(e.x, e.y, 12, 0x6a4c93, 0.4).setDepth(LAYER.lowFx);
         this.tweens.add({
           targets: smoke,
           scale: 3.2,
@@ -879,7 +916,7 @@ export class Arena extends Phaser.Scene {
       }
       this.spellEffect(e);
       if (e.kind === 'capture') {
-        const pulse = this.add.rectangle(480, 270, 960, 540, COLORS[e.team], 0.2).setDepth(25);
+        const pulse = this.add.rectangle(480, 270, 960, 540, COLORS[e.team], 0.2).setDepth(LAYER.screen);
         this.tweens.add({
           targets: pulse,
           alpha: 0,
@@ -938,16 +975,16 @@ export class Arena extends Phaser.Scene {
     if (e.kind === 'imbue') {
       // An imbued weapon's blow: sparks of the affinity's colour, and a crackle over a stunned head.
       const tint = e.color ? Phaser.Display.Color.HexStringToColor(e.color).color : hex(ELEMENT_COLORS.rayo);
-      this.fade(this.add.circle(e.x, e.y - 4, 7).setStrokeStyle(2, tint, 0.95).setDepth(17), { scale: 3 }, 300);
+      this.fade(this.add.circle(e.x, e.y - 4, 7).setStrokeStyle(2, tint, 0.95).setDepth(LAYER.sparks), { scale: 3 }, 300);
       for (let i = 0; i < 6; i++) {
         const a = (e.angle ?? 0) + (i - 2.5) * 0.45;
-        const spark = this.add.graphics().setDepth(17);
+        const spark = this.add.graphics().setDepth(LAYER.sparks);
         spark.lineStyle(2, tint, 1);
         spark.lineBetween(e.x, e.y - 4, e.x + Math.cos(a) * 9, e.y - 4 + Math.sin(a) * 9);
         this.fade(spark, { x: Math.cos(a) * 14, y: Math.sin(a) * 14 }, 260);
       }
       if (e.power) {
-        const bolt = this.add.graphics().setDepth(18);
+        const bolt = this.add.graphics().setDepth(LAYER.bursts);
         bolt.lineStyle(2, tint, 1);
         bolt.beginPath();
         bolt.moveTo(e.x - 8, e.y - 34);
@@ -960,7 +997,7 @@ export class Arena extends Phaser.Scene {
     } else if (e.kind === 'fireRain') {
       const radius = e.radius ?? 140;
       const field = this.add.circle(e.x, e.y, radius, 0xff6728, 0.13)
-        .setStrokeStyle(2, 0xffb35f, 0.75).setDepth(15);
+        .setStrokeStyle(2, 0xffb35f, 0.75).setDepth(LAYER.strikes);
       this.fade(field, { scale: 1.08 }, 650);
       for (let i = 0; i < 22; i++) {
         const angle = i * 2.39996;
@@ -968,7 +1005,7 @@ export class Arena extends Phaser.Scene {
         const x = e.x + Math.cos(angle) * spread;
         const y = e.y + Math.sin(angle) * spread;
         const ember = this.add.rectangle(x + 15, y - 65 - i % 4 * 12, 3, 9, i % 3 ? 0xff8a35 : 0xffdc82)
-          .setRotation(0.22).setDepth(18);
+          .setRotation(0.22).setDepth(LAYER.bursts);
         this.tweens.add({
           targets: ember, x, y, alpha: 0, scaleY: 0.25,
           delay: i % 5 * 35, duration: 380,
@@ -981,32 +1018,32 @@ export class Arena extends Phaser.Scene {
       // A world skill brings its own colour: a lightning burst is not a fireball.
       const tint = blackHole ? 0x36105a : e.color ? Phaser.Display.Color.HexStringToColor(e.color).color : 0xff7a2f;
       const ring = blackHole ? 0xd185ff : e.color ? Phaser.Display.Color.HexStringToColor(e.color).lighten(25).color : 0xffe08a;
-      if (blackHole) this.fade(this.add.circle(e.x,e.y,32,0x05020c,0.9).setDepth(18),{scale:0.1},180);
+      if (blackHole) this.fade(this.add.circle(e.x,e.y,32,0x05020c,0.9).setDepth(LAYER.bursts),{scale:0.1},180);
       this.fade(
-        this.add.circle(e.x, e.y, 10, tint, 0.6).setDepth(16),
+        this.add.circle(e.x, e.y, 10, tint, 0.6).setDepth(LAYER.effects),
         { scale: radius / 10 },
         380,
       );
       this.fade(
-        this.add.circle(e.x, e.y, 8).setStrokeStyle(3, ring, 0.95).setDepth(16),
+        this.add.circle(e.x, e.y, 8).setStrokeStyle(3, ring, 0.95).setDepth(LAYER.effects),
         { scale: 6 },
         460,
       );
     } else if (e.kind === 'disintegrate') {
       const height = e.power === 2 ? 18 : 30;
-      const silhouette = this.add.ellipse(e.x, e.y - height / 2, 15, height, 0x3b2351, 0.86).setDepth(18);
+      const silhouette = this.add.ellipse(e.x, e.y - height / 2, 15, height, 0x3b2351, 0.86).setDepth(LAYER.bursts);
       this.fade(silhouette, { scaleX: 0.15, scaleY: 0.3, y: e.y - height }, 500);
       for (let i = 0; i < 22; i++) {
         const angle = i * 2.399;
         const spread = 8 + (i % 6) * 4;
-        const shard = this.add.rectangle(e.x + Math.cos(angle) * 6, e.y - height / 2 + Math.sin(angle) * 9, 2 + i % 3, 2 + i % 2, i % 3 ? 0xb47ae5 : 0xe8c8ff, 0.9).setDepth(19);
+        const shard = this.add.rectangle(e.x + Math.cos(angle) * 6, e.y - height / 2 + Math.sin(angle) * 9, 2 + i % 3, 2 + i % 2, i % 3 ? 0xb47ae5 : 0xe8c8ff, 0.9).setDepth(LAYER.particles);
         this.fade(shard, { x: shard.x + Math.cos(angle) * spread, y: shard.y + Math.sin(angle) * spread - 13, scale: 0.1 }, 500 + i % 5 * 45);
       }
     } else if (e.kind === 'icecone') {
       this.iceBreeze(e.x, e.y, e.angle ?? 0);
     } else if (e.kind === 'freeze') {
       this.fade(
-        this.add.star(e.x, e.y - 6, 6, 4, 13, 0xbff4ff, 0.85).setDepth(16),
+        this.add.star(e.x, e.y - 6, 6, 4, 13, 0xbff4ff, 0.85).setDepth(LAYER.effects),
         { scale: 1.9, angle: 45 },
         520,
       );
@@ -1020,11 +1057,11 @@ export class Arena extends Phaser.Scene {
           strokeThickness: 3,
         })
         .setOrigin(0.5)
-        .setDepth(16);
+        .setDepth(LAYER.effects);
       this.fade(plus, { y: e.y - 44 }, 700);
     } else if (e.kind === 'raise') {
       this.fade(
-        this.add.rectangle(e.x, e.y - 40, 22, 96, 0x7dffb0, 0.4).setDepth(16),
+        this.add.rectangle(e.x, e.y - 40, 22, 96, 0x7dffb0, 0.4).setDepth(LAYER.effects),
         { scaleX: 0 },
         760,
       );
@@ -1032,7 +1069,7 @@ export class Arena extends Phaser.Scene {
         this.add
           .ellipse(e.x, e.y + 8, 30, 12)
           .setStrokeStyle(2, 0x7dffb0, 0.9)
-          .setDepth(4),
+          .setDepth(LAYER.ground),
         { scale: 3 },
         760,
       );
@@ -1041,7 +1078,7 @@ export class Arena extends Phaser.Scene {
         this.add
           .circle(e.x, e.y - 4, 12)
           .setStrokeStyle(3, 0xffd36b, 0.95)
-          .setDepth(16),
+          .setDepth(LAYER.effects),
         { scale: 3 },
         520,
       );
@@ -1054,17 +1091,17 @@ export class Arena extends Phaser.Scene {
           strokeThickness: 3,
         })
         .setOrigin(0.5)
-        .setDepth(17);
+        .setDepth(LAYER.sparks);
       this.fade(text, { y: e.y - 62 }, 900);
     } else if (e.kind === 'counter') {
       this.fade(
-        this.add.star(e.x, e.y - 4, 8, 6, 20, e.power ? 0xff9a3c : 0xffd36b, 0.9).setDepth(16),
+        this.add.star(e.x, e.y - 4, 8, 6, 20, e.power ? 0xff9a3c : 0xffd36b, 0.9).setDepth(LAYER.effects),
         { scale: 2, angle: 60 },
         380,
       );
     } else if (e.kind === 'slash') {
       // The warrior's slash leaves the blade as a white crescent.
-      const flash = this.add.graphics().setDepth(16);
+      const flash = this.add.graphics().setDepth(LAYER.effects);
       flash.lineStyle(4, 0xfff3d6, 0.9);
       flash.beginPath();
       flash.arc(e.x, e.y - 4, 30, (e.angle ?? 0) - 1.2, (e.angle ?? 0) + 1.2);
@@ -1075,33 +1112,33 @@ export class Arena extends Phaser.Scene {
       const trail = this.add
         .rectangle(e.x - Math.cos(angle) * 20, e.y - Math.sin(angle) * 20, 58, 14, 0x541923, 0.52)
         .setRotation(angle)
-        .setDepth(8);
+        .setDepth(LAYER.lowFx);
       this.fade(trail, { scaleX: 1.9, scaleY: 0.25 }, 300);
       this.fade(
-        this.add.circle(e.x, e.y, 11).setStrokeStyle(3, 0xc26a58, 0.85).setDepth(16),
+        this.add.circle(e.x, e.y, 11).setStrokeStyle(3, 0xc26a58, 0.85).setDepth(LAYER.effects),
         { scale: 2.5 },
         260,
       );
       if (e.power) this.cameras.main.shake(90, 0.0025);
     } else if (e.kind === 'blackhole') {
-      this.fade(this.add.circle(e.x,e.y,12).setStrokeStyle(3,0xb866ff,0.85).setDepth(16),{scale:5},450);
+      this.fade(this.add.circle(e.x,e.y,12).setStrokeStyle(3,0xb866ff,0.85).setDepth(LAYER.effects),{scale:5},450);
     } else if (e.kind === 'blink') {
       const tx = e.tx ?? e.x;
       const ty = e.ty ?? e.y;
       // A violet wisp at the origin and a violet ring where the mage rematerialises.
-      this.fade(this.add.circle(e.x, e.y, 12, 0xb9a4ff, 0.55).setDepth(8), { scale: 2.6 }, 280);
+      this.fade(this.add.circle(e.x, e.y, 12, 0xb9a4ff, 0.55).setDepth(LAYER.lowFx), { scale: 2.6 }, 280);
       this.fade(
-        this.add.circle(tx, ty, 9).setStrokeStyle(3, 0xb9a4ff, 0.9).setDepth(16),
+        this.add.circle(tx, ty, 9).setStrokeStyle(3, 0xb9a4ff, 0.9).setDepth(LAYER.effects),
         { scale: 2.8 },
         320,
       );
-      this.fade(this.add.circle(tx, ty, 14, 0xb9a4ff, 0.28).setDepth(7), { scale: 1.6 }, 260);
+      this.fade(this.add.circle(tx, ty, 14, 0xb9a4ff, 0.28).setDepth(LAYER.groundFx), { scale: 1.6 }, 260);
       const bearing = Math.atan2(ty-e.y,tx-e.x);
       for(let i=0;i<10;i++){
         const a=bearing+(i-4.5)*0.26;
-        const from=this.add.rectangle(e.x,e.y,3,3,i%2?0x8e57e9:0xd1b9ff,0.9).setDepth(17);
+        const from=this.add.rectangle(e.x,e.y,3,3,i%2?0x8e57e9:0xd1b9ff,0.9).setDepth(LAYER.sparks);
         this.fade(from,{x:e.x+Math.cos(a)*(12+i*2),y:e.y+Math.sin(a)*(12+i*2)},250);
-        const to=this.add.rectangle(tx+Math.cos(a)*(12+i),ty+Math.sin(a)*(12+i),3,3,i%2?0x8e57e9:0xd1b9ff,0.8).setDepth(17);
+        const to=this.add.rectangle(tx+Math.cos(a)*(12+i),ty+Math.sin(a)*(12+i),3,3,i%2?0x8e57e9:0xd1b9ff,0.8).setDepth(LAYER.sparks);
         this.fade(to,{x:tx,y:ty},320);
       }
       // Snap the teleported body so it never slides across the gap.
@@ -1113,7 +1150,7 @@ export class Arena extends Phaser.Scene {
         }
       }
     } else if (e.kind === 'bash') {
-      const flash = this.add.graphics().setDepth(16);
+      const flash = this.add.graphics().setDepth(LAYER.effects);
       flash.lineStyle(7, 0xe1c37a, 0.9);
       flash.beginPath();
       flash.arc(
@@ -1125,17 +1162,17 @@ export class Arena extends Phaser.Scene {
       );
       flash.strokePath();
       this.fade(flash, { scaleX: 1.12, scaleY: 1.12 }, 220);
-      this.fade(this.add.circle(e.x, e.y, 9, 0xffe5a0, 0.65).setDepth(17), { scale: 2.2 }, 190);
+      this.fade(this.add.circle(e.x, e.y, 9, 0xffe5a0, 0.65).setDepth(LAYER.sparks), { scale: 2.2 }, 190);
     } else if (e.kind === 'fury') {
       // A world skill brings its own colour: an electrified dagger is not a red rage.
       const inner = e.color ? Phaser.Display.Color.HexStringToColor(e.color).darken(40).color : 0x621522;
       const outer = e.color ? Phaser.Display.Color.HexStringToColor(e.color).color : 0xc83d43;
-      this.fade(this.add.circle(e.x, e.y - 3, 17, inner, 0.42).setDepth(9), { scale: 2.8 }, 520);
+      this.fade(this.add.circle(e.x, e.y - 3, 17, inner, 0.42).setDepth(LAYER.projectiles), { scale: 2.8 }, 520);
       this.fade(
         this.add
           .circle(e.x, e.y - 3, 18)
           .setStrokeStyle(4, outer, 0.85)
-          .setDepth(16),
+          .setDepth(LAYER.effects),
         { scale: 3.2 },
         620,
       );
@@ -1144,7 +1181,7 @@ export class Arena extends Phaser.Scene {
         this.fade(
           this.add
             .circle(e.x + Math.cos(angle) * 10, e.y + Math.sin(angle) * 10, 3, e.color ? outer : 0x9f2634, 0.8)
-            .setDepth(16),
+            .setDepth(LAYER.effects),
           { x: e.x + Math.cos(angle) * 42, y: e.y + Math.sin(angle) * 42 - 8 },
           500,
         );
@@ -1154,14 +1191,14 @@ export class Arena extends Phaser.Scene {
         this.add
           .ellipse(e.x, e.y + 6, 30, 12)
           .setStrokeStyle(2, 0xd8fbff, 0.9)
-          .setDepth(16),
+          .setDepth(LAYER.effects),
         { scale: 3.2 },
         420,
       );
       for (const side of [-1, 1]) {
         const a = (e.angle ?? 0) + Math.PI + side * 0.5;
         this.fade(
-          this.add.rectangle(e.x, e.y, 18, 2, 0xe8fbff, 0.85).setRotation(a).setDepth(16),
+          this.add.rectangle(e.x, e.y, 18, 2, 0xe8fbff, 0.85).setRotation(a).setDepth(LAYER.effects),
           { x: e.x + Math.cos(a) * 44, y: e.y + Math.sin(a) * 44 },
           380,
         );
@@ -1171,19 +1208,19 @@ export class Arena extends Phaser.Scene {
         this.add
           .ellipse(e.x, e.y + 8, 20, 9)
           .setStrokeStyle(2, 0x7dffb0, 0.9)
-          .setDepth(4),
+          .setDepth(LAYER.ground),
         { scale: 3.5 },
         520,
       );
     } else if (e.kind === 'shot' && (e.power ?? 0) > 0.05) {
       const power = e.power ?? 0;
       this.fade(
-        this.add.circle(e.x, e.y, 10, 0xff7a2f, 0.6).setDepth(16),
+        this.add.circle(e.x, e.y, 10, 0xff7a2f, 0.6).setDepth(LAYER.effects),
         { scale: 2.5 + power * 2 },
         300,
       );
       this.fade(
-        this.add.circle(e.x, e.y, 6).setStrokeStyle(3, 0xffe08a, 0.9).setDepth(16),
+        this.add.circle(e.x, e.y, 6).setStrokeStyle(3, 0xffe08a, 0.9).setDepth(LAYER.effects),
         { scale: 5 + power * 3 },
         380,
       );
@@ -1192,7 +1229,7 @@ export class Arena extends Phaser.Scene {
         this.add
           .ellipse(e.x, e.y + 8, 36, 14)
           .setStrokeStyle(3, 0xb06cff, 0.9)
-          .setDepth(4),
+          .setDepth(LAYER.ground),
         { scale: 3.4 },
         700,
       );
@@ -1316,7 +1353,7 @@ export class Arena extends Phaser.Scene {
   }
   /** Zombie mage's ice spell: an expanding cone of freezing wind with white streaks and drifting shards. */
   private iceBreeze(x: number, y: number, angle: number) {
-    const g = this.add.graphics().setDepth(15);
+    const g = this.add.graphics().setDepth(LAYER.strikes);
     const half = RULES.iceConeArc / 2;
     const shards = Array.from({ length: 16 }, () => ({
       spread: (Math.random() - 0.5) * RULES.iceConeArc,
@@ -1642,8 +1679,8 @@ export class Arena extends Phaser.Scene {
         body: this.add
           .sprite(p.x, p.y, texture(0))
           .setOrigin(0.5, 0.7)
-          .setDepth(10),
-        shadow: this.add.ellipse(p.x, p.y + 8, 26, 10, 0x081618, 0.4).setDepth(3),
+          .setDepth(LAYER.bodies),
+        shadow: this.add.ellipse(p.x, p.y + 8, 26, 10, 0x081618, 0.4).setDepth(LAYER.underlay),
         name: this.add
           .text(p.x, p.y - 32, p.name, {
             fontFamily: 'monospace',
@@ -1653,9 +1690,9 @@ export class Arena extends Phaser.Scene {
             strokeThickness: 3,
           })
           .setOrigin(0.5)
-          .setDepth(13),
-        hp: this.add.graphics().setDepth(13),
-        weapon: this.add.graphics().setDepth(11),
+          .setDepth(LAYER.overhead),
+        hp: this.add.graphics().setDepth(LAYER.overhead),
+        weapon: this.add.graphics().setDepth(LAYER.weapons),
         x: p.x,
         y: p.y,
       };
@@ -1952,9 +1989,9 @@ export class Arena extends Phaser.Scene {
     let v = this.zombieVisuals.get(z.id);
     if (!v) {
       v = {
-        body: this.add.sprite(z.x, z.y, `${z.team}-zombie-0`).setOrigin(0.5, 0.7).setDepth(10),
-        hp: this.add.graphics().setDepth(13),
-        fx: this.add.graphics().setDepth(14),
+        body: this.add.sprite(z.x, z.y, `${z.team}-zombie-0`).setOrigin(0.5, 0.7).setDepth(LAYER.bodies),
+        hp: this.add.graphics().setDepth(LAYER.overhead),
+        fx: this.add.graphics().setDepth(LAYER.bodyFx),
         label:
           z.kind === 'thrall' || z.family
             ? this.add
@@ -1966,9 +2003,9 @@ export class Arena extends Phaser.Scene {
                   strokeThickness: 3,
                 })
                 .setOrigin(0.5)
-                .setDepth(13)
+                .setDepth(LAYER.overhead)
             : undefined,
-        aura: this.add.graphics().setDepth(3),
+        aura: this.add.graphics().setDepth(LAYER.underlay),
         x: z.x,
         y: z.y,
       };
@@ -2047,7 +2084,7 @@ export class Arena extends Phaser.Scene {
     if (moving && Math.random() < delta / 240) {
       const mote = this.add
         .rectangle(v.x + (Math.random() - 0.5) * 16, v.y + 6, 2, 2, 0x3a1450, 0.85)
-        .setDepth(3);
+        .setDepth(LAYER.underlay);
       this.tweens.add({
         targets: mote,
         y: mote.y - 16,
@@ -2189,9 +2226,9 @@ export class Arena extends Phaser.Scene {
     let v = this.mobVisuals.get(m.id);
     if (!v) {
       v = {
-        body: this.add.sprite(m.x, m.y, `pve-${m.kind}-0`).setOrigin(0.5, 0.72).setDepth(10),
-        hp: this.add.graphics().setDepth(13),
-        fx: this.add.graphics().setDepth(9),
+        body: this.add.sprite(m.x, m.y, `pve-${m.kind}-0`).setOrigin(0.5, 0.72).setDepth(LAYER.bodies),
+        hp: this.add.graphics().setDepth(LAYER.overhead),
+        fx: this.add.graphics().setDepth(LAYER.projectiles),
         x: m.x,
         y: m.y,
       };

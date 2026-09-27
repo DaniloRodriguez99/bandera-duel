@@ -29,27 +29,28 @@ test('el mago aparece y muestra sus controles',async({page})=>{
   await expect(page.locator('#cd-sword')).toBeHidden();
   const iceCard=page.locator('[data-ability="ice"]');
   await expect(iceCard).toBeVisible();
-  await expect(iceCard).toContainText('CLIC 3');
+  // Universal layout: the quick bolt is Q, the shield E.
+  await expect(iceCard).toContainText('Q');
   await expect(iceCard).toContainText('Flecha de hielo');
-  await page.locator('#game canvas').click({button:'middle'});
+  await page.keyboard.press('KeyQ');
   await expect(page.locator('#cd-ice')).toHaveText(/❄ 0\.\ds/);
   await expect(iceCard).toHaveAttribute('data-ready','false');
   await expect(page.locator('#cd-shot')).toHaveText('✦ Lista');
   await page.waitForTimeout(250);
-  await page.locator('#game canvas').click({button:'right'});
+  await page.keyboard.press('KeyE');
   await expect(page.locator('#stage')).toHaveAttribute('data-magic-shield','2');
   await page.locator('#game canvas').click();
   await expect(page.locator('#cd-shot')).toHaveText(/✦ 0\.\ds/);
 });
-test('el nigromante lanza fuego e invoca zombies con espacio y clic derecho',async({page,browser})=>{
+test('el nigromante lanza fuego e invoca zombies con F',async({page,browser})=>{
   const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));await enter(page,'/','Morgana','necromancer');
   await expect(page.locator('#control-guide')).toContainText('Invocar zombies');
   const context=await browser.newContext();const rival=await context.newPage();rival.on('pageerror',e=>errors.push(e.message));await enter(rival,page.url(),'Rival','guardian');
   await page.locator('#ready').click();await rival.locator('#ready').click();await expect(page.locator('#stage')).toHaveAttribute('data-phase','playing',{timeout:7000});
   await expect(page.locator('#cd-sword')).toBeHidden();await expect(page.locator('#cd-summon')).toHaveText('☠ 0/2 · Listo');
   await page.locator('#game canvas').click({position:{x:400,y:300}});await expect(page.locator('#cd-shot')).toHaveText(/✺ [01]\.\ds/);await page.waitForTimeout(300);
-  await page.keyboard.press('Space');await expect(page.locator('#cd-summon')).toHaveText(/☠ 1\/2 · [34]\.\ds/);await page.waitForTimeout(5300);
-  await page.locator('#game canvas').click({button:'right',position:{x:400,y:300}});await expect(page.locator('#cd-summon')).toHaveText('☠ 2/2 · Llenas');
+  await page.keyboard.press('KeyF');await expect(page.locator('#cd-summon')).toHaveText(/☠ 1\/2 · [34]\.\ds/);await page.waitForTimeout(5300);
+  await page.keyboard.press('KeyF');await expect(page.locator('#cd-summon')).toHaveText('☠ 2/2 · Llenas');
   expect(errors).toEqual([]);await context.close();
 });
 test('escudo móvil con tres dedos, liberación y clase pesada',async({browser},info)=>{

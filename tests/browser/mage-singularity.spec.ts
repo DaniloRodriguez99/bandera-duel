@@ -18,10 +18,10 @@ test('Parpadeo se activa al soltar su botón táctil', async ({ browser }) => {
     await expect(blink).toBeVisible();
     for (const [ability, slot] of [
       ['shot', 'primary'],
-      ['magic-shield', 'secondary'],
       ['dash', 'mobility'],
-      ['ice', 'skill1'],
-      ['black-hole', 'skill2'],
+      ['ice', 'q'],
+      ['magic-shield', 'e'],
+      ['black-hole', 'f'],
     ]) await expect(page.locator(`#touch-${ability}`)).toHaveAttribute('data-logical-slot', slot);
     await expect(page.locator('#cd-dash')).toContainText('Listo');
     await blink.tap();
@@ -37,15 +37,16 @@ test('el Mago carga Parpadeo y Singularidad manteniendo la tecla y las lanza al 
   const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
   await page.goto('/');
   await page.locator('#entry-classes [data-class="mage"]').click();
-  await expect(page.locator('#control-guide')).toContainText('Parpadeo · mantener y soltar');
-  await expect(page.locator('#control-guide')).toContainText('Singularidad · mantener y soltar');
+  // The guide explains each ability with the player's own key in it.
+  await expect(page.locator('#control-guide')).toContainText('Mantené ESPACIO para ampliar el alcance');
+  await expect(page.locator('#control-guide')).toContainText('Mantené F para cargar; soltá para lanzar');
   await page.locator('#practice-start').click();
   const blink=page.locator('[data-ability="dash"]');
   const singularity=page.locator('[data-ability="black-hole"]');
   await expect(blink).toBeVisible();
   await expect(singularity).toBeVisible();
   await expect(singularity).toContainText('Singularidad');
-  await expect(singularity).toContainText('E');
+  await expect(singularity.locator('kbd')).toHaveText('F');
   expect(await singularity.locator('img').evaluate((image:HTMLImageElement)=>image.naturalWidth)).toBeGreaterThan(0);
   const canvas=(await page.locator('#game canvas').boundingBox())!;
   await page.mouse.move(canvas.x+canvas.width*0.65,canvas.y+canvas.height*0.5);
@@ -60,13 +61,13 @@ test('el Mago carga Parpadeo y Singularidad manteniendo la tecla y las lanza al 
   await expect(page.locator('#cd-dash')).toHaveText(/➟ \d\.\ds/);
 
   // Singularidad: the charge grows the mandala; the cooldown only starts on release.
-  await page.keyboard.down('KeyE');
+  await page.keyboard.down('KeyF');
   await expect(page.locator('#cd-black-hole')).toContainText('Cargando');
   await expect(singularity.locator('.ability-state')).toHaveText(/\d+ %/);
   await page.waitForTimeout(1500);
   await expect(singularity).toHaveAttribute('data-ready','true');
   await page.screenshot({path:info.outputPath('singularidad-carga.png')});
-  await page.keyboard.up('KeyE');
+  await page.keyboard.up('KeyF');
   // While the hole is out the card stays usable, to implode it; the cooldown runs underneath.
   await expect(singularity).toHaveAttribute('data-live','true');
   await expect(singularity).toHaveAttribute('data-ready','true');
@@ -74,10 +75,31 @@ test('el Mago carga Parpadeo y Singularidad manteniendo la tecla y las lanza al 
   await expect(singularity.locator('.ability-cd')).toHaveText(/^\d\.\ds$/);
   await expect(page.locator('#cd-black-hole')).toContainText('Detonar ·');
   await page.screenshot({path:info.outputPath('singularidad-viaje.png')});
-  await page.keyboard.press('KeyE');
+  await page.keyboard.press('KeyF');
   await expect(singularity).toHaveAttribute('data-live','false');
   await expect(singularity).toHaveAttribute('data-ready','false');
   await expect(page.locator('#cd-black-hole')).toHaveText(/◉ \d\.\ds/);
+  expect(errors).toEqual([]);
+});
+
+test('el Mago camina, parpadea y sigue cargando Singularidad a la vez', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  await page.goto('/');
+  await page.locator('#entry-classes [data-class="mage"]').click();
+  await page.locator('#practice-start').click();
+  const canvas = (await page.locator('#game canvas').boundingBox())!;
+  await page.mouse.move(canvas.x + canvas.width * 0.6, canvas.y + canvas.height * 0.5);
+  await page.keyboard.down('KeyF');
+  await expect(page.locator('#cd-black-hole')).toContainText('Cargando');
+  await page.keyboard.down('KeyS');
+  // Space mid-charge: the teleport goes out and the charge keeps building.
+  await page.keyboard.press('Space');
+  await expect(page.locator('#cd-dash')).toHaveText(/➟ \d\.\ds/);
+  await expect(page.locator('#cd-black-hole')).toContainText('Cargando');
+  await page.keyboard.up('KeyS');
+  await page.keyboard.up('KeyF');
+  await expect(page.locator('#cd-black-hole')).toContainText('Detonar ·');
   expect(errors).toEqual([]);
 });
 

@@ -424,6 +424,28 @@ kbd {
 .control-guide .mobile-help {
   display: none;
 }
+/* How to play: one line per ability, with the player's own key in it. */
+.control-guide {
+  flex-wrap: wrap;
+  row-gap: 10px;
+  padding-left: 16px;
+  padding-right: 16px;
+}
+.control-guide .guide-skill {
+  align-items: baseline;
+}
+.control-guide .guide-skill strong {
+  color: #c5cfc0;
+  font-weight: 600;
+}
+.control-guide .guide-skill small {
+  max-width: 230px;
+  line-height: 1.35;
+  color: #74857f;
+}
+.control-guide .how-touch {
+  display: none;
+}
 footer {
   max-width: 1112px;
   margin: 0 auto;
@@ -701,6 +723,12 @@ footer b {
 @media (pointer: coarse) {
   .control-guide > span:not(.mobile-help) {
     display: none;
+  }
+  .control-guide .how-key {
+    display: none;
+  }
+  .control-guide .how-touch {
+    display: inline;
   }
   .control-guide .mobile-help {
     display: block;
@@ -1005,7 +1033,24 @@ select:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
 @media(pointer:coarse) { .stage[data-class=guardian] .touch-right { display:grid; grid-template-columns:42px 42px 90px; grid-template-rows:38px 38px 38px; gap:4px 6px; align-items:center; } .stage[data-class=guardian] #stick-aim { grid-column:3; grid-row:1/4; } .stage[data-class=guardian] .touch-action { width:42px; height:38px; font-size:16px; } .stage[data-class=guardian] #touch-trap { grid-column:1; grid-row:1; } .stage[data-class=guardian] #touch-volley { grid-column:2; grid-row:1; } .stage[data-class=guardian] #touch-sword { grid-column:1; grid-row:2; } .stage[data-class=guardian] #touch-guard { grid-column:2; grid-row:2; } .stage[data-class=guardian] #touch-dash { grid-column:1/3; grid-row:3; justify-self:center; } }
 
 /* Abilities panel: bottom-left over the arena, showing each key and a cooldown veil. */
-.abilities{position:absolute;left:10px;bottom:10px;z-index:4;display:flex;align-items:flex-end;gap:6px;pointer-events:none}
+/* The same seven positions for every class: M1 M2 · Q E F R on top, Space centred beneath. */
+.abilities{position:absolute;left:10px;bottom:10px;z-index:4;display:grid;grid-template-columns:repeat(6,auto);grid-template-areas:"primary secondary q e f r" "extra extra mobility mobility mobility mobility";column-gap:6px;row-gap:4px;align-items:end;pointer-events:none}
+.ability-branch[data-position=primary]{grid-area:primary}
+.ability-branch[data-position=secondary]{grid-area:secondary;margin-right:8px}
+.ability-branch[data-position=q]{grid-area:q}
+.ability-branch[data-position=e]{grid-area:e}
+.ability-branch[data-position=f]{grid-area:f}
+.ability-branch[data-position=r]{grid-area:r}
+.ability-branch[data-position=mobility]{grid-area:mobility;justify-self:center;align-items:center}
+.ability-branch[data-position=mobility] .ability-tree{display:none}
+.ability-branch[data-position=mobility] .ability{width:auto;min-height:0;flex-direction:row;gap:7px;padding:4px 10px}
+.ability-branch[data-position=mobility] .ability-icon{width:26px;height:26px}
+.ability-branch[data-position=mobility] .ability-state{top:50%;left:10px;right:auto;width:26px;transform:translateY(-50%);font-size:9px}
+.ability[data-locked=true]{opacity:.5;border-style:dashed;box-shadow:none}
+.ability-empty{display:grid;place-items:center;font-size:18px;color:#7b877e;background:#0b1418}
+.ability-mana{position:absolute;top:2px;left:3px;font-size:8px;font-weight:700;color:#8fd0ff;text-shadow:0 1px 2px #000}
+.ability-mana:empty{display:none}
+.ability[data-unpaid=true] .ability-mana{color:#ff7b72}
 /* Skill tree: the tap / hold / full-charge branches of each ability stacked above its card. */
 .ability-branch{display:flex;flex-direction:column;align-items:flex-start;gap:4px;flex:none}
 .ability-tree{list-style:none;margin:0 0 0 29px;padding:0 0 0 7px;border-left:1px solid #8b846980;display:flex;flex-direction:column;gap:2px}
@@ -1027,7 +1072,7 @@ select:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
 @media (prefers-reduced-motion:reduce){.ability[data-live=true]{animation:none}}
 .ability kbd{position:relative;font-size:7px;letter-spacing:.5px;padding:1px 4px;border:1px solid #8b8469;border-radius:3px;background:#1d2a2c;color:var(--gold);white-space:nowrap}
 .ability small{position:relative;font-size:7px;line-height:1.1;color:#c9cdb9}
-@media (pointer:coarse){.abilities{top:40px;bottom:auto;left:8px;transform:scale(.8);transform-origin:top left}.ability-tree{display:none}}
+@media (pointer:coarse){.abilities{top:40px;bottom:auto;left:8px;transform:scale(.8);transform-origin:top left}.ability-tree{display:none}.abilities .ability[data-locked=true]{display:none}}
 
 /* Room format and map selection. */
 .option-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:15px}.option-row label{display:grid;gap:7px}.option-row select,#team-select,#room-perspective,#spectator-perspective{width:100%;min-height:42px;padding:10px 12px;color:#e8e1d1;background:#142127;border:1px solid #425050;border-radius:3px}.map-preview{position:relative;height:168px;margin:12px 0;overflow:hidden;border:1px solid #536052;background:#1e302a}.map-mini{position:absolute;inset:0;width:100%;height:100%;display:block}.preview-floor{fill:#263a32}.map-preview.forest .preview-floor{fill:#213a2d}.map-preview.ruins .preview-floor{fill:#393a32}.map-preview.crossroads .preview-floor{fill:#30392e}.preview-grid{fill:none;stroke:#90a18a;stroke-width:1;opacity:.09}.preview-axis{fill:none;stroke:#d5c59c;stroke-width:22;opacity:.1}.preview-wall rect{fill:#747b73;stroke:#adb0a5;stroke-width:4}.preview-wall path{fill:none;stroke:#414944;stroke-width:3;opacity:.8}.preview-bush rect,.preview-bush circle{fill:#3c6b45;stroke:#75a05b;stroke-width:3;opacity:.88}.preview-center{fill:none;stroke:#dbc789;stroke-width:4;stroke-dasharray:8 9;opacity:.26}.preview-base circle{fill:currentColor;fill-opacity:.1;stroke:currentColor;stroke-width:4}.preview-base circle+circle{fill:none;stroke-width:2;stroke-dasharray:5 5}.preview-base path{fill:currentColor;stroke:currentColor;stroke-width:5;stroke-linejoin:round}.preview-mob-spawn{fill:#a93434;stroke:#ff9b78;stroke-width:4;stroke-dasharray:5 4;opacity:.8}.preview-base.blue{color:#65bcea}.preview-base.red{color:#ef7469}.preview-base.green{color:#78cd7d}.preview-base.violet{color:#b68ae8}.preview-frame{fill:none;stroke:#a6b09f;stroke-width:8;opacity:.45}.map-copy{position:absolute;z-index:2;left:0;right:0;bottom:0;display:grid;gap:2px;padding:30px 13px 10px;background:linear-gradient(transparent,#07100fd9 42%,#07100ff2);text-shadow:0 2px 3px #000}.map-copy strong{font-family:'Barlow Condensed',Impact,sans-serif;font-size:17px;color:#f0e6c7}.map-copy>span{font-size:10px;color:#e1e4db}.map-copy small{font-size:8px;line-height:1.35;color:#b9c9bd;letter-spacing:.3px}#team-choice,#room-perspective-choice,#perspective-choice{display:grid;gap:6px;margin:8px 0;color:var(--gold);font-size:9px;letter-spacing:1px}#team-choice[hidden],#room-perspective-choice[hidden],#perspective-choice[hidden]{display:none}#stage>#room-perspective-choice{position:absolute;top:34px;right:8px;z-index:40;width:150px;padding:6px;background:#14251ee8}#stage>#room-perspective-choice select{min-height:32px;padding:5px 7px;font-size:10px}#stealth-state:empty{display:none}#stealth-state{padding:4px 8px;border:1px solid currentColor;font-size:9px;letter-spacing:1px;white-space:nowrap}#stealth-state.hidden-state{color:#9fdcae;background:#213d2fe8}#stealth-state.revealed-state{color:#e4a376;background:#482c25e8}.roster-player.empty{opacity:.5;color:#b2b8ad}@media(max-width:560px){.option-row{grid-template-columns:1fr}.map-preview{height:150px}}

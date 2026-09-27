@@ -11,7 +11,7 @@ it.each([650, 760])('Singularidad daña al dummy de práctica al apuntar a %i', 
 
   const key = (state: { pressed?: boolean; held?: boolean; released?: boolean }) => {
     const input = idleInput(1);
-    input.slots.skill2 = { pressed: false, held: false, released: false, ...state };
+    input.slots.f = { pressed: false, held: false, released: false, ...state };
     input.aimX = targetX;
     input.aimY = dummy.y;
     return input;

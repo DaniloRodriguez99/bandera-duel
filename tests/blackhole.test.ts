@@ -6,10 +6,10 @@ import { SKILLS_WORLD } from '@bandera/shared/rpg/skills';
 const ticks = (seconds:number) => Math.ceil(seconds/RULES.tick);
 const advance = (duel:Duel,n:number) => {for(let i=0;i<n;i++)duel.step(new Map());};
 type Aim = {x:number;y:number};
-/** The mage's Singularidad key (skill2 by default) in one state, aiming at a map point. */
+/** The mage's Singularidad key (F) in one state, aiming at a map point. */
 const key = (state:Partial<SlotInputState>,aim:Aim={x:480,y:270},extra:Partial<Input>={}) => {
   const input={...idleInput(1),aimX:aim.x,aimY:aim.y,...extra};
-  input.slots.skill2={pressed:false,held:false,released:false,...state};
+  input.slots.f={pressed:false,held:false,released:false,...state};
   return input;
 };
 const send = (duel:Duel,input:Input) => duel.step(new Map([['a',input]]));
