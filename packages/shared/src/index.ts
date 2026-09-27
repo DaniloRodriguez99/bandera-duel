@@ -1873,7 +1873,10 @@ export function movePlayer(
   // Only the air-combo window opened above (a fully drawn bow or a charged jump) lets the archer
   // act while the dash keeps it invulnerable. Plain displacement must not open the attack ladder
   // mid-dash, or an escape dash would grant invulnerability and a swing at the same time.
-  const dashAttackWindow = dashCombo || p.classId === 'vanguard';
+  // Parpadeo's brief landing i-frames never cost the mage its loaded click: the charge carries
+  // through the jump and can go out on landing, which ends the invulnerability at once (below).
+  const blinkFrames = canBlink && p.dashInvulnerable;
+  const dashAttackWindow = dashCombo || p.classId === 'vanguard' || blinkFrames;
   const canCharge =
     !p.guarding &&
     free(p.loadout.primary) &&
@@ -1939,6 +1942,11 @@ export function movePlayer(
       p.shotCharge = 0;
       result.shoot = true;
     }
+  }
+  // Attacking out of a blink ends its i-frames: never invulnerable and striking at the same time.
+  if (blinkFrames && (result.shoot || result.ice || result.volley || result.slash || (p.windup > 0 && !wasWinding))) {
+    p.dashLeft = 0;
+    p.dashInvulnerable = false;
   }
   // Summoning neither waits for nor blocks attacks: fire and summon can go out on the same tick.
   if (
