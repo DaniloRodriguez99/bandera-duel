@@ -1,9 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
+  CLASSES,
   CUT_FLOOR,
   INTERACTIONS,
-  RESOURCES,
-  RULES,
   SKILLS,
   affordable,
   arrowProfile,
@@ -11,8 +10,6 @@ import {
   chargeTier,
   cutOutcome,
   gainResource,
-  idleInput,
-  movePlayer,
   newPlayer,
   parryOutcome,
   payCost,
@@ -96,31 +93,25 @@ describe('estados de carga', () => {
 describe('recursos', () => {
   const knight = () => newPlayer('k', 'K', 'blue', 'guardian');
 
-  it('la Furia es del juego, no de la interfaz: se gana, tiene tope y se enfría sola', () => {
+  it('el maná es del juego, no de la interfaz: se gana hasta su tope', () => {
     const p = knight();
-    expect(resourcePool(p, 'rage')).toEqual({ value: 0, max: RESOURCES.rage.max });
-    gainResource(p, 'rage', 40);
-    gainResource(p, 'rage', 90);
-    expect(p.rage).toBe(RESOURCES.rage.max);
-    const step = () => movePlayer(p, idleInput(), false);
-    // It holds for the delay, then drains.
-    for (let t = 0; t < RESOURCES.rage.decayDelay - 0.1; t += RULES.tick) step();
-    expect(p.rage).toBe(RESOURCES.rage.max);
-    for (let t = 0; t < 1.1; t += RULES.tick) step();
-    expect(p.rage).toBeLessThan(RESOURCES.rage.max - RESOURCES.rage.decayRate * 0.8);
-    // Earning more restarts the wait.
-    const before = p.rage;
-    gainResource(p, 'rage', 1);
-    step();
-    expect(p.rage).toBe(before + 1);
+    expect(resourcePool(p, 'mana')).toEqual({ value: CLASSES.guardian.mana, max: CLASSES.guardian.mana });
+    p.mana = 10;
+    gainResource(p, 'mana', 40);
+    expect(p.mana).toBe(50);
+    gainResource(p, 'mana', 900);
+    expect(p.mana).toBe(CLASSES.guardian.mana);
+    // A pool no class brings yet is nobody's: it neither blocks nor pays.
+    expect(resourcePool(p, 'stamina')).toBeNull();
   });
 
   it('una clase sin maná no tiene ese recurso, y nada queda sin poder pagarse', () => {
     const p = newPlayer('a', 'A', 'blue', 'archer');
     expect(resourcePool(p, 'mana')).toBeNull();
     const ids = Object.keys(SKILLS) as (keyof typeof SKILLS)[];
-    expect(ids.filter((id) => !affordable(p, id))).toEqual(['guardian.fury']);
-    expect(skillCost('guardian.fury')).toEqual({ resource: 'rage', amount: 0, min: RESOURCES.rage.max });
+    expect(ids.filter((id) => !affordable(p, id))).toEqual([]);
+    // The knight's awakening waits on its cooldown, not on a bar.
+    expect(skillCost('guardian.fury')).toBeUndefined();
     gainResource(p, 'mana', 10);
     expect(p.mana).toBe(0);
   });
@@ -130,14 +121,15 @@ describe('recursos', () => {
     const fury = SKILLS['guardian.fury'];
     const original = { cost: fury.cost, mana: fury.mana };
     try {
-      fury.cost = { resource: 'rage', amount: 60, min: 100 };
-      expect(skillCost('guardian.fury')).toMatchObject({ resource: 'rage', amount: 60 });
-      p.rage = 99;
+      // A minimum above what it spends: it asks for 60 to start and takes 25.
+      fury.cost = { resource: 'mana', amount: 25, min: 60 };
+      expect(skillCost('guardian.fury')).toMatchObject({ resource: 'mana', amount: 25 });
+      p.mana = 59;
       expect(affordable(p, 'guardian.fury')).toBe(false);
-      p.rage = 100;
+      p.mana = 60;
       expect(affordable(p, 'guardian.fury')).toBe(true);
       payCost(p, 'guardian.fury');
-      expect(p.rage).toBe(40);
+      expect(p.mana).toBe(35);
       // The short form: a bare mana cost, paid from a character that has a pool.
       fury.cost = undefined;
       fury.mana = 30;

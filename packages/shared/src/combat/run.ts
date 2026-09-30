@@ -90,8 +90,40 @@ export function clearKit(p: Player) {
   p.comboLeft = 0;
 }
 
+/** Whether the running move keeps the whole body in it, so nothing may carry the fighter off. */
+const planted = (p: Pick<Player, 'move'>) => !!p.move && !!MOVES[p.move].planted;
+
+/**
+ * A skill that runs beside the running move: its launch goes out now, along the aim of this moment,
+ * and the blade goes on with whatever it was doing.
+ */
+function launchBeside(p: Player, id: SkillId, charge: number, ctx: KitContext, out: KitResult) {
+  const skill = KIT[id];
+  const tier = chargeTier(skill.charge, charge).index;
+  const dash = MOVES[skill.move(0, tier, p.furyLeft > 0)].dash!;
+  const cooldown = skill.cooldown(tier, charge);
+  if (cooldown > 0) ctx.cool(id, cooldown);
+  ctx.pay(id);
+  out.dash = { angle: ctx.angle, distance: dash.distance(charge), speed: dash.speed, iframes: dash.iframes, hit: dash.hit };
+}
+
+/** Asks for a skill to go out: at once when it runs beside the moves, else when the running move lets it. */
+function request(p: Player, id: SkillId, charge: number, ctx: KitContext, out: KitResult) {
+  if (KIT[id].concurrent && !planted(p)) {
+    launchBeside(p, id, charge, ctx, out);
+    return;
+  }
+  p.buffered = id;
+  p.bufferCharge = charge;
+  p.bufferLeft = INPUT_BUFFER;
+}
+
 function startMove(p: Player, id: SkillId, charge: number, ctx: KitContext, out: KitResult) {
   const skill = KIT[id];
+  if (skill.concurrent) {
+    launchBeside(p, id, charge, ctx, out);
+    return;
+  }
   const tier = chargeTier(skill.charge, charge).index;
   const step = skill.chain > 1 ? p.combo % skill.chain : 0;
   // Each kit decides what its empowered state changes in a move.
@@ -111,7 +143,11 @@ function startMove(p: Player, id: SkillId, charge: number, ctx: KitContext, out:
   ctx.pay(id);
   if (def.effect === 'awaken' || def.effect === 'reinforce') {
     p.empowered = def.effect;
-    p.furyLeft = def.effect === 'awaken' ? KNIGHT_AWAKEN.duration : WARRIOR_REINFORCE.duration;
+    // Hordas: each rank of the knight's own upgrade keeps him awake longer.
+    p.furyLeft =
+      def.effect === 'awaken'
+        ? KNIGHT_AWAKEN.duration * (1 + (p.pve?.classRanks.guardian ?? 0) * 0.15)
+        : WARRIOR_REINFORCE.duration;
     out.empowered = true;
   } else if (def.effect === 'parry') {
     // Hordas: each rank of the warrior's own upgrade holds the guard up longer.
@@ -211,11 +247,7 @@ export function stepKit(
     }
     // Mobility never waits for another charge: let go, it goes out as it is.
     if (skill.alongside && p.chargeSkill && p.chargeSkill !== id) {
-      if (state.released && ctx.ready(id)) {
-        p.buffered = id;
-        p.bufferCharge = 0;
-        p.bufferLeft = INPUT_BUFFER;
-      }
+      if (state.released && ctx.ready(id)) request(p, id, 0, ctx, out);
       continue;
     }
     if (held && !p.chargeSkill && ctx.ready(id)) {
@@ -224,11 +256,8 @@ export function stepKit(
       out.chargeStarted = id;
     }
     if (p.chargeSkill !== id) continue;
-    if (state.released) {
-      p.buffered = id;
-      p.bufferCharge = p.chargeT;
-      p.bufferLeft = INPUT_BUFFER;
-    } else if (held) {
+    if (state.released) request(p, id, p.chargeT, ctx, out);
+    else if (held) {
       // Holding may cost by the second; a pool that runs dry leaves the charge where it is.
       const growth = Math.min(dt, skill.charge.cap - p.chargeT);
       if (growth > 1e-9 && ctx.hold(id, growth)) p.chargeT = Math.min(skill.charge.cap, p.chargeT + dt);
@@ -239,8 +268,12 @@ export function stepKit(
   }
 
   // A request waits for the running move to end, then goes out with the aim of that moment. A
-  // parry or a launch does not wait that long: it cuts into a recovery.
-  if (p.buffered && (!p.move || (KIT[p.buffered]?.interrupts && moveRecovering(p)))) {
+  // parry or a launch does not wait that long: it cuts into a recovery. One that runs beside the
+  // moves only waited for a move that keeps the whole body in it.
+  if (
+    p.buffered &&
+    (!p.move || (KIT[p.buffered]?.interrupts && moveRecovering(p)) || (KIT[p.buffered]?.concurrent && !planted(p)))
+  ) {
     const id = p.buffered;
     p.buffered = '';
     p.bufferLeft = 0;

@@ -1,5 +1,6 @@
 import { CLASSES, DEFAULT_LOADOUTS, KIT, RULES, affordable, chargeProgress, overcharge, type ClassId, type Player, type SkillSlot } from '@bandera/shared';
 import { abilityCards, type AbilitySlot } from './abilities.js';
+import { hasFaces, showFace } from './combo-icons.js';
 
 /** Thumb order: the big attack button first, mobility beside it, then the class's abilities. */
 const TOUCH_ORDER: readonly SkillSlot[] = ['primary', 'mobility', 'secondary', 'q', 'e', 'f', 'r'];
@@ -82,7 +83,6 @@ function statusFor(slot: TouchAbilitySlot, p: Player, cooldown: number) {
   const over = slot.skillId && p.chargeSkill === slot.skillId ? overcharge(KIT[slot.skillId].charge, p.chargeT) : 0;
   if (over > 0) return `${100 + Math.round(over * 100)}%`;
   if (charge > 0) return `${Math.round(Math.min(1, charge) * 100)}%`;
-  if (slot.id === 'fury' && p.empowered !== 'awaken' && p.classId === 'guardian') return `${Math.floor(p.rage)}%`;
   if (slot.id === 'counter' && p.counterLeft > 0) return 'ACTIVO';
   if ((slot.id === 'fury' || slot.id === 'reinforce') && p.furyLeft > 0) return `${p.furyLeft.toFixed(1)}s`;
   if (slot.id === 'magic-shield' && p.magicShieldHits > 0) return `${p.magicShieldHits}/2`;
@@ -103,10 +103,13 @@ function button(slot: TouchAbilitySlot) {
   node.dataset.mode = slot.mode;
   node.dataset.directional = String(slot.directional);
   node.setAttribute('aria-label', `${slot.name}${slot.directional ? ' · arrastrá para apuntar' : ''}`);
-  const icon = document.createElement('img');
-  icon.src = slot.icon;
-  icon.alt = '';
-  icon.draggable = false;
+  // A chain shows the cut that comes next; every other skill, its art.
+  const icon = document.createElement(hasFaces(slot.skillId) ? 'span' : 'img');
+  if (icon instanceof HTMLImageElement) {
+    icon.src = slot.icon;
+    icon.alt = '';
+    icon.draggable = false;
+  } else icon.className = 'touch-ability-face';
   icon.setAttribute('aria-hidden', 'true');
   const label = document.createElement('small');
   label.textContent = slot.name;
@@ -135,12 +138,13 @@ export function updateTouchAbilities(root: HTMLElement, p: Player, holeLive = fa
     // A Singularidad in flight: a tap implodes it, while its cooldown runs in parallel.
     const live = holeLive && slot.id === 'black-hole';
     const status = live ? 'DETONAR' : statusFor(slot, p, cooldown);
-    // A skill that cannot be paid for (the awakening without its Rage) is not ready either.
+    // A skill that cannot be paid for is not ready either.
     node.dataset.ready = String((cooldown <= 0 || live) && (!slot.skillId || affordable(p, slot.skillId)));
     node.dataset.active = String(live || activeFor(slot.id, p));
     node.style.setProperty('--cd', String(live ? 0 : Math.min(1, cooldown / Math.max(0.001, slot.max))));
     node.style.setProperty('--charge', String(charge));
     node.querySelector<HTMLElement>('.touch-ability-status')!.textContent = status;
+    if (hasFaces(slot.skillId)) showFace(node.querySelector<HTMLElement>('.touch-ability-face')!, p, slot.skillId);
     node.setAttribute('aria-label', `${slot.name} · ${live ? 'tocá para detonar' : cooldown > 0 ? `${cooldown.toFixed(1)} segundos` : 'lista'}`);
   });
 }

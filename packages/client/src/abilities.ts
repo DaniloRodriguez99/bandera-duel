@@ -1,4 +1,5 @@
-import { CLASSES, DEFAULT_BINDINGS, KIT, KNIGHT_AWAKEN, MOVES, RESOURCES, RULES, SKILLS, WARRIOR_PARRY, WARRIOR_REINFORCE, affordable, blackHoleStats, chargePower, chargeProgress, chargeTier, kitCooldown, overcharge, projectileSkillStats, skillCost, type ClassId, type InputBindings, type PhysicalBinding, type Player, type ResourceCost, type SkillId, type SkillSlot, type Snapshot } from '@bandera/shared';
+import { CLASSES, DEFAULT_BINDINGS, KIT, KNIGHT_AWAKEN, MOVES, RULES, SKILLS, WARRIOR_PARRY, WARRIOR_REINFORCE, affordable, blackHoleStats, chargePower, chargeProgress, chargeTier, kitCooldown, overcharge, projectileSkillStats, skillCost, type ClassId, type InputBindings, type PhysicalBinding, type Player, type ResourceCost, type SkillId, type SkillSlot, type Snapshot } from '@bandera/shared';
+import { hasFaces, showFace } from './combo-icons.js';
 
 /**
  * Whether this player's Singularidad is still out. Its key then bursts the hole, so its card and
@@ -33,7 +34,7 @@ export interface AbilitySlot {
   howTo?: string;
   /** The same line for a finger, which presses a button rather than a key. */
   howToTouch?: string;
-  /** What it takes to use it: mana in the modes that have it, the knight's Rage. */
+  /** What it takes to use it, in the modes that have mana. */
   cost?: ResourceCost;
 }
 
@@ -112,8 +113,8 @@ function detailOf(id: SkillId, p: Player): string | null {
   if (id === 'mage.blink') return p.blinkCharge > 0 ? percent(p.blinkCharge / RULES.mageBlinkChargeTime) : null;
   if (id === 'mage.blackHole') return p.blackHoleCharge > 0 ? percent(blackHoleStats(p.blackHoleCharge).power) : null;
   if (id === 'archer.trap') return p.trapLeft > 0 ? 'Preparando' : null;
-  // The awakening shows its own fuel: the Rage that fills it, then the seconds it lasts.
-  if (id === 'guardian.fury') return p.empowered === 'awaken' ? `${p.furyLeft.toFixed(1)}s` : `${Math.floor(p.rage)} %`;
+  // The awakening shows the seconds it has left.
+  if (id === 'guardian.fury') return p.empowered === 'awaken' ? `${p.furyLeft.toFixed(1)}s` : null;
   if (id === 'vanguard.reinforce') return p.empowered === 'reinforce' ? `${p.furyLeft.toFixed(1)}s` : null;
   if (id === 'vanguard.counter') return p.counterLeft > 0 ? 'Activo' : null;
   // A kit skill says how far its charge has gone (past 100 % when it overcharges), then the move
@@ -153,9 +154,9 @@ function tiersOf(id: SkillId, classId: ClassId): AbilityTier[] | undefined {
     case 'guardian.fury':
       return [
         {
-          label: `Furia llena · ${KNIGHT_AWAKEN.duration} s de espada despierta`,
-          active: (p) => p.empowered === 'awaken' || p.rage >= RESOURCES.rage.max,
-          state: (p) => (p.empowered === 'awaken' ? `${p.furyLeft.toFixed(1)}s` : `${Math.floor(p.rage)} %`),
+          label: `${KNIGHT_AWAKEN.duration} s de relámpago violeta · +${Math.round((KNIGHT_AWAKEN.damage - 1) * 100)} % de daño`,
+          active: (p) => p.empowered === 'awaken',
+          state: (p) => (p.empowered === 'awaken' ? `${p.furyLeft.toFixed(1)}s` : null),
         },
       ];
     case 'mage.blink':
@@ -367,7 +368,12 @@ export function updateAbilities(root: HTMLElement, p: Player, bindings: InputBin
         card.dataset.ability = slot.id;
         card.dataset.locked = String(!!slot.locked);
         if (slot.howTo) card.title = slot.howTo;
-        const icon = slot.locked ? element('span', 'ability-icon ability-empty', '—') : document.createElement('img');
+        // A chain shows the cut that comes next; every other skill, its art.
+        const icon = slot.locked
+          ? element('span', 'ability-icon ability-empty', '—')
+          : hasFaces(slot.skillId)
+            ? element('span', 'ability-icon ability-face')
+            : document.createElement('img');
         if (icon instanceof HTMLImageElement) {
           icon.className = 'ability-icon';
           icon.src = slot.icon;
@@ -407,7 +413,8 @@ export function updateAbilities(root: HTMLElement, p: Player, bindings: InputBin
     card.style.setProperty('--cd', String(live ? 0 : Math.min(1, left / slot.max)));
     card.querySelector('.ability-state')!.textContent = live ? 'Detonar' : left > 0 ? `${left.toFixed(1)}s` : (detail ?? '');
     card.querySelector('.ability-cd')!.textContent = live && left > 0 ? `${left.toFixed(1)}s` : '';
-    const lacking = slot.cost?.resource === 'rage' ? `Furia ${Math.floor(p.rage)} de ${slot.cost.min ?? slot.cost.amount}` : `sin maná (${slot.cost?.amount} M)`;
+    const lacking = `sin maná (${slot.cost?.amount} M)`;
+    if (hasFaces(slot.skillId)) showFace(card.querySelector<HTMLElement>('.ability-face')!, p, slot.skillId);
     card.setAttribute('aria-label', `${slot.name} · ${slot.key} · ${!paid ? lacking : live ? `detonar · recarga ${left.toFixed(1)} s` : left > 0 ? `${left.toFixed(1)} s` : 'lista'}`);
     branch.querySelectorAll('li').forEach((item, j) => {
       const tier = slot.tiers![j];

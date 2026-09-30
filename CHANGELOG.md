@@ -2,6 +2,19 @@
 
 ## 2026-09-30
 
+### Caballero: técnicas
+
+- **Tajo Descendente.** El tercer corte ya no cae recto: la espada sube por encima del hombro y baja en diagonal sobre la línea de la puntería, y se la ve venir desde arriba. Cargado, su tajo es una grieta de energía angosta que corre a ras del suelo, más lejos y más fuerte que la media luna de los cortes horizontales.
+- **La tarjeta del clic muestra el corte que sigue:** una espada horizontal hacia un lado, hacia el otro, o en diagonal hacia el suelo, teñida con el color de la carga. También en el botón táctil.
+- **Corte Celestial (Q a fondo)** reemplaza al Juicio Carmesí: un tajo blanco y dorado, angosto y veloz, que cruza el mapa. De cerca quita media vida a un Guerrero; pierde fuerza con la distancia. Parte lo que cruza.
+- **Cargar bajo ataque.** Un golpe leve ya no rompe las cargas del Caballero: el corte aguanta golpes de hasta 1,5, la Ráfaga hasta 2 y el Paso cualquiera. Morir o quedar aturdido sigue terminando todo.
+- **Paso Relámpago a la vez que la espada.** Sale al instante aunque esté cortando o cargando: el corte sigue y su hoja viaja con él. Solo el Corte Celestial y el Despertar lo hacen esperar.
+- **Despertar del Relámpago sin Furia.** R se recarga en 60 s. Un mandala baja despacio de la cabeza a los pies y el relámpago violeta lo toma 20 s: cada técnica tiene su versión violeta, más fuerte y electrizante. La barra de Furia desaparece.
+- Electrizado dura 1 s y cada carga nueva lo renueva.
+- Una espada levantada sobre la cabeza ahora se dibuja de pie, también el martillazo del Guerrero.
+- Íconos nuevos para la Ráfaga, el Paso y el Despertar. Sonidos propios para el descendente, el Corte Celestial y el Despertar, y un sonido cada vez más agudo al pasar de estado de carga, para todos los que cargan.
+- Hordas: la mejora del Caballero alarga el Despertar en vez de llenar la Furia.
+
 ### El cuerpo mira hacia donde ataca
 
 - En plena pelea el personaje mira hacia donde se apunta, aunque camine para otro lado: se puede correr en una dirección y atacar en la otra, retrocediendo de frente al rival. Cuenta como pelear golpear, cargar, preparar un golpe, recién disparar, tener la guardia arriba o mantener una tecla para apuntar una habilidad. Un momento después del último golpe vuelve a mirar hacia donde camina. Vale para todas las clases.

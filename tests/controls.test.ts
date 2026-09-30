@@ -106,12 +106,10 @@ describe('un solo lenguaje de controles', () => {
     step({ mobility: tap });
     expect(p.dashCd).toBeGreaterThan(0);
     step({}, {}, ticks(0.5));
-    // The ultimate asks for a full bar of Rage; M2, E and F are free.
-    step({ r: tap });
-    expect(p.furyLeft).toBe(0);
-    p.rage = 100;
+    // The ultimate needs nothing but its cooldown; M2, E and F are free.
     step({ r: tap, secondary: tap, e: tap, f: tap });
     expect(p.furyLeft).toBeGreaterThan(0);
+    expect(p.furyCd).toBeGreaterThan(0);
   });
 
   it('Guerrero: Q la Creciente, E el parry', () => {

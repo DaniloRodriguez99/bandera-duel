@@ -87,21 +87,22 @@ test('el caballero muestra sus técnicas: cadena de cortes, carga por estados, R
   for (const position of ['secondary', 'e', 'f'])
     await expect(abilities.locator(`[data-position="${position}"] .ability`)).toHaveAttribute('data-locked', 'true');
   await expect(abilities.locator('[data-ability="guard"], [data-ability="shield-bash"]')).toHaveCount(0);
-  // The awakening runs on Rage: empty, it is not ready, says how full it is and does nothing.
-  await expect(fury).toHaveAttribute('data-ready', 'false');
-  await expect(fury.locator('.ability-state')).toHaveText('0 %');
-  await page.keyboard.press('KeyR');
-  await expect(page.locator('#stage')).toHaveAttribute('data-fury', 'false');
+  // The awakening needs no bar: it is ready from the start.
+  await expect(fury).toHaveAttribute('data-ready', 'true');
 
   // A click is a cut, and the chain remembers which one comes next.
   const canvas = (await page.locator('#game canvas').boundingBox())!;
   await page.mouse.move(canvas.x + canvas.width * 0.7, canvas.y + canvas.height / 2);
   const tree = abilities.locator('[data-position="primary"] .ability-tree li');
   const chain = tree.first().locator('.tier-state');
+  // Its card draws the cut that comes next: across one way, back the other, then down.
+  const face = abilities.locator('[data-position="primary"] .ability-face');
   await expect(chain).toHaveText('1/3');
+  await expect(face).toHaveAttribute('data-face', '0');
   await page.mouse.down();
   await page.mouse.up();
   await expect(chain).toHaveText('2/3');
+  await expect(face).toHaveAttribute('data-face', '1');
   // Holding charges through its states; the last one lights up, and the chain waits for it.
   await page.mouse.down();
   await expect(page.locator('#cd-sword')).toContainText('Cargando');
@@ -109,6 +110,7 @@ test('el caballero muestra sus técnicas: cadena de cortes, carga por estados, R
   await page.screenshot({ path: info.outputPath('caballero-carga.png') });
   await page.mouse.up();
   await expect(chain).toHaveText('3/3');
+  await expect(face).toHaveAttribute('data-face', '2');
   await expect(page.locator('#cd-sword')).toHaveText('⚔ Lista', { timeout: 3000 });
 
   // The flurry has a cooldown, and so does the step.
@@ -118,6 +120,12 @@ test('el caballero muestra sus técnicas: cadena de cortes, carga por estados, R
   await page.waitForTimeout(700);
   await page.keyboard.press('Space');
   await expect(abilities.locator('[data-ability="dash"]')).toHaveAttribute('data-ready', 'false');
+  // R wakes the violet lightning for its seconds, and then the minute of its cooldown runs.
+  await page.keyboard.press('KeyR');
+  await expect(page.locator('#stage')).toHaveAttribute('data-fury', 'true');
+  await expect(fury).toHaveAttribute('data-ready', 'false');
+  await expect(fury.locator('.ability-state')).toHaveText(/^\d\d\.\ds$/);
+  await expect(abilities.locator('[data-position="r"] .ability-tree li').first()).toHaveAttribute('data-active', 'true');
   await page.screenshot({ path: info.outputPath('caballero-tecnicas.png') });
   expect(errors).toEqual([]);
 });

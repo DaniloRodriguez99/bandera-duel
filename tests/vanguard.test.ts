@@ -471,7 +471,6 @@ describe('Guerrero · Cuerpo de Hierro', () => {
     expect(warrior.furyLeft).toBeCloseTo(WARRIOR_REINFORCE.duration);
     expect(warrior.mana).toBe(CLASSES.vanguard.mana - SKILLS['vanguard.reinforce'].cost!.amount);
     expect(events('fury')).toHaveLength(1);
-    expect(warrior.rage).toBe(0);
     step({}, {}, ticks(WARRIOR_REINFORCE.duration) + 1);
     expect(warrior.empowered).toBe('');
     expect(warrior.reinforceCd).toBeGreaterThan(0);
