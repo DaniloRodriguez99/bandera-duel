@@ -1,4 +1,4 @@
-import { CLASS_IDS, CLASSES, DEFAULT_CLASS, RULES, validClass, type ClassId } from '@bandera/shared';
+import { CLASS_IDS, CLASSES, DEFAULT_CLASS, KNIGHT_AWAKEN, KNIGHT_FLURRY_COOLDOWN, RULES, validClass, type ClassId } from '@bandera/shared';
 import { classIllustration } from './art.js';
 
 interface SkillPreview {
@@ -37,11 +37,11 @@ const CLASS_SKILLS: Record<ClassId, SkillPreview[]> = {
     { name: 'Marca funeraria', icon: icon('necromancer-resurrection'), description: 'Traslada al zombie señalado entre el círculo del amo y el cursor.', damage: '0', cooldown: '0 s' },
   ],
   guardian: [
-    { name: 'Acero juramentado', icon: icon('guardian-slash'), description: 'Tajo frontal que puede cargarse para duplicar su fuerza.', damage: `${CLASSES.guardian.meleeDamage}–${CLASSES.guardian.meleeDamage * 2}`, cooldown: seconds(CLASSES.guardian.meleeCooldown) },
-    { name: 'Carga del bastión', icon: icon('vanguard-dash'), description: 'Arremetida blindada que hiere y conserva la carga de la espada para combinar el golpe.', damage: String(RULES.guardianDashDamage), cooldown: seconds(RULES.guardianDashCooldown) },
-    { name: 'Muralla de acero', icon: icon('guardian-shield'), description: 'Alzá el escudo para bloquear ataques dentro del arco frontal.', damage: '0', cooldown: seconds(RULES.guardCooldown) },
-    { name: 'Impacto del baluarte', icon: icon('guardian-bash'), description: `Golpe de escudo que empuja y aturde durante ${seconds(RULES.shieldBashStun)}.`, damage: String(RULES.shieldBashDamage).replace('.', ','), cooldown: seconds(RULES.shieldBashCooldown) },
-    { name: 'Furia dorada', icon: icon('guardian-fury'), description: `Durante ${seconds(RULES.furyDuration)}, la espada inflige un 40 % más de daño.`, damage: '+40 %', cooldown: seconds(RULES.furyCooldown) },
+    { name: 'Tres Cortes', icon: icon('guardian-slash'), description: 'Dos cortes horizontales y un remate vertical, crítico si conecta. La hoja golpea por donde pasa.', damage: '1 · 1 · 1,5', cooldown: '0 s' },
+    { name: 'Filo cargado', icon: icon('guardian-slash'), description: 'Mantené el corte: pega hasta el doble, lanza un tajo y corta habilidades enemigas. Al 100 % las parte en el aire.', damage: 'hasta ×2', cooldown: '0 s' },
+    { name: 'Ráfaga de Acero', icon: icon('vanguard-slash'), description: 'Según la carga: tres cortes veloces, dos potenciados o uno devastador que parte habilidades.', damage: '3 × 0,5 · 2 × 1 · 2,5', cooldown: seconds(KNIGHT_FLURRY_COOLDOWN) },
+    { name: 'Paso Relámpago', icon: icon('vanguard-dash'), description: 'Un paso fulminante que corta a quien atraviesa y se encadena con la espada.', damage: String(RULES.guardianDashDamage), cooldown: seconds(RULES.guardianDashCooldown) },
+    { name: 'Despertar del Juramento', icon: icon('guardian-fury'), description: `La Furia se llena al golpear y al cortar. Llena, despierta la espada ${seconds(KNIGHT_AWAKEN.duration)}: cada corte lanza su tajo.`, damage: `+${Math.round((KNIGHT_AWAKEN.damage - 1) * 100)} %`, cooldown: 'Furia llena' },
   ],
   vanguard: [
     { name: 'Mandoble colosal', icon: icon('vanguard-sword'), description: 'Un barrido pesado de gran alcance que puede cargarse para devastar.', damage: `${CLASSES.vanguard.meleeDamage}–${CLASSES.vanguard.meleeDamage * 2}`, cooldown: seconds(CLASSES.vanguard.meleeCooldown) },

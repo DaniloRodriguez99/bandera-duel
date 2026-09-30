@@ -25,7 +25,8 @@ describe('clases y persistencia',()=>{
   });
 });
 describe('armas y permisos',()=>{
-  it.each(CLASS_IDS.filter(id=>CLASSES[id].melee))('%s: daño, alcance y preparación cuerpo a cuerpo',id=>{
+  // The knight's blade runs through its own moves (tests/guardian.test.ts).
+  it.each(CLASS_IDS.filter(id=>CLASSES[id].melee&&id!=='guardian'))('%s: daño, alcance y preparación cuerpo a cuerpo',id=>{
     const {d,p,q}=setup(id,'vanguard');q.x=p.x+CLASSES[id].meleeRange-1;step(d,p,{sword:true});expect(q.hp).toBe(5);
     step(d,p,{},Math.ceil(CLASSES[id].windup/RULES.tick)+1);expect(q.hp).toBe(5-CLASSES[id].meleeDamage);
     const fresh=setup(id,'vanguard');fresh.q.x=fresh.p.x+CLASSES[id].meleeRange+1;step(fresh.d,fresh.p,{sword:true});step(fresh.d,fresh.p,{},12);expect(fresh.q.hp).toBe(5);
@@ -36,7 +37,6 @@ describe('armas y permisos',()=>{
   it('vanguard rechaza flechas pero esquiva con espacio',()=>{
     const {d,p}=setup('vanguard');step(d,p,{shot:true,dash:true});expect(d.state.arrows).toHaveLength(0);expect(p.dashCd).toBeGreaterThan(0);
   });
-  it.each(['archer','mage','necromancer','vanguard'] as ClassId[])('%s no puede cubrirse',id=>{const {d,p}=setup(id);step(d,p,{guard:true});expect(p.guarding).toBe(false);});
   it('el mago lanza fuego, rechaza báculo y puede esquivar',()=>{
     const {d,p,q}=setup('mage','vanguard');q.y=450;step(d,p,{shot:true});expect(d.state.arrows[0].classId).toBe('mage');
     step(d,p,{},28);Object.assign(q,{x:p.x+33,y:p.y});step(d,p,{sword:true});step(d,p,{},5);expect(q.hp).toBe(5);
@@ -48,7 +48,7 @@ describe('armas y permisos',()=>{
   });
   it('la espada pesada tampoco atraviesa paredes',()=>{const {d,p,q}=setup('vanguard');Object.assign(p,{x:480,y:150});Object.assign(q,{x:480,y:219});step(d,p,{sword:true,angle:Math.PI/2});step(d,p,{},12);expect(q.hp).toBe(3);});
 });
-describe('escudo',()=>{
+describe('escudo mágico',()=>{
   it('el escudo mágico absorbe dos golpes de cualquier daño y dirección; el tercero hiere',()=>{
     const {d,p,q}=setup('mage','vanguard');
     expect(p.magicShieldHits).toBe(2);
@@ -66,27 +66,6 @@ describe('escudo',()=>{
     const {d,p,q}=setup('mage');Object.assign(d.state.flags[1],{status:'carried',carrier:p.id});
     const x=p.x;d.damage(p,q,0);expect(p.x).toBe(x);expect(d.state.flags[1].carrier).toBe(p.id);
     d.resetArena();expect(d.state.players[0].magicShieldHits).toBe(2);
-  });
-  it.each(CLASS_IDS.filter(id=>CLASSES[id].melee))('bloquea el golpe frontal de %s y conserva bandera y posición',attacker=>{
-    const {d,p,q}=setup('guardian',attacker);Object.assign(q,{x:445,y:270});Object.assign(d.state.flags[1],{status:'carried',carrier:p.id});
-    d.step(new Map([[p.id,input({guard:true})],[q.id,input({sword:true,angle:Math.PI})]]));
-    step(d,p,{guard:true},12);expect(p.hp).toBe(3);expect(p.x).toBe(420);expect(d.state.flags[1].carrier).toBe(p.id);expect(d.state.events.some(e=>e.kind==='block')).toBe(true);
-  });
-  it.each([Math.PI,Math.PI/2,Math.PI/3+.05])('recibe daño fuera del arco: %s rad',direction=>{const {d,p,q}=setup();step(d,p,{guard:true});d.damage(p,q,direction+Math.PI,1);expect(p.hp).toBe(2);});
-  it('bloquea flechas entrantes aunque el arquero se haya movido',()=>{
-    const {d,p,q}=setup();q.x=520;d.step(new Map([[p.id,input({guard:true})],[q.id,input({shot:true,angle:Math.PI})]]));q.x=350;
-    step(d,p,{guard:true},10);expect(p.hp).toBe(3);expect(d.state.arrows).toHaveLength(0);expect(d.state.events.some(e=>e.kind==='block')).toBe(true);
-  });
-  it('camina al 45%, puede girar, y combina penalización de bandera',()=>{const {d,p}=setup();Object.assign(d.state.flags[1],{status:'carried',carrier:p.id});const x=p.x;step(d,p,{guard:true,x:1,angle:1});expect(p.x-x).toBeCloseTo(180*.45*.85/30);expect(p.angle).toBe(1);});
-  it('mantiene la guardia indefinidamente y solo recarga al soltar',()=>{
-    const {d,p}=setup();step(d,p,{guard:true},Math.ceil(8/RULES.tick));expect(p.guarding).toBe(true);expect(p.guardCd).toBe(0);
-    step(d,p);expect(p.guarding).toBe(false);expect(p.guardCd).toBeCloseTo(1);
-    step(d,p,{guard:true},31);expect(p.guarding).toBe(false);step(d,p);step(d,p,{guard:true});expect(p.guarding).toBe(true);
-  });
-  it('liberar inicia recarga y recuperación sin ataques encolados',()=>{const {d,p}=setup();step(d,p,{guard:true,sword:true});expect(p.windup).toBe(0);step(d,p,{sword:true});expect(p.guarding).toBe(false);expect(p.guardCd).toBeCloseTo(1);expect(p.windup).toBe(0);step(d,p,{},5);expect(p.windup).toBe(0);step(d,p,{sword:true});expect(p.windup).toBeGreaterThan(0);});
-  it('no permite escudo durante preparación del golpe',()=>{const {d,p}=setup();step(d,p,{sword:true});step(d,p,{guard:true});expect(p.guarding).toBe(false);});
-  it.each([false,true])('activar escudo en el tick del impacto es independiente del orden: %s',reverse=>{
-    const {d,p,q}=setup('guardian','vanguard');q.x=445;q.windup=.01;q.swingAngle=Math.PI;if(reverse)d.state.players.reverse();step(d,p,{guard:true});expect(p.hp).toBe(3);
   });
 });
 describe('dash invulnerable',()=>{

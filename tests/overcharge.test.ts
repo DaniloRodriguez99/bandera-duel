@@ -74,13 +74,14 @@ describe('sobrecarga', () => {
     waiting.players[0].shotCd = 1;
     run(waiting.d, 10, { 0: { charge: true } });
     expect(waiting.players[0].shotCharge).toBe(0);
-    const { d, players: [g, v] } = setup(['guardian', 'vanguard']);
-    Object.assign(g, { x: 200, y: 270, angle: 0 });
-    Object.assign(v, { x: 200 + CLASSES.guardian.meleeRange + 10, y: 270 });
+    // The warrior's heavy swing; the knight's charged cuts are in guardian.test.ts.
+    const { d, players: [v, target] } = setup(['vanguard', 'mage']);
+    Object.assign(v, { x: 200, y: 270, angle: 0 });
+    Object.assign(target, { x: 200 + CLASSES.vanguard.meleeRange + 10, y: 270, magicShieldHits: 0, hp: 9, maxHp: 9 });
     run(d, ticks(RULES.overchargeTime) + 1, { 0: { charge: true } });
     run(d, 1, { 0: { sword: true } });
-    run(d, ticks(CLASSES.guardian.windup) + 2);
-    expect(v.hp).toBeCloseTo(3);
+    run(d, ticks(CLASSES.vanguard.windup) + 2);
+    expect(target.hp).toBeCloseTo(9 - CLASSES.vanguard.meleeDamage * 1.75);
     expect(d.state.events.some((e) => e.kind === 'sword' && (e.power ?? 0) > 0.9)).toBe(true);
   });
   it('el dash cargado recorre más distancia', () => {
@@ -138,7 +139,7 @@ describe('sobrecarga', () => {
     expect(d.state.zombies.some((z) => z.kind === 'hat')).toBe(true);
   });
   it('el escudo que bloquea el hielo evita el congelamiento y un zombie congelado no avanza', () => {
-    const { d, players: [n, g] } = setup(['necromancer', 'guardian']);
+    const { d, players: [n, g] } = setup(['necromancer', 'mage']);
     Object.assign(n, { x: 150, y: 270, angle: 0 });
     Object.assign(g, { x: 400, y: 270, angle: Math.PI });
     d.state.arrows.push({
@@ -153,7 +154,7 @@ describe('sobrecarga', () => {
       element: 'ice',
       damageScale: RULES.spellDamage,
     });
-    run(d, 6, { 1: { guard: true, angle: Math.PI } });
+    run(d, 6);
     expect(g.frozenLeft).toBe(0);
     expect(g.hp).toBe(3);
     run(d, 1, { 0: { summon: true } });

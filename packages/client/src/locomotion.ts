@@ -28,6 +28,10 @@ export class Locomotion {
       if (this.stoppedFor > 90) { this.moving = false; this.phase = 0; this.x = x; this.y = y; }
     }
   }
+  /** Turns the body toward something other than its feet: a fighter faces where it strikes. */
+  face(dx: number, dy: number) {
+    this.facing = facingFor(dx, dy);
+  }
   frame(time: number, frozen = false) {
     return this.facing * 8 + (this.moving ? 2 + Math.floor(this.phase) : frozen ? 0 : Math.floor(time / 700) % 2);
   }

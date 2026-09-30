@@ -1,4 +1,4 @@
-import { CLASSES, DEFAULT_BINDINGS, RULES, SKILLS, affordable, blackHoleStats, chargePower, projectileSkillStats, type ClassId, type InputBindings, type PhysicalBinding, type Player, type SkillId, type SkillSlot, type Snapshot } from '@bandera/shared';
+import { CLASSES, DEFAULT_BINDINGS, KIT, KNIGHT_AWAKEN, MOVES, RESOURCES, RULES, SKILLS, affordable, blackHoleStats, chargePower, chargeProgress, chargeTier, kitCooldown, projectileSkillStats, skillCost, type ClassId, type InputBindings, type PhysicalBinding, type Player, type ResourceCost, type SkillId, type SkillSlot, type Snapshot } from '@bandera/shared';
 
 /**
  * Whether this player's Singularidad is still out. Its key then bursts the hole, so its card and
@@ -33,8 +33,8 @@ export interface AbilitySlot {
   howTo?: string;
   /** The same line for a finger, which presses a button rather than a key. */
   howToTouch?: string;
-  /** Its mana cost, for modes with mana. */
-  mana?: number;
+  /** What it takes to use it: mana in the modes that have it, the knight's Rage. */
+  cost?: ResourceCost;
 }
 
 const skillIcon = (name: string) => `/assets/skills/${name}.png`;
@@ -57,8 +57,8 @@ export const ABILITY_IDS: Record<SkillId, string> = {
   'archer.arrow': 'shot', 'archer.dagger': 'dagger', 'archer.trap': 'trap', 'archer.volley': 'volley',
   'mage.fireball': 'shot', 'mage.magicShield': 'magic-shield', 'mage.ice': 'ice', 'mage.blink': 'dash',
   'mage.blackHole': 'black-hole', 'necromancer.fire': 'shot', 'necromancer.summon': 'summon',
-  'guardian.sword': 'sword', 'guardian.guard': 'guard', 'guardian.dash': 'dash',
-  'guardian.shieldBash': 'shield-bash', 'guardian.fury': 'fury', 'vanguard.sword': 'sword',
+  'guardian.sword': 'sword', 'guardian.flurry': 'flurry', 'guardian.dash': 'dash',
+  'guardian.fury': 'fury', 'vanguard.sword': 'sword',
   'vanguard.slash': 'slash', 'vanguard.counter': 'counter', 'common.dash': 'dash',
 };
 /** Short names that fit a card. */
@@ -66,8 +66,8 @@ const CARD_NAMES: Record<SkillId, string> = {
   'archer.arrow': 'Flecha', 'archer.dagger': 'Daga', 'archer.trap': 'Trampa', 'archer.volley': 'Triple',
   'mage.fireball': 'Orbe de fuego', 'mage.magicShield': 'Égida de dos sellos', 'mage.ice': 'Flecha de hielo',
   'mage.blink': 'Parpadeo', 'mage.blackHole': 'Singularidad', 'necromancer.fire': 'Fuego',
-  'necromancer.summon': 'Invocar zombies', 'guardian.sword': 'Espada', 'guardian.guard': 'Guardia continua',
-  'guardian.dash': 'Embestida', 'guardian.shieldBash': 'Golpe de escudo', 'guardian.fury': 'Furia',
+  'necromancer.summon': 'Invocar zombies', 'guardian.sword': 'Tres Cortes', 'guardian.flurry': 'Ráfaga de Acero',
+  'guardian.dash': 'Paso Relámpago', 'guardian.fury': 'Despertar',
   'vanguard.sword': 'Espada pesada', 'vanguard.slash': 'Tajo viajero', 'vanguard.counter': 'Contraataque',
   'common.dash': 'Esquivar',
 };
@@ -85,6 +85,8 @@ export const bindingLabel = (value: PhysicalBinding) =>
 export const howToLine = (text: string, key: string) => text.replaceAll('{key}', key);
 
 function cooldownOf(id: SkillId, p: Player): number {
+  // Kit skills keep their own clocks; the ones without one are ready whenever the blade is free.
+  if (id in KIT) return kitCooldown(p, id);
   switch (id) {
     case 'mage.magicShield': return p.magicShieldCd;
     case 'mage.ice': return p.iceCd;
@@ -93,10 +95,7 @@ function cooldownOf(id: SkillId, p: Player): number {
     case 'common.dash': case 'mage.blink': case 'guardian.dash': return p.dashCd;
     case 'archer.trap': return p.trapCd;
     case 'archer.volley': return p.volleyCd;
-    case 'archer.dagger': case 'guardian.sword': case 'vanguard.sword': return p.swordCd;
-    case 'guardian.guard': return p.guardCd;
-    case 'guardian.shieldBash': return p.shieldBashCd;
-    case 'guardian.fury': return p.furyCd;
+    case 'archer.dagger': case 'vanguard.sword': return p.swordCd;
     case 'vanguard.slash': return p.slashCd;
     case 'vanguard.counter': return p.counterCd;
     default: return p.shotCd;
@@ -105,7 +104,7 @@ function cooldownOf(id: SkillId, p: Player): number {
 function maxCooldown(id: SkillId, classId: ClassId) {
   if (id === 'archer.arrow' || id === 'mage.fireball' || id === 'necromancer.fire')
     return projectileSkillStats(id, classId).cooldown;
-  if (id === 'archer.dagger' || id === 'guardian.sword' || id === 'vanguard.sword') return CLASSES[classId].meleeCooldown;
+  if (id === 'archer.dagger' || id === 'vanguard.sword') return CLASSES[classId].meleeCooldown;
   return SKILLS[id].cooldown || 1;
 }
 /** What a card says when it is off cooldown: a charge, the shield's seals, an active state. */
@@ -114,9 +113,13 @@ function detailOf(id: SkillId, p: Player): string | null {
   if (id === 'mage.blink') return p.blinkCharge > 0 ? percent(p.blinkCharge / RULES.mageBlinkChargeTime) : null;
   if (id === 'mage.blackHole') return p.blackHoleCharge > 0 ? percent(blackHoleStats(p.blackHoleCharge).power) : null;
   if (id === 'archer.trap') return p.trapLeft > 0 ? 'Preparando' : null;
-  if (id === 'guardian.guard') return p.guarding ? 'Bloqueando · 45 % velocidad' : null;
-  if (id === 'guardian.shieldBash') return p.shieldBashLeft > 0 ? 'Golpeando' : null;
-  if (id === 'guardian.fury') return p.furyLeft > 0 ? `${p.furyLeft.toFixed(1)}s activa` : null;
+  // The awakening shows its own fuel: the Rage that fills it, then the seconds it lasts.
+  if (id === 'guardian.fury') return p.furyLeft > 0 ? `${p.furyLeft.toFixed(1)}s` : `${Math.floor(p.rage)} %`;
+  // A kit skill says how far its charge has gone, then the move it is performing.
+  if (id in KIT) {
+    if (p.chargeSkill === id) return percent(chargeProgress(KIT[id].charge, p.chargeT));
+    return p.move.startsWith(`${id}:`) ? MOVES[p.move].name : null;
+  }
   if (id === 'vanguard.counter') return p.counterLeft > 0 ? 'Activo' : null;
   return null;
 }
@@ -143,7 +146,7 @@ function tiersOf(id: SkillId, classId: ClassId): AbilityTier[] | undefined {
           state: (p) => (p.shotCharge > 0 ? percent(chargePower(p.shotCharge)) : null),
         },
       ];
-    case 'guardian.sword': case 'vanguard.sword':
+    case 'vanguard.sword':
       return [
         { label: 'Toque · golpe', active: (p) => tapped(p.shotCharge) },
         {
@@ -153,7 +156,15 @@ function tiersOf(id: SkillId, classId: ClassId): AbilityTier[] | undefined {
         },
       ];
     case 'guardian.dash':
-      return [{ label: '190 u · 1 daño · sin invulnerabilidad', active: (p) => p.dashLeft > 0 }];
+      return [{ label: '190 u · corta a quien atraviesa', active: (p) => p.dashLeft > 0 }];
+    case 'guardian.fury':
+      return [
+        {
+          label: `Furia llena · ${KNIGHT_AWAKEN.duration} s de espada despierta`,
+          active: (p) => p.furyLeft > 0 || p.rage >= RESOURCES.rage.max,
+          state: (p) => (p.furyLeft > 0 ? `${p.furyLeft.toFixed(1)}s` : `${Math.floor(p.rage)} %`),
+        },
+      ];
     case 'mage.blink':
       return [
         {
@@ -209,18 +220,6 @@ function tiersOf(id: SkillId, classId: ClassId): AbilityTier[] | undefined {
       ];
     case 'mage.ice':
       return [{ label: 'Inmoviliza 1 s' }];
-    case 'guardian.guard':
-      return [{ label: 'Mantener · bloqueo frontal de 120°', active: (p) => p.guarding }];
-    case 'guardian.shieldBash':
-      return [{ label: `0,5 daño · empujón · aturde ${RULES.shieldBashStun} s`, active: (p) => p.shieldBashLeft > 0 }];
-    case 'guardian.fury':
-      return [
-        {
-          label: '5 s · espada +40 % daño',
-          active: (p) => p.furyLeft > 0,
-          state: (p) => (p.furyLeft > 0 ? `${p.furyLeft.toFixed(1)}s` : null),
-        },
-      ];
     case 'vanguard.counter':
       return [
         { label: 'Toque · devuelve proyectiles', active: (p) => p.counterLeft > 0 && p.counterCharge < RULES.counterChargeTime - 1e-8 },
@@ -231,8 +230,27 @@ function tiersOf(id: SkillId, classId: ClassId): AbilityTier[] | undefined {
         },
       ];
     default:
-      return undefined;
+      return kitTiers(id);
   }
+}
+/**
+ * The branches of a kit skill, straight from its charge data: one line per state, lit while the
+ * hold is in it. A chain adds which of its cuts comes next.
+ */
+function kitTiers(id: SkillId): AbilityTier[] | undefined {
+  const skill = KIT[id];
+  if (!skill || skill.instant) return undefined;
+  const tiers: AbilityTier[] = skill.charge.tiers.map((tier, index) => ({
+    label: tier.label,
+    active: (p) => p.chargeSkill === id && chargeTier(skill.charge, p.chargeT).index === index,
+  }));
+  if (skill.chain > 1)
+    tiers.unshift({
+      label: `Cadena de ${skill.chain} · el último remata`,
+      active: (p) => p.comboLeft > 0,
+      state: (p) => `${p.combo + 1}/${skill.chain}`,
+    });
+  return tiers;
 }
 
 function skillCard(classId: ClassId, id: SkillId, slot: SkillSlot, key: string): AbilitySlot {
@@ -249,7 +267,7 @@ function skillCard(classId: ClassId, id: SkillId, slot: SkillSlot, key: string):
     tiers: tiersOf(id, classId),
     howTo: howToLine(SKILLS[id].howTo, key),
     howToTouch: howToLine(SKILLS[id].howTo, 'su botón'),
-    mana: SKILLS[id].mana,
+    cost: skillCost(id),
   };
 }
 function companionCard(action: Companion, key: string): AbilitySlot {
@@ -362,7 +380,7 @@ export function updateAbilities(root: HTMLElement, p: Player, bindings: InputBin
           icon,
           element('span', 'ability-state'),
           element('span', 'ability-cd'),
-          element('span', 'ability-mana', slot.mana !== undefined ? `${slot.mana} M` : ''),
+          element('span', 'ability-mana', slot.cost?.resource === 'mana' ? `${slot.cost.amount} M` : ''),
           element('kbd', '', slot.key),
           element('small', '', slot.locked ? 'Sin habilidad' : slot.name),
         );
@@ -391,7 +409,8 @@ export function updateAbilities(root: HTMLElement, p: Player, bindings: InputBin
     card.style.setProperty('--cd', String(live ? 0 : Math.min(1, left / slot.max)));
     card.querySelector('.ability-state')!.textContent = live ? 'Detonar' : left > 0 ? `${left.toFixed(1)}s` : (detail ?? '');
     card.querySelector('.ability-cd')!.textContent = live && left > 0 ? `${left.toFixed(1)}s` : '';
-    card.setAttribute('aria-label', `${slot.name} · ${slot.key} · ${!paid ? `sin maná (${slot.mana} M)` : live ? `detonar · recarga ${left.toFixed(1)} s` : left > 0 ? `${left.toFixed(1)} s` : 'lista'}`);
+    const lacking = slot.cost?.resource === 'rage' ? `Furia ${Math.floor(p.rage)} de ${slot.cost.min ?? slot.cost.amount}` : `sin maná (${slot.cost?.amount} M)`;
+    card.setAttribute('aria-label', `${slot.name} · ${slot.key} · ${!paid ? lacking : live ? `detonar · recarga ${left.toFixed(1)} s` : left > 0 ? `${left.toFixed(1)} s` : 'lista'}`);
     branch.querySelectorAll('li').forEach((item, j) => {
       const tier = slot.tiers![j];
       item.dataset.active = String(tier.active?.(p) ?? false);

@@ -1,15 +1,19 @@
 import {
   CLASSES,
+  KIT,
   MAPS,
+  MOVES,
   RULES,
   blocked,
   blackHoleStats,
   blinkReach,
   chargePower,
+  chargeTier,
   projectileStats,
   type MapId,
   type Player,
   type Rect,
+  type SkillId,
   type Terrain,
   type Vec,
 } from '@bandera/shared';
@@ -23,6 +27,36 @@ export interface BlueprintSpec {
   arc?: number;
   offsets?: number[];
   origin?: boolean;
+  /** A slash that will leave the blade: how far it goes and how wide it is to each side. */
+  wave?: { range: number; radius: number };
+}
+
+/**
+ * What a kit skill would do if its key were let go now: the blade of the move it would start (the
+ * next cut of the chain, at the charge held so far) and the slash that move throws.
+ */
+function kitBlueprint(p: Player, id: SkillId): BlueprintSpec | null {
+  const skill = KIT[id];
+  if (!skill) return null;
+  const tier = chargeTier(skill.charge, p.chargeSkill === id ? p.chargeT : 0).index;
+  const move = MOVES[skill.move(skill.chain > 1 ? p.combo % skill.chain : 0, tier, p.furyLeft > 0)];
+  // The widest blade of the move: for a flurry, the area its cuts cover together.
+  const reach = move.strikes.reduce(
+    (best, strike) => {
+      const shape = strike.shape;
+      return shape.kind === 'arc'
+        ? { ...best, range: Math.max(best.range, shape.reach), arc: Math.max(best.arc, Math.abs(shape.to - shape.from)) }
+        : { ...best, lane: Math.max(best.lane, shape.length), radius: Math.max(best.radius, shape.halfWidth) };
+    },
+    { range: 0, arc: 0, lane: 0, radius: 0 },
+  );
+  const thrown = move.waves[0]?.wave;
+  const wave = thrown && typeof thrown !== 'function'
+    ? { range: thrown.range + RULES.waveLead, radius: thrown.halfWidth }
+    : undefined;
+  if (reach.lane > 0 && !reach.range) return { kind: 'line', range: reach.lane, radius: reach.radius, wave };
+  if (!reach.range) return null;
+  return { kind: 'cone', range: reach.range, radius: 0, arc: reach.arc, wave };
 }
 
 function shotPower(p: Player) {
@@ -68,6 +102,9 @@ export function blueprintSpec(p: Player, abilityId: string): BlueprintSpec | nul
     const hole = blackHoleStats(p.blackHoleCharge);
     return { kind: 'singularity', range: hole.range, radius: hole.burstRadius };
   }
+  if (abilityId === 'flurry') return kitBlueprint(p, 'guardian.flurry');
+  if (abilityId === 'sword' && p.loadout.primary && p.loadout.primary in KIT)
+    return kitBlueprint(p, p.loadout.primary);
   if (abilityId === 'sword') {
     const power = chargePower(p.shotCharge);
     return {
@@ -83,14 +120,10 @@ export function blueprintSpec(p: Player, abilityId: string): BlueprintSpec | nul
     const projectile = projectileStats('mage');
     return { kind: 'line', range: projectile.speed * projectile.life, radius: projectile.radius };
   }
-  if (abilityId === 'shield-bash')
-    return { kind: 'cone', range: RULES.shieldBashRange, radius: 0, arc: RULES.shieldBashArc };
   if (abilityId === 'slash') {
     const slash = projectileStats('vanguard');
     return { kind: 'line', range: slash.speed * slash.life, radius: slash.radius };
   }
-  if (abilityId === 'guard')
-    return { kind: 'defense', range: Math.max(54, stats.meleeRange), radius: 0, arc: RULES.guardArc };
   if (abilityId === 'counter') return { kind: 'circle', range: 34, radius: 34, origin: true };
   if (abilityId === 'trap')
     return { kind: 'circle', range: RULES.trapRadius, radius: RULES.trapRadius, origin: true };

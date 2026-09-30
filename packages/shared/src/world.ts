@@ -909,6 +909,11 @@ export class World extends Duel {
     return character ? 1 - affinityBonus(character.affinities).stealth : 1;
   }
 
+  /** Every sword and every mace of the world cuts what comes at its swing: no arena kit runs here. */
+  protected override plainSwingCuts(p: Player) {
+    return p.classId === 'guardian' || p.classId === 'vanguard';
+  }
+
   /** A weapon with a swing of its own swings it; otherwise the engine class's. */
   protected override meleeStats(p: Player) {
     const character = this.characters.get(p.id);
@@ -2346,7 +2351,6 @@ export class World extends Duel {
       p.shotCharge = 0;
       p.specialCharge = 0;
       p.swingPower = 0;
-      p.guarding = false;
       p.attackLock = Math.max(p.attackLock, 0.6);
     }
     this.opening.delete(id);

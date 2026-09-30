@@ -27,6 +27,12 @@ function duel(classId: ClassId = 'guardian') {
 function steps(d: Duel, n: number) {
   for (let i = 0; i < n; i++) d.step(new Map());
 }
+/** One click of the basic attack: pressed and let go inside a tick. */
+function click(seq = 1, angle = 0) {
+  const input = idleInput(seq, angle);
+  input.slots.primary = { pressed: true, held: false, released: true };
+  return input;
+}
 function place(p: Player, x: number, y: number) {
   p.x = x;
   p.y = y;
@@ -216,24 +222,31 @@ describe('combate y geometría', () => {
     movePlayer(q, input, false);
     expect((p.x - 400) / (q.x - 400)).toBeCloseTo(0.85);
     Object.assign(d.state.flags[1], { status: 'carried', carrier: p.id });
-    d.step(new Map([[p.id, { ...idleInput(2), sword: true }]]));
-    expect(p.windup).toBeGreaterThan(0);
+    d.step(new Map([[p.id, click(2)]]));
+    expect(p.move).not.toBe('');
     expect(d.state.flags[1].carrier).toBe(p.id);
   });
-  it('la espada requiere preparación, apunta al frente y respeta recarga', () => {
+  it('la espada requiere preparación, apunta al frente y no repite el corte hasta terminarlo', () => {
     const d = duel(),
       p = d.state.players[0],
       q = d.state.players[1];
     place(p, 420, 270);
     place(q, 458, 270);
-    d.step(new Map([[p.id, { ...idleInput(1), sword: true }]]));
+    d.step(new Map([[p.id, click(1)]]));
     expect(q.hp).toBe(3);
-    steps(d, 4);
+    steps(d, 5);
     expect(q.hp).toBe(2);
-    const before = d.state.events.filter((e) => e.kind === 'sword').length;
-    d.step(new Map([[p.id, { ...idleInput(2), sword: true }]]));
-    steps(d, 4);
-    expect(d.state.events.filter((e) => e.kind === 'sword')).toHaveLength(before);
+    // A click in the middle of the cut waits for it to end: still one swing.
+    d.step(new Map([[p.id, click(2)]]));
+    steps(d, 3);
+    expect(d.state.events.filter((e) => e.kind === 'swing')).toHaveLength(1);
+    // Behind the blade nothing is hit.
+    const back = duel();
+    place(back.state.players[0], 420, 270);
+    place(back.state.players[1], 382, 270);
+    back.step(new Map([['a', click(1)]]));
+    steps(back, 12);
+    expect(back.state.players[1].hp).toBe(3);
   });
   it('las paredes bloquean espada y flechas', () => {
     const d = duel('archer'),
@@ -276,7 +289,7 @@ describe('combate y geometría', () => {
     steps(d, 91);
     expect(p.hp).toBe(3);
     expect(p.invuln).toBeGreaterThan(0);
-    d.step(new Map([[p.id, { ...idleInput(1), sword: true }]]));
+    d.step(new Map([[p.id, click(1)]]));
     expect(p.invuln).toBe(0);
   });
 });

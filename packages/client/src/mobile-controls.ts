@@ -1,4 +1,4 @@
-import { CLASSES, DEFAULT_LOADOUTS, RULES, type ClassId, type Player, type SkillSlot } from '@bandera/shared';
+import { CLASSES, DEFAULT_LOADOUTS, KIT, RULES, affordable, chargeProgress, type ClassId, type Player, type SkillSlot } from '@bandera/shared';
 import { abilityCards, type AbilitySlot } from './abilities.js';
 
 /** Thumb order: the big attack button first, mobility beside it, then the class's abilities. */
@@ -26,8 +26,7 @@ const TOUCH_META: Record<string, Omit<TouchAbilitySlot, keyof AbilitySlot>> = {
   ice: { mode: 'release', directional: true, primary: false },
   command: { mode: 'release', directional: false, primary: false },
   mark: { mode: 'release', directional: true, primary: false },
-  guard: { mode: 'hold', directional: true, primary: false },
-  'shield-bash': { mode: 'release', directional: true, primary: false },
+  flurry: { mode: 'charge', directional: true, primary: false },
   fury: { mode: 'release', directional: false, primary: false },
   slash: { mode: 'release', directional: true, primary: false },
   counter: { mode: 'hold', directional: true, primary: false },
@@ -51,6 +50,9 @@ export function touchAbilitySlots(classId: ClassId,player?:Pick<Player,'loadout'
 }
 
 function chargeFor(slot: TouchAbilitySlot, p: Player) {
+  // A kit skill fills its ring over its own charge.
+  if (slot.skillId && slot.skillId in KIT)
+    return p.chargeSkill === slot.skillId ? chargeProgress(KIT[slot.skillId].charge, p.chargeT) : 0;
   if (slot.id === 'shot' || slot.id === 'sword')
     return p.shotCharge / (p.classId === 'archer' ? RULES.chargeTime : RULES.overchargeTime);
   if (slot.skillId === 'mage.blink') return p.blinkCharge / RULES.mageBlinkChargeTime;
@@ -62,11 +64,10 @@ function chargeFor(slot: TouchAbilitySlot, p: Player) {
 }
 
 function activeFor(id: string, p: Player) {
-  if (id === 'guard') return p.guarding;
   if (id === 'counter') return p.counterLeft > 0;
   if (id === 'fury') return p.furyLeft > 0;
+  if (id === 'flurry') return p.move.startsWith('guardian.flurry:');
   if (id === 'magic-shield') return p.magicShieldHits > 0;
-  if (id === 'shield-bash') return p.shieldBashLeft > 0;
   if (id === 'trap') return p.trapLeft > 0;
   if (id === 'dash') return p.dashLeft > 0;
   return false;
@@ -75,7 +76,7 @@ function activeFor(id: string, p: Player) {
 function statusFor(slot: TouchAbilitySlot, p: Player, cooldown: number) {
   const charge = chargeFor(slot, p);
   if (charge > 0) return `${Math.round(Math.min(1, charge) * 100)}%`;
-  if (slot.id === 'guard' && p.guarding) return 'ACTIVA';
+  if (slot.id === 'fury' && p.furyLeft <= 0 && p.classId === 'guardian') return `${Math.floor(p.rage)}%`;
   if (slot.id === 'counter' && p.counterLeft > 0) return p.counterCharge >= RULES.counterChargeTime ? 'MÁX' : 'ACTIVO';
   if (slot.id === 'fury' && p.furyLeft > 0) return `${p.furyLeft.toFixed(1)}s`;
   if (slot.id === 'magic-shield' && p.magicShieldHits > 0) return `${p.magicShieldHits}/2`;
@@ -128,7 +129,8 @@ export function updateTouchAbilities(root: HTMLElement, p: Player, holeLive = fa
     // A Singularidad in flight: a tap implodes it, while its cooldown runs in parallel.
     const live = holeLive && slot.id === 'black-hole';
     const status = live ? 'DETONAR' : statusFor(slot, p, cooldown);
-    node.dataset.ready = String(cooldown <= 0 || live);
+    // A skill that cannot be paid for (the awakening without its Rage) is not ready either.
+    node.dataset.ready = String((cooldown <= 0 || live) && (!slot.skillId || affordable(p, slot.skillId)));
     node.dataset.active = String(live || activeFor(slot.id, p));
     node.style.setProperty('--cd', String(live ? 0 : Math.min(1, cooldown / Math.max(0.001, slot.max))));
     node.style.setProperty('--charge', String(charge));

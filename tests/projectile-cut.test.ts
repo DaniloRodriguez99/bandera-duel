@@ -3,7 +3,11 @@ import { CLASSES, Duel, RULES, idleInput, type Arrow, type ClassId, type Input }
 import { World, newCharacter, type MobShot } from '@bandera/shared/world';
 
 const input = (value: Partial<Input> = {}) => ({ ...idleInput(), ...value });
-function duel(classId: 'guardian' | 'vanguard' = 'guardian') {
+/**
+ * The plain swing's cut: every swing, no charge. In an arena it is the warrior's; the knight cuts
+ * through his techniques, by charge (tests/guardian.test.ts). In Lugunica every sword keeps it.
+ */
+function duel(classId: 'guardian' | 'vanguard' = 'vanguard') {
   const game = new Duel();
   const defender = game.add('defender', 'Defender', classId);
   const attacker = game.add('attacker', 'Attacker', 'archer');
@@ -51,8 +55,8 @@ describe('sword cuts', () => {
     expect(game.state.arrows).toHaveLength(0);
   });
 
-  it.each(['guardian', 'vanguard'] as const)('%s destroys multiple incoming enemy shots without taking damage', classId => {
-    const { game, defender } = duel(classId);
+  it('destroys multiple incoming enemy shots without taking damage', () => {
+    const { game, defender } = duel();
     const hp = defender.hp;
     game.state.arrows.push(arrow('archer', 1), arrow('mage', 2, { ice: true, skillId: 'mage.ice', y: 273 }), arrow('vanguard', 3, { slash: true, hits: [], skillId: 'vanguard.slash', y: 267 }));
     impact(game);
@@ -84,12 +88,12 @@ describe('sword cuts', () => {
       game.state.arrows.push(shot);
       impact(game);
       expect(game.state.events.filter(e => e.kind === 'projectileCut')).toHaveLength(0);
-      expect(defender.hp).toBe(CLASSES.guardian.hp);
+      expect(defender.hp).toBe(CLASSES.vanguard.hp);
     }
     const { game, defender } = duel();
     game.state.arrows.push(arrow('archer', 5, { x: 377 }));
     game.step(new Map([['defender', input()]]));
-    expect(defender.hp).toBeLessThan(CLASSES.guardian.hp);
+    expect(defender.hp).toBeLessThan(CLASSES.vanguard.hp);
     expect(game.state.events.some(e => e.kind === 'projectileCut')).toBe(false);
   });
 
@@ -118,7 +122,7 @@ describe('sword cuts', () => {
 
   it('cuts skeleton projectiles in Hordas before they damage a player', () => {
     const game = new Duel('courtyard', 'pve');
-    const defender = game.add('defender', 'Defender', 'guardian');
+    const defender = game.add('defender', 'Defender', 'vanguard');
     game.state.phase = 'playing';
     game.state.pve = { objective: 'elimination', wave: 1, initialPartySize: 1, pendingBudget: 0, spawnedAll: true, enemiesRemaining: 1, rewardLeft: 0, chosen: [], completed: false, endless: false, bossActive: false, kills: {}, damage: {} };
     Object.assign(defender, { x: 400, y: 270, angle: Math.PI, invuln: 0 });
@@ -127,6 +131,15 @@ describe('sword cuts', () => {
     impact(game);
     expect(game.state.mobProjectiles).toHaveLength(0);
     expect(game.state.events.filter(e => e.kind === 'projectileCut')).toHaveLength(1);
-    expect(defender.hp).toBe(CLASSES.guardian.hp);
+    expect(defender.hp).toBe(CLASSES.vanguard.hp);
+  });
+
+  it('in an arena the knight has no plain swing to cut with: a forced one cuts nothing', () => {
+    const { game, defender } = duel('guardian');
+    game.state.arrows.push(arrow('archer', 1));
+    impact(game);
+    for (let i = 0; i < 3; i++) game.step(new Map());
+    expect(game.state.events.some(e => e.kind === 'projectileCut')).toBe(false);
+    expect(defender.hp).toBeLessThan(CLASSES.guardian.hp);
   });
 });

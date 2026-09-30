@@ -1,4 +1,5 @@
 import { Locomotion } from './locomotion';
+import { bladePose, drawKitBlade, drawTrail } from './combat-fx';
 import { ensureActorAtlas } from './directional-art';
 import { ParticlePool, visualSettings } from './visual-effects';
 import Phaser from 'phaser';
@@ -30,8 +31,15 @@ import {
   blinkTarget,
   blackHoleStats,
   wet,
+  KIT,
+  KNIGHT_AWAKEN,
+  MOVES,
+  RESOURCES,
   WAVE_COLORS,
   WAVE_SAMPLES,
+  chargeProgress,
+  chargeTier,
+  kitSkills,
   wavePoint,
   waveStrength,
   type Wave,
@@ -1142,24 +1150,11 @@ export class Arena extends Phaser.Scene {
           v.y = ty;
         }
       }
-    } else if (e.kind === 'bash') {
-      const flash = this.add.graphics().setDepth(LAYER.effects);
-      flash.lineStyle(7, 0xe1c37a, 0.9);
-      flash.beginPath();
-      flash.arc(
-        e.x,
-        e.y,
-        RULES.shieldBashRange,
-        (e.angle ?? 0) - RULES.shieldBashArc / 2,
-        (e.angle ?? 0) + RULES.shieldBashArc / 2,
-      );
-      flash.strokePath();
-      this.fade(flash, { scaleX: 1.12, scaleY: 1.12 }, 220);
-      this.fade(this.add.circle(e.x, e.y, 9, 0xffe5a0, 0.65).setDepth(LAYER.sparks), { scale: 2.2 }, 190);
     } else if (e.kind === 'fury') {
       // A world skill brings its own colour: an electrified dagger is not a red rage.
-      const inner = e.color ? Phaser.Display.Color.HexStringToColor(e.color).darken(40).color : 0x621522;
-      const outer = e.color ? Phaser.Display.Color.HexStringToColor(e.color).color : 0xc83d43;
+      // Without one, it is the knight's awakening: violet.
+      const inner = e.color ? Phaser.Display.Color.HexStringToColor(e.color).darken(40).color : 0x3c2168;
+      const outer = e.color ? Phaser.Display.Color.HexStringToColor(e.color).color : 0xa76cf0;
       this.fade(this.add.circle(e.x, e.y - 3, 17, inner, 0.42).setDepth(LAYER.projectiles), { scale: 2.8 }, 520);
       this.fade(
         this.add
@@ -1173,7 +1168,7 @@ export class Arena extends Phaser.Scene {
         const angle = (i * Math.PI) / 4;
         this.fade(
           this.add
-            .circle(e.x + Math.cos(angle) * 10, e.y + Math.sin(angle) * 10, 3, e.color ? outer : 0x9f2634, 0.8)
+            .circle(e.x + Math.cos(angle) * 10, e.y + Math.sin(angle) * 10, 3, outer, 0.8)
             .setDepth(LAYER.effects),
           { x: e.x + Math.cos(angle) * 42, y: e.y + Math.sin(angle) * 42 - 8 },
           500,
@@ -1329,12 +1324,6 @@ export class Arena extends Phaser.Scene {
           x - dy * offset - dx * 26,
           y + dx * offset - dy * 26,
         );
-    }
-    if (z.guardLeft > 0) {
-      g.lineStyle(3, 0xeac787, 0.9);
-      g.beginPath();
-      g.arc(x, y - 3, 20, z.angle - RULES.guardArc / 2, z.angle + RULES.guardArc / 2);
-      g.strokePath();
     }
     if (z.counterLeft > 0) this.drawCounterWard(g, x, y, false, 1, time);
     if (z.shieldHits > 0) {
@@ -1586,6 +1575,37 @@ export class Arena extends Phaser.Scene {
       g.fillRect(p.x + Math.cos(a) * orbit - dx * 10, p.y + Math.sin(a) * orbit - dy * 10, 2, 2);
     }
   }
+  /**
+   * A kit skill charging: a ring that fills over the whole charge, with a notch at each of its
+   * states, so the step from one to the next is seen and not guessed. Everyone sees it.
+   */
+  private drawKitCharge(g: Phaser.GameObjects.Graphics, p: Player, x: number, y: number, time: number) {
+    const spec = KIT[p.chargeSkill].charge;
+    const progress = chargeProgress(spec, p.chargeT);
+    const { index } = chargeTier(spec, p.chargeT);
+    const top = spec.tiers.length - 1;
+    const color = index >= top ? 0xc79bff : index * 2 >= top ? GOLD : 0xe6ecec;
+    const start = -Math.PI / 2;
+    g.lineStyle(2, 0x1a282c, 0.7);
+    g.strokeCircle(x, y - 4, 22);
+    g.lineStyle(3, color, 0.95);
+    g.beginPath();
+    g.arc(x, y - 4, 22, start, start + progress * Math.PI * 2);
+    g.strokePath();
+    for (const [i, tier] of spec.tiers.entries()) {
+      if (!tier.at || !spec.cap) continue;
+      const angle = start + (tier.at / spec.cap) * Math.PI * 2;
+      const reached = i <= index;
+      g.lineStyle(2, reached ? 0xffffff : 0x8a969a, reached ? 1 : 0.7);
+      g.lineBetween(x + Math.cos(angle) * 18, y - 4 + Math.sin(angle) * 18, x + Math.cos(angle) * 26, y - 4 + Math.sin(angle) * 26);
+    }
+    if (index >= top) {
+      // The last state: the ring flares.
+      const flare = 0.5 + Math.sin(time * 0.03) * 0.5;
+      g.lineStyle(2, 0xffffff, 0.3 + flare * 0.5);
+      g.strokeCircle(x, y - 4, 26 + flare * 3);
+    }
+  }
   /** Rune circle that grows and spins faster as a held ability charges. */
   private drawCharge(
     g: Phaser.GameObjects.Graphics,
@@ -1594,6 +1614,10 @@ export class Arena extends Phaser.Scene {
     y: number,
     time: number,
   ) {
+    if (p.chargeSkill && KIT[p.chargeSkill]) {
+      this.drawKitCharge(g, p, x, y, time);
+      return;
+    }
     const stats = CLASSES[p.classId];
     const special = p.specialCharge > 0;
     if (!special && p.shotCharge <= 0) return;
@@ -1703,8 +1727,16 @@ export class Arena extends Phaser.Scene {
             : p.classId === 'mage'
               ? 'staff'
               : p.classId === 'guardian'
-                ? 'shield'
+                ? 'blade'
                 : 'sword';
+    // A kit fighter: the blade follows its moves, and the body turns to where it strikes.
+    const kit = !look && kitSkills(p).length > 0;
+    const age = local
+      ? this.accumulator / 1000
+      : this.snapshot?.paused
+        ? 0
+        : Math.min((performance.now() - this.receivedAt) / 1000, 1 / 15);
+    const pose = kit && p.hp > 0 ? bladePose(p, age) : null;
     let v = this.visuals.get(p.id);
     if (!v) {
       v = {
@@ -1753,6 +1785,10 @@ export class Arena extends Phaser.Scene {
     v.x += (p.x - v.x) * smooth;
     v.y += (p.y - v.y) * smooth;
     v.locomotion.update(v.x, v.y, delta, frozen || p.dashLeft > 0, reset);
+    if (pose && (p.move || p.chargeSkill)) {
+      const facing = p.move ? p.moveAngle : p.angle;
+      v.locomotion.face(Math.cos(facing), Math.sin(facing));
+    }
     const moving = v.locomotion.moving;
     const frame = v.locomotion.frame(time, frozen || visualSettings.reduced);
     if (moving && frame !== v.stepFrame && frame % 8 % 3 === 0) this.particles.burst(v.x, v.y+9, 0xa79b7b, 2, 12, 230);
@@ -1762,8 +1798,8 @@ export class Arena extends Phaser.Scene {
       .setPosition(v.x, v.y)
       .setTexture(atlas, frame)
       .setFlipX(false)
-      .setScale(p.shotCharge>0||p.specialCharge>0?1+Math.sin(time*.018)*.045:1);
-    const actionAngle=p.hp<=0?90:p.frozenLeft>0?Math.sin(time*.045)*5:p.dashLeft>0?Math.cos(p.angle)*-9:p.windup>0?Math.cos(p.angle)*6:0;
+      .setScale(p.shotCharge>0||p.specialCharge>0||p.chargeSkill?1+Math.sin(time*.018)*.045:1);
+    const actionAngle=p.hp<=0?90:p.frozenLeft>0?Math.sin(time*.045)*5:p.dashLeft>0?Math.cos(p.angle)*-9:p.windup>0?Math.cos(p.angle)*6:p.move?Math.cos(p.moveAngle)*7:0;
     v.body
       .setAngle(actionAngle)
       .setAlpha(
@@ -1787,13 +1823,14 @@ export class Arena extends Phaser.Scene {
     const stats = CLASSES[p.classId],
       w = v.weapon;
     w.clear();
-    w.setDepth(Math.sin(p.angle) < -0.25 ? LAYER.bodies - .1 : LAYER.weapons);
+    const held = pose ? pose.angle : p.angle;
+    w.setDepth(Math.sin(held) < -0.25 ? LAYER.bodies - .1 : LAYER.weapons);
     w.setPosition(v.x, v.y + (moving ? Math.sin(v.locomotion.phase * Math.PI / 3) : 0));
-    w.setRotation(p.angle);
+    w.setRotation(held);
     if (p.hp > 0 && p.imbue) {
       // The weapon carries an affinity: a glow and a crackle along the blade, in its colour.
       const tint = Phaser.Display.Color.HexStringToColor(p.imbue).color;
-      const reach = hand === 'dagger' ? 27 : hand === 'bow' || hand === 'shield' ? 24 : 34;
+      const reach = hand === 'dagger' ? 27 : hand === 'bow' || hand === 'shield' || hand === 'blade' ? 24 : 34;
       w.fillStyle(tint, 0.22 + 0.12 * Math.sin(time * 0.02));
       w.fillCircle(reach * 0.65, 0, 10);
       w.lineStyle(2, tint, 0.95);
@@ -1803,7 +1840,17 @@ export class Arena extends Phaser.Scene {
       w.strokePath();
     }
     if (p.hp > 0) {
-      if (hand === 'dagger') {
+      if (pose) drawKitBlade(w, pose, p.classId === 'vanguard' ? 40 : 30, time, p.furyLeft > 0);
+      else if (hand === 'blade') {
+        // The knight's slim sword at rest (a preview, a lobby): no moves to follow.
+        w.setRotation(p.angle + 0.55);
+        w.fillStyle(0xeef0e4);
+        w.fillPoints([{ x: 15, y: -2 }, { x: 41, y: -1.5 }, { x: 45, y: 0 }, { x: 41, y: 1.5 }, { x: 15, y: 2 }], true);
+        w.fillStyle(GOLD);
+        w.fillRect(12, -6, 3, 12);
+        w.fillStyle(0x6f5b45);
+        w.fillRect(5, -2, 8, 4);
+      } else if (hand === 'dagger') {
         // A short blade held low: it lunges forward while the strike winds up.
         const wind = p.windup > 0 ? Math.min(1, p.windup / Math.max(0.01, stats.windup)) : 0;
         const lunge = 6 * (1 - wind) * (p.windup > 0 ? 1 : 0);
@@ -1871,7 +1918,7 @@ export class Arena extends Phaser.Scene {
         w.fillRect(6, -2, 7, 4);
         if (hand === 'shield') {
           w.setRotation(p.angle);
-          w.fillStyle(p.guarding ? GOLD : 0x738b86);
+          w.fillStyle(0x738b86);
           w.fillPoints(
             [
               { x: 14, y: -11 },
@@ -1885,23 +1932,11 @@ export class Arena extends Phaser.Scene {
           w.lineStyle(2, 0x435955);
           w.lineBetween(17, -7, 17, 7);
           w.lineBetween(12, 0, 22, 0);
-          if (p.guarding) {
-            w.lineStyle(3, GOLD, 0.8);
-            w.beginPath();
-            w.arc(0, 0, 31, -RULES.guardArc / 2, RULES.guardArc / 2);
-            w.strokePath();
-          }
-          if (p.shieldBashLeft > 0) {
-            const progress = 1 - p.shieldBashLeft / RULES.shieldBashWindup;
-            w.lineStyle(3, 0xffdfa0, 0.9);
-            w.beginPath();
-            w.arc(0, 0, 32 + progress * 12, -RULES.shieldBashArc / 2, RULES.shieldBashArc / 2);
-            w.strokePath();
-          }
         }
       }
     }
     v.hp.clear();
+    if (pose?.trail) drawTrail(v.hp, pose.trail, p.furyLeft > 0 ? 'violet' : pose.tint, pose.trailAlpha);
     if (p.hp > 0) this.drawCharge(v.hp, p, v.x, v.y, time);
     if (p.hp > 0 && p.frozenLeft > 0) {
       v.body.setTint(0x9fe8ff);
@@ -1921,21 +1956,27 @@ export class Arena extends Phaser.Scene {
       }
     }
     if (p.hp > 0 && p.classId === 'guardian' && p.furyLeft > 0) {
+      // Awake: a violet aura with sparks circling the body.
       const pulse = (Math.sin(time * 0.012) + 1) / 2;
-      v.hp.fillStyle(0x52101d, 0.12 + pulse * 0.08);
+      v.hp.fillStyle(0x3c2168, 0.12 + pulse * 0.08);
       v.hp.fillCircle(v.x, v.y - 3, 25 + pulse * 4);
-      v.hp.lineStyle(2, 0xa82334, 0.65 + pulse * 0.25);
+      v.hp.lineStyle(2, 0xa76cf0, 0.65 + pulse * 0.25);
       v.hp.strokeCircle(v.x, v.y - 3, 27 + pulse * 5);
       for (let i = 0; i < 5; i++) {
-        const angle = time * 0.0025 + (i * Math.PI * 2) / 5;
+        const angle = time * 0.004 + (i * Math.PI * 2) / 5;
         const radius = 18 + ((time * 0.025 + i * 9) % 13);
-        v.hp.fillStyle(i % 2 ? 0x61111f : 0xb52c36, 0.55);
+        v.hp.fillStyle(i % 2 ? 0xe9d8ff : 0xb37cf5, 0.7);
         v.hp.fillCircle(
           v.x + Math.cos(angle) * radius,
           v.y - 5 + Math.sin(angle) * radius * 0.65,
           1.5 + pulse,
         );
       }
+    }
+    if (p.hp > 0 && p.move && MOVES[p.move].effect === 'awaken') {
+      // The awakening itself: a mandala passes through the body once, from the feet to the head.
+      const rise = Math.min(1, (p.moveT + age) / MOVES[p.move].duration);
+      this.drawMandala(v.hp, v.x, v.y + 10 - rise * 40, 20, time, 0.95 - rise * 0.35, 0xa76cf0, 0xf0e2ff);
     }
     if (p.hp > 0 && p.classId === 'guardian' && p.dashLeft > 0) {
       v.hp.fillStyle(0x3a1019, 0.22);
@@ -1959,6 +2000,16 @@ export class Arena extends Phaser.Scene {
         const fill = Math.min(1, Math.max(0, p.hp - i));
         v.hp.fillStyle(COLORS[p.team]);
         v.hp.fillRect(left + i * 8, v.y - 25, 6 * fill, 3);
+      }
+      if (kit && p.classId === 'guardian') {
+        // Rage, under the hearts, for everyone to read: gold while it fills, violet while it burns.
+        const width = p.maxHp * 8 - 2;
+        const share = Math.min(1, p.rage / RESOURCES.rage.max);
+        const full = share >= 1 && p.furyLeft <= 0;
+        v.hp.fillStyle(0x1a282c);
+        v.hp.fillRect(left, v.y - 20, width, 2);
+        v.hp.fillStyle(p.furyLeft > 0 ? 0xa76cf0 : full && Math.sin(time * 0.02) > 0 ? 0xffffff : GOLD);
+        v.hp.fillRect(left, v.y - 20, width * share, 2);
       }
       if (local) {
         v.hp.lineStyle(1, GOLD, 0.6);
@@ -2510,10 +2561,16 @@ export class Arena extends Phaser.Scene {
               angle: this.controls.angle,
               shotCharge: this.predicted.shotCharge,
               specialCharge: this.predicted.specialCharge,
-              guarding: this.predicted.guarding,
-              guardLeft: this.predicted.guardLeft,
               dashInvulnerable: this.predicted.dashInvulnerable,
               windup: this.predicted.windup,
+              // The kit's own state follows the keys at once, like the charges above.
+              move: this.predicted.move,
+              moveT: this.predicted.moveT,
+              moveAngle: this.predicted.moveAngle,
+              moveCharge: this.predicted.moveCharge,
+              chargeSkill: this.predicted.chargeSkill,
+              chargeT: this.predicted.chargeT,
+              combo: this.predicted.combo,
             }
           : p,
         p.id === this.localId,
@@ -2930,7 +2987,9 @@ export class Arena extends Phaser.Scene {
     const walls = this.terrain();
     const pulse = 0.72 + Math.sin(time * 0.012) * 0.12;
     const charge =
-      abilityId === 'shot' || abilityId === 'sword'
+      p.chargeSkill && KIT[p.chargeSkill]
+        ? chargeProgress(KIT[p.chargeSkill].charge, p.chargeT)
+        : abilityId === 'shot' || abilityId === 'sword'
         ? p.shotCharge / (p.classId === 'archer' ? RULES.chargeTime : RULES.overchargeTime)
         : abilityId === 'dash' && p.classId === 'mage'
           ? p.blinkCharge / RULES.mageBlinkChargeTime
@@ -2981,6 +3040,9 @@ export class Arena extends Phaser.Scene {
       this.aim.lineStyle(1.5, line, 0.75);
       this.aim.strokeCircle(ex, ey, Math.max(3, radius));
     };
+    // The slash the move will throw, past the blade: a dimmer corridor as wide as its front.
+    if (spec.wave)
+      corridor(angle, clipRay(p, angle, spec.wave.range, walls, 2), spec.wave.radius, color, bright);
     if (spec.kind === 'line' || spec.kind === 'dash')
       corridor(angle, center.length, Math.max(4, spec.radius));
     else if (spec.kind === 'triple')

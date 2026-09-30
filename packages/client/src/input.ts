@@ -7,7 +7,7 @@ import { Aim } from './aim.js';
 /** Which held key's aim preview wins: mobility and the big abilities over the steady attacks. */
 const TARGET_ORDER: readonly SkillSlot[] = ['mobility', 'f', 'r', 'e', 'q', 'secondary', 'primary'];
 
-type ActionState = Omit<Input, 'seq' | 'x' | 'y' | 'angle' | 'charge' | 'special' | 'guard' | 'counter' | 'aimX' | 'aimY' | 'slots' | 'worldBlink'>;
+type ActionState = Omit<Input, 'seq' | 'x' | 'y' | 'angle' | 'charge' | 'special' | 'guard' | 'counter' | 'aimX' | 'aimY' | 'slots' | 'worldBlink' | 'kit' | 'world'>;
 
 const emptyActions = (): ActionState => ({
   sword: false,
@@ -25,8 +25,6 @@ const emptyActions = (): ActionState => ({
   mark: false,
   ice: false,
   slash: false,
-  shieldBash: false,
-  fury: false,
 });
 
 interface TouchGesture {
@@ -132,7 +130,6 @@ export class Controls {
 
   primary() {
     if (!this.enabled) return;
-    if (this.classId === 'guardian') this.guardSources.clear();
     this.chargeSources.add('mouse');
   }
   releasePrimary(source = 'mouse') {
@@ -165,7 +162,6 @@ export class Controls {
     if (CLASSES[this.classId].summon) this.actions.summon = true;
     else if (this.classId === 'mage') this.guardSources.add('mouse');
     else if (CLASSES[this.classId].ranged) this.actions.sword = true;
-    else if (this.classId === 'guardian') this.guardSources.add('mouse');
   }
 
   constructor() {
@@ -354,14 +350,10 @@ export class Controls {
     }
     if (mode === 'charge') {
       if (id === 'shot' || id === 'sword') {
-        if (this.classId === 'guardian') this.guardSources.clear();
         this.chargeSources.add(gesture.source);
       } else this.pressSpecial(gesture.source);
     }
-    if (mode === 'hold') {
-      if (id === 'guard') this.guardSources.add(gesture.source);
-      if (id === 'counter') this.counterSources.add(gesture.source);
-    }
+    if (mode === 'hold' && id === 'counter') this.counterSources.add(gesture.source);
     if (mode === 'press' && id === 'magic-shield') this.guardPulse = true;
     gesture.element.dataset.aiming = 'true';
   }
@@ -436,7 +428,6 @@ export class Controls {
   private releaseAction(id: string,duration=0) {
     if(id==='command'&&duration>=500){this.actions.mark=true;return;}
     if (id === 'dagger') this.actions.sword = true;
-    else if (id === 'shield-bash') this.actions.shieldBash = true;
     else if (id in this.actions) (this.actions as Record<string, boolean>)[id] = true;
     if (id === 'dash') this.directionalDashPulse = true;
     if (id === 'volley') this.chargeSources.clear();
@@ -485,8 +476,9 @@ export class Controls {
       counter: this.counterSources.size > 0,
       aimX: this.aimX,
       aimY: this.aimY,
-      // Only `worldInput` sets it, from Space with a staff; the network never carries it.
+      // Only `worldInput` sets these; the network never carries them.
       worldBlink: false,
+      world: false,
       slots:idleSlots(),
     };
     for(const slot of SKILL_SLOTS)if(this.loadout[slot])result.slots[slot]={pressed:this.slotPressed.has(slot),held:this.physical.has(this.bindings[slot])||this.touchHeld.has(slot),released:this.slotReleased.has(slot)};

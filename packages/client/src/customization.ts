@@ -17,7 +17,14 @@ export function loadCustomization(classId:ClassId):CharacterCustomization {
   try { const value=migrateCustomization(classId,JSON.parse(localStorage.getItem(storageKey(classId))??'null')); if(validCustomization(classId,value)){saveCustomization(value);return value;} } catch { /* corrupted profiles fall back safely */ }
   return defaultCustomization(classId);
 }
+/** Skills that no longer exist, and what took their place in the kit; null when nothing did. */
+const RETIRED: Record<string, SkillId | null> = { 'guardian.guard': 'guardian.flurry', 'guardian.shieldBash': null };
 /**
+ * Brings a saved profile up to date.
+ *
+ * Retired skills leave their slot to whatever took their place (the knight's shield became the
+ * flurry; its shield bash has no successor).
+ *
  * Version 1 had five slots (Habilidad I and II) and per-class keys. Version 2 is the universal
  * layout: every equipped skill moves to where the class's default puts it (or its first free
  * compatible slot), and the controls reset to the universal keys, which is the point of the change.
@@ -26,7 +33,18 @@ export function loadCustomization(classId:ClassId):CharacterCustomization {
 export function migrateCustomization(classId:ClassId,raw:unknown):unknown {
   if(!raw||typeof raw!=='object')return raw;
   const value=clone(raw) as unknown as {version:number;classId:ClassId;presets:Record<string,{loadout:Record<string,unknown>;bindings:unknown;skillTreeSelection?:SkillId[]}>};
-  if(value.version!==1||value.classId!==classId||!value.presets||typeof value.presets!=='object')return raw;
+  if(value.classId!==classId||!value.presets||typeof value.presets!=='object')return raw;
+  let repaired=false;
+  for(const preset of Object.values(value.presets)){
+    if(!preset?.loadout||typeof preset.loadout!=='object')continue;
+    for(const [slot,id] of Object.entries(preset.loadout))
+      if(typeof id==='string'&&id in RETIRED){preset.loadout[slot]=RETIRED[id];repaired=true;}
+    if(Array.isArray(preset.skillTreeSelection)&&preset.skillTreeSelection.some(id=>id in RETIRED)){
+      preset.skillTreeSelection=[...new Set(preset.skillTreeSelection.flatMap(id=>id in RETIRED?(RETIRED[id]?[RETIRED[id]!]:[]):[id]))];
+      repaired=true;
+    }
+  }
+  if(value.version!==1)return repaired?value:raw;
   for(const preset of Object.values(value.presets)){
     if(!preset?.loadout||typeof preset.loadout!=='object')continue;
     // The mage's old dash became Parpadeo before the universal layout.

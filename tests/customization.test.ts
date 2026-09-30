@@ -55,7 +55,21 @@ describe('character customization model',()=>{
       {primary:'guardian.sword',secondary:'guardian.guard',mobility:'guardian.dash',skill1:'guardian.shieldBash',skill2:'guardian.fury'},
       {secondary:'MouseRight',mobility:'Space',skill1:'KeyQ',skill2:'KeyE'})) as CharacterCustomization;
     expect(validCustomization('guardian',knight)).toBe(true);
-    expect(knight.presets.default.loadout).toMatchObject({q:'guardian.shieldBash',r:'guardian.fury',e:null});
+    // The shield is gone: the flurry takes its place on M2 and the bash has no successor.
+    expect(knight.presets.default.loadout).toEqual({primary:'guardian.sword',secondary:'guardian.flurry',mobility:'guardian.dash',q:null,e:null,f:null,r:'guardian.fury'});
+    expect(knight.presets.default.skillTreeSelection).not.toContain('guardian.guard');
+
+    // A profile saved with the universal layout, before the knight lost the shield, is repaired too.
+    const saved=defaultCustomization('guardian') as unknown as {selectedSkin:string;presets:{default:{loadout:Record<string,string|null>;skillTreeSelection:string[]}}};
+    saved.selectedSkin=CHARACTER_SKINS.guardian[3].id;
+    saved.presets.default.loadout={primary:'guardian.sword',secondary:'guardian.guard',mobility:'guardian.dash',q:'guardian.shieldBash',e:null,f:null,r:'guardian.fury'};
+    saved.presets.default.skillTreeSelection=['guardian.sword','guardian.guard','guardian.shieldBash'];
+    expect(validCustomization('guardian',saved)).toBe(false);
+    const repaired=migrateCustomization('guardian',saved) as CharacterCustomization;
+    expect(validCustomization('guardian',repaired)).toBe(true);
+    expect(repaired.selectedSkin).toBe(CHARACTER_SKINS.guardian[3].id);
+    expect(repaired.presets.default.loadout).toMatchObject({secondary:'guardian.flurry',q:null,r:'guardian.fury'});
+    expect(repaired.presets.default.skillTreeSelection).toEqual(['guardian.sword','guardian.flurry']);
 
     const archer=migrateCustomization('archer',v1('archer',
       {primary:'archer.arrow',secondary:'archer.dagger',mobility:'common.dash',skill1:'archer.trap',skill2:'archer.volley'},

@@ -1,6 +1,6 @@
 import { test,expect, type Page } from '@playwright/test';
 async function enter(page:Page,url:string,name:string,classId:string){await page.goto(url);await page.locator('#name').fill(name);await page.locator(`#entry-classes [data-class="${classId}"]`).click();await page.locator('#enter').click();await expect(page.locator('#overlay')).toBeVisible();}
-test('selección compartida, ataques de arquero y escudo con mouse',async({page,browser},info)=>{
+test('selección compartida, ataques de arquero y técnicas del caballero con mouse',async({page,browser},info)=>{
   const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));await enter(page,'/','Robin','archer');
   const context=await browser.newContext();const rival=await context.newPage();rival.on('pageerror',e=>errors.push(e.message));await enter(rival,page.url(),'Arthur','vanguard');
   await page.locator('#ready').click();await expect(page.locator('#ready')).toContainText('Listo');
@@ -11,12 +11,15 @@ test('selección compartida, ataques de arquero y escudo con mouse',async({page,
   await page.locator('#game canvas').click({position:{x:200,y:150}});await expect(page.locator('#cd-shot')).toHaveText(/➶ 0\.\ds/);await page.waitForTimeout(250);
   await page.locator('#game canvas').click({button:'right',position:{x:200,y:150}});await expect(page.locator('#cd-sword')).toHaveText(/⚔ 0\.\ds/);await page.waitForTimeout(250);
   await page.keyboard.press('Space');await expect(page.locator('#cd-dash')).toHaveText(/➟ [01]\.\ds/);
+  // The knight carries no shield: the right click charges the Ráfaga, resolved by the server.
   const canvas=(await rival.locator('#game canvas').boundingBox())!;await rival.mouse.move(canvas.x+canvas.width*.8,canvas.y+canvas.height*.5);await rival.mouse.down({button:'right'});
-  await expect(rival.locator('#stage')).toHaveAttribute('data-guardiNg'.toLowerCase(),'true');
-  await rival.waitForTimeout(1400);await expect(rival.locator('#stage')).toHaveAttribute('data-guarding','true');
-  await rival.mouse.down({button:'left'});await rival.mouse.up({button:'left'});await expect(rival.locator('#stage')).toHaveAttribute('data-guarding','false');await expect(rival.locator('#cd-sword')).toHaveText('⚔ Lista');
-  await rival.screenshot({path:info.outputPath('escudo-pc.png'),fullPage:true});await rival.mouse.up({button:'right'});await expect(rival.locator('#stage')).toHaveAttribute('data-guarding','false');
-  await expect(rival.locator('#cd-guard')).toHaveText(/⛨ (Lista|[01]\.\ds)/);await expect(rival.locator('#cd-dash')).toBeVisible();await expect(rival.locator('#cd-shot')).toBeHidden();
+  await expect(rival.locator('#cd-sword')).toContainText('Cargando');
+  await expect(rival.locator('#cd-sword')).toHaveText('⚡ Cargando 100 %',{timeout:4000});
+  await rival.screenshot({path:info.outputPath('rafaga-pc.png'),fullPage:true});await rival.mouse.up({button:'right'});
+  await expect(rival.locator('#abilities [data-ability="flurry"]')).toHaveAttribute('data-ready','false');await expect(rival.locator('#cd-sword')).toHaveText('⚔ Lista',{timeout:3000});
+  // A left click is the first cut of the chain.
+  await rival.mouse.down({button:'left'});await rival.mouse.up({button:'left'});await expect(rival.locator('#abilities [data-position="primary"] .tier-state').first()).toHaveText('2/3');
+  await expect(rival.locator('#cd-guard')).toBeHidden();await expect(rival.locator('#cd-dash')).toBeVisible();await expect(rival.locator('#cd-shot')).toBeHidden();
   expect(errors).toEqual([]);await context.close();
 });
 test('el mago aparece y muestra sus controles',async({page})=>{
@@ -53,17 +56,23 @@ test('el nigromante lanza fuego e invoca zombies con F',async({page,browser})=>{
   await page.keyboard.press('KeyF');await expect(page.locator('#cd-summon')).toHaveText('☠ 2/2 · Llenas');
   expect(errors).toEqual([]);await context.close();
 });
-test('escudo móvil con tres dedos, liberación y clase pesada',async({browser},info)=>{
+test('caballero móvil con tres dedos, liberación y clase pesada',async({browser},info)=>{
   const pc=await browser.newContext(),opponent=await pc.newPage();await enter(opponent,'/','Heavy','vanguard');
   const mobile=await browser.newContext({viewport:{width:844,height:390},isMobile:true,hasTouch:true,deviceScaleFactor:2});const page=await mobile.newPage();const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
   await enter(page,opponent.url(),'Shield','guardian');await page.screenshot({path:info.outputPath('clases-mobile.png')});await opponent.locator('#ready').click();await page.locator('#ready').click();await expect(page.locator('#stage')).toHaveAttribute('data-phase','playing',{timeout:7000});
   await expect(opponent.locator('#health')).toHaveText('♥ 5/5');await expect(opponent.locator('#cd-dash')).toBeVisible();
   await opponent.locator('#game canvas').click();await expect(opponent.locator('#cd-sword')).toHaveText(/⚔ [01]\.\ds/);
-  const cdp=await mobile.newCDPSession(page);const boxes=await Promise.all(['#stick-move','#touch-sword','#touch-guard'].map(id=>page.locator(id).boundingBox()));
-  const touches=boxes.map((b,i)=>({id:i+1,x:b!.x+b!.width/2,y:b!.y+b!.height/2}));
+  // Three fingers at once: walking, charging a cut while aiming it, and the right thumb's aim stick.
+  const cdp=await mobile.newCDPSession(page);const boxes=await Promise.all(['#stick-move','#touch-sword','#aim-zone'].map(id=>page.locator(id).boundingBox()));
+  const touches=boxes.map((b,i)=>i===2?{id:3,x:b!.x+40,y:b!.y+50}:{id:i+1,x:b!.x+b!.width/2,y:b!.y+b!.height/2});
   await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:touches});touches[0].x-=25;touches[1].y-=25;await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:touches});
-  await expect(page.locator('#stage')).toHaveAttribute('data-guarding','true');await expect(page.locator('#stick-move')).toHaveAttribute('style',/--dx: -/);await expect(page.locator('#touch-sword')).toHaveAttribute('style',/--aim-y: -/);
-  await page.screenshot({path:info.outputPath('escudo-mobile.png')});await cdp.send('Input.dispatchTouchEvent',{type:'touchCancel',touchPoints:[]});await expect(page.locator('#stage')).toHaveAttribute('data-guarding','false');
-  await expect(page.locator('#stick-move')).toHaveAttribute('style',/--dx: 0px/);await expect(page.locator('#cd-shot')).toBeHidden();await expect(page.locator('#touch-dash')).toBeVisible();await expect(page.locator('#touch-shield-bash')).toBeVisible();await expect(page.locator('#touch-fury')).toBeVisible();
+  const charge=page.locator('#touch-sword .touch-ability-status');
+  await expect(charge).toHaveText(/^\d+%$/);await expect(page.locator('#stick-move')).toHaveAttribute('style',/--dx: -/);await expect(page.locator('#touch-sword')).toHaveAttribute('style',/--aim-y: -/);await expect(page.locator('#stick-aim')).toBeVisible();
+  await page.screenshot({path:info.outputPath('caballero-mobile.png')});
+  // Every finger lifted by the system: the charge is dropped without a cut, and the sticks let go.
+  await cdp.send('Input.dispatchTouchEvent',{type:'touchCancel',touchPoints:[]});await expect(charge).toHaveText('');
+  await expect(page.locator('#stick-move')).toHaveAttribute('style',/--dx: 0px/);await expect(page.locator('#stick-aim')).toBeHidden();await expect(page.locator('#cd-shot')).toBeHidden();
+  await expect(page.locator('#touch-dash')).toBeVisible();await expect(page.locator('#touch-flurry')).toBeVisible();await expect(page.locator('#touch-fury')).toBeVisible();
+  await expect(page.locator('#touch-guard, #touch-shield-bash')).toHaveCount(0);
   expect(errors).toEqual([]);await mobile.close();await pc.close();
 });
