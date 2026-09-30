@@ -86,7 +86,7 @@ document.querySelector('#app')!.innerHTML = `
 <aside id="party-panel" class="party-panel" hidden aria-label="Party"></aside>
 <section id="trade-panel" class="trade-panel" hidden aria-label="Comercio"></section>
 <button id="duel-abandon" class="duel-abandon" type="button" hidden>Abandonar duelo</button>
-<div id="touch-controls"><div id="stick-move" class="stick" aria-label="Mover"><span></span><small>MOVER</small></div><div id="touch-actions" class="touch-actions" aria-label="Habilidades táctiles"></div></div></div>
+<div id="touch-controls"><div id="stick-move" class="stick" aria-label="Mover"><span></span><small>MOVER</small></div><div id="aim-zone" aria-label="Apuntar"><div id="stick-aim" class="stick" hidden><span></span><small>APUNTAR</small></div></div><div id="touch-actions" class="touch-actions" aria-label="Habilidades táctiles"></div></div></div>
 <div class="arena-bottom"><span id="arena-hint">Robá la bandera rival y traela a tu base. La tuya debe estar en casa.</span><div id="cooldowns" hidden><span id="health" aria-label="Vida"></span><span id="lives" aria-label="Muertes"></span><span id="stealth-state"></span><span id="cd-sword"></span><span id="cd-shot"></span><span id="cd-dash"></span><span id="cd-guard" hidden></span><span id="cd-trap" hidden></span><span id="cd-volley" hidden></span><span id="cd-summon" hidden></span></div><span class="corner-detail">◆ &nbsp; ✚ &nbsp; ▲ &nbsp; ●</span></div></section>
 <section id="guide" class="guide"><article><span class="step">01 / ROBÁ</span><h3>Entrá en terreno rival.</h3><p>Tocá su bandera para llevarla. Podés pelear mientras la transportás.</p></article><article><span class="step">02 / RESISTÍ</span><h3>Un golpe cambia todo.</h3><p>Si te hieren, soltás la bandera. Recuperá la tuya con solo tocarla.</p></article><article><span class="step">03 / VOLVÉ</span><h3>Tu base. Tu victoria.</h3><p>Capturá con tu bandera en casa. Tres capturas deciden la partida; las reapariciones son ilimitadas.</p></article></section>
 <div id="control-guide" class="control-guide"></div>
@@ -125,10 +125,7 @@ const worldHud = new WorldHud($('stage'), {
   cast: castSlot,
   blink: () => { if (arena.controls) arena.controls.actions.dash = true; },
   aimAt: (clientX, clientY) => {
-    const point = arena.screenToWorld(clientX, clientY);
-    arena.controls.aimX = point.x;
-    arena.controls.aimY = point.y;
-    arena.controls.aimFromPointer = true;
+    arena.controls.aim.target(arena.screenToWorld(clientX, clientY));
     arena.controls.worldAimDragging = true;
   },
   endAim: () => { arena.controls.worldAimDragging = false; },
@@ -447,7 +444,7 @@ function showClassControls(id: ClassId) {
           `<span class="guide-skill" data-guide="${card.id}"><kbd>${card.key}</kbd> <strong>${card.name}</strong> <small class="how-key">${card.howTo ?? ''}</small><small class="how-touch">${card.howToTouch ?? ''}</small></span>`,
       )
       .join('') +
-    '<span class="mobile-help">Mové con la palanca izquierda. Arrastrá una habilidad para apuntar y soltá para usarla; volvé al centro antes de soltar para cancelar.</span>';
+    '<span class="mobile-help">Mové con la palanca izquierda y apuntá tocando el lado derecho: la puntería queda donde la dejás. Arrastrá una habilidad para apuntarla y soltá para usarla; volvé al centro antes de soltar para cancelar.</span>';
 }
 showClassControls(selectedClass);
 function entryMode() {

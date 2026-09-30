@@ -2,6 +2,7 @@ import { idleInput, idleSlots, CLASSES, DEFAULT_CLASS, DEFAULT_BINDINGS, DEFAULT
 import { primaryAbility, touchMeta, type TouchAbilitySlot } from './mobile-controls.js';
 import { ABILITY_IDS } from './abilities.js';
 import { CAST_SLOTS, type CastSlot } from '@bandera/shared/world';
+import { Aim } from './aim.js';
 
 /** Which held key's aim preview wins: mobility and the big abilities over the steady attacks. */
 const TARGET_ORDER: readonly SkillSlot[] = ['mobility', 'f', 'r', 'e', 'q', 'secondary', 'primary'];
@@ -41,10 +42,20 @@ interface TouchGesture {
 
 export class Controls {
   keys = new Set<string>();
-  angle = 0;
-  aimX = -1;
-  aimY = -1;
-  aimFromPointer = false;
+  /**
+   * The one aim every skill reads, whatever device set it: the mouse, a stick, the arrows. `angle`
+   * is the aimDirection and `aimX`/`aimY` the point it lands on.
+   */
+  aim = new Aim();
+  get angle() {
+    return this.aim.angle;
+  }
+  get aimX() {
+    return this.aim.x;
+  }
+  get aimY() {
+    return this.aim.y;
+  }
   screenToWorld: ((clientX: number, clientY: number) => { x: number; y: number }) | null = null;
   worldAimDragging = false;
   move = { x: 0, y: 0 };
@@ -75,6 +86,8 @@ export class Controls {
   private guardPulse = false;
   private directionalDashPulse = false;
   private movePointers = new Map<number, { x: number; y: number; el: HTMLElement }>();
+  /** The finger on the aim stick, and where it landed. */
+  private aimPointer: { id: number; x: number; y: number } | null = null;
   private gestures = new Map<number, TouchGesture>();
 
   configure(classId: ClassId, customization?: CharacterCustomization) {
@@ -130,10 +143,8 @@ export class Controls {
   private aimWithArrows() {
     const dx = (this.keys.has('ArrowRight') ? 1 : 0) - (this.keys.has('ArrowLeft') ? 1 : 0);
     const dy = (this.keys.has('ArrowDown') ? 1 : 0) - (this.keys.has('ArrowUp') ? 1 : 0);
-    if (!dx && !dy) return;
-    this.angle = Math.atan2(dy, dx);
-    // The scene then places the aim point along this angle, the same way a touch stick does.
-    this.aimFromPointer = false;
+    // The scene then places the aim point along this direction, the same way a touch stick does.
+    this.aim.direction(dx, dy, 'keys');
   }
   pressSpecial(source: string) {
     const stats = CLASSES[this.classId];
@@ -187,6 +198,7 @@ export class Controls {
       if (document.hidden) this.clear();
     });
     this.bindMovement();
+    this.bindAim();
     this.bindAbilities();
   }
 
@@ -249,6 +261,51 @@ export class Controls {
     element.addEventListener('pointerup', finish);
     element.addEventListener('pointercancel', finish);
     element.addEventListener('lostpointercapture', finish);
+  }
+
+  /**
+   * The right thumb's aim stick. It appears wherever the thumb lands on the free right side and
+   * only ever sets the aim; lifting the thumb leaves the last direction in place.
+   */
+  private bindAim() {
+    const zone = document.querySelector<HTMLElement>('#aim-zone')!;
+    const stick = document.querySelector<HTMLElement>('#stick-aim')!;
+    const move = (event: PointerEvent) => {
+      if (event.pointerId !== this.aimPointer?.id) return;
+      const dx = event.clientX - this.aimPointer.x;
+      const dy = event.clientY - this.aimPointer.y;
+      const magnitude = Math.hypot(dx, dy);
+      const scale = Math.min(1, magnitude / 35);
+      stick.style.setProperty('--dx', `${magnitude > 0 ? (dx / magnitude) * scale * 30 : 0}px`);
+      stick.style.setProperty('--dy', `${magnitude > 0 ? (dy / magnitude) * scale * 30 : 0}px`);
+      this.aim.direction(dx, dy, 'stick', 8);
+    };
+    zone.addEventListener('pointerdown', (event) => {
+      if (!this.enabled || this.aimPointer) return;
+      event.preventDefault();
+      zone.setPointerCapture(event.pointerId);
+      this.aimPointer = { id: event.pointerId, x: event.clientX, y: event.clientY };
+      const rect = zone.getBoundingClientRect();
+      stick.style.left = `${event.clientX - rect.left}px`;
+      stick.style.top = `${event.clientY - rect.top}px`;
+      stick.hidden = false;
+    });
+    zone.addEventListener('pointermove', move);
+    const finish = (event: PointerEvent) => {
+      if (event.pointerId === this.aimPointer?.id) this.releaseAimStick();
+    };
+    zone.addEventListener('pointerup', finish);
+    zone.addEventListener('pointercancel', finish);
+    zone.addEventListener('lostpointercapture', finish);
+  }
+
+  private releaseAimStick() {
+    this.aimPointer = null;
+    const stick = document.querySelector<HTMLElement>('#stick-aim');
+    if (!stick) return;
+    stick.hidden = true;
+    stick.style.setProperty('--dx', '0px');
+    stick.style.setProperty('--dy', '0px');
   }
 
   private bindAbilities() {
@@ -315,11 +372,10 @@ export class Controls {
     const dx = event.clientX - gesture.x;
     const dy = event.clientY - gesture.y;
     const magnitude = Math.hypot(dx, dy);
-    if (gesture.slot.id === 'black-hole' && magnitude > 12 && this.screenToWorld) {
-      const target = this.screenToWorld(event.clientX, event.clientY);
-      this.aimX = target.x;
-      this.aimY = target.y;
-      this.aimFromPointer = true;
+    // Singularidad targets the touched map point; other abilities use the drag direction.
+    const onMap = gesture.slot.id === 'black-hole' && magnitude > 12 && !!this.screenToWorld;
+    if (onMap) {
+      this.aim.target(this.screenToWorld!(event.clientX, event.clientY));
       this.worldAimDragging = true;
     }
     if (magnitude > 12) gesture.dragged = true;
@@ -330,12 +386,7 @@ export class Controls {
     const thumbY = magnitude > 0 ? (dy / magnitude) * scale * 25 : 0;
     gesture.element.style.setProperty('--aim-x', `${thumbX}px`);
     gesture.element.style.setProperty('--aim-y', `${thumbY}px`);
-    if (gesture.slot.directional && magnitude > 7) {
-      this.angle = Math.atan2(dy, dx);
-      // Singularidad targets the touched map point; other abilities use the drag direction.
-      if (gesture.slot.id !== 'black-hole' || magnitude <= 12 || !this.screenToWorld)
-        this.aimFromPointer = false;
-    }
+    if (gesture.slot.directional && !onMap) this.aim.direction(dx, dy, 'stick', 7);
   }
 
   private finishTouch(event: PointerEvent, released: boolean) {
@@ -479,6 +530,7 @@ export class Controls {
     this.move = { x: 0, y: 0 };
     this.actions = emptyActions();
     this.movePointers.clear();
+    this.releaseAimStick();
     this.gestures.clear();
     document.querySelectorAll<HTMLElement>('.stick').forEach((element) => {
       element.style.setProperty('--dx', '0px');
