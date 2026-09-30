@@ -15,12 +15,16 @@ const state = (page: Page) =>
       pointed: controls.aim.pointed,
     };
   });
-const ownArrows = (page: Page) =>
+/**
+ * The angles of the shots loosed so far. Read from the events, which stay in the snapshot, rather
+ * than from the arrows themselves: one that meets a wall at once is gone before anyone looks.
+ */
+const shotAngles = (page: Page) =>
   page.evaluate(async () => {
     const { arena } = await import('/src/main.ts');
-    return ((arena as any).snapshot?.arrows ?? [])
-      .filter((arrow: any) => arrow.owner === 'practice-player')
-      .map((arrow: any) => arrow.angle as number);
+    return ((arena as any).snapshot?.events ?? [])
+      .filter((event: any) => event.kind === 'shot' || event.kind === 'wind')
+      .map((event: any) => event.angle as number);
   });
 
 test('caminar sin mover el mouse sigue apuntando al cursor', async ({ page }) => {
@@ -50,8 +54,8 @@ test('caminar sin mover el mouse sigue apuntando al cursor', async ({ page }) =>
   // An arrow loosed now flies at the cursor.
   await page.mouse.down();
   await page.mouse.up();
-  await expect.poll(async () => (await ownArrows(page)).length).toBeGreaterThan(0);
-  expect((await ownArrows(page))[0]).toBeCloseTo(after.angle, 1);
+  await expect.poll(async () => (await shotAngles(page)).length).toBeGreaterThan(0);
+  expect((await shotAngles(page))[0]).toBeCloseTo(after.angle, 1);
   expect(errors).toEqual([]);
 });
 
@@ -102,7 +106,7 @@ test('la palanca derecha apunta sin atacar y conserva la última dirección', as
     expect(after.angle).toBeCloseTo(-Math.PI / 2, 1);
     expect(after.pointed).toBe(false);
     // Aiming alone never attacks.
-    expect(await ownArrows(page)).toHaveLength(0);
+    expect(await shotAngles(page)).toHaveLength(0);
     expect(errors).toEqual([]);
   } finally {
     await context.close();
