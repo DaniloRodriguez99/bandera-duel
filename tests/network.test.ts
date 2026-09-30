@@ -221,6 +221,8 @@ describe('servidor con clientes Colyseus reales', () => {
     expect(host.game.state.players.find((p) => p.id === a.sessionId)?.classId).toBe('vanguard');
     expect(before - host.game.state.timeLeft).toBeLessThan(2);
     server.simulateLatency(0);
+    // The server can count the seat back a moment before the client's own socket says it is open.
+    await until(() => a.connection.isOpen);
     await a.leave();
     await b.leave();
   });

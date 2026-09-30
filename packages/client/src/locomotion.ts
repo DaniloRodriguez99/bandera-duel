@@ -1,4 +1,25 @@
+import type { Player } from '@bandera/shared';
+
 export type Facing = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7;
+/** Seconds the body keeps facing the aim after the last thing it did in a fight. */
+export const COMBAT_LINGER = 0.6;
+/**
+ * Whether a fighter is in the middle of a fight right now: striking, charging, winding up, just
+ * after a shot, or with the guard up. Then the body faces where it aims, whichever way the feet go:
+ * it can run one way and strike the other.
+ */
+export const fighting = (
+  p: Pick<Player, 'move' | 'chargeSkill' | 'shotCharge' | 'specialCharge' | 'blackHoleCharge' | 'blinkCharge' | 'windup' | 'attackLock' | 'counterLeft'>,
+) =>
+  !!p.move ||
+  !!p.chargeSkill ||
+  p.shotCharge > 0 ||
+  p.specialCharge > 0 ||
+  p.blackHoleCharge > 0 ||
+  p.blinkCharge > 0 ||
+  p.windup > 0 ||
+  p.attackLock > 0 ||
+  p.counterLeft > 0;
 // E, SE, S, SW, W, NW, N, NE. Body facing is independent of weapon aim.
 export function facingFor(dx: number, dy: number): Facing {
   return ((Math.round(Math.atan2(dy, dx) / (Math.PI / 4)) + 8) % 8) as Facing;

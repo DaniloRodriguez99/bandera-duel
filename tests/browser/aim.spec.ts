@@ -47,8 +47,13 @@ test('caminar sin mover el mouse sigue apuntando al cursor', async ({ page }) =>
   // The cursor did not move, so the aim point is the same place...
   expect(after.aimX).toBeCloseTo(before.aimX, 0);
   expect(after.aimY).toBeCloseTo(before.aimY, 0);
-  // ...and the direction was taken again from where the body stands now.
-  expect(after.angle).toBeCloseTo(Math.atan2(after.aimY - after.y, after.aimX - after.x), 2);
+  // ...and the direction is taken again from where the body stands now (by the next frame).
+  await expect
+    .poll(async () => {
+      const now = await state(page);
+      return Math.abs(now.angle - Math.atan2(now.aimY - now.y, now.aimX - now.x));
+    })
+    .toBeLessThan(0.01);
   expect(Math.abs(after.angle - before.angle)).toBeGreaterThan(0.1);
 
   // An arrow loosed now flies at the cursor.

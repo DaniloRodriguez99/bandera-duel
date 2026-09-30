@@ -1,4 +1,4 @@
-import { Locomotion } from './locomotion';
+import { COMBAT_LINGER, Locomotion, fighting } from './locomotion';
 import { bladePose, drawKitBlade, drawTrail } from './combat-fx';
 import { ensureActorAtlas } from './directional-art';
 import { ParticlePool, visualSettings } from './visual-effects';
@@ -180,6 +180,8 @@ export class Arena extends Phaser.Scene {
       weapon: Phaser.GameObjects.Graphics;
       x: number;
       y: number;
+      /** Until when the body keeps facing the aim after its last blow. */
+      combatUntil?: number;
     }
   >();
   private flags!: Phaser.GameObjects.Graphics;
@@ -1895,7 +1897,11 @@ export class Arena extends Phaser.Scene {
     v.x += (p.x - v.x) * smooth;
     v.y += (p.y - v.y) * smooth;
     v.locomotion.update(v.x, v.y, delta, frozen || p.dashLeft > 0, reset);
-    if (pose && (p.move || p.chargeSkill)) {
+    // In a fight the body faces where it aims, even walking the other way; a moment after the
+    // last blow it goes back to facing where it walks. The local player also faces the aim while
+    // holding a skill's key to aim it.
+    if (p.hp > 0 && (fighting(p) || (local && !!this.controls.targetingAbility))) v.combatUntil = time + COMBAT_LINGER * 1000;
+    if (!frozen && time < (v.combatUntil ?? 0)) {
       const facing = p.move ? p.moveAngle : p.angle;
       v.locomotion.face(Math.cos(facing), Math.sin(facing));
     }

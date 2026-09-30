@@ -2,6 +2,10 @@
 
 ## 2026-09-30
 
+### El cuerpo mira hacia donde ataca
+
+- En plena pelea el personaje mira hacia donde se apunta, aunque camine para otro lado: se puede correr en una dirección y atacar en la otra, retrocediendo de frente al rival. Cuenta como pelear golpear, cargar, preparar un golpe, recién disparar, tener la guardia arriba o mantener una tecla para apuntar una habilidad. Un momento después del último golpe vuelve a mirar hacia donde camina. Vale para todas las clases.
+
 ### Caballero: espadachín del relámpago
 
 - El segundo corte ahora vuelve: la cadena es derecha a izquierda, izquierda a derecha y un remate que levanta la espada y la baja de un golpe sobre toda la franja, en lugar de una estocada. Cada golpe arranca donde el anterior dejó la hoja, y el remate tarda un poco más en prepararse.
