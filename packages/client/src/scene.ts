@@ -30,6 +30,11 @@ import {
   blinkTarget,
   blackHoleStats,
   wet,
+  WAVE_COLORS,
+  WAVE_SAMPLES,
+  wavePoint,
+  waveStrength,
+  type Wave,
   type Snapshot,
   type Player,
   type Team,
@@ -1064,6 +1069,10 @@ export class Arena extends Phaser.Scene {
         .setOrigin(0.5)
         .setDepth(LAYER.sparks);
       this.fade(text, { y: e.y - 62 }, 900);
+    } else if (e.kind === 'projectileCut' && e.share !== undefined) {
+      // A cut that only took a share: chips off the skill, which keeps flying.
+      const color = e.color ? Phaser.Display.Color.HexStringToColor(e.color).color : 0xe9d5a2;
+      this.particles.burst(e.x, e.y, color, 3 + Math.round(e.share * 6), 55, 240);
     } else if (e.kind === 'projectileCut') {
       const color = e.color ? Phaser.Display.Color.HexStringToColor(e.color).color : 0xe9d5a2;
       const base = (e.angle ?? 0) + Math.PI;
@@ -1414,6 +1423,46 @@ export class Arena extends Phaser.Scene {
       );
       g.strokePath();
     }
+  }
+  /**
+   * A travelling slash: its front as a crescent, drawn from the same shape the simulation hits
+   * with. The parts a wall stopped or a blade cut out are missing; a weakened stretch is dimmer.
+   */
+  private drawWave(w: Wave, age: number) {
+    const g = this.arrows;
+    const travelled = Math.min(w.range, w.travelled + w.speed * age);
+    // It thins out over the last third of its reach.
+    const fade = 1 - 0.7 * Math.max(0, Math.min(1, (travelled / w.range - 0.66) / 0.34));
+    const core = hex(WAVE_COLORS[w.tint].core);
+    const glow = hex(WAVE_COLORS[w.tint].glow);
+    const dx = Math.cos(w.angle);
+    const dy = Math.sin(w.angle);
+    let run: Vec[] = [];
+    let strength = 0;
+    const stroke = () => {
+      if (run.length > 1)
+        for (const [back, width, color, alpha] of [
+          [9, w.thickness, glow, 0.16],
+          [4, w.thickness * 0.5, glow, 0.42],
+          [0, 3, core, 0.95],
+        ] as const) {
+          g.lineStyle(width, color, alpha * fade * strength);
+          g.strokePoints(run.map((point) => ({ x: point.x - dx * back, y: point.y - dy * back })));
+        }
+      run = [];
+    };
+    // Three drawn points per simulated sample, so a wide front still reads as a curve.
+    const points = (WAVE_SAMPLES - 1) * 3;
+    for (let i = 0; i <= points; i++) {
+      const across = -1 + (2 * i) / points;
+      const left = w.shadow & (1 << Math.round(i / 3)) ? 0 : waveStrength(w.gaps, across);
+      if (left !== strength) {
+        stroke();
+        strength = left;
+      }
+      if (left > 0) run.push(wavePoint(w, travelled, across));
+    }
+    stroke();
   }
   /** Wind arrow: a pale shaft wrapped in spiralling gusts and a streaming trail. */
   private drawWind(p: { x: number; y: number }, angle: number, time: number, small: boolean) {
@@ -2729,6 +2778,9 @@ export class Arena extends Phaser.Scene {
         this.arrows.fillCircle(p.x, p.y, 2);
       }
     }
+    // Older servers send no slashes at all.
+    for (const wave of s.waves ?? [])
+      this.drawWave(wave, s.paused ? 0 : Math.min((performance.now() - this.receivedAt) / 1000, 1 / 15));
     this.aim.clear();
     if (this.controls.enabled && this.predicted && s.phase === 'playing') {
       const p = this.predicted,

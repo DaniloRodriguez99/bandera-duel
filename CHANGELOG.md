@@ -10,6 +10,17 @@
 - Arrastrar el botón de una habilidad sigue apuntándola, y Singularidad sigue yendo al punto del mapa que se toca.
 - Cerca del borde de la arena, el punto de mira de una palanca queda sobre la dirección apuntada en vez de torcerse hacia el borde.
 
+### Base de combate
+
+Sistemas compartidos para el rediseño del Caballero y el Guerrero. Todavía no cambian cómo se juega ninguna clase.
+
+- Tajos que viajan: un frente en forma de medialuna que sale de la hoja, puede ensancharse al avanzar, pierde daño con la distancia según una curva y golpea una vez a cada rival. Los muros le hacen sombra: quien se cubre detrás no lo recibe.
+- Habilidad contra habilidad: cada ataque declara si se puede cortar, parar o devolver y cuánto resiste. Un corte con potencia suficiente lo parte; con menos, le quita esa parte del daño; con muy poca, solo saca chispas. Un tajo cortado queda con un hueco por donde pasó la hoja.
+- El corte de proyectiles de la espada usa estas reglas y se comporta igual que antes.
+- Recursos: las habilidades pueden declarar un costo y una ganancia de Furia o de maná. La Furia vive en la simulación, tiene tope y se enfría tras unos segundos sin pelear.
+- Los golpes pueden traer su propio empuje y marcarse como críticos.
+- Geometría de golpes cuerpo a cuerpo: barridos en arco y franjas, para que el área que golpea sea la que recorre la hoja.
+
 ### Correcciones
 
 - La simulación local y los inputs que se envían al servidor avanzan en tiempo real a cualquier tasa de cuadros. Por debajo de 60 fps, el juego corría en cámara lenta durante sus primeros segundos y siempre que la página no tuviera el foco: las cargas tardaban de más y la predicción se atrasaba respecto del servidor.

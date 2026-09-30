@@ -11,6 +11,15 @@ export {
 } from './maps.js';
 export type { MapId, GameMode, MapDefinition, Bush } from './maps.js';
 export * from './pve.js';
+export * from './combat/geometry.js';
+export * from './combat/defs.js';
+import {
+  curve, waveHalfWidth, wavePoint, waveSource, waveStrength, waveTouch, wrapAngle, type WaveGap,
+} from './combat/geometry.js';
+import {
+  INTERACTIONS, RESOURCES, WAVE_COLORS, cutOutcome,
+  type ChargeSpec, type CutOutcome, type InteractionProfile, type ResourceCost, type ResourceGain, type ResourceId, type WaveSpec,
+} from './combat/defs.js';
 import {
   MOB_STATS, availableMobs, waveBudget, emptyUpgrades, makeUpgradeChoices,
   type Mob, type MobKind, type MobProjectile, type PveState, type UpgradeOffer, type UpgradeId,
@@ -285,6 +294,10 @@ export const RULES = {
   blackHoleStartRadius: 40,
   blackHoleConsumeRadius: 12,
   hurtProtection: 0.35,
+  /** How far a blow that does not kill pushes its victim, unless the blow says otherwise. */
+  knockback: 24,
+  /** A countered slash comes back no wider than this to each side. */
+  returnedWaveHalfWidth: 60,
   respawn: 3,
   spawnProtection: 1,
   flagReturn: 10,
@@ -398,6 +411,12 @@ export interface SkillDefinition {
   chargeSlow?: number;
   /** Mana it costs, for modes with mana. Arenas have none yet, so no skill sets it. */
   mana?: number;
+  /** What it takes from its user: Rage, Mana or whatever a mode brings. `mana` is its short form. */
+  cost?: ResourceCost;
+  /** What landing it gives back to its user. */
+  gain?: ResourceGain;
+  /** How it charges while held: its steps, its limit and what breaks it. */
+  charge?: ChargeSpec;
 }
 const skill = (definition: SkillDefinition) => definition;
 export const SKILLS: Record<SkillId, SkillDefinition> = {
@@ -552,11 +571,45 @@ export function chargingSkills(p:Pick<Player,'blackHoleCharge'|'blinkCharge'>):S
   return charging;
 }
 /**
- * Whether the player can pay for a skill. Always true while a mode has no mana (the arenas today):
- * a skill without a cost, or a player without a pool, never blocks. When mana arrives, an ability
- * that cannot be paid does not start at all rather than half-activating.
+ * Whether the player can pay for a skill. A skill without a cost, or a mode without that pool (the
+ * arenas have no mana), never blocks. An ability that cannot be paid does not start at all rather
+ * than half-activating.
  */
-export const affordable = (p:{mana?:number},id:SkillId) => SKILLS[id].mana===undefined||p.mana===undefined||p.mana>=SKILLS[id].mana!;
+export function affordable(p: Pick<Player, 'mana' | 'maxMana' | 'rage'>, id: SkillId) {
+  const cost = skillCost(id);
+  const pool = cost && resourcePool(p, cost.resource);
+  return !cost || !pool || pool.value >= (cost.min ?? cost.amount) - 1e-8;
+}
+/** What a skill takes from its user. A bare `mana` on the skill is a mana cost. */
+export function skillCost(id: SkillId): ResourceCost | undefined {
+  const skill = SKILLS[id];
+  return skill.cost ?? (skill.mana === undefined ? undefined : { resource: 'mana', amount: skill.mana });
+}
+/**
+ * A player's pool of a resource, or null where there is none. The simulation owns these numbers;
+ * the HUD only reads them. A match has no mana (`maxMana` stays 0), and Rage is every player's,
+ * though only the knight's kit fills it.
+ */
+export function resourcePool(p: Pick<Player, 'mana' | 'maxMana' | 'rage'>, resource: ResourceId) {
+  if (resource === 'mana') return p.maxMana > 0 ? { value: p.mana, max: p.maxMana } : null;
+  if (resource === 'rage') return { value: p.rage, max: RESOURCES.rage.max };
+  return null;
+}
+/** Adds to a pool, up to its limit. Gaining Rage also restarts the wait before it cools off. */
+export function gainResource(p: Player, resource: ResourceId, amount: number) {
+  if (!(amount > 0)) return;
+  if (resource === 'rage') {
+    p.rage = Math.min(RESOURCES.rage.max, p.rage + amount);
+    p.rageIdle = 0;
+  } else if (resource === 'mana' && p.maxMana > 0) p.mana = Math.min(p.maxMana, p.mana + amount);
+}
+/** Takes a skill's cost from its user. Ask `affordable` first. */
+export function payCost(p: Player, id: SkillId) {
+  const cost = skillCost(id);
+  if (!cost || !resourcePool(p, cost.resource)) return;
+  if (cost.resource === 'rage') p.rage = Math.max(0, p.rage - cost.amount);
+  else if (cost.resource === 'mana') p.mana = Math.max(0, p.mana - cost.amount);
+}
 export const TEAMS: Team[] = ['blue', 'red', 'green', 'violet'];
 export const TEAM_NAMES: Record<Team, string> = {
   blue: 'AZUL',
@@ -884,6 +937,9 @@ export interface Player extends Vec {
   level: number;
   mana: number;
   maxMana: number;
+  /** Rage, 0 to 100: earned by fighting, and the seconds since any was last earned. */
+  rage: number;
+  rageIdle: number;
 }
 export interface Flag extends Vec {
   team: Team;
@@ -923,6 +979,46 @@ export interface Arrow extends Vec {
   classId: ClassId;
   angle: number;
   life: number;
+}
+/**
+ * A travelling slash: a crescent front that leaves a blade and crosses the arena. (Not a Hordas
+ * wave of monsters.) It carries its own shape and numbers, so it is drawn and resolved as it was
+ * launched whatever its skill says later.
+ */
+export interface Wave extends Vec, WaveSpec {
+  id: number;
+  owner: string;
+  team: Team;
+  classId: ClassId;
+  skillId?: SkillId;
+  /** `x`,`y` is where it left the blade; this is the way it travels. */
+  angle: number;
+  /** Units its front has advanced. */
+  travelled: number;
+  /** Bodies it already went through and skills it already cut. */
+  hits: string[];
+  /** Stretches cut out of its front. */
+  gaps: WaveGap[];
+  /** One bit per sample across the front: the parts a wall has stopped. */
+  shadow: number;
+  /** Times a parry has sent it back. */
+  reflected?: number;
+}
+/** How many rays sample a slash's front, for wall shadows and for drawing it. */
+export const WAVE_SAMPLES = 13;
+/** Where sample `index` sits across the front, from −1 to 1. */
+export const waveSampleAt = (index: number) => -1 + (2 * index) / (WAVE_SAMPLES - 1);
+/** Whether any part of a slash's front is still travelling: not walled off and not cut away. */
+export function waveAlive(wave: Pick<Wave, 'shadow' | 'gaps'>) {
+  for (let i = 0; i < WAVE_SAMPLES; i++)
+    if (!(wave.shadow & (1 << i)) && waveStrength(wave.gaps, waveSampleAt(i)) > 0) return true;
+  return false;
+}
+/** How a projectile answers a cut or a parry: the heavy ones take a full cut to stop. */
+export function arrowProfile(a: Pick<Arrow, 'wind' | 'blast' | 'charged' | 'slash' | 'power'>): InteractionProfile {
+  return a.wind || a.blast || a.charged || a.slash || (a.power ?? 0) >= 0.5
+    ? INTERACTIONS.heavyShot
+    : INTERACTIONS.lightShot;
 }
 export interface Trap extends Vec {
   id: number;
@@ -1063,6 +1159,10 @@ export interface GameEvent extends Vec {
   playerId?: string;
   /** World only: the colour of the element or skill behind it, so an explosion of lightning is not fire. */
   color?: string;
+  /** A hit that landed as a critical. */
+  crit?: boolean;
+  /** A cut that did not go all the way: the share of the skill it took. Absent: cut apart. */
+  share?: number;
 }
 /** Zombies from the charged summon (hat, its minions, thrall) never use the normal cap. */
 export const countsTowardLimit = (z: Zombie) => !z.bonus;
@@ -1125,6 +1225,8 @@ export interface Snapshot {
   bases: Base[];
   flags: Flag[];
   arrows: Arrow[];
+  /** Travelling slashes. */
+  waves: Wave[];
   blackHoles: BlackHole[];
   zombies: Zombie[];
   mobs: Mob[];
@@ -1468,7 +1570,6 @@ export function findPath(
   return path;
 }
 const ZOMBIE_PACE = [1, 0.92, 0.96, 0.88];
-const wrapAngle = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
 export function lowerGuard(p: Player) {
   if (!p.guarding) return;
   p.guarding = false;
@@ -1585,6 +1686,12 @@ export function movePlayer(
   ] as const)
     p[key] = Math.max(0, p[key] - dt);
   p.furyLeft = Math.max(0, p.furyLeft - dt);
+  // Rage cools off once the fight stops feeding it.
+  if (p.rage > 0) {
+    p.rageIdle += dt;
+    if (p.rageIdle > RESOURCES.rage.decayDelay)
+      p.rage = Math.max(0, p.rage - RESOURCES.rage.decayRate * dt);
+  }
   if (p.furyLeft <= 1e-8) p.furyLeft = 0;
   if (p.stunLeft > 0) {
     p.stunLeft = Math.max(0, p.stunLeft - dt);
@@ -2090,6 +2197,8 @@ export function newPlayer(
     level: 1,
     mana: 0,
     maxMana: 0,
+    rage: 0,
+    rageIdle: 0,
   };
 }
 const newFlag = ({ team, home }: Base): Flag => ({
@@ -2101,6 +2210,30 @@ const newFlag = ({ team, home }: Base): Flag => ({
   blockedId: null,
   lockLeft: 0,
 });
+export interface DamageOptions {
+  /** Breaks shields and wounds without knockback. */
+  pierce?: boolean;
+  /** A sibling blow (a volley's next arrow): lands through the protection the last one left. */
+  ignoreInvuln?: boolean;
+  freeze?: boolean;
+  execute?: boolean;
+  /** How far it pushes; the usual knockback when absent. */
+  knockback?: number;
+  /** Marks the hit as a critical, for whoever shows it. */
+  crit?: boolean;
+}
+/** Something cutting enemy skills this tick: a blade in the middle of its swing. */
+interface Cutter {
+  owner: Player;
+  /** Cut power. Infinity cuts apart anything that can be cut. */
+  power: number;
+  /** The way the blade faces, for the pieces that fly off. */
+  angle: number;
+  /** Skills this swing has already cut. */
+  done: Set<string>;
+  /** Where a skill flying from `from` to `to` meets the blade, or null when it does not. */
+  meets(from: Vec, to: Vec, flightAngle: number, radius: number): Vec | null;
+}
 export class Duel {
   state: Snapshot = {
     mapId: DEFAULT_MAP,
@@ -2120,6 +2253,7 @@ export class Duel {
     bases: [],
     flags: [],
     arrows: [],
+    waves: [],
     blackHoles: [],
     zombies: [],
     mobs: [],
@@ -2134,13 +2268,17 @@ export class Duel {
   };
   protected eventId = 0;
   protected arrowId = 0;
+  protected waveId = 0;
   protected blackHoleId = 0;
   protected trapId = 0;
   protected zombieId = 0;
   private mobId = 0;
   private mobProjectileId = 0;
-  /** Sword impacts for this tick only; projectile streams advance after stepPlayers. */
-  private swordCuts: { player: Player; angle: number; range: number; arc: number }[] = [];
+  /**
+   * The blades cutting enemy skills during this tick. Rebuilt in `stepPlayers`; projectiles advance
+   * afterwards. Slashes in flight cut too, straight from `state.waves`.
+   */
+  private cutters: Cutter[] = [];
   private pveSpawnClock = 0;
   private pveOffers = new Map<string, UpgradeOffer>();
   private executionId = 0;
@@ -2421,6 +2559,7 @@ export class Duel {
   resetArena() {
     const s = this.state;
     s.arrows = [];
+    s.waves = [];
     s.blackHoles = [];
     s.zombies = [];
     s.mobs = [];
@@ -2495,14 +2634,13 @@ export class Duel {
       this.finish(alive[0].team, reason);
   }
   /** Returns whether the hit landed (not blocked, shielded or ignored by protection). */
-  /** `pierce`: breaks shields and wounds without knockback; `ignoreInvuln`: a sibling volley arrow. */
   damage(
     target: Player,
     /** Only the side is read, so a world monster with no owning player can be its own source. */
     source: Pick<Player, 'team'>,
     angle: number,
     amount = 1,
-    options: { pierce?: boolean; ignoreInvuln?: boolean; freeze?: boolean; execute?: boolean } = {},
+    options: DamageOptions = {},
   ): boolean {
     if (
       (this.state.objective === 'deathmatch' && this.state.winner !== null) ||
@@ -2543,6 +2681,7 @@ export class Duel {
     target.hitFlash = 0.18;
     this.drop(target);
     this.event('hit', target, source.team);
+    if (options.crit) this.state.events.at(-1)!.crit = true;
     if (target.hp === 0) {
       this.state.graves.push({
         x: target.x,
@@ -2572,8 +2711,10 @@ export class Duel {
           match.score[source.team] >= match.deathmatch.target) this.finish(source.team, 'bajas');
       }
       this.event('death', target, target.team);
-    } else if (!options.pierce)
-      translate(target, Math.cos(angle) * 24, Math.sin(angle) * 24, this.terrainFor(target));
+    } else if (!options.pierce) {
+      const push = options.knockback ?? RULES.knockback;
+      translate(target, Math.cos(angle) * push, Math.sin(angle) * push, this.terrainFor(target));
+    }
     return true;
   }
   /** How far a monster notices someone, as a share of its aggro. The world lets stealth shrink it. */
@@ -3994,7 +4135,9 @@ export class Duel {
         const from = { x: a.x, y: a.y };
         a.x += Math.cos(a.angle) * a.speed * dt / steps;
         a.y += Math.sin(a.angle) * a.speed * dt / steps;
-        if (this.cutProjectile(from, a, a.angle, a.radius, { team: 'red', faction: 'monster', id: mob.id }, '#d9d2b5')) return false;
+        const cut = this.cutProjectile(from, a, a.angle, a.radius, { team: 'red', faction: 'monster', id: mob.id }, INTERACTIONS.lightShot, `mob-shot:${a.id}`, '#d9d2b5');
+        if (cut.result === 'destroy') return false;
+        if (cut.result === 'weaken') a.damage *= 1 - cut.share;
         if (blocked(a.x, a.y, a.radius, this.terrain)) return false;
         const p = s.players.find(q => q.hp > 0 && distance(q, a) < RULES.radius + a.radius);
         if (p) { this.hitPlayerFromMob(p, mob, a.angle, a.damage); return false; }
@@ -4044,6 +4187,7 @@ export class Duel {
       return;
     }
     this.stepArrows(dt);
+    this.stepWaves(dt);
     this.stepZombies(dt);
     this.stepBlackHoles(dt);
     this.stepTraps(placements, dt);
@@ -4113,7 +4257,7 @@ export class Duel {
    *  players who placed a trap this tick, which `stepTraps` needs further down the step. */
   protected stepPlayers(inputs: Map<string, Input>, dt: number): Player[] {
     const s = this.state;
-    this.swordCuts = [];
+    this.cutters = [];
     const swings: Player[] = [];
     const placements: Player[] = [];
     const bashers: Player[] = [];
@@ -4353,7 +4497,7 @@ export class Duel {
       p.swingPower = 0;
       this.event('sword', p, p.team, p.swingAngle, p.classId, power);
       if (p.classId === 'guardian' || p.classId === 'vanguard')
-        this.swordCuts.push({ player: p, angle: p.swingAngle, range, arc });
+        this.cutters.push(this.swingCutter(p, p.swingAngle, range, arc));
       for (const q of s.players) {
         const angle = Math.atan2(q.y - p.y, q.x - p.x);
         const diff = Math.atan2(Math.sin(angle - p.swingAngle), Math.cos(angle - p.swingAngle));
@@ -4393,26 +4537,190 @@ export class Duel {
     for (const hit of hits) this.damage(hit.target, hit.source, hit.angle, hit.amount);
     return placements;
   }
-  /** A projectile crossing a sword's actual impact arc is removed before it can hit or explode. */
+  /** A plain sword swing: for its one tick it cuts apart whatever hostile skill comes at it through its arc. */
+  private swingCutter(p: Player, angle: number, range: number, arc: number): Cutter {
+    return {
+      owner: p,
+      power: Infinity,
+      angle,
+      done: new Set(),
+      meets: (from, to, flightAngle, radius) => {
+        // Only a skill coming at the swordsman, met at the point of its path nearest to him.
+        if (Math.cos(flightAngle) * (p.x - from.x) + Math.sin(flightAngle) * (p.y - from.y) <= 0) return null;
+        const vx = to.x - from.x, vy = to.y - from.y;
+        const segment = vx * vx + vy * vy;
+        const t = segment > 0 ? Math.max(0, Math.min(1, ((p.x - from.x) * vx + (p.y - from.y) * vy) / segment)) : 0;
+        const at = { x: from.x + vx * t, y: from.y + vy * t };
+        const bearing = Math.atan2(at.y - p.y, at.x - p.x);
+        return distance(p, at) <= range + radius && Math.abs(wrapAngle(bearing - angle)) <= arc / 2 ? at : null;
+      },
+    };
+  }
+  /** Shows a cut: the pieces fly off along `angle`. A partial cut says which share it took. */
+  private cutEvent(at: Vec, by: Pick<Player, 'team' | 'classId'>, angle: number, size: number, share: number, color?: string) {
+    this.event('projectileCut', at, by.team, angle, by.classId, size);
+    const event = this.state.events.at(-1)!;
+    event.color = color;
+    if (share < 1) event.share = share;
+  }
+  /**
+   * What the blades and slashes cutting right now do to a hostile skill flying from `from` to `to`:
+   * cut it apart before it can hit or explode, take a share of its strength, or nothing. `key`
+   * names the skill, so one cut never counts twice.
+   */
   protected cutProjectile(
-    from: Vec, to: Vec, flightAngle: number, radius: number, source: Allegiant, color?: string,
-  ): boolean {
-    for (const cut of this.swordCuts) {
-      const p = cut.player;
-      if (p.hp <= 0 || !this.hostile(source, p)) continue;
-      const vx = to.x - from.x, vy = to.y - from.y;
-      if (Math.cos(flightAngle) * (p.x - from.x) + Math.sin(flightAngle) * (p.y - from.y) <= 0) continue;
-      const segment = vx * vx + vy * vy;
-      const t = segment > 0 ? Math.max(0, Math.min(1, ((p.x - from.x) * vx + (p.y - from.y) * vy) / segment)) : 0;
-      const at = { x: from.x + vx * t, y: from.y + vy * t };
-      const angle = Math.atan2(at.y - p.y, at.x - p.x);
-      if (distance(p, at) > cut.range + radius || Math.abs(wrapAngle(angle - cut.angle)) > cut.arc / 2) continue;
-      if (!lineClear(p, at, this.terrain)) continue;
-      this.event('projectileCut', at, p.team, cut.angle, p.classId, radius);
-      this.state.events.at(-1)!.color = color;
-      return true;
+    from: Vec, to: Vec, flightAngle: number, radius: number, source: Allegiant,
+    target: InteractionProfile, key: string, color?: string,
+  ): CutOutcome {
+    for (const cutter of this.cutters) {
+      const p = cutter.owner;
+      if (p.hp <= 0 || cutter.done.has(key) || !this.hostile(source, p)) continue;
+      const at = cutter.meets(from, to, flightAngle, radius);
+      if (!at || !lineClear(p, at, this.terrain)) continue;
+      const outcome = cutOutcome(cutter.power, target);
+      if (outcome.result === 'none') continue;
+      cutter.done.add(key);
+      this.cutEvent(at, p, cutter.angle, radius, outcome.share, color);
+      return outcome;
     }
-    return false;
+    for (const w of this.state.waves) {
+      if (w.cut <= 0 || w.hits.includes(key) || !this.hostile(source, w)) continue;
+      const place = waveTouch(w, w.travelled - w.speed * RULES.tick, w.travelled, to, radius);
+      if (place === null || waveStrength(w.gaps, place) <= 0) continue;
+      if (!lineClear(waveSource(w, place), to, this.terrain)) continue;
+      const outcome = cutOutcome(w.cut, target);
+      if (outcome.result === 'none') continue;
+      w.hits.push(key);
+      this.cutEvent(to, w, w.angle, radius, outcome.share, color);
+      return outcome;
+    }
+    return { result: 'none', share: 0 };
+  }
+  /** Launches a travelling slash from a point, in its owner's name. */
+  spawnWave(
+    owner: Player, from: Vec, angle: number, spec: WaveSpec,
+    extra: Partial<Pick<Wave, 'skillId' | 'reflected' | 'team' | 'classId'>> = {},
+  ): Wave {
+    const wave: Wave = {
+      ...spec,
+      id: ++this.waveId,
+      owner: owner.id,
+      team: owner.team,
+      classId: owner.classId,
+      x: from.x,
+      y: from.y,
+      angle,
+      travelled: 0,
+      hits: [],
+      gaps: [],
+      shadow: 0,
+      ...extra,
+    };
+    this.state.waves.push(wave);
+    return wave;
+  }
+  /** Travelling slashes: their flight, the walls that stop them and everything they cross. */
+  protected stepWaves(dt: number) {
+    const s = this.state;
+    for (const w of s.waves) {
+      const owner = s.players.find((p) => p.id === w.owner);
+      if (!owner) {
+        w.travelled = w.range;
+        continue;
+      }
+      const stride = Math.max(0, Math.min(w.speed * dt, w.range - w.travelled));
+      // Short steps, so a fast front cannot jump over a body or a thin wall.
+      const steps = Math.max(1, Math.ceil(stride / 6));
+      for (let i = 0; i < steps && waveAlive(w); i++) {
+        const before = w.travelled;
+        w.travelled += stride / steps;
+        // Each part of the front stops where it meets a wall; the rest carries on.
+        for (let n = 0; n < WAVE_SAMPLES; n++) {
+          if (w.shadow & (1 << n)) continue;
+          const point = wavePoint(w, w.travelled, waveSampleAt(n));
+          if (blocked(point.x, point.y, 2, this.terrain)) w.shadow |= 1 << n;
+        }
+        this.waveCuts(w);
+        this.waveStrikes(w, owner, before);
+      }
+    }
+    s.waves = s.waves.filter((w) => w.travelled < w.range - 1e-6 && waveAlive(w));
+  }
+  /** A cutting slash opens a gap in every hostile slash it crosses, as wide as itself. */
+  private waveCuts(w: Wave) {
+    if (w.cut <= 0) return;
+    const centre = wavePoint(w, w.travelled, 0);
+    const width = waveHalfWidth(w, w.travelled);
+    for (const other of this.state.waves) {
+      const key = `wave:${other.id}`;
+      if (other === w || w.hits.includes(key) || !this.hostile(w, other)) continue;
+      const place = waveTouch(other, other.travelled - other.speed * RULES.tick, other.travelled, centre, width);
+      if (place === null) continue;
+      w.hits.push(key);
+      const outcome = cutOutcome(w.cut, { ...INTERACTIONS.wave, cutResistance: other.resist });
+      if (outcome.result === 'none') continue;
+      const half = width / Math.max(1, waveHalfWidth(other, other.travelled));
+      other.gaps.push({ from: place - half, to: place + half, strength: outcome.share });
+      this.cutEvent(centre, w, w.angle, Math.min(14, width), outcome.share, WAVE_COLORS[other.tint].glow);
+    }
+  }
+  /** The bodies the front passes over in this step: each once, for what the slash still carries there. */
+  private waveStrikes(w: Wave, owner: Player, before: number) {
+    const s = this.state;
+    const carried = w.damage * curve(w.falloff, w.range > 0 ? w.travelled / w.range : 1);
+    /** The share of the slash that reaches a body, or 0 when the front misses it or has been there. */
+    const reach = (target: Vec, id: string, radius: number) => {
+      if (w.hits.includes(id)) return 0;
+      const place = waveTouch(w, before, w.travelled, target, radius);
+      if (place === null) return 0;
+      const strength = waveStrength(w.gaps, place);
+      // A wall between where this part of the front set out and the body shadows the body.
+      if (strength <= 0 || !lineClear(waveSource(w, place), target, this.terrain)) return 0;
+      w.hits.push(id);
+      return strength;
+    };
+    for (const p of s.players) {
+      if (p.hp <= 0 || !this.hostile(w, p)) continue;
+      const strength = reach(p, p.id, RULES.radius);
+      if (!strength) continue;
+      if (p.counterLeft > 0) this.returnWave(w, p, carried * strength);
+      else this.damage(p, owner, w.angle, carried * strength, { knockback: w.knockback });
+    }
+    for (const z of s.zombies) {
+      if (z.hp <= 0 || !this.hostile(w, z)) continue;
+      const strength = reach(z, z.id, RULES.zombieRadius);
+      if (strength) this.damageZombie(z, w.team, carried * strength, w.angle, owner.id);
+    }
+    for (const mob of s.mobs) {
+      if (mob.hp <= 0 || mob.spawnLeft > 0) continue;
+      const strength = reach(mob, mob.id, MOB_STATS[mob.kind].radius);
+      if (strength) this.damageMob(mob, owner, carried * strength);
+    }
+  }
+  /** A countered slash flies back the way it came as the defender's own, with what it still carried. */
+  protected returnWave(w: Wave, by: Player, damage: number) {
+    this.spawnWave(
+      by,
+      by,
+      w.angle + Math.PI,
+      {
+        // As wide as it arrived, no wider, and it keeps what it had left all the way back.
+        halfWidth: Math.min(waveHalfWidth(w, w.travelled), RULES.returnedWaveHalfWidth),
+        spread: 0,
+        bow: w.bow,
+        thickness: w.thickness,
+        range: w.travelled + RULES.radius * 2,
+        speed: w.speed,
+        damage,
+        falloff: [[0, 1]],
+        knockback: w.knockback,
+        cut: w.cut,
+        resist: w.resist,
+        tint: w.tint,
+      },
+      { skillId: w.skillId, reflected: (w.reflected ?? 0) + 1 },
+    );
+    this.event('counter', by, by.team, w.angle + Math.PI, by.classId, 0);
   }
   /** Projectile flight and everything they hit. */
   protected stepArrows(dt: number) {
@@ -4430,8 +4738,14 @@ export class Duel {
         const from = { x: a.x, y: a.y };
         a.x += (Math.cos(a.angle) * speed * travelTime) / steps;
         a.y += (Math.sin(a.angle) * speed * travelTime) / steps;
-        if (this.cutProjectile(from, a, a.angle, radius, a,
-          a.worldElement ? undefined : a.ice ? '#7dd8ff' : a.slash ? '#f3ce86' : a.classId === 'mage' || a.classId === 'necromancer' ? '#ff9b45' : '#e9d5a2')) return false;
+        const cut = this.cutProjectile(from, a, a.angle, radius, a, arrowProfile(a), `arrow:${a.id}`,
+          a.worldElement ? undefined : a.ice ? '#7dd8ff' : a.slash ? '#f3ce86' : a.classId === 'mage' || a.classId === 'necromancer' ? '#ff9b45' : '#e9d5a2');
+        if (cut.result === 'destroy') return false;
+        if (cut.result === 'weaken') {
+          // Still flying, with what the cut left of it.
+          a.damageScale = (a.damageScale ?? 1) * (1 - cut.share);
+          amount *= 1 - cut.share;
+        }
         if (blocked(a.x, a.y, 3, this.terrain)) {
           this.explode(a, owner, amount);
           return false;
