@@ -620,6 +620,10 @@ export interface Input {
   seq: number;
   x: number;
   y: number;
+  /**
+   * The aimDirection: where every directional skill goes, independent of the movement in `x`/`y`.
+   * The client resolves it from whichever device aims (mouse, stick, arrows); skills never ask.
+   */
   angle: number;
   sword: boolean;
   shot: boolean;
@@ -658,6 +662,7 @@ export interface Input {
   command: boolean;
   /** ⌘E / Ctrl+E: moves the zombie under the cursor between the guard circle and the cursor. */
   mark: boolean;
+  /** The aim point: where the aim lands in the world, for skills that go to a place. -1 is none. */
   aimX: number;
   aimY: number;
   /** Logical controls sent over the network. Skill ids never cross the input boundary. */

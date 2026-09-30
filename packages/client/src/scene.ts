@@ -218,12 +218,8 @@ export class Arena extends Phaser.Scene {
     this.controls.screenToWorld = (x, y) => this.screenToWorld(x, y);
     this.input.mouse?.disableContextMenu();
     this.input.on('pointermove', (p: Phaser.Input.Pointer) => {
-      if (p.wasTouch || !this.predicted) return;
-      this.controls.angle = Math.atan2(p.worldY - this.predicted.y, p.worldX - this.predicted.x);
-      const b = this.bounds();
-      this.controls.aimX = Math.max(b.minX, Math.min(b.maxX, p.worldX));
-      this.controls.aimY = Math.max(b.minY, Math.min(b.maxY, p.worldY));
-      this.controls.aimFromPointer = true;
+      // Only where the cursor is: `update` turns it into a direction from the body, every frame.
+      if (!p.wasTouch) this.controls.aim.pointer(p.x, p.y);
     });
     this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
       if (p.wasTouch || !this.controls.enabled) return;
@@ -828,7 +824,7 @@ export class Arena extends Phaser.Scene {
     const own = snapshot.players.find((p) => p.id === id);
     if (own) {
       this.controls.configure(own.classId);
-      if (first) this.controls.angle = own.angle;
+      if (first) this.controls.aim.face(own.angle);
       this.seq = Math.max(this.seq, own.ack);
       this.pending = this.pending.filter((i) => i.seq > own.ack);
       if (snapshot.phase !== this.phase || snapshot.paused || own.hp <= 0) this.pending = [];
@@ -2408,24 +2404,22 @@ export class Arena extends Phaser.Scene {
       this.blinkSeal(this.holes,this.controls.aimX,this.controls.aimY,20,time,0xc278f5,0.9);
     }
     this.accumulator += Math.min(delta, 100);
-    if (this.predicted && !this.controls.aimFromPointer) {
-      // Touch aiming has no cursor: project the aim direction into the arena instead. A charging
-      // Parpadeo or Singularidad projects to its full reach, so the charge alone decides the distance.
-      const a = this.controls.angle;
-      const b = this.bounds();
+    if (this.predicted) {
+      // The aim, as seen from where the body stands this frame: a still cursor keeps being the
+      // target while the character walks. A stick has no cursor, so its direction is projected
+      // into the arena; a charging Parpadeo or Singularidad projects to its full reach, and the
+      // charge alone decides the distance.
       const reach =
         this.predicted.blinkCharge > 0
           ? RULES.mageBlinkRange
           : this.predicted.blackHoleCharge > 0
             ? RULES.blackHoleRangeMax
             : 150;
-      this.controls.aimX = Math.max(
-        b.minX,
-        Math.min(b.maxX, this.predicted.x + Math.cos(a) * reach),
-      );
-      this.controls.aimY = Math.max(
-        b.minY,
-        Math.min(b.maxY, this.predicted.y + Math.sin(a) * reach),
+      this.controls.aim.resolve(
+        this.predicted,
+        (x, y) => this.cameras.main.getWorldPoint(x, y),
+        this.bounds(),
+        reach,
       );
     }
     while (this.accumulator >= 1000 / 30) {
@@ -2752,7 +2746,7 @@ export class Arena extends Phaser.Scene {
       if (CLASSES[p.classId].summon && p.specialCharge >= RULES.overchargeTime) {
         // White twinkling perimeter: how far away the raising mandala can open.
         const twinkle = 0.5 + Math.sin(time * 0.025) * 0.5;
-        const pointer = this.controls.aimFromPointer;
+        const pointer = this.controls.aim.pointed;
         const toward = pointer ? Math.atan2(this.controls.aimY - p.y, this.controls.aimX - p.x) : a;
         const reach = pointer
           ? Math.min(
@@ -2815,7 +2809,7 @@ export class Arena extends Phaser.Scene {
       // Violet: the mouse area that the zombie mage, its minions and the thrall follow.
       if (
         CLASSES[p.classId].summon &&
-        this.controls.aimFromPointer &&
+        this.controls.aim.pointed &&
         !p.zombieAuto &&
         mine.length > 0
       ) {
@@ -3002,7 +2996,7 @@ export class Arena extends Phaser.Scene {
       this.aim.lineStyle(1, bright, 0.2);
       this.aim.strokeCircle(p.x, p.y, spec.radius * 0.6);
     } else if (spec.kind === 'placement') {
-      const pointerDistance = this.controls.aimFromPointer
+      const pointerDistance = this.controls.aim.pointed
         ? Math.min(spec.range, Math.hypot(this.controls.aimX - p.x, this.controls.aimY - p.y))
         : spec.range;
       const length = clipRay(

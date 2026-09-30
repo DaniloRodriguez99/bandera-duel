@@ -1089,6 +1089,7 @@ select:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
 
 /* Mobile combat surface: the arena owns the visual viewport and the HUD floats above it. */
 .touch-actions { display: none; }
+#aim-zone { display: none; }
 #mobile-player-status { display: none; }
 
 /* Social interactions in the persistent world. */
@@ -1219,6 +1220,27 @@ select:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
     gap: 8px;
     width: min(40dvw, 230px);
     pointer-events: none;
+    /* Above the aim zone, which takes the touches that fall between the buttons. */
+    position: relative;
+    z-index: 1;
+  }
+  /* The right thumb's aim stick: a free area behind the ability buttons, clear of the top HUD. */
+  #aim-zone {
+    display: block;
+    position: absolute;
+    top: 30%;
+    right: 0;
+    bottom: 0;
+    width: 46%;
+    pointer-events: auto;
+    touch-action: none;
+  }
+  #stage[data-phase='rewards'] #aim-zone { display: none; }
+  .in-room #stick-aim {
+    position: absolute;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    opacity: .6;
   }
   .touch-ability {
     --aim-x: 0px;
@@ -1361,7 +1383,7 @@ select:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
 @media(pointer:coarse) and (orientation:landscape){#stage[data-phase='rewards'] .touch-actions{display:none}#stage[data-phase='rewards'] .pve-rewards{inset:max(34px,env(safe-area-inset-top)) 0 auto;padding:5px max(12px,env(safe-area-inset-right)) 8px max(12px,env(safe-area-inset-left));background:linear-gradient(#071218e8,#071218a8 78%,transparent)}#stage[data-phase='rewards'] .announcement{align-items:flex-end;padding-bottom:max(14px,env(safe-area-inset-bottom));font-size:clamp(18px,4dvh,28px);background:transparent}}
 
 /* ─── Mundo isekai: el Sistema ─────────────────────────────────────────────────────────────── */
-body.world-mode .hud .team,body.world-mode #abilities,body.world-mode #cooldowns,body.world-mode #touch-actions{display:none!important}
+body.world-mode .hud .team,body.world-mode #abilities,body.world-mode #cooldowns,body.world-mode #touch-actions,body.world-mode #aim-zone{display:none!important}
 body.world-mode .hud{justify-content:center}
 body.world-mode .clock>span{font-size:22px;letter-spacing:3px}
 body.world-mode #clock-note{color:#7fd6ff;letter-spacing:3px}

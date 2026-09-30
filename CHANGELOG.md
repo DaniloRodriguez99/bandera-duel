@@ -1,5 +1,15 @@
 # Registro de cambios
 
+## 2026-09-30
+
+### Puntería unificada
+
+- Todas las habilidades leen una sola puntería, sin importar de dónde venga: el mouse, una palanca táctil, las flechas de Lugunica o, más adelante, un mando.
+- En PC la puntería sigue al cursor en todo momento. Antes solo se recalculaba al mover el mouse: caminar con WASD sin moverlo dejaba el ángulo viejo y los disparos ya no iban al cursor.
+- En celular, tocar el lado derecho libre de la pantalla hace aparecer una palanca de puntería bajo el pulgar. Solo apunta, nunca ataca. Al soltarla se conserva la última dirección, y moverse no la cambia.
+- Arrastrar el botón de una habilidad sigue apuntándola, y Singularidad sigue yendo al punto del mapa que se toca.
+- Cerca del borde de la arena, el punto de mira de una palanca queda sobre la dirección apuntada en vez de torcerse hacia el borde.
+
 ## 2026-09-26
 
 ### Controles universales
