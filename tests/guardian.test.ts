@@ -141,13 +141,14 @@ describe('caballero ofensivo', () => {
     expect(blocked.knight.x).toBeLessThanOrEqual(423 - RULES.radius + 1e-8);
   });
 
-  it('Q daña, empuja y aturde 1,5 s; otro escudo frontal lo bloquea', () => {
+  it('Q daña, empuja y aturde 2 s; otro escudo frontal lo bloquea', () => {
     const open = arena();
     Object.assign(open.rival, { x: 370, y: 270, hp: 10, maxHp: 10 });
     run(open.duel, 1, [[open.knight, { shieldBash: true }]]);
     run(open.duel, ticks(RULES.shieldBashWindup));
     expect(open.rival.hp).toBe(9.5);
     expect(open.rival.stunLeft).toBeCloseTo(RULES.shieldBashStun);
+    expect(open.rival.stunLeft).toBeCloseTo(2);
     expect(open.rival.x).toBeGreaterThan(370);
     expect(open.knight.shieldBashCd).toBeGreaterThan(RULES.shieldBashCooldown - 0.3);
 

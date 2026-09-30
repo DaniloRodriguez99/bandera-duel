@@ -209,7 +209,7 @@ export const RULES = {
   shieldBashRange: 48,
   shieldBashArc: Math.PI / 2,
   shieldBashDamage: 0.5,
-  shieldBashStun: 1.5,
+  shieldBashStun: 2,
   shieldBashWindup: 0.12,
   shieldBashCooldown: 6,
   furyDuration: 5,
@@ -993,6 +993,7 @@ export interface GameEvent extends Vec {
   id: number;
   kind:
     | 'sword'
+    | 'projectileCut'
     | 'shot'
     | 'hit'
     | 'death'
@@ -2110,6 +2111,8 @@ export class Duel {
   protected zombieId = 0;
   private mobId = 0;
   private mobProjectileId = 0;
+  /** Sword impacts for this tick only; projectile streams advance after stepPlayers. */
+  private swordCuts: { player: Player; angle: number; range: number; arc: number }[] = [];
   private pveSpawnClock = 0;
   private pveOffers = new Map<string, UpgradeOffer>();
   private executionId = 0;
@@ -3911,7 +3914,25 @@ export class Duel {
       if(gap<=reach&&mob.attackCd<=0){mob.windup=mob.kind==='brute'?.55:mob.kind==='cryptGuardian'?.4:.2;continue;}
       if(gap>reach*.8)this.walkPveMob(mob,target,dt);
     }
-    s.mobProjectiles=s.mobProjectiles.filter(a=>{a.life-=dt;if(a.life<=0)return false;const steps=Math.max(1,Math.ceil(a.speed*dt/5));for(let i=0;i<steps;i++){a.x+=Math.cos(a.angle)*a.speed*dt/steps;a.y+=Math.sin(a.angle)*a.speed*dt/steps;if(blocked(a.x,a.y,a.radius,this.terrain))return false;const mob=s.mobs.find(m=>m.id===a.owner);if(!mob)return false;const p=s.players.find(q=>q.hp>0&&distance(q,a)<RULES.radius+a.radius);if(p){this.hitPlayerFromMob(p,mob,a.angle,a.damage);return false;}const z=s.zombies.find(q=>q.hp>0&&distance(q,a)<RULES.zombieRadius+a.radius);if(z){this.damageZombie(z,'red',a.damage,a.angle);return false;}}return true;});
+    s.mobProjectiles = s.mobProjectiles.filter(a => {
+      a.life -= dt;
+      if (a.life <= 0) return false;
+      const mob = s.mobs.find(m => m.id === a.owner);
+      if (!mob) return false;
+      const steps = Math.max(1, Math.ceil(a.speed * dt / 5));
+      for (let i = 0; i < steps; i++) {
+        const from = { x: a.x, y: a.y };
+        a.x += Math.cos(a.angle) * a.speed * dt / steps;
+        a.y += Math.sin(a.angle) * a.speed * dt / steps;
+        if (this.cutProjectile(from, a, a.angle, a.radius, { team: 'red', faction: 'monster', id: mob.id }, '#d9d2b5')) return false;
+        if (blocked(a.x, a.y, a.radius, this.terrain)) return false;
+        const p = s.players.find(q => q.hp > 0 && distance(q, a) < RULES.radius + a.radius);
+        if (p) { this.hitPlayerFromMob(p, mob, a.angle, a.damage); return false; }
+        const z = s.zombies.find(q => q.hp > 0 && distance(q, a) < RULES.zombieRadius + a.radius);
+        if (z) { this.damageZombie(z, 'red', a.damage, a.angle); return false; }
+      }
+      return true;
+    });
     s.mobs=s.mobs.filter(m=>m.hp>0);for(const id of this.paths.keys())if(id.startsWith('m')&&!s.mobs.some(m=>m.id===id))this.paths.delete(id);pve.enemiesRemaining=s.mobs.length+Math.ceil(pve.pendingBudget);
     const survivors=s.players.some(p=>p.hp>0||(!p.eliminated&&p.respawnLeft>0));if(!survivors){this.finish('draw','pveDefeat');return;}
     if(pve.spawnedAll&&!s.mobs.length){s.mobProjectiles=[];if(pve.wave===10&&!pve.endless){pve.completed=true;this.finish('blue','pveVictory');}else this.pveOfferRewards();}
@@ -4020,6 +4041,7 @@ export class Duel {
    *  players who placed a trap this tick, which `stepTraps` needs further down the step. */
   protected stepPlayers(inputs: Map<string, Input>, dt: number): Player[] {
     const s = this.state;
+    this.swordCuts = [];
     const swings: Player[] = [];
     const placements: Player[] = [];
     const bashers: Player[] = [];
@@ -4258,6 +4280,8 @@ export class Duel {
           (p.classId === 'guardian' && p.furyLeft > 0 ? RULES.furyDamage : 1);
       p.swingPower = 0;
       this.event('sword', p, p.team, p.swingAngle, p.classId, power);
+      if (p.classId === 'guardian' || p.classId === 'vanguard')
+        this.swordCuts.push({ player: p, angle: p.swingAngle, range, arc });
       for (const q of s.players) {
         const angle = Math.atan2(q.y - p.y, q.x - p.x);
         const diff = Math.atan2(Math.sin(angle - p.swingAngle), Math.cos(angle - p.swingAngle));
@@ -4297,6 +4321,27 @@ export class Duel {
     for (const hit of hits) this.damage(hit.target, hit.source, hit.angle, hit.amount);
     return placements;
   }
+  /** A projectile crossing a sword's actual impact arc is removed before it can hit or explode. */
+  protected cutProjectile(
+    from: Vec, to: Vec, flightAngle: number, radius: number, source: Allegiant, color?: string,
+  ): boolean {
+    for (const cut of this.swordCuts) {
+      const p = cut.player;
+      if (p.hp <= 0 || !this.hostile(source, p)) continue;
+      const vx = to.x - from.x, vy = to.y - from.y;
+      if (Math.cos(flightAngle) * (p.x - from.x) + Math.sin(flightAngle) * (p.y - from.y) <= 0) continue;
+      const segment = vx * vx + vy * vy;
+      const t = segment > 0 ? Math.max(0, Math.min(1, ((p.x - from.x) * vx + (p.y - from.y) * vy) / segment)) : 0;
+      const at = { x: from.x + vx * t, y: from.y + vy * t };
+      const angle = Math.atan2(at.y - p.y, at.x - p.x);
+      if (distance(p, at) > cut.range + radius || Math.abs(wrapAngle(angle - cut.angle)) > cut.arc / 2) continue;
+      if (!lineClear(p, at, this.terrain)) continue;
+      this.event('projectileCut', at, p.team, cut.angle, p.classId, radius);
+      this.state.events.at(-1)!.color = color;
+      return true;
+    }
+    return false;
+  }
   /** Projectile flight and everything they hit. */
   protected stepArrows(dt: number) {
     const s = this.state;
@@ -4310,8 +4355,11 @@ export class Duel {
       let amount = stats.damage * (a.damageScale ?? 1);
       const steps = Math.max(1, Math.ceil((speed * travelTime) / 5));
       for (let i = 0; i < steps; i++) {
+        const from = { x: a.x, y: a.y };
         a.x += (Math.cos(a.angle) * speed * travelTime) / steps;
         a.y += (Math.sin(a.angle) * speed * travelTime) / steps;
+        if (this.cutProjectile(from, a, a.angle, radius, a,
+          a.worldElement ? undefined : a.ice ? '#7dd8ff' : a.slash ? '#f3ce86' : a.classId === 'mage' || a.classId === 'necromancer' ? '#ff9b45' : '#e9d5a2')) return false;
         if (blocked(a.x, a.y, 3, this.terrain)) {
           this.explode(a, owner, amount);
           return false;

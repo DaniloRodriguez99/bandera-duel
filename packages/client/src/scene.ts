@@ -1,3 +1,6 @@
+import { Locomotion } from './locomotion';
+import { ensureActorAtlas } from './directional-art';
+import { ParticlePool, visualSettings } from './visual-effects';
 import Phaser from 'phaser';
 import { ELEMENT_COLORS, ELEMENT_CORES, hex } from '@bandera/shared/rpg/colors';
 import { Settlement, drawAltar, drawProp, drawSettlementGround } from './village';
@@ -137,12 +140,19 @@ export class Arena extends Phaser.Scene {
   /** Whether the world character can ride water, from its sheet; prediction must agree with the server. */
   surfer = false;
   send: (input: Input) => void = () => {};
+  private particles!: ParticlePool;
+  private trailTick = -1;
+  private emitTrail = false;
   private visuals = new Map<
     string,
     {
+      locomotion: Locomotion;
+      alive: boolean;
+      stepFrame: number;
       body: Phaser.GameObjects.Sprite;
       shadow: Phaser.GameObjects.Ellipse;
       name: Phaser.GameObjects.Text;
+      stun: Phaser.GameObjects.Text;
       hp: Phaser.GameObjects.Graphics;
       weapon: Phaser.GameObjects.Graphics;
       x: number;
@@ -196,6 +206,7 @@ export class Arena extends Phaser.Scene {
     this.drawMap(this.currentMapId);
     this.bases = this.add.graphics().setDepth(LAYER.floor);
     this.makeTextures();
+    this.particles = new ParticlePool(this);
     this.flags = this.add.graphics().setDepth(LAYER.flags);
     this.traps = this.add.graphics().setDepth(LAYER.ground);
     this.arrows = this.add.graphics().setDepth(LAYER.projectiles);
@@ -255,38 +266,6 @@ export class Arena extends Phaser.Scene {
   }
   private makeTextures() {
     makeMonsterTextures(this);
-    for (const team of TEAMS)
-      for (const classId of CLASS_IDS)
-        for (let frame = 0; frame < 2; frame++) {
-          const data = CLASS_ART[classId].map((row, i) =>
-            frame === 1 && i >= 13
-              ? row.slice(0, 3) + row.slice(3, 13).split('').reverse().join('') + row.slice(13)
-              : row,
-          );
-          this.textures.generate(`${team}-${classId}-${frame}`, {
-            data,
-            pixelWidth: 2,
-            palette: palette(CLOTH[team], LIGHT[team]) as Phaser.Types.Create.Palette,
-          });
-        }
-    // World bearers: one sprite per weapon look, recoloured per team like the duel classes.
-    for (const team of TEAMS)
-      for (const look of Object.keys(LOOK_ART) as WeaponLook[])
-        for (let frame = 0; frame < 2; frame++)
-          this.textures.generate(`${team}-look-${look}-${frame}`, {
-            data: LOOK_ART[look].map((row, i) =>
-              frame === 1 && i >= 13 ? row.slice(0, 3) + row.slice(3, 13).split('').reverse().join('') + row.slice(13) : row,
-            ),
-            pixelWidth: 2,
-            palette: palette(CLOTH[team], LIGHT[team]) as Phaser.Types.Create.Palette,
-          });
-    for (const team of TEAMS)
-      for (const classId of CLASS_IDS)
-      for (const skin of CHARACTER_SKINS[classId])
-        for (let frame=0;frame<2;frame++) {
-          const data=characterSkinArt(classId,skin.id).map((row,i)=>frame===1&&i>=13?row.slice(0,3)+row.slice(3,13).split('').reverse().join('')+row.slice(13):row);
-          this.textures.generate(`${team}-${classId}-${skin.id}-${frame}`,{data,pixelWidth:2,palette:palette(skin.cloth,skin.light) as Phaser.Types.Create.Palette});
-        }
     for (const team of TEAMS)
       for (let frame = 0; frame < 2; frame++) {
         const data = ZOMBIE_ART.map((row, i) =>
@@ -811,6 +790,10 @@ export class Arena extends Phaser.Scene {
     if (!this.controls) return;
     // A world snapshot carries its zone; a match snapshot only ever has a map.
     const zoneId = (snapshot as Snapshot & { zoneId?: ZoneId }).zoneId;
+    if ((zoneId && zoneId !== this.currentZoneId) || (!zoneId && snapshot.mapId !== this.currentMapId)) {
+      this.particles.clear();
+      for (const v of this.visuals.values()) { v.locomotion = new Locomotion(); v.alive = false; }
+    }
     if (zoneId) {
       if (zoneId !== this.currentZoneId) {
         this.drawZone(zoneId);
@@ -834,6 +817,7 @@ export class Arena extends Phaser.Scene {
       if (snapshot.players.some((p) => p.id === key)) continue;
       v.body.destroy();
       v.name.destroy();
+      v.stun.destroy();
       v.shadow.destroy();
       v.hp.destroy();
       v.weapon.destroy();
@@ -889,20 +873,9 @@ export class Arena extends Phaser.Scene {
           duration: 180,
           onComplete: () => slash.destroy(),
         });
-      } else {
+      } else if (e.kind !== 'projectileCut') {
         const color = e.kind === 'block' ? GOLD : COLORS[e.team];
-        for (let i = 0; i < (e.kind === 'capture' ? 24 : 7); i++) {
-          const a = i * 2.4,
-            rect = this.add.rectangle(e.x, e.y, 3, 3, color).setDepth(LAYER.celebration);
-          this.tweens.add({
-            targets: rect,
-            x: e.x + Math.cos(a) * (e.kind === 'capture' ? 100 : 30),
-            y: e.y + Math.sin(a) * 35,
-            alpha: 0,
-            duration: 450,
-            onComplete: () => rect.destroy(),
-          });
-        }
+        this.particles.burst(e.x, e.y, color, e.kind === 'capture' ? 24 : 8, e.kind === 'capture' ? 120 : 65);
       }
       if (e.kind === 'summon') {
         const smoke = this.add.circle(e.x, e.y, 12, 0x6a4c93, 0.4).setDepth(LAYER.lowFx);
@@ -1093,6 +1066,19 @@ export class Arena extends Phaser.Scene {
         .setOrigin(0.5)
         .setDepth(LAYER.sparks);
       this.fade(text, { y: e.y - 62 }, 900);
+    } else if (e.kind === 'projectileCut') {
+      const color = e.color ? Phaser.Display.Color.HexStringToColor(e.color).color : 0xe9d5a2;
+      const base = (e.angle ?? 0) + Math.PI;
+      for (const side of [-1, 1]) {
+        const angle = base + side * Math.PI / 4;
+        const piece = this.add.rectangle(e.x, e.y, Math.max(7, Math.min(14, (e.power ?? 3) * 2)), 3, color, 0.95)
+          .setRotation(angle).setDepth(LAYER.effects);
+        this.fade(piece, {
+          x: e.x + Math.cos(angle) * (visualSettings.reduced ? 18 : 42),
+          y: e.y + Math.sin(angle) * (visualSettings.reduced ? 18 : 42),
+          scaleX: 0.4,
+        }, visualSettings.reduced ? 150 : 280);
+      }
     } else if (e.kind === 'counter') {
       this.fade(
         this.add.star(e.x, e.y - 4, 8, 6, 20, e.power ? 0xff9a3c : 0xffd36b, 0.9).setDepth(LAYER.effects),
@@ -1119,7 +1105,7 @@ export class Arena extends Phaser.Scene {
         { scale: 2.5 },
         260,
       );
-      if (e.power) this.cameras.main.shake(90, 0.0025);
+      if (e.power && visualSettings.shake && !visualSettings.reduced) this.cameras.main.shake(90, 0.0025);
     } else if (e.kind === 'blackhole') {
       this.fade(this.add.circle(e.x,e.y,12).setStrokeStyle(3,0xb866ff,0.85).setDepth(LAYER.effects),{scale:5},450);
     } else if (e.kind === 'blink') {
@@ -1654,12 +1640,11 @@ export class Arena extends Phaser.Scene {
   }
   private drawPlayer(p: Player, local: boolean, time: number, delta = 16.67) {
     const look = p.look as WeaponLook | undefined;
-    const texture = (frame: number) =>
-      look && LOOK_ART[look]
-        ? `${p.team}-look-${look}-${frame}`
-        : CHARACTER_SKINS[p.classId].some((s) => s.id === p.skinId)
-          ? `${p.team}-${p.classId}-${p.skinId}-${frame}`
-          : `${p.team}-${p.classId}-${frame}`;
+    const skin = CHARACTER_SKINS[p.classId].find(s => s.id === p.skinId);
+    const key = look && LOOK_ART[look] ? `${p.team}-look-${look}` : `${p.team}-${p.classId}-${skin?.id ?? 'base'}`;
+    const rows = look && LOOK_ART[look] ? LOOK_ART[look] : characterSkinArt(p.classId, skin?.id);
+    const colors = look ? palette(CLOTH[p.team], LIGHT[p.team]) : palette(skin?.cloth ?? CLOTH[p.team], skin?.light ?? LIGHT[p.team]);
+    const atlas = ensureActorAtlas(this, key, rows, colors);
     // What is in the hand follows the weapon's look in the world, and the class in a match.
     const hand =
       look && LOOK_WEAPON[look]
@@ -1676,9 +1661,10 @@ export class Arena extends Phaser.Scene {
     let v = this.visuals.get(p.id);
     if (!v) {
       v = {
+        locomotion: new Locomotion(), alive: p.hp > 0, stepFrame: -1,
         body: this.add
-          .sprite(p.x, p.y, texture(0))
-          .setOrigin(0.5, 0.7)
+          .sprite(p.x, p.y, atlas, 16)
+          .setOrigin(0.5, 0.66)
           .setDepth(LAYER.bodies),
         shadow: this.add.ellipse(p.x, p.y + 8, 26, 10, 0x081618, 0.4).setDepth(LAYER.underlay),
         name: this.add
@@ -1691,6 +1677,20 @@ export class Arena extends Phaser.Scene {
           })
           .setOrigin(0.5)
           .setDepth(LAYER.overhead),
+        stun: this.add
+          .text(p.x, p.y - 55, '✦ ATURDIDO ✦', {
+            fontFamily: 'monospace',
+            fontSize: '10px',
+            fontStyle: 'bold',
+            color: '#ffe28a',
+            backgroundColor: '#342514',
+            stroke: '#1a1411',
+            strokeThickness: 2,
+            padding: { x: 3, y: 2 },
+          })
+          .setOrigin(0.5)
+          .setDepth(LAYER.overhead)
+          .setVisible(false),
         hp: this.add.graphics().setDepth(LAYER.overhead),
         weapon: this.add.graphics().setDepth(LAYER.weapons),
         x: p.x,
@@ -1698,14 +1698,23 @@ export class Arena extends Phaser.Scene {
       };
       this.visuals.set(p.id, v);
     }
-    const moving = Math.hypot(p.x - v.x, p.y - v.y) > 0.3;
+    const frozen = p.hp <= 0 || p.frozenLeft > 0 || p.stunLeft > 0;
+    const reset = v.alive !== (p.hp > 0) || Math.hypot(p.x-v.x,p.y-v.y) > 48;
+    if (reset) { v.x = p.x; v.y = p.y; }
+    v.alive = p.hp > 0;
     const smooth = local ? 1 : 1 - Math.exp(-delta / 55);
     v.x += (p.x - v.x) * smooth;
     v.y += (p.y - v.y) * smooth;
+    v.locomotion.update(v.x, v.y, delta, frozen || p.dashLeft > 0, reset);
+    const moving = v.locomotion.moving;
+    const frame = v.locomotion.frame(time, frozen || visualSettings.reduced);
+    if (moving && frame !== v.stepFrame && frame % 8 % 3 === 0) this.particles.burst(v.x, v.y+9, 0xa79b7b, 2, 12, 230);
+    if (!frozen && p.dashLeft > 0 && this.emitTrail) this.particles.burst(v.x, v.y, COLORS[p.team], 4, 18, 240);
+    v.stepFrame = frame;
     v.body
-      .setPosition(v.x, v.y + (moving ? Math.sin(time * 0.022) * 1.2 : 0))
-      .setTexture(texture(moving ? Math.floor(time / 110) % 2 : 0))
-      .setFlipX(Math.cos(p.angle) < 0)
+      .setPosition(v.x, v.y)
+      .setTexture(atlas, frame)
+      .setFlipX(false)
       .setScale(p.shotCharge>0||p.specialCharge>0?1+Math.sin(time*.018)*.045:1);
     const actionAngle=p.hp<=0?90:p.frozenLeft>0?Math.sin(time*.045)*5:p.dashLeft>0?Math.cos(p.angle)*-9:p.windup>0?Math.cos(p.angle)*6:0;
     v.body
@@ -1723,12 +1732,16 @@ export class Arena extends Phaser.Scene {
       );
     if (p.hitFlash > 0) v.body.setTintFill(0xffe6ba);
     else v.body.clearTint();
-    v.shadow.setPosition(v.x, v.y + 8);
+    v.shadow.setPosition(v.x, v.y + 8).setScale(moving ? 1 + Math.sin(v.locomotion.phase * Math.PI / 3) * .05 : 1);
     v.name.setPosition(v.x, v.y - 34).setText(local ? `${p.name} · VOS` : p.name);
+    v.stun
+      .setPosition(v.x, v.y - 55 + (visualSettings.reduced ? 0 : Math.sin(time * 0.009) * 2))
+      .setVisible(p.hp > 0 && p.stunLeft > 0);
     const stats = CLASSES[p.classId],
       w = v.weapon;
     w.clear();
-    w.setPosition(v.x, v.y);
+    w.setDepth(Math.sin(p.angle) < -0.25 ? LAYER.bodies - .1 : LAYER.weapons);
+    w.setPosition(v.x, v.y + (moving ? Math.sin(v.locomotion.phase * Math.PI / 3) : 0));
     w.setRotation(p.angle);
     if (p.hp > 0 && p.imbue) {
       // The weapon carries an affinity: a glow and a crackle along the blade, in its colour.
@@ -2316,6 +2329,10 @@ export class Arena extends Phaser.Scene {
     }
   }
   update(time: number, delta: number) {
+    this.particles?.update(Math.min(delta, 100));
+    const tick = Math.floor(time / 75);
+    this.emitTrail = tick !== this.trailTick;
+    this.trailTick = tick;
     if (!this.controls) return;
     this.settlement?.update(time, delta);
     this.updateCamera(delta);
@@ -2588,6 +2605,7 @@ export class Arena extends Phaser.Scene {
         y: a.y + Math.sin(a.angle) * arrowMotion(a).speed * age,
       };
       const p = lineClear(a, next, this.terrain()) ? next : a;
+      if (this.emitTrail) this.particles.burst(p.x, p.y, a.worldElement ? hex(ELEMENT_COLORS[a.worldElement as keyof typeof ELEMENT_COLORS] ?? '#e9d5a2') : a.ice || a.element === 'ice' ? 0xbfeaff : a.element === 'fire' || a.classId === 'mage' || a.classId === 'necromancer' ? 0xff9b45 : 0xe9d5a2, 2, 9, 220);
       const grow = 1 + (a.power ?? 0);
       if (a.worldElement) {
         this.drawElementShot(p, a.angle, a.worldElement, grow, time);

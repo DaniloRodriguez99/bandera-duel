@@ -1,5 +1,7 @@
 # Bandera Duel
 
+Android: instalación de la APK, servidor configurable y compilación en [MOBILE.md](MOBILE.md).
+
 [Registro de cambios](CHANGELOG.md).
 
 Juego web de captura de bandera para **duelos 1v1, equipos 2v2 o todos contra todos de 3–4 jugadores**, con espada, arco, magia y dash. Partidas de tres minutos, salas públicas o privadas por link, cuatro mapas, controles para PC y celular y servidor autoritativo. No requiere cuentas ni base de datos.
@@ -248,7 +250,8 @@ Mientras se mantiene o apunta una habilidad aparece una guía blueprint local: c
 - **Espada:** ataque rápido en un arco frontal de 180°, alcance 60, 0,1 s de preparación y 0,4 s de recarga. Puede cortar a varios enemigos, pero nunca a aliados. Mantener clic hasta 1,5 s aumenta gradualmente alcance y daño hasta ×2.
 - **Clic derecho · guardia continua:** bloquea de frente, en un arco de 120°, todos los golpes cuerpo a cuerpo, flechas normales y hielo mientras se mantenga pulsado. No tiene límite ni se rompe al bloquear; permite caminar al 45 % de la velocidad. Las trampas y flechas de viento atraviesan la defensa sin bajarla. Soltar, atacar, quedar aturdido, morir o embestir inicia 1 s de recarga.
 - **Espacio · embestida:** recorre unas 190 unidades en la dirección de movimiento o de apuntado, hace 1 de daño y empuja una vez a cada enemigo atravesado. No daña aliados, se detiene en paredes, no concede invulnerabilidad y recarga en 3 s.
-- **Q · golpe de escudo:** golpe frontal corto de 0,5 de daño, empujón y 1,5 s de aturdimiento. Puede iniciarse desde guardia, pero baja el escudo durante el golpe. Otro caballero orientado correctamente puede bloquearlo. Recarga de 6 s.
+- **Q · golpe de escudo:** golpe frontal corto de 0,5 de daño, empujón y 2 s de aturdimiento. Puede iniciarse desde guardia, pero baja el escudo durante el golpe. Otro caballero orientado correctamente puede bloquearlo. Recarga de 6 s.
+- **Corte de proyectiles:** la espada normal del caballero y del guerrero destruye los proyectiles enemigos que intercepta en su arco frontal. El espadachín no recibe el impacto; las dos mitades salen hacia atrás a ±45° como efecto visual y desaparecen sin causar daño.
 - **E · furia:** durante 5 s la espada hace 40 % más daño, multiplicado también por la carga. El aura roja oscura revela al caballero durante 1,5 s si está en arbustos. Recarga de 15 s; termina al morir, cambiar de clase, capturar o reiniciarse la ronda.
 
 ### Guerrero

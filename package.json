@@ -18,7 +18,10 @@
     "start": "npm run start -w @bandera/server",
     "typecheck": "npm run build -w @bandera/shared && npm run typecheck --workspaces --if-present",
     "test": "npm run build -w @bandera/shared && vitest run",
-    "test:browser": "playwright test"
+    "test:browser": "playwright test",
+    "android:sync": "node scripts/android.mjs sync",
+    "android:apk": "node scripts/android.mjs apk",
+    "android:bundle": "node scripts/android.mjs bundle"
   },
   "devDependencies": {
     "typescript": "^5.9.3",

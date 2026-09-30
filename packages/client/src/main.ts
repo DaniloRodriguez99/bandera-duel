@@ -1,3 +1,6 @@
+import { native, savedServer, initialServer, installPlatform } from './platform';
+import { invitation } from './mobile-connection';
+import { setAudioActive } from './audio';
 import Phaser from 'phaser';
 import { Client, type Room } from '@colyseus/sdk';
 import {
@@ -109,7 +112,7 @@ function gateShowcase() {
 }
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
-const arena = new Arena();
+export const arena = new Arena();
 $('cooldowns').insertAdjacentHTML('beforeend', '<span id="cd-ice" hidden></span>');
 $('cooldowns').insertAdjacentHTML('beforeend', '<span id="cd-black-hole" hidden></span>');
 /** A key or a tap on a skill slot: cast it at wherever the character is aiming right now. */
@@ -282,10 +285,10 @@ let room: Room | undefined,
   busy = false,
   online = false;
 let target = new URL(location.href).searchParams.get('sala');
-const configured = import.meta.env.VITE_SERVER_URL as string | undefined;
-const endpoint =
-  configured || `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.hostname}:2567`;
-const client = new Client(endpoint);
+const configured = initialServer();
+let endpoint =
+  savedServer() || configured || `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.hostname}:2567`;
+let client = new Client(endpoint);
 const nameInput = $<HTMLInputElement>('name');
 nameInput.value = localStorage.getItem('bandera-name') || '';
 let selectedMap = (localStorage.getItem('bandera-map') as MapId) || 'courtyard';
@@ -662,7 +665,7 @@ function bind(joined: Room) {
   $('hud').hidden = false;
   $('guide').hidden = true;
   document.body.classList.add('in-room');
-  $<HTMLInputElement>('invite').value = location.href;
+  $<HTMLInputElement>('invite').value = invitation(room.roomId, native, import.meta.env.VITE_PUBLIC_WEB_URL);
   room.onMessage('roomInfo', (info: RoomInfo) => {
     latestRoomInfo = info;
     $('spectator-count').textContent = `Espectadores: ${info.spectators}/5`;
@@ -862,6 +865,7 @@ $('entry-form').onsubmit = (e) => {
   void join();
 };
 async function join() {
+  if (!platform.ready()) return;
   if (busy) return;
   const name = validName(nameInput.value);
   if (!name) {
@@ -962,6 +966,7 @@ $('world-form').onsubmit = (event) => {
 };
 /** Joins the world with whatever is chosen so far: the list, a character, or a newborn. */
 function enterWorld() {
+  if (!platform.ready()) return;
   worldMode = true;
   nameInput.value = $<HTMLInputElement>('world-name').value;
   return join();
@@ -1579,6 +1584,7 @@ interface RoomInfo {
 }
 let refreshingRooms = false;
 async function refreshRooms() {
+  if (native && !savedServer() && !configured) return;
   if (room || practice || refreshingRooms) return;
   refreshingRooms = true;
   try {
@@ -1726,3 +1732,26 @@ $('practice-exit').onclick = () => {
   arena.receive(structuredClone(preview.duel.state), '');
   $('intro').scrollIntoView({ block: 'start' });
 };
+
+const platform = installPlatform({
+  connected: () => !!room || !!practice,
+  leave: () => practice ? $('practice-exit').click() : $('leave').click(),
+  setServer: value => { endpoint = value; client = new Client(value); },
+  joinCode: code => { location.assign(`${location.pathname}?sala=${encodeURIComponent(code)}`); },
+  activity: active => {
+    arena.controls?.clear();
+    setAudioActive(active);
+    if (active && online) room?.send('sync');
+  },
+  closePanel: () => {
+    if (!$('social-menu').hidden) { $('social-menu').hidden = true; return true; }
+    if (!$('trade-panel').hidden) { room?.send('tradeCancel'); return true; }
+    if (!$('wh-map').hidden) { worldHud.toggleMap(false); return true; }
+    if (!$('wh-panel').hidden) { worldHud.togglePanel(false); return true; }
+    if (!$('chat-panel').hidden) { $('chat-toggle').click(); return true; }
+    for (const id of ['world-delete-dialog', 'world-selection']) {
+      if (!$(id).hidden) { $(id).hidden = true; return true; }
+    }
+    return false;
+  },
+});

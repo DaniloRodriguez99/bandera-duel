@@ -7,3 +7,8 @@ gha-creds-*.json
 test-results/
 playwright-report/
 .DS_Store
+
+.tools/
+artifacts/
+*.keystore
+*.jks

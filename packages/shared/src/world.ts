@@ -2769,8 +2769,10 @@ export class World extends Duel {
       };
       const steps = Math.max(1, Math.ceil((shot.speed * dt) / 6));
       for (let i = 0; i < steps; i++) {
+        const from = { x: shot.x, y: shot.y };
         shot.x += (Math.cos(shot.angle) * shot.speed * dt) / steps;
         shot.y += (Math.sin(shot.angle) * shot.speed * dt) / steps;
+        if (this.cutProjectile(from, shot, shot.angle, shot.radius, source, shot.color)) return false;
         if (blocked(shot.x, shot.y, 2, this.terrain)) return false;
         const p = s.players.find(
           (q) =>

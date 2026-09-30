@@ -94,9 +94,10 @@ const SPELL_NOTES: Record<string, number[]> = {
   blackhole: [110, 82, 55],
   bash: [130, 86],
   fury: [92, 138, 69],
+  projectileCut: [740, 495],
 };
 export function sound(kind: string) {
-  if (muted || !context) return;
+  if (muted || !context || context.state !== 'running' || document.hidden) return;
   const now = context.currentTime;
   const notes =
     SPELL_NOTES[kind] ??
@@ -127,4 +128,10 @@ export function sound(kind: string) {
     osc.start(now + i * 0.09);
     osc.stop(now + i * 0.09 + 0.15);
   });
+}
+
+/** Native app lifecycle can fire before the WebView visibility event. */
+export function setAudioActive(active: boolean) {
+  if (!active) { silenceMusic(); void context?.suspend(); }
+  else if (!muted && context) void context.resume().then(scheduleMusic).catch(() => {});
 }

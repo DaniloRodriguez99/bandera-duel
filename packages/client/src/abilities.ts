@@ -212,7 +212,7 @@ function tiersOf(id: SkillId, classId: ClassId): AbilityTier[] | undefined {
     case 'guardian.guard':
       return [{ label: 'Mantener · bloqueo frontal de 120°', active: (p) => p.guarding }];
     case 'guardian.shieldBash':
-      return [{ label: '0,5 daño · empujón · aturde 1,5 s', active: (p) => p.shieldBashLeft > 0 }];
+      return [{ label: `0,5 daño · empujón · aturde ${RULES.shieldBashStun} s`, active: (p) => p.shieldBashLeft > 0 }];
     case 'guardian.fury':
       return [
         {
