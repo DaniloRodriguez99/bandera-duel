@@ -2,6 +2,15 @@
 
 ## 2026-09-30
 
+### Guerrero: técnicas
+
+- **Nombres e íconos nuevos:** Mandoble del Titán (Barrido del Titán y Caída de Montaña), Creciente Escarlata, Represalia del Coloso, Embestida Sísmica y Cuerpo de Titán. Cada técnica tiene su ícono; el del Cuerpo de Titán ya no repite el del parry.
+- **Represalia del Coloso se puede mantener.** Pulsada sigue siendo el parry justo a tiempo. Mantenida, la guardia sigue arriba mientras un mandala naranja endurece el cuerpo, y lo que devuelve vuelve más rápido, más fuerte y más grande cuanto más la sostuvo. Gasta maná mientras se sostiene, lo frena y no lo deja golpear; se suelta sola a los 2,2 s, y un golpe por la espalda la rompe.
+- **Qué puede devolver depende de cuánto la sostuvo.** Flechas y tajos livianos, a tiempo; orbes cargados, desde 0,4 s; el Corte Celestial, alrededor de 1,2 s; y una Singularidad del Mago, desde 1,5 s: vuelve hacia su mago como del Guerrero. Lo que todavía no alcanza a devolver lo frena. Cada ataque declara si se puede frenar, devolver o cortar, y con cuánta fuerza.
+- **La Creciente Escarlata corta lo que le lanzan.** De un toque corta flechas; desde el segundo, orbes; completa, parte tajos y olas; la ola colosal lo parte todo. El salto al completarse se nota.
+- **Su color sigue a su poder:** sangre y violeta, rojo, ardiente con brasas y al rojo blanco con borde violeta. El aura de la carga, los estados del panel y el sonido cambian a la vez.
+- Fallar el parry cuesta de 3 a 5 s según cuánto se sostuvo; acertar lo deja listo en 0,6 s, como antes.
+
 ### Caballero: técnicas
 
 - **Tajo Descendente.** El tercer corte ya no cae recto: la espada sube por encima del hombro y baja en diagonal sobre la línea de la puntería, y se la ve venir desde arriba. Cargado, su tajo es una grieta de energía angosta que corre a ras del suelo, más lejos y más fuerte que la media luna de los cortes horizontales.

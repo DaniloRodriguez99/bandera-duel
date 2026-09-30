@@ -1,17 +1,21 @@
 import { describe, expect, it } from 'vitest';
 import {
+  CELESTIAL_CUT,
   CLASSES,
   DEFAULT_LOADOUTS,
   Duel,
+  INTERACTIONS,
   MAPS,
   MOVES,
   RULES,
   SKILLS,
   WARRIOR_LAUNCH,
   WARRIOR_PARRY,
+  WARRIOR_PARRY_CHARGE,
   WARRIOR_REINFORCE,
   WARRIOR_SLASH_CHARGE,
   WARRIOR_SWORD_CHARGE,
+  curve,
   idleInput,
   movePlayer,
   newPlayer,
@@ -79,6 +83,15 @@ describe('Guerrero · identidad', () => {
     expect(SKILLS['common.dash'].compatibleClasses).toEqual(['archer']);
   });
 
+  it('sus técnicas tienen nombres de fuerza y contragolpe, y un ícono propio cada una', () => {
+    const ids = ['vanguard.sword', 'vanguard.slash', 'vanguard.counter', 'vanguard.dash', 'vanguard.reinforce'] as const;
+    expect(ids.map((id) => SKILLS[id].name)).toEqual([
+      'Mandoble del Titán', 'Creciente Escarlata', 'Represalia del Coloso', 'Embestida Sísmica', 'Cuerpo de Titán',
+    ]);
+    expect(new Set(ids.map((id) => SKILLS[id].icon)).size).toBe(ids.length);
+    expect(['vanguard.sword:0:0', 'vanguard.sword:1:0'].map((id) => MOVES[id].name)).toEqual(['Barrido del Titán', 'Caída de Montaña']);
+  });
+
   it('arranca con inercia: tarda un instante en alcanzar su velocidad; los demás no', () => {
     const heavy = newPlayer('w', 'W', 'blue', 'vanguard');
     const light = newPlayer('k', 'K', 'blue', 'guardian');
@@ -99,7 +112,7 @@ describe('Guerrero · identidad', () => {
   });
 });
 
-describe('Guerrero · Mandoble Colosal', () => {
+describe('Guerrero · Mandoble del Titán', () => {
   it('son dos golpes pesados en orden: un barrido y un martillazo desde arriba, lentos de preparar', () => {
     const { warrior, rival, step, finish, inFront, events } = arena();
     const dealt: number[] = [];
@@ -161,7 +174,7 @@ describe('Guerrero · Mandoble Colosal', () => {
     expect(plain.duel.state.waves).toHaveLength(0);
   });
 
-  it('ya no corta proyectiles: eso es del Caballero', () => {
+  it('el mandoble no corta proyectiles: para eso está la Creciente', () => {
     const { duel, warrior, rival, step, events } = arena('archer');
     step({ primary: TAP });
     step({}, {}, 10);
@@ -302,23 +315,107 @@ describe('Guerrero · Creciente Escarlata', () => {
   });
 });
 
-describe('Guerrero · Revancha de Hierro (parry)', () => {
+describe('Guerrero · Represalia del Coloso (parry)', () => {
   const arrow = (from: Player, value: Partial<Arrow> = {}): Arrow => ({
     id: 900, owner: from.id, team: from.team, classId: 'archer', x: 400, y: 270, angle: Math.PI, life: 1, ...value,
   });
 
-  it('es una ventana corta al pulsar, sin frenar al Guerrero; fallarla cuesta 3 s', () => {
+  it('pulsada es una ventana corta que no frena al Guerrero; fallarla cuesta 3 s', () => {
     const { warrior, step } = arena();
-    step({ e: DOWN });
+    step({ e: TAP });
     expect(warrior.counterLeft).toBeCloseTo(WARRIOR_PARRY.window);
-    expect(warrior.counterCd).toBeCloseTo(WARRIOR_PARRY.cooldown);
-    // Holding the key keeps nothing up.
+    expect(warrior.counterCd).toBeCloseTo(curve(WARRIOR_PARRY.cooldown, 0));
     const from = warrior.x;
-    step({ e: HOLD }, { x: 1 }, ticks(WARRIOR_PARRY.window) + 1);
+    step({}, { x: 1 }, ticks(WARRIOR_PARRY.window) + 1);
     expect(warrior.counterLeft).toBe(0);
     expect(warrior.x - from).toBeGreaterThan(CLASSES.vanguard.speed * WARRIOR_PARRY.window * 0.6);
     step({ e: TAP });
     expect(warrior.counterLeft).toBe(0);
+  });
+
+  it('mantenida sigue arriba: lo frena, no lo deja golpear, gasta maná y a su tope se suelta sola', () => {
+    const { warrior, step } = arena();
+    step({ e: DOWN });
+    const from = warrior.x;
+    step({ e: HOLD }, { x: 1 }, ticks(1));
+    expect(warrior.chargeSkill).toBe('vanguard.counter');
+    expect(warrior.counterLeft).toBeGreaterThan(0);
+    expect(warrior.counterCharge).toBeCloseTo(1, 1);
+    expect(warrior.x - from).toBeLessThan(CLASSES.vanguard.speed * 0.7);
+    expect(warrior.mana).toBeLessThan(CLASSES.vanguard.mana - 10);
+    step({ e: HOLD, primary: TAP });
+    expect(warrior.move).toBe('');
+    // At its cap it lets go by itself; holding the key does not raise it again.
+    step({ e: HOLD }, {}, ticks(WARRIOR_PARRY_CHARGE.cap) - ticks(1) - 1);
+    expect(warrior.chargeSkill).toBe('');
+    step({ e: HOLD }, {}, ticks(WARRIOR_PARRY.window) + 2);
+    expect(warrior.counterLeft).toBe(0);
+    // It met nothing: the longest guard costs the longest wait.
+    expect(warrior.counterCd).toBeGreaterThan(curve(WARRIOR_PARRY.cooldown, 0) + 1);
+  });
+
+  it('cuanto más la sostiene, más rápido, más fuerte y más grande devuelve lo que llega', () => {
+    const returned = (hold: number) => {
+      const { duel, warrior, rival, step } = arena('archer');
+      Object.assign(rival, { x: 600, y: 270 });
+      step({ e: DOWN });
+      if (hold) step({ e: HOLD }, {}, ticks(hold));
+      duel.state.arrows.push(arrow(rival, { x: 380 }));
+      step({ e: HOLD }, {}, 3);
+      const back = duel.state.arrows.find((a) => a.owner === warrior.id)!;
+      return { speed: back.speedScale ?? 1, damage: back.damageScale ?? 1, size: back.sizeScale ?? 1, counterCd: warrior.counterCd };
+    };
+    const quick = returned(0);
+    const held = returned(WARRIOR_PARRY_CHARGE.tiers[3].at);
+    expect(held.speed).toBeGreaterThan(quick.speed);
+    expect(held.damage).toBeGreaterThan(quick.damage * 1.3);
+    expect(held.size).toBeGreaterThan(quick.size);
+    // Not in a straight line: the first moments of the hold count the most.
+    expect(curve(WARRIOR_PARRY.power, 0.4) - curve(WARRIOR_PARRY.power, 0)).toBeGreaterThan(
+      curve(WARRIOR_PARRY.power, 2.2) - curve(WARRIOR_PARRY.power, 1.8),
+    );
+  });
+
+  it('un orbe cargado pide sostenerla un momento: a tiempo solo lo frena, sostenida lo devuelve', () => {
+    const orb = (hold: number) => {
+      const { duel, warrior, rival, step, events } = arena('mage');
+      Object.assign(rival, { x: 600, y: 270 });
+      step({ e: DOWN });
+      if (hold) step({ e: HOLD }, {}, ticks(hold));
+      duel.state.arrows.push(arrow(rival, { x: 380, classId: 'mage', skillId: 'mage.fireball', power: 1, charged: true }));
+      step({ e: HOLD }, {}, 3);
+      return { warrior, back: duel.state.arrows.find((a) => a.owner === warrior.id), counters: events('counter').length };
+    };
+    const quick = orb(0);
+    expect(quick.back).toBeUndefined();
+    expect(quick.counters).toBe(1);
+    expect(quick.warrior.hp).toBe(CLASSES.vanguard.hp);
+    const held = orb(WARRIOR_PARRY_CHARGE.tiers[1].at + 0.1);
+    expect(held.back).toBeDefined();
+    expect(held.warrior.hp).toBe(CLASSES.vanguard.hp);
+  });
+
+  it('sostenida lo bastante, le devuelve la Singularidad a su mago; si no, se lo lleva', () => {
+    const singularity = (hold: number) => {
+      const { duel, warrior, rival, step, events } = arena('mage');
+      Object.assign(rival, { x: 700, y: 270 });
+      step({ e: DOWN });
+      if (hold) step({ e: HOLD }, {}, ticks(hold));
+      (duel as unknown as { spawnBlackHole(owner: Player, x: number, y: number): unknown }).spawnBlackHole(rival, warrior.x, warrior.y);
+      for (let i = 0; i < 60 && warrior.hp > 0 && duel.state.blackHoles[0]?.owner !== warrior.id; i++) step({ e: HOLD });
+      return { duel, warrior, rival, step, events };
+    };
+    expect(INTERACTIONS.singularity.parryResistance).toBeGreaterThan(curve(WARRIOR_PARRY.power, 1));
+    const short = singularity(0);
+    expect(short.warrior.hp).toBe(0);
+    const held = singularity(0.9);
+    expect(held.warrior.hp).toBe(CLASSES.vanguard.hp);
+    const hole = held.duel.state.blackHoles[0];
+    expect(hole).toMatchObject({ owner: held.warrior.id, team: held.warrior.team, traveling: true });
+    expect(held.events('counter')).toHaveLength(1);
+    // Off it goes, at the mage who threw it.
+    for (let i = 0; i < 90 && held.rival.hp > 0; i++) held.step();
+    expect(held.rival.hp).toBe(0);
   });
 
   it('devuelve el proyectil hacia quien lo lanzó, aunque se haya movido, y más rápido', () => {
@@ -341,13 +438,20 @@ describe('Guerrero · Revancha de Hierro (parry)', () => {
     expect(warrior.counterCd).toBeLessThanOrEqual(WARRIOR_PARRY.successCooldown);
   });
 
-  it('solo para lo que viene de frente', () => {
+  it('solo para lo que viene de frente, y un golpe por la espalda le rompe la guardia sostenida', () => {
     const { duel, warrior, rival, step, events } = arena('archer');
     duel.state.arrows.push(arrow(rival, { x: warrior.x - 50, angle: 0 }));
     step({ e: TAP });
     step({}, {}, 3);
     expect(events('counter')).toHaveLength(0);
     expect(warrior.hp).toBe(CLASSES.vanguard.hp - RULES.arrowDamage);
+    const flanked = arena('archer');
+    flanked.step({ e: DOWN });
+    flanked.step({ e: HOLD }, {}, 6);
+    flanked.duel.state.arrows.push(arrow(flanked.rival, { x: flanked.warrior.x - 50, angle: 0 }));
+    flanked.step({ e: HOLD }, {}, 3);
+    expect(flanked.warrior.chargeSkill).toBe('');
+    expect(flanked.warrior.counterCd).toBeGreaterThan(0);
   });
 
   it('una salva entera se puede devolver: cada éxito estira la ventana', () => {
@@ -359,20 +463,29 @@ describe('Guerrero · Revancha de Hierro (parry)', () => {
     expect(warrior.hp).toBe(CLASSES.vanguard.hp);
   });
 
-  it('frena un golpe cuerpo a cuerpo de frente y deja tambaleando a quien lo dio', () => {
-    const { duel, warrior, rival, inputs, step } = arena('guardian');
-    Object.assign(rival, { x: warrior.x + 40, y: warrior.y, hp: 3, maxHp: 3 });
-    // The knight cuts; the warrior parries as the blade arrives.
-    inputs.set(rival.id, input({ primary: TAP }, { angle: Math.PI }));
-    step();
-    inputs.delete(rival.id);
-    step();
-    step({ e: TAP });
-    step({}, {}, 4);
-    expect(warrior.hp).toBe(CLASSES.vanguard.hp);
-    expect(rival.stunLeft).toBeGreaterThan(0);
-    expect(rival.x).toBeGreaterThan(warrior.x + 40);
-    expect(duel.state.events.some((event) => event.kind === 'counter')).toBe(true);
+  it('frena un golpe cuerpo a cuerpo de frente y deja tambaleando a quien lo dio; sostenida, más', () => {
+    const blow = (hold: number) => {
+      const { duel, warrior, rival, inputs, step } = arena('guardian');
+      Object.assign(rival, { x: warrior.x + 40, y: warrior.y, hp: 3, maxHp: 3 });
+      step({ e: DOWN });
+      if (hold) step({ e: HOLD }, {}, ticks(hold));
+      // The knight cuts into the guard.
+      inputs.set(rival.id, input({ primary: TAP }, { angle: Math.PI }));
+      step({ e: HOLD });
+      inputs.delete(rival.id);
+      let staggered = 0;
+      for (let i = 0; i < 8; i++) {
+        step({ e: HOLD });
+        staggered = Math.max(staggered, rival.stunLeft);
+      }
+      return { duel, warrior, rival, staggered };
+    };
+    const quick = blow(0);
+    expect(quick.warrior.hp).toBe(CLASSES.vanguard.hp);
+    expect(quick.staggered).toBeGreaterThan(0);
+    expect(quick.rival.x).toBeGreaterThan(quick.warrior.x + 40);
+    expect(quick.duel.state.events.some((event) => event.kind === 'counter')).toBe(true);
+    expect(blow(1.6).staggered).toBeGreaterThan(quick.staggered);
   });
 
   it('devuelve un tajo hacia quien lo lanzó', () => {
@@ -417,7 +530,58 @@ describe('Guerrero · Revancha de Hierro (parry)', () => {
   });
 });
 
-describe('Guerrero · Avance Imparable', () => {
+describe('Guerrero · la Creciente corta lo que le lanzan', () => {
+  it('su poder de corte crece con la carga, con un salto al completarse', () => {
+    const cut = (seconds: number) => warriorWave(seconds).cut;
+    // A tap cuts arrows, a second on it cuts charged orbs.
+    expect(cut(0)).toBeGreaterThanOrEqual(INTERACTIONS.lightShot.cutResistance);
+    expect(cut(0)).toBeLessThan(INTERACTIONS.heavyShot.cutResistance);
+    expect(cut(1)).toBeGreaterThanOrEqual(INTERACTIONS.heavyShot.cutResistance);
+    // Only complete does it split the great slashes, and the colossal wave splits even its own kind.
+    expect(cut(2.9)).toBeLessThan(CELESTIAL_CUT.resist);
+    expect(cut(3)).toBeGreaterThanOrEqual(CELESTIAL_CUT.resist);
+    expect(cut(3) - cut(2.9)).toBeGreaterThan(0.3);
+    expect(cut(7)).toBeGreaterThanOrEqual(warriorWave(7).resist);
+  });
+
+  it('su color sigue a su poder: sangre y violeta, rojo, ardiente y al rojo blanco', () => {
+    expect([0, 1, 3, 7].map((seconds) => warriorWave(seconds).tint)).toEqual(['bloodViolet', 'scarlet', 'blaze', 'inferno']);
+    // The charge shows the same colours at the same moments.
+    const tint = (seconds: number) => [...WARRIOR_SLASH_CHARGE.tiers].reverse().find((tier) => seconds >= tier.at)!.tint;
+    expect([0, 1, 3, 7].map(tint)).toEqual(['bloodViolet', 'scarlet', 'blaze', 'inferno']);
+  });
+
+  it('una creciente de un toque corta la flecha que le viene de frente', () => {
+    const { duel, warrior, rival, step, events } = arena('archer');
+    step({ q: TAP });
+    step({}, {}, 4);
+    duel.state.arrows.push({ id: 1, owner: rival.id, team: rival.team, classId: 'archer', x: warrior.x + 160, y: warrior.y, angle: Math.PI, life: 1 });
+    step({}, {}, 10);
+    expect(events('projectileCut')).toHaveLength(1);
+    expect(warrior.hp).toBe(CLASSES.vanguard.hp);
+  });
+
+  it('completa parte un Corte Celestial que le viene de frente; antes de completarse solo lo debilita', () => {
+    const meet = (seconds: number) => {
+      const { duel, warrior, rival, step, charged } = arena('guardian');
+      Object.assign(rival, { x: 900, y: 270 });
+      warrior.hp = warrior.maxHp = 10;
+      warrior.mana = warrior.maxMana = 1000;
+      step({ q: DOWN });
+      step({ q: HOLD }, {}, ticks(seconds) - 1);
+      duel.spawnWave(rival, rival, Math.PI, CELESTIAL_CUT);
+      step({ q: UP });
+      for (let i = 0; i < 40; i++) step();
+      return 10 - warrior.hp;
+    };
+    expect(meet(3)).toBe(0);
+    const weakened = meet(2.6);
+    expect(weakened).toBeGreaterThan(0);
+    expect(weakened).toBeLessThan(CELESTIAL_CUT.damage * 0.5);
+  });
+});
+
+describe('Guerrero · Embestida Sísmica', () => {
   it('carga las piernas y sale hacia donde apunta, apartando a quien se cruce, sin invulnerabilidad', () => {
     const { duel, warrior, rival, step, events } = arena();
     Object.assign(rival, { x: warrior.x + 60, y: warrior.y });
@@ -462,7 +626,7 @@ describe('Guerrero · Avance Imparable', () => {
 });
 const WARRIOR_LAUNCH_CHARGE_CAP = 0.6;
 
-describe('Guerrero · Cuerpo de Hierro', () => {
+describe('Guerrero · Cuerpo de Titán', () => {
   it('cuesta maná, sube un mandala y lo refuerza unos segundos', () => {
     const { warrior, step, events } = arena();
     step({ r: TAP });

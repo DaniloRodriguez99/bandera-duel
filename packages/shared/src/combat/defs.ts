@@ -38,6 +38,8 @@ export interface ChargeSpec {
   breakOnDamage: { cooldown: number; over?: number } | null;
   /** Using the mobility slot drops the charge. */
   cancelOnMobility: boolean;
+  /** It lets go by itself at its cap, or when the pool cannot pay for holding it any longer. */
+  autoRelease?: boolean;
   /** Charging it gives its user away through the bushes: the telegraph is the counterplay. */
   reveals?: boolean;
 }
@@ -125,8 +127,13 @@ export interface InteractionProfile {
   interactionType: InteractionType;
   canBeCut: boolean;
   canBeParried: boolean;
-  /** Parried, it flies back at its source; otherwise a parry only stops it. */
+  /** Parried, it flies back at its source as the defender's own; otherwise a parry only stops it. */
   canBeReflected: boolean;
+  /**
+   * A guard too weak to turn it still stops it, from `BLOCK_FLOOR` of what turning it needs. Some
+   * attacks are all or nothing: turned, or they go through.
+   */
+  canBeBlocked: boolean;
   /** A full cut removes it; otherwise the most a cut does is weaken it. */
   canBeDestroyed: boolean;
   /** The cut power needed to cut it apart. */
@@ -141,6 +148,7 @@ const profile = (values: Partial<InteractionProfile> & Pick<InteractionProfile, 
   canBeCut: true,
   canBeParried: true,
   canBeReflected: true,
+  canBeBlocked: true,
   canBeDestroyed: true,
   cutResistance: 1,
   parryResistance: 1,
@@ -151,21 +159,35 @@ const profile = (values: Partial<InteractionProfile> & Pick<InteractionProfile, 
 export const INTERACTIONS = {
   /** Arrows, plain bolts of fire and ice, a monster's thrown stone. */
   lightShot: profile({ interactionType: 'projectile', cutResistance: 0.75 }),
-  /** Charged orbs, wind arrows, the zombie mage's fireball. */
-  heavyShot: profile({ interactionType: 'projectile', cutResistance: 1, priority: 2 }),
-  /** A travelling slash; each one brings its own resistance. */
+  /** Charged orbs, wind arrows, the zombie mage's fireball: a guard must be held a moment to send them back. */
+  heavyShot: profile({ interactionType: 'projectile', cutResistance: 1, parryResistance: 1.2, priority: 2 }),
+  /** A travelling slash; each one brings its own resistance, to a cut and to a guard. */
   wave: profile({ interactionType: 'wave', priority: 3 }),
   /** A blade in the hand: it can be stopped, never sent back. */
   melee: profile({ interactionType: 'melee', canBeCut: false, canBeReflected: false, canBeDestroyed: false }),
-  /** Singularidad, traps: nothing to cut or to turn. */
+  /** Traps and other ground: nothing to cut or to turn. */
   area: profile({
     interactionType: 'area',
     canBeCut: false,
     canBeParried: false,
     canBeReflected: false,
+    canBeBlocked: false,
     canBeDestroyed: false,
     cutResistance: Infinity,
     parryResistance: Infinity,
+    priority: 9,
+  }),
+  /**
+   * Singularidad: no blade cuts it and no guard stops it, but one held long enough takes it and
+   * sends it back at its mage, as its own.
+   */
+  singularity: profile({
+    interactionType: 'area',
+    canBeCut: false,
+    canBeBlocked: false,
+    canBeDestroyed: false,
+    cutResistance: Infinity,
+    parryResistance: 1.8,
     priority: 9,
   }),
 } satisfies Record<string, InteractionProfile>;
@@ -192,10 +214,14 @@ export function cutOutcome(power: number, target: InteractionProfile): CutOutcom
 
 export type ParryOutcome = 'redirect' | 'block' | 'none';
 
-/** What a parry of this power does to an attack: send it back, just stop it, or fail. */
+/** From this share of the power that sends an attack back, a guard at least stops it. */
+export const BLOCK_FLOOR = 0.6;
+
+/** What a parry of this power does to an attack: send it back, just stop it, or give way. */
 export function parryOutcome(power: number, target: InteractionProfile): ParryOutcome {
-  if (!target.canBeParried || power < target.parryResistance) return 'none';
-  return target.canBeReflected ? 'redirect' : 'block';
+  if (!target.canBeParried) return 'none';
+  if (power >= target.parryResistance - 1e-9) return target.canBeReflected ? 'redirect' : 'block';
+  return target.canBeBlocked && power >= target.parryResistance * BLOCK_FLOOR - 1e-9 ? 'block' : 'none';
 }
 
 // ── Waves ──────────────────────────────────────────────────────────────────────────────────────

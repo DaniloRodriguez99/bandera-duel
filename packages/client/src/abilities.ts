@@ -1,4 +1,4 @@
-import { CLASSES, DEFAULT_BINDINGS, KIT, KNIGHT_AWAKEN, MOVES, RULES, SKILLS, WARRIOR_PARRY, WARRIOR_REINFORCE, affordable, blackHoleStats, chargePower, chargeProgress, chargeTier, kitCooldown, overcharge, projectileSkillStats, skillCost, type ClassId, type InputBindings, type PhysicalBinding, type Player, type ResourceCost, type SkillId, type SkillSlot, type Snapshot } from '@bandera/shared';
+import { CLASSES, DEFAULT_BINDINGS, KIT, KNIGHT_AWAKEN, MOVES, RULES, curve, SKILLS, WARRIOR_PARRY, WARRIOR_REINFORCE, affordable, blackHoleStats, chargePower, chargeProgress, chargeTier, kitCooldown, overcharge, projectileSkillStats, skillCost, type ClassId, type InputBindings, type PhysicalBinding, type Player, type ResourceCost, type SkillId, type SkillSlot, type Snapshot } from '@bandera/shared';
 import { hasFaces, showFace } from './combo-icons.js';
 
 /**
@@ -70,8 +70,8 @@ const CARD_NAMES: Record<SkillId, string> = {
   'mage.blink': 'Parpadeo', 'mage.blackHole': 'Singularidad', 'necromancer.fire': 'Fuego',
   'necromancer.summon': 'Invocar zombies', 'guardian.sword': 'Tres Cortes', 'guardian.flurry': 'Ráfaga de Acero',
   'guardian.dash': 'Paso Relámpago', 'guardian.fury': 'Despertar',
-  'vanguard.sword': 'Mandoble Colosal', 'vanguard.slash': 'Creciente Escarlata', 'vanguard.counter': 'Revancha de Hierro',
-  'vanguard.dash': 'Avance Imparable', 'vanguard.reinforce': 'Cuerpo de Hierro', 'common.dash': 'Esquivar',
+  'vanguard.sword': 'Mandoble del Titán', 'vanguard.slash': 'Creciente Escarlata', 'vanguard.counter': 'Represalia del Coloso',
+  'vanguard.dash': 'Embestida Sísmica', 'vanguard.reinforce': 'Cuerpo de Titán', 'common.dash': 'Esquivar',
 };
 const COMPANION_NAMES: Record<Companion, string> = { companionCommand: 'Mando', companionMark: 'Marcar' };
 const COMPANION_HOW_TO: Record<Companion, string> = {
@@ -116,7 +116,7 @@ function detailOf(id: SkillId, p: Player): string | null {
   // The awakening shows the seconds it has left.
   if (id === 'guardian.fury') return p.empowered === 'awaken' ? `${p.furyLeft.toFixed(1)}s` : null;
   if (id === 'vanguard.reinforce') return p.empowered === 'reinforce' ? `${p.furyLeft.toFixed(1)}s` : null;
-  if (id === 'vanguard.counter') return p.counterLeft > 0 ? 'Activo' : null;
+  if (id === 'vanguard.counter' && p.chargeSkill !== id) return p.counterLeft > 0 ? 'Activo' : null;
   // A kit skill says how far its charge has gone (past 100 % when it overcharges), then the move
   // it is performing.
   if (id in KIT) {
@@ -216,14 +216,14 @@ function tiersOf(id: SkillId, classId: ClassId): AbilityTier[] | undefined {
       return [{ label: 'Inmoviliza 1 s' }];
     case 'vanguard.counter':
       return [
-        { label: 'De frente · lo devuelve hacia quien lo lanzó', active: (p) => p.counterLeft > 0 },
+        ...kitTiers(id)!,
         { label: 'Cuerpo a cuerpo · lo frena y lo hace tambalear', active: (p) => p.counterLeft > 0 },
-        { label: `Si falla · ${String(WARRIOR_PARRY.cooldown).replace('.', ',')} s de recarga` },
+        { label: `Si falla · de ${curve(WARRIOR_PARRY.cooldown, 0)} a ${curve(WARRIOR_PARRY.cooldown, KIT[id].charge.cap)} s de recarga` },
       ];
     case 'vanguard.reinforce':
       return [
         {
-          label: `${WARRIOR_REINFORCE.duration} s · −${Math.round((1 - WARRIOR_REINFORCE.taken) * 100)} % de daño, nada lo empuja`,
+          label: `${WARRIOR_REINFORCE.duration} s · −${Math.round((1 - WARRIOR_REINFORCE.taken) * 100)} % de daño, nada lo empuja ni lo frena`,
           active: (p) => p.empowered === 'reinforce',
           state: (p) => (p.empowered === 'reinforce' ? `${p.furyLeft.toFixed(1)}s` : null),
         },

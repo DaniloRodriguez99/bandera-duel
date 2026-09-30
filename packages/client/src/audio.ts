@@ -96,9 +96,13 @@ const SPELL_NOTES: Record<string, number[]> = {
   fury: [92, 138, 69],
   projectileCut: [740, 495],
   swing: [560],
-  // The warrior's greatsword: low and heavy. His parry rings like struck metal.
+  // The warrior's greatsword: low and heavy. His parry rings like struck metal, deeper after a
+  // held guard. His crescent roars lower the more it was charged.
   swingHeavy: [196, 131],
   counter: [1320, 990],
+  counterHeavy: [990, 660, 330],
+  crescent: [262, 196, 147],
+  crescentColossal: [196, 147, 98, 65],
   // The knight's: sharp and fast, with lightning in it. The descending cut falls in pitch; the
   // celestial cut rings clear and high; the awakening climbs.
   swingLight: [988, 1319],

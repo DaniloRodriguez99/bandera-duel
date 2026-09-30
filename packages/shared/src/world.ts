@@ -21,7 +21,9 @@ import {
   type ClassId,
   type DamageOptions,
   type Grave,
+  type InteractionProfile,
   type Parry,
+  type ParryOutcome,
   type Input,
   type MapDefinition,
   type Player,
@@ -518,7 +520,11 @@ export class World extends Duel {
   protected override parryOf(target: Player): Parry | null {
     if (target.hp <= 0 || target.counterLeft <= 0) return null;
     const boost = target.counterCharge >= RULES.counterChargeTime - 1e-8 ? RULES.counterBoost : 1;
-    return { homing: 0, speed: boost, damage: boost };
+    return { homing: 0, speed: boost, damage: boost, size: 1, power: boost };
+  }
+  /** The parada sends back every shot and slash, and stops any blade; it has no hold on the ground. */
+  protected override parryAnswer(_parry: Parry, profile: InteractionProfile): ParryOutcome {
+    return profile.interactionType === 'area' ? 'none' : 'redirect';
   }
   protected override parried() {}
 
