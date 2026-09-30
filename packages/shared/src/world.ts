@@ -15,9 +15,11 @@ import {
   blocked,
   activePreset,
   defaultCustomization,
+  INTERACTIONS,
   type Allegiant,
   type Arrow,
   type ClassId,
+  type DamageOptions,
   type Grave,
   type Input,
   type MapDefinition,
@@ -1822,7 +1824,7 @@ export class World extends Duel {
     source: Pick<Player, 'team'>,
     angle: number,
     amount = 1,
-    options: { pierce?: boolean; ignoreInvuln?: boolean; freeze?: boolean; execute?: boolean } = {},
+    options: DamageOptions = {},
   ): boolean {
     if (!this.hostile(source, target)) return false;
     const striker = source as Partial<Zombie>;
@@ -2077,6 +2079,7 @@ export class World extends Duel {
       p.counterCharge = parry && parry.reflect >= 2 ? RULES.counterChargeTime : 0;
     }
     this.stepArrows(dt);
+    this.stepWaves(dt);
     this.stepZombies(dt);
     this.stepBlackHoles(dt);
     this.stepMonsters(dt);
@@ -2772,7 +2775,9 @@ export class World extends Duel {
         const from = { x: shot.x, y: shot.y };
         shot.x += (Math.cos(shot.angle) * shot.speed * dt) / steps;
         shot.y += (Math.sin(shot.angle) * shot.speed * dt) / steps;
-        if (this.cutProjectile(from, shot, shot.angle, shot.radius, source, shot.color)) return false;
+        const cut = this.cutProjectile(from, shot, shot.angle, shot.radius, source, INTERACTIONS.lightShot, `shot:${shot.id}`, shot.color);
+        if (cut.result === 'destroy') return false;
+        if (cut.result === 'weaken') shot.damage *= 1 - cut.share;
         if (blocked(shot.x, shot.y, 2, this.terrain)) return false;
         const p = s.players.find(
           (q) =>

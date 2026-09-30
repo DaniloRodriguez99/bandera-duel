@@ -384,7 +384,7 @@ export function updateAbilities(root: HTMLElement, p: Player, bindings: InputBin
       // A Singularidad in flight: pressing again implodes it, while its cooldown runs in parallel.
       live = holeLive && slot.id === 'black-hole',
       // Only modes with mana can leave a skill unpaid; the arenas never do.
-      paid = !slot.skillId || affordable(p as Player & { mana?: number }, slot.skillId);
+      paid = !slot.skillId || affordable(p, slot.skillId);
     card.dataset.ready = String(paid && (left <= 0 || live));
     card.dataset.live = String(live);
     card.dataset.unpaid = String(!paid);
