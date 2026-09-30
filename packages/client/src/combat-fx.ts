@@ -286,4 +286,14 @@ export function drawKitBlade(
   );
   w.lineStyle(1, 0x9aa3ab, 0.9);
   w.lineBetween(hilt + 1, 0, hilt - 4 + length, 0);
+  if ((glow ?? (energy > 0 ? pose.tint : null)) === 'lightning') {
+    // Lightning running along the edge, never the same twice.
+    const core = hex(WAVE_COLORS.lightning.core);
+    w.lineStyle(1.5, core, 0.85);
+    w.beginPath();
+    w.moveTo(hilt, 0);
+    for (let x = hilt + 5; x < hilt + length; x += 5)
+      w.lineTo(x, Math.sin(time * 0.09 + x * 0.7) * 2.6 + Math.sin(time * 0.23 + x) * 1.2);
+    w.strokePath();
+  }
 }

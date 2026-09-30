@@ -2,6 +2,15 @@
 
 ## 2026-09-30
 
+### Caballero: espadachín del relámpago
+
+- El segundo corte ahora vuelve: la cadena es derecha a izquierda, izquierda a derecha y un remate que levanta la espada y la baja de un golpe sobre toda la franja, en lugar de una estocada. Cada golpe arranca donde el anterior dejó la hoja, y el remate tarda un poco más en prepararse.
+- **Electrizado:** los golpes eléctricos dejan cargas en el rival que lo frenan; con tres descarga en un aturdimiento breve, y después no acumula por un momento.
+- **Ráfaga de Acero pasa a Q.** El toque son tres golpes distintos que avanzan (corte ascendente, revés y estocada) y cada uno electriza. El clic derecho queda libre. Los perfiles guardados la mueven sola.
+- **Paso Relámpago se carga:** va hacia donde se apunta, más lejos y más fuerte cuanto más se mantiene, y electriza a quien atraviesa. Cuesta maná y espera a que la hoja termine antes de salir.
+- **Despertar del Relámpago:** el Despertar se vuelve eléctrico; despierto, cada golpe electriza.
+- El brillo de la carga va del rayo al violeta y al rojo. Los tajos cargados, el aura y el mandala son de relámpago. Sonidos más agudos para la espada, el paso y la descarga.
+
 ### Guerrero: potencia reforzada
 
 El Guerrero cambia su contraataque sostenido y su tajo de siempre por un kit propio. Su magia le refuerza el cuerpo: todo lo suyo es fuerza física, en rojo. Versión de prototipo: la jugabilidad está completa, los efectos visuales y de sonido son provisorios.

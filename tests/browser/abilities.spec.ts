@@ -79,12 +79,12 @@ test('el caballero muestra sus técnicas: cadena de cortes, carga por estados, R
   const fury = abilities.locator('[data-ability="fury"]');
   await expect(abilities.locator('[data-ability="sword"]')).toContainText('Tres Cortes');
   await expect(flurry).toContainText('Ráfaga de Acero');
-  await expect(flurry.locator('kbd')).toHaveText('CLIC DER.');
+  await expect(flurry.locator('kbd')).toHaveText('Q');
   await expect(abilities.locator('[data-ability="dash"]')).toContainText('Paso Relámpago');
   await expect(fury).toContainText('Despertar');
   await expect(fury.locator('kbd')).toHaveText('R');
-  // No shield and no bash: Q, E and F are free.
-  for (const position of ['q', 'e', 'f'])
+  // No shield and no bash: the right click, E and F are free.
+  for (const position of ['secondary', 'e', 'f'])
     await expect(abilities.locator(`[data-position="${position}"] .ability`)).toHaveAttribute('data-locked', 'true');
   await expect(abilities.locator('[data-ability="guard"], [data-ability="shield-bash"]')).toHaveCount(0);
   // The awakening runs on Rage: empty, it is not ready, says how full it is and does nothing.
@@ -112,8 +112,7 @@ test('el caballero muestra sus técnicas: cadena de cortes, carga por estados, R
   await expect(page.locator('#cd-sword')).toHaveText('⚔ Lista', { timeout: 3000 });
 
   // The flurry has a cooldown, and so does the step.
-  await page.mouse.down({ button: 'right' });
-  await page.mouse.up({ button: 'right' });
+  await page.keyboard.press('KeyQ');
   await expect(flurry).toHaveAttribute('data-ready', 'false');
   await expect(flurry.locator('.ability-state')).toHaveText(/^\d\.\ds$/);
   await page.waitForTimeout(700);

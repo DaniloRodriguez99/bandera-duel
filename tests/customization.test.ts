@@ -55,8 +55,9 @@ describe('character customization model',()=>{
       {primary:'guardian.sword',secondary:'guardian.guard',mobility:'guardian.dash',skill1:'guardian.shieldBash',skill2:'guardian.fury'},
       {secondary:'MouseRight',mobility:'Space',skill1:'KeyQ',skill2:'KeyE'})) as CharacterCustomization;
     expect(validCustomization('guardian',knight)).toBe(true);
-    // The shield is gone: the flurry takes its place on M2 and the bash has no successor.
-    expect(knight.presets.default.loadout).toEqual({primary:'guardian.sword',secondary:'guardian.flurry',mobility:'guardian.dash',q:null,e:null,f:null,r:'guardian.fury'});
+    // The shield is gone: the flurry takes its place, then moves to its new home on Q; the bash has
+    // no successor.
+    expect(knight.presets.default.loadout).toEqual({primary:'guardian.sword',secondary:null,mobility:'guardian.dash',q:'guardian.flurry',e:null,f:null,r:'guardian.fury'});
     expect(knight.presets.default.skillTreeSelection).not.toContain('guardian.guard');
 
     // A profile saved with the universal layout, before the knight lost the shield, is repaired too.
@@ -68,7 +69,8 @@ describe('character customization model',()=>{
     const repaired=migrateCustomization('guardian',saved) as CharacterCustomization;
     expect(validCustomization('guardian',repaired)).toBe(true);
     expect(repaired.selectedSkin).toBe(CHARACTER_SKINS.guardian[3].id);
-    expect(repaired.presets.default.loadout).toMatchObject({secondary:'guardian.flurry',q:null,r:'guardian.fury'});
+    // The bash leaves Q empty, so the flurry moves there from the shield's old place on M2.
+    expect(repaired.presets.default.loadout).toMatchObject({secondary:null,q:'guardian.flurry',r:'guardian.fury'});
     expect(repaired.presets.default.skillTreeSelection).toEqual(['guardian.sword','guardian.flurry']);
 
     const archer=migrateCustomization('archer',v1('archer',
@@ -77,6 +79,13 @@ describe('character customization model',()=>{
     expect(archer.presets.default.loadout).toMatchObject({q:'archer.volley',e:'archer.trap'});
     // A profile already on version 2 is left alone.
     expect(migrateCustomization('mage',defaultCustomization('mage'))).toEqual(defaultCustomization('mage'));
+    // A knight saved with the flurry on M2 (its first home) finds it on Q; one who put it on E keeps it there.
+    const flurryOnM2=defaultCustomization('guardian');
+    flurryOnM2.presets.default.loadout={...flurryOnM2.presets.default.loadout,q:null,secondary:'guardian.flurry'};
+    expect((migrateCustomization('guardian',flurryOnM2) as CharacterCustomization).presets.default.loadout).toMatchObject({secondary:null,q:'guardian.flurry'});
+    const flurryOnE=defaultCustomization('guardian');
+    flurryOnE.presets.default.loadout={...flurryOnE.presets.default.loadout,q:null,e:'guardian.flurry'};
+    expect(migrateCustomization('guardian',flurryOnE)).toEqual(flurryOnE);
     // A warrior saved before his launch and his iron body: the shared dodge becomes his launch and
     // the free R takes the reinforcement; everything else stays.
     const warrior=defaultCustomization('vanguard');

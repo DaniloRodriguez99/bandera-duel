@@ -6,12 +6,16 @@ import {
   INPUT_BUFFER,
   KNIGHT_AWAKEN,
   KNIGHT_FLURRY_COOLDOWN,
+  KNIGHT_STEP,
+  KNIGHT_STEP_CHARGE,
   KNIGHT_SWORD_CHARGE,
   MOVES,
   RESOURCES,
   RULES,
+  SHOCK,
   SKILLS,
   idleInput,
+  movePlayer,
   type Arrow,
   type ClassId,
   type Input,
@@ -65,12 +69,12 @@ function arena(enemy: ClassId = 'vanguard', third: ClassId = 'archer') {
 }
 
 describe('Caballero · Tres Cortes', () => {
-  it('es más veloz que nadie, no lleva escudo y su kit deja Q, E y F libres', () => {
+  it('es más veloz que nadie, no lleva escudo, su Ráfaga va en Q y deja libres el clic derecho, E y F', () => {
     expect(CLASSES.guardian.speed).toBeGreaterThan(CLASSES.archer.speed);
     expect(CLASSES.guardian.speed).toBeGreaterThan(CLASSES.vanguard.speed);
     expect(DEFAULT_LOADOUTS.guardian).toEqual({
-      primary: 'guardian.sword', secondary: 'guardian.flurry', mobility: 'guardian.dash',
-      q: null, e: null, f: null, r: 'guardian.fury',
+      primary: 'guardian.sword', secondary: null, mobility: 'guardian.dash',
+      q: 'guardian.flurry', e: null, f: null, r: 'guardian.fury',
     });
     expect(Object.keys(SKILLS).filter((id) => id.startsWith('guardian.'))).toEqual([
       'guardian.sword', 'guardian.flurry', 'guardian.dash', 'guardian.fury',
@@ -90,8 +94,20 @@ describe('Caballero · Tres Cortes', () => {
       expect(hp - rival.hp).toBe(i === 2 ? 1.5 : 1);
     }
     expect(moves).toEqual(['guardian.sword:0:0', 'guardian.sword:1:0', 'guardian.sword:2:0', 'guardian.sword:0:0']);
-    expect(MOVES[moves[0]].strikes[0].shape.kind).toBe('arc');
-    expect(MOVES[moves[2]].strikes[0].shape.kind).toBe('lane');
+    // Right to left, back left to right, then down from overhead: each starts where the last ended.
+    const [first, second, third] = moves.map((move) => MOVES[move]);
+    expect(first.strikes[0].shape).toMatchObject({ kind: 'arc' });
+    expect(second.strikes[0].shape).toMatchObject({ kind: 'arc' });
+    expect(third.strikes[0].shape).toMatchObject({ kind: 'lane', drop: true });
+    const sweep = (move: typeof first) => move.strikes[0].shape as { from: number; to: number };
+    expect(sweep(first).from).toBeGreaterThan(0);
+    expect(sweep(first).to).toBeLessThan(0);
+    expect(sweep(second).from).toBeCloseTo(sweep(first).to);
+    expect(sweep(second).to).toBeGreaterThan(0);
+    expect(second.enter).toBeCloseTo(sweep(first).to);
+    expect(third.enter).toBeCloseTo(sweep(second).to);
+    // The finisher is committed: it takes longer to raise than either cut takes to wind up.
+    expect(third.strikes[0].start).toBeGreaterThan(first.strikes[0].start);
     // Only the finisher lands as a critical.
     expect(events('hit').map((event) => !!event.crit)).toEqual([false, false, true, false]);
     expect(events('swing').map((event) => event.move)).toEqual(moves);
@@ -174,6 +190,40 @@ describe('Caballero · el golpe sigue a la hoja', () => {
     expect(hitAt.right).toBeLessThan(hitAt.left);
     expect(rival.hp).toBe(19);
     expect(other.hp).toBe(19);
+  });
+
+  it('el segundo corte vuelve: alcanza primero a quien está a la izquierda', () => {
+    const { knight, rival, other, step } = arena();
+    knight.combo = 1;
+    knight.comboLeft = 5;
+    Object.assign(rival, at(knight, 50, 40));
+    Object.assign(other, at(knight, -50, 40));
+    step({ primary: TAP });
+    expect(knight.move).toBe('guardian.sword:1:0');
+    const hitAt: Record<string, number> = {};
+    for (let tick = 1; tick <= 12; tick++) {
+      step();
+      if (rival.hp < 20) hitAt.right ??= tick;
+      if (other.hp < 20) hitAt.left ??= tick;
+    }
+    expect(hitAt.left).toBeLessThan(hitAt.right);
+  });
+
+  it('el remate baja de una vez: toda la franja recibe el golpe en el mismo instante', () => {
+    const { knight, rival, other, step } = arena();
+    knight.combo = 2;
+    knight.comboLeft = 5;
+    Object.assign(rival, at(knight, 0, 24));
+    Object.assign(other, at(knight, 0, 80));
+    step({ primary: TAP });
+    const hitAt: Record<string, number> = {};
+    for (let tick = 1; tick <= 18; tick++) {
+      step();
+      if (rival.hp < 20) hitAt.near ??= tick;
+      if (other.hp < 20) hitAt.far ??= tick;
+    }
+    expect(hitAt.near).toBeDefined();
+    expect(hitAt.near).toBe(hitAt.far);
   });
 
   it('no golpea detrás ni al costado de su arco, ni más allá de la hoja', () => {
@@ -279,7 +329,7 @@ describe('Caballero · carga', () => {
     const from = knight.x;
     step({ primary: HOLD }, { x: 1 }, 30);
     expect(knight.x - from).toBeCloseTo(CLASSES.guardian.speed * 0.7, 0);
-    step({ primary: HOLD, secondary: TAP });
+    step({ primary: HOLD, q: TAP });
     expect(knight.chargeSkill).toBe('guardian.sword');
     expect(knight.buffered).toBe('');
     expect(knight.flurryCd).toBe(0);
@@ -407,29 +457,31 @@ describe('Caballero · corte de habilidades', () => {
 });
 
 describe('Caballero · Ráfaga de Acero', () => {
-  it('un toque son tres cortes veloces que entran todos y solo el último empuja', () => {
+  it('un toque son tres golpes distintos que avanzan: cada uno electriza y juntos descargan', () => {
     const { knight, rival, step, finish, inFront, events } = arena();
     inFront(rival, 34);
-    const from = rival.x;
-    step({ secondary: TAP });
+    step({ q: TAP });
     expect(knight.move).toBe('guardian.flurry:0');
     expect(knight.flurryCd).toBeCloseTo(KNIGHT_FLURRY_COOLDOWN);
-    step({}, {}, 8);
-    // Two cuts in: no push yet.
-    expect(rival.hp).toBe(19);
-    expect(rival.x).toBe(from);
     finish();
-    expect(rival.hp).toBe(18.5);
-    expect(rival.x).toBeGreaterThan(from);
     expect(events('hit')).toHaveLength(3);
-    expect(MOVES['guardian.flurry:0'].strikes).toHaveLength(3);
+    expect(20 - rival.hp).toBeCloseTo(1.75);
+    // Three shocks: the last one discharges into a short stun.
+    expect(events('shock')).toHaveLength(1);
+    expect(rival.stunLeft).toBeGreaterThan(0);
+    expect(rival.shockImmune).toBeGreaterThan(0);
+    // Not the same cut three times: a rising cut, a backhand and a thrust.
+    const strikes = MOVES['guardian.flurry:0'].strikes;
+    expect(strikes.map((strike) => strike.shape.kind)).toEqual(['arc', 'arc', 'lane']);
+    expect(new Set(strikes.map((strike) => JSON.stringify(strike.shape))).size).toBe(3);
+    expect(strikes.map((strike) => strike.shock)).toEqual([1, 1, 1]);
   });
 
   it('a media carga son dos cortes potenciados y cada uno lanza su tajo', () => {
     const { duel, knight, rival, other, charged, finish, inFront } = arena();
     inFront(rival, 50);
     inFront(other, 150);
-    charged('secondary', 0.5);
+    charged('q', 0.5);
     expect(knight.move).toBe('guardian.flurry:1');
     finish();
     for (let i = 0; i < 15; i++) duel.step(new Map());
@@ -444,33 +496,34 @@ describe('Caballero · Ráfaga de Acero', () => {
     const { duel, knight, rival, other, charged, finish, inFront, events } = arena();
     inFront(rival, 70);
     inFront(other, 260);
-    charged('secondary', 1.2);
+    charged('q', 1.2);
     expect(knight.move).toBe('guardian.flurry:2');
     finish();
     expect(rival.hp).toBe(17.5);
     expect(events('hit')[0].crit).toBe(true);
+    expect(rival.shock).toBe(2);
     for (let i = 0; i < 20; i++) duel.step(new Map());
     expect(20 - other.hp).toBeGreaterThan(1.2);
     const wave = MOVES['guardian.flurry:2'].waves[0].wave as { cut: number };
     expect(wave.cut).toBeGreaterThan(1);
     // Three different moves, not one with bigger numbers.
-    expect(new Set([0, 1, 2].map((tier) => MOVES[`guardian.flurry:${tier}`].duration)).size).toBe(3);
+    expect([0, 1, 2].map((tier) => MOVES[`guardian.flurry:${tier}`].strikes.length)).toEqual([3, 2, 1]);
   });
 
   it('tiene recarga, no sale mientras se recarga y cargarla ocupa la espada', () => {
     const { knight, step, finish } = arena();
-    step({ secondary: TAP });
+    step({ q: TAP });
     finish();
-    step({ secondary: TAP });
+    step({ q: TAP });
     expect(knight.move).toBe('');
     step({}, {}, ticks(KNIGHT_FLURRY_COOLDOWN));
-    step({ secondary: DOWN });
+    step({ q: DOWN });
     expect(knight.chargeSkill).toBe('guardian.flurry');
-    step({ secondary: HOLD, primary: TAP });
+    step({ q: HOLD, primary: TAP });
     expect(knight.buffered).toBe('');
     // Interrupted before going out: no cooldown spent.
     knight.stunLeft = 0.1;
-    step({ secondary: HOLD });
+    step({ q: HOLD });
     expect(knight.flurryCd).toBe(0);
   });
 });
@@ -533,6 +586,22 @@ describe('Caballero · Furia y Despertar', () => {
     expect(knight.rage).toBe(0);
   });
 
+  it('despierto, cada corte y su tajo electrizan; el remate, el doble', () => {
+    const cut = (step: number) => MOVES[`guardian.sword:${step}:0:awake`];
+    expect(cut(0).strikes[0].shock).toBe(1);
+    expect(cut(2).strikes[0].shock).toBe(2);
+    expect((cut(0).waves[0].wave as { shock?: number }).shock).toBe(1);
+    expect(MOVES['guardian.sword:0:0'].strikes[0].shock).toBe(0);
+    const { knight, rival, step, finish, inFront } = arena();
+    knight.rage = RESOURCES.rage.max;
+    step({ r: TAP });
+    finish();
+    inFront(rival);
+    step({ primary: TAP });
+    finish();
+    expect(rival.shock).toBe(1);
+  });
+
   it('el remate despierto lanza el tajo más fuerte de la cadena', () => {
     const wave = (step: number) => MOVES[`guardian.sword:${step}:0:awake`].waves[0].wave as { damage: number; range: number };
     expect(wave(2).damage).toBeGreaterThan(wave(0).damage);
@@ -549,33 +618,100 @@ describe('Caballero · Furia y Despertar', () => {
 });
 
 describe('Caballero · Paso Relámpago', () => {
-  it('recorre unos 190 u, daña una vez a quien atraviesa y no es invulnerable', () => {
-    const { duel, knight, rival, other, step } = arena();
-    Object.assign(rival, { x: 365, y: 270 });
-    Object.assign(other, { x: 430, y: 270 });
+  it('un toque es un paso relámpago hacia donde apunta: daña y electriza a quien atraviesa, sin invulnerabilidad', () => {
+    const { knight, rival, other, step, events } = arena();
+    Object.assign(rival, { x: 380, y: 270 });
+    Object.assign(other, { x: 440, y: 270 });
     const from = knight.x;
-    step({ mobility: TAP }, { x: 1 });
+    // Walking south, aiming east: it goes where it aims.
+    step({ mobility: TAP }, { y: 1 });
+    expect(knight.move).toBe('guardian.dash:0');
+    expect(knight.dashCd).toBeCloseTo(KNIGHT_STEP.cooldown);
+    step({}, {}, 4);
+    expect(knight.dashLeft).toBeGreaterThan(0);
     expect(knight.dashInvulnerable).toBe(false);
-    expect(knight.dashCd).toBeCloseTo(RULES.guardianDashCooldown);
-    step({}, {}, ticks(RULES.guardianDashDuration) + 1);
-    expect(knight.x - from).toBeCloseTo(190, 0);
-    expect(rival.hp).toBe(19);
-    expect(other.hp).toBe(19);
-    knight.invuln = 0;
-    expect(duel.damage(knight, rival, Math.PI, 1)).toBe(true);
+    step({}, {}, 8);
+    expect(knight.x - from).toBeCloseTo(KNIGHT_STEP.near, -1);
+    // Only the tick before the step went out walked it south.
+    expect(Math.abs(knight.y - 270)).toBeLessThan(8);
+    expect([rival.hp, other.hp]).toEqual([19, 19]);
+    expect([rival.shock, other.shock]).toEqual([1, 1]);
+    // It says how far it goes, so a bolt can be drawn along it.
+    expect(events('dash')[0].radius).toBeCloseTo(KNIGHT_STEP.near);
   });
 
-  it('corta la recuperación de un corte, nunca su preparación ni su filo', () => {
+  it('cargado, el cuerpo se llena de relámpago: llega más lejos, pega más y electriza el doble', () => {
+    const { knight, rival, step, charged } = arena();
+    Object.assign(rival, { x: 560, y: 270 });
+    const from = knight.x;
+    charged('mobility', KNIGHT_STEP_CHARGE.cap);
+    expect(knight.move).toBe('guardian.dash:1');
+    step({}, {}, 16);
+    expect(knight.x - from).toBeCloseTo(KNIGHT_STEP.far, -1);
+    expect(rival.hp).toBe(18.5);
+    expect(rival.shock).toBe(2);
+    // The charge costs mana by the second, on top of the step itself.
+    expect(knight.mana).toBeLessThan(CLASSES.guardian.mana - SKILLS['guardian.dash'].cost!.amount - 10);
+  });
+
+  it('espera a que la hoja termine: corta la recuperación de un corte, nunca su preparación ni su filo', () => {
     const { knight, step } = arena();
     step({ primary: TAP });
-    step({ mobility: TAP }, { x: 1 }, 1);
-    expect(knight.dashCd).toBe(0);
+    step({ mobility: TAP });
     expect(knight.move).toBe('guardian.sword:0:0');
-    // Past the blade: the step cuts the recovery short.
+    expect(knight.dashCd).toBe(0);
+    // The blade is out: the waiting step goes at once, cutting the recovery short.
     step({}, {}, 5);
-    step({ mobility: TAP }, { x: 1 });
+    expect(knight.move).toBe('guardian.dash:0');
     expect(knight.dashCd).toBeGreaterThan(0);
-    expect(knight.move).toBe('');
+  });
+
+  it('sale aunque esté cargando un corte, y esa carga sigue', () => {
+    const { knight, step } = arena();
+    step({ primary: DOWN });
+    step({ primary: HOLD }, {}, 8);
+    step({ primary: HOLD, mobility: DOWN });
+    step({ primary: HOLD, mobility: UP });
+    expect(knight.move).toBe('guardian.dash:0');
+    expect(knight.chargeSkill).toBe('guardian.sword');
+  });
+});
+
+describe('Caballero · electrizado', () => {
+  const shock = (duel: Duel, target: Player, stacks: number) =>
+    (duel as unknown as { shockPlayer(target: Player, stacks: number): void }).shockPlayer(target, stacks);
+
+  it('cada carga frena un poco; al llenarse descarga en un aturdimiento breve, y un momento de inmunidad', () => {
+    const { duel, rival, events } = arena();
+    shock(duel, rival, 1);
+    expect([rival.shock, rival.shockLeft]).toEqual([1, SHOCK.duration]);
+    // Slower by a tenth per stack (the warrior's inertia set aside: up to speed first).
+    const walker = { ...rival, x: 400, y: 270, vx: CLASSES.vanguard.speed, vy: 0 };
+    movePlayer(walker, { ...idleInput(1), x: 1 }, false);
+    expect(walker.x - 400).toBeLessThan(CLASSES.vanguard.speed * RULES.tick);
+    shock(duel, rival, 2);
+    expect(rival.shock).toBe(0);
+    expect(rival.stunLeft).toBeCloseTo(SHOCK.stun);
+    expect(rival.shockImmune).toBeCloseTo(SHOCK.immunity);
+    expect(events('shock')).toHaveLength(1);
+    shock(duel, rival, 1);
+    expect(rival.shock).toBe(0);
+  });
+
+  it('las cargas se apagan solas si nada las renueva', () => {
+    const { duel, rival } = arena();
+    shock(duel, rival, 2);
+    for (let i = 0; i < ticks(SHOCK.duration) + 1; i++) duel.step(new Map());
+    expect(rival.shock).toBe(0);
+  });
+
+  it('un cuerpo de hierro descarga sin aturdirse', () => {
+    const { duel, rival } = arena();
+    rival.empowered = 'reinforce';
+    rival.furyLeft = 5;
+    shock(duel, rival, 3);
+    expect(rival.stunLeft).toBe(0);
+    expect(rival.shock).toBe(0);
   });
 });
 
@@ -583,9 +719,11 @@ describe('Caballero · límites', () => {
   it('en una arena la espada solo se mueve por sus técnicas: una entrada vieja no hace nada', () => {
     const { duel, knight, rival, inFront } = arena();
     inFront(rival);
+    const from = knight.x;
     for (let i = 0; i < 12; i++)
-      duel.step(new Map([[knight.id, { ...idleInput(1), sword: i === 0, guard: true }]]));
+      duel.step(new Map([[knight.id, { ...idleInput(1), sword: i === 0, dash: i === 0, guard: true }]]));
     expect(knight.windup).toBe(0);
+    expect(knight.x).toBe(from);
     expect(rival.hp).toBe(20);
     expect('guarding' in knight).toBe(false);
   });

@@ -20,17 +20,18 @@ test('práctica: sin límite de maná la Ráfaga no gasta; con límite gasta y s
   // No limit: a held flurry and its release leave the pool full.
   await limit.uncheck();
   await aim();
-  await page.mouse.down({ button: 'right' });
+  await page.keyboard.down('KeyQ');
   await page.waitForTimeout(700);
   await expect(mana).toHaveText('MANÁ 100/100');
-  await page.mouse.up({ button: 'right' });
+  await page.keyboard.up('KeyQ');
   await expect(flurry).toHaveAttribute('data-ready', 'false');
   await expect(mana).toHaveText('MANÁ 100/100');
 
   // With the limit back on, the next one costs, and the refill gives it back at once.
   await limit.check();
   await expect(flurry).toHaveAttribute('data-ready', 'true', { timeout: 7000 });
-  await page.mouse.click(canvas.x + canvas.width * 0.7, canvas.y + canvas.height / 2, { button: 'right' });
+  await aim();
+  await page.keyboard.press('KeyQ');
   await expect(mana).not.toHaveText('MANÁ 100/100');
   await page.locator('#dev-mana-refill').click();
   await expect(mana).toHaveText('MANÁ 100/100');

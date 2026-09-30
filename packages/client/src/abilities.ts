@@ -150,8 +150,6 @@ function tiersOf(id: SkillId, classId: ClassId): AbilityTier[] | undefined {
           state: (p) => (p.shotCharge > 0 ? percent(chargePower(p.shotCharge)) : null),
         },
       ];
-    case 'guardian.dash':
-      return [{ label: '190 u · corta a quien atraviesa', active: (p) => p.dashLeft > 0 }];
     case 'guardian.fury':
       return [
         {

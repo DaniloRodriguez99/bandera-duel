@@ -21,7 +21,8 @@ import {
 } from './combat/geometry.js';
 import { bladeAt } from './combat/moves.js';
 import {
-  KIT, KNIGHT_AWAKEN, KNIGHT_FLURRY_CHARGE, KNIGHT_FLURRY_COOLDOWN, KNIGHT_SWORD_CHARGE, MOVES, moveSkill,
+  KIT, KNIGHT_AWAKEN, KNIGHT_FLURRY_CHARGE, KNIGHT_FLURRY_COOLDOWN, KNIGHT_STEP, KNIGHT_STEP_CHARGE, KNIGHT_SWORD_CHARGE,
+  MOVES, SHOCK, moveSkill,
   WARRIOR_LAUNCH, WARRIOR_LAUNCH_CHARGE, WARRIOR_PARRY, WARRIOR_REINFORCE, WARRIOR_SLASH_CHARGE, WARRIOR_SLASH_COOLDOWN,
   WARRIOR_SWORD_CHARGE, warriorWave,
 } from './combat/kits.js';
@@ -242,10 +243,6 @@ export const RULES = {
   magicShieldCooldown: 5,
   iceCooldown: 0.5,
   freezeDuration: 1,
-  guardianDashDuration: 190 / 650,
-  guardianDashSpeed: 650,
-  guardianDashCooldown: 3,
-  guardianDashDamage: 1,
   vanguardDash: 0.75,
   /** Lugunica's parada: held this long it returns twice as hard, and the guard slows its bearer. */
   counterChargeTime: 1,
@@ -431,10 +428,10 @@ export const SKILLS: Record<SkillId, SkillDefinition> = {
   'mage.blackHole': skill({id:'mage.blackHole',name:'Singularidad',branch:'mage',description:'Mantené hasta 2 s: el agujero crece, pega más y llega más lejos. Soltá para lanzarlo; su núcleo consume a quien llega al centro y estalla contra un muro, al volver a pulsar o tras atraer en su destino.',icon:'mage-blackhole',compatibleClasses:['mage'],compatibleSlots:['f','r'],trigger:'hold-release',animationAction:'castChannel',cooldown:RULES.blackHoleCooldown,damage:'0,75–2,25 en área; letal en el centro',howTo:'Mantené {key} para cargar; soltá para lanzar. Volvé a pulsar para detonar.',blocks:['primary','secondary'],chargeSlow:RULES.chargeMoveSpeed}),
   'necromancer.fire': skill({id:'necromancer.fire',name:'Llama de ultratumba',branch:'necromancer',description:'Fuego espectral que puede canalizarse.',icon:'necromancer-fire',compatibleClasses:['mage','necromancer'],compatibleSlots:['primary'],trigger:'hold-release',animationAction:'castForward',cooldown:RULES.fireCooldown,damage:'1–2',grants:['ranged'],howTo:'Pulsá {key} para fuego espectral; mantené para canalizarlo.'}),
   'necromancer.summon': skill({id:'necromancer.summon',name:'Alzar a los caídos',branch:'necromancer',description:'Invoca zombies, arcanistas y esclavos.',icon:'necromancer-summon',compatibleClasses:['mage','necromancer'],compatibleSlots:['f','r'],trigger:'hold-release',animationAction:'castGround',cooldown:RULES.summonCooldown,damage:'1 por golpe',grants:['summon','companionControl'],howTo:'Pulsá {key} para 2 zombies; mantené para el zombie mago, y hasta el final para resucitar.'}),
-  'guardian.sword': skill({id:'guardian.sword',name:'Tres Cortes',branch:'guardian',description:'Dos cortes horizontales y un remate vertical que es crítico si conecta. Mantené para cargar el corte que toca: pega más, lanza un tajo y corta habilidades enemigas según la carga.',icon:'guardian-slash',compatibleClasses:['guardian'],compatibleSlots:['primary'],trigger:'hold-release',animationAction:'attack',cooldown:0,damage:'1 · 1 · 1,5; hasta ×2 cargado',grants:['melee'],howTo:'Pulsá {key} para encadenar tres cortes; mantené para cargar el que sigue.',blocks:['secondary'],chargeSlow:0.7,charge:KNIGHT_SWORD_CHARGE,gain:{resource:'rage',hit:12,crit:18,cut:15}}),
-  'guardian.flurry': skill({id:'guardian.flurry',name:'Ráfaga de Acero',branch:'guardian',description:'Una técnica con tres formas según la carga: tres cortes veloces, dos potenciados o uno devastador que parte habilidades.',icon:'vanguard-slash',compatibleClasses:['guardian'],compatibleSlots:['secondary','q','e'],trigger:'hold-release',animationAction:'attack',cooldown:KNIGHT_FLURRY_COOLDOWN,damage:'3 × 0,5 · 2 × 1 · 2,5',howTo:'Pulsá {key} para tres cortes veloces; mantené para dos potenciados y, a fondo, uno devastador.',blocks:['primary'],chargeSlow:0.6,charge:KNIGHT_FLURRY_CHARGE,gain:{resource:'rage',hit:10},cost:{resource:'mana',amount:20,perSecond:15}}),
-  'guardian.dash': skill({id:'guardian.dash',name:'Paso Relámpago',branch:'guardian',description:'Un paso fulminante que corta a quien atraviesa.',icon:'guardian-bash',compatibleClasses:['guardian'],compatibleSlots:['mobility'],trigger:'press',animationAction:'dash',cooldown:RULES.guardianDashCooldown,damage:'1',grants:['mobility'],howTo:'Pulsá {key} para cruzar hacia donde te movés, cortando a quien atravieses.'}),
-  'guardian.fury': skill({id:'guardian.fury',name:'Despertar del Juramento',branch:'guardian',description:`La Furia se llena al golpear y al cortar habilidades. Llena, despierta la espada ${KNIGHT_AWAKEN.duration} s: cada corte lanza su tajo y pega más fuerte.`,icon:'guardian-fury',compatibleClasses:['guardian'],compatibleSlots:['r','f'],trigger:'press',animationAction:'castChannel',cooldown:0,damage:`+${Math.round((KNIGHT_AWAKEN.damage-1)*100)} %`,howTo:'Con la Furia llena, pulsá {key} para despertar la espada.',cost:{resource:'rage',amount:0,min:KNIGHT_AWAKEN.rage}}),
+  'guardian.sword': skill({id:'guardian.sword',name:'Tres Cortes',branch:'guardian',description:'Un corte de derecha a izquierda, el regreso de izquierda a derecha y un remate que levanta la espada y la baja de un golpe: crítico si conecta. Mantené para cargar el que sigue: pega más, lanza un tajo y corta habilidades enemigas según la carga.',icon:'guardian-slash',compatibleClasses:['guardian'],compatibleSlots:['primary'],trigger:'hold-release',animationAction:'attack',cooldown:0,damage:'1 · 1 · 1,5; hasta ×2 cargado',grants:['melee'],howTo:'Pulsá {key} para encadenar tres cortes; mantené para cargar el que sigue.',blocks:['secondary'],chargeSlow:0.7,charge:KNIGHT_SWORD_CHARGE,gain:{resource:'rage',hit:12,crit:18,cut:15}}),
+  'guardian.flurry': skill({id:'guardian.flurry',name:'Ráfaga de Acero',branch:'guardian',description:'La espada se electriza. Un toque son tres golpes distintos que avanzan: un corte ascendente, un revés y una estocada; cada uno electriza, y los tres juntos descargan en un aturdimiento breve. Cargada son dos cortes potenciados o uno devastador que parte habilidades.',icon:'vanguard-slash',compatibleClasses:['guardian'],compatibleSlots:['q','e','secondary'],trigger:'hold-release',animationAction:'attack',cooldown:KNIGHT_FLURRY_COOLDOWN,damage:'0,5 · 0,5 · 0,75 · 2 × 1 · 2,5',howTo:'Pulsá {key} para tres golpes eléctricos; mantené para dos potenciados y, a fondo, uno devastador.',blocks:['primary'],chargeSlow:0.6,charge:KNIGHT_FLURRY_CHARGE,gain:{resource:'rage',hit:10},cost:{resource:'mana',amount:20,perSecond:15}}),
+  'guardian.dash': skill({id:'guardian.dash',name:'Paso Relámpago',branch:'guardian',description:`El cuerpo se carga de relámpago y lo suelta de golpe hacia donde apuntás: ${KNIGHT_STEP.near} u con un toque, hasta ${KNIGHT_STEP.far} cargado. Daña y electriza a quien atraviesa. No da invulnerabilidad.`,icon:'guardian-bash',compatibleClasses:['guardian'],compatibleSlots:['mobility'],trigger:'hold-release',animationAction:'dash',cooldown:KNIGHT_STEP.cooldown,damage:'1–1,5',grants:['mobility'],howTo:'Pulsá {key} para un paso relámpago hacia donde apuntás; mantené para ir más lejos y electrizar más.',chargeSlow:0.5,charge:KNIGHT_STEP_CHARGE,cost:{resource:'mana',amount:10,perSecond:20}}),
+  'guardian.fury': skill({id:'guardian.fury',name:'Despertar del Relámpago',branch:'guardian',description:`La Furia se llena al golpear y al cortar habilidades. Llena, un mandala eléctrico recorre el cuerpo y la espada despierta ${KNIGHT_AWAKEN.duration} s: cada corte lanza su tajo, pega más fuerte y electriza.`,icon:'guardian-fury',compatibleClasses:['guardian'],compatibleSlots:['r','f'],trigger:'press',animationAction:'castChannel',cooldown:0,damage:`+${Math.round((KNIGHT_AWAKEN.damage-1)*100)} %`,howTo:'Con la Furia llena, pulsá {key} para despertar la espada.',cost:{resource:'rage',amount:0,min:KNIGHT_AWAKEN.rage}}),
   'vanguard.sword': skill({id:'vanguard.sword',name:'Mandoble Colosal',branch:'vanguard',description:'Dos golpes pesados que se alternan: un barrido ancho y un martillazo desde arriba que empuja lejos. Tardan en salir y pegan como ningún otro. Cargado, el golpe manda una onda roja hacia adelante.',icon:'vanguard-sword',compatibleClasses:['vanguard'],compatibleSlots:['primary'],trigger:'hold-release',animationAction:'attack',cooldown:0,damage:'2 · 2,5; hasta ×1,75 cargado',grants:['melee'],howTo:'Pulsá {key} para el barrido y otra vez para el martillazo; mantené para cargar el que sigue.',chargeSlow:0.6,charge:WARRIOR_SWORD_CHARGE}),
   'vanguard.slash': skill({id:'vanguard.slash',name:'Creciente Escarlata',branch:'vanguard',description:'Un tajo rojo que viaja y atraviesa. Mantené para agrandarlo: a los 3 s está completo y, si seguís, se sobrecarga hasta una ola que cruza el mapa. Pega más cerca que lejos, y los muros cubren. Cargando sos lento, se te ve en los arbustos y un golpe te interrumpe.',icon:'vanguard-slash',compatibleClasses:['vanguard'],compatibleSlots:['q','e'],trigger:'hold-release',animationAction:'attack',cooldown:WARRIOR_SLASH_COOLDOWN,damage:'1,5–5 de cerca; menos con la distancia',howTo:'Pulsá {key} para un tajo corto; mantené para agrandarlo y soltá. La movilidad lo cancela.',blocks:['primary','q','e'],chargeSlow:0.4,charge:WARRIOR_SLASH_CHARGE,cost:{resource:'mana',amount:15,perSecond:12}}),
   'vanguard.counter': skill({id:'vanguard.counter',name:'Revancha de Hierro',branch:'vanguard',description:`Un parry: durante ${String(WARRIOR_PARRY.window).replace('.', ',')} s todo proyectil o tajo que llegue de frente vuelve hacia quien lo lanzó, y un golpe cuerpo a cuerpo se frena y deja tambaleando al atacante. No frena al Guerrero. Fallarlo cuesta ${WARRIOR_PARRY.cooldown} s.`,icon:'vanguard-counter',compatibleClasses:['vanguard'],compatibleSlots:['e','q'],trigger:'press',animationAction:'castChannel',cooldown:WARRIOR_PARRY.cooldown,damage:'devuelve el ataque',howTo:'Pulsá {key} justo antes del impacto, de frente al ataque.'}),
@@ -526,8 +523,8 @@ export const DEFAULT_LOADOUTS: Record<ClassId, CharacterLoadout> = {
   mage:loadout({primary:'mage.fireball',mobility:'mage.blink',q:'mage.ice',e:'mage.magicShield',f:'mage.blackHole'}),
   // No mobility of its own: Space stays empty. The summon is its powerful F.
   necromancer:loadout({primary:'necromancer.fire',f:'necromancer.summon'}),
-  // No shield: a flurry on M2, and Q, E and F left free for techniques to come.
-  guardian:loadout({primary:'guardian.sword',secondary:'guardian.flurry',mobility:'guardian.dash',r:'guardian.fury'}),
+  // No shield: the lightning flurry on Q; M2, E and F are left free for techniques to come.
+  guardian:loadout({primary:'guardian.sword',mobility:'guardian.dash',q:'guardian.flurry',r:'guardian.fury'}),
   vanguard:loadout({primary:'vanguard.sword',mobility:'vanguard.dash',q:'vanguard.slash',e:'vanguard.counter',r:'vanguard.reinforce'}),
 };
 export const DEFAULT_BINDINGS: Record<ClassId, InputBindings> = {
@@ -907,6 +904,7 @@ export interface Player extends Vec {
   dashIframes: boolean;
   dashHit: number;
   dashPush: number;
+  dashShock: number;
   /** Walking velocity, for the classes that take a moment to reach full speed. */
   vx: number;
   vy: number;
@@ -927,6 +925,13 @@ export interface Player extends Vec {
   trapLeft: number;
   volleyCd: number;
   stunLeft: number;
+  /**
+   * Electrified: shock stacks from the knight's lightning, the seconds they last, and the seconds
+   * a body that just discharged shrugs off new ones.
+   */
+  shock: number;
+  shockLeft: number;
+  shockImmune: number;
   /** Seconds left of a fully charged archer dash: shot or volley released now become the dash combo. */
   windDash: number;
   /** Cooldown of the warrior's crescent. */
@@ -1207,7 +1212,9 @@ export interface GameEvent extends Vec {
     | 'mobAttack'
     | 'wave'
     | 'upgrade'
-    | 'imbue';
+    | 'imbue'
+    /** A body full of lightning discharges. */
+    | 'shock';
   team: Team;
   angle?: number;
   classId?: ClassId;
@@ -1652,7 +1659,6 @@ export function resolveSlotInput(p: Player, input: Input): Input {
         resolved.charge ||= state.held; resolved.shot ||= state.released; break;
       case 'common.dash':
         resolved.special ||= state.held; resolved.dash ||= state.released; break;
-      case 'guardian.dash': resolved.dash ||= state.pressed; break;
       // Pressed or held charges, released casts: a tap inside one tick still does both. A hold that
       // ends with no release (a touch dragged back to the centre, a lost focus) cancels.
       case 'mage.blink': resolved.blink ||= state.held || state.pressed; resolved.blinkRelease ||= state.released; break;
@@ -1731,6 +1737,15 @@ export function movePlayer(
     'reinforceCd',
   ] as const)
     p[key] = Math.max(0, p[key] - dt);
+  // Shock fades once no new lightning refreshes it.
+  p.shockImmune = Math.max(0, p.shockImmune - dt);
+  if (p.shockLeft > 0) {
+    p.shockLeft = Math.max(0, p.shockLeft - dt);
+    if (p.shockLeft <= 1e-8) {
+      p.shockLeft = 0;
+      p.shock = 0;
+    }
+  }
   // A parry stays up for its window, whoever holds it.
   if (p.counterLeft > 0) {
     p.counterLeft = Math.max(0, p.counterLeft - dt);
@@ -1846,11 +1861,11 @@ export function movePlayer(
   }
   p.guardHeld = input.guard;
   // Space charges while held; the release pulse (dash or summon) spends the charge.
-  const canDash = equippedSkill(p, 'common.dash') || equippedSkill(p, 'guardian.dash');
+  const canDash = equippedSkill(p, 'common.dash');
   const canSummon = equippedSkill(p, 'necromancer.summon');
   const canBlink = equippedSkill(p, 'mage.blink');
   const specialReady =
-    (canDash && p.classId !== 'guardian' && p.dashCd <= 0) || (canSummon && p.summonCd <= 0);
+    (canDash && p.dashCd <= 0) || (canSummon && p.summonCd <= 0);
   if (specialReady && input.special && !input.dash && !input.summon)
     p.specialCharge = Math.min(
       canSummon ? RULES.raiseCharge : RULES.overchargeTime,
@@ -1940,16 +1955,14 @@ export function movePlayer(
     const mag = Math.hypot(input.x, input.y);
     p.dashX = mag > 0.05 ? input.x / mag : Math.cos(input.angle);
     p.dashY = mag > 0.05 ? input.y / mag : Math.sin(input.angle);
-    p.dashLeft =
-      p.classId === 'guardian'
-        ? RULES.guardianDashDuration
-        : RULES.dashDuration * (1 + 0.8 * chargePower(p.specialCharge));
-    p.dashCd = p.classId === 'guardian' ? RULES.guardianDashCooldown : RULES.dashCooldown;
-    // The knight's cuts whoever it crosses and grants nothing; the others' dodge through blows.
-    p.dashSpeed = p.classId === 'guardian' ? RULES.guardianDashSpeed : RULES.dashSpeed;
-    p.dashIframes = p.classId !== 'guardian';
-    p.dashHit = p.classId === 'guardian' ? RULES.guardianDashDamage : 0;
-    p.dashPush = RULES.knockback;
+    p.dashLeft = RULES.dashDuration * (1 + 0.8 * chargePower(p.specialCharge));
+    p.dashCd = RULES.dashCooldown;
+    // A dodge: through blows, touching nobody.
+    p.dashSpeed = RULES.dashSpeed;
+    p.dashIframes = true;
+    p.dashHit = 0;
+    p.dashPush = 0;
+    p.dashShock = 0;
     result.dashStarted = true;
     // A deliberate jump opens the archer's air-combo window: either the bow was fully drawn or the
     // jump itself was charged. A plain escape dash opens nothing, so it cannot grant invulnerability
@@ -1974,6 +1987,8 @@ export function movePlayer(
     (input.world && p.counterLeft > 0 ? RULES.counterSpeed : 1) *
     // A move in progress commits the feet as much as it says.
     (p.move ? MOVES[p.move].speed : 1) *
+    // Lightning in the legs.
+    (1 - SHOCK.slow * p.shock) *
     chargeSlow;
   const walk = Math.max(0, dt - dashDt - frozenDt);
   let vx = input.x * speed;
@@ -2126,6 +2141,7 @@ export function movePlayer(
       p.dashIframes = kit.dash.iframes;
       p.dashHit = kit.dash.hit?.damage ?? 0;
       p.dashPush = kit.dash.hit?.knockback ?? 0;
+      p.dashShock = kit.dash.hit?.shock ?? 0;
       result.dashStarted = true;
     }
     result.kit = kit;
@@ -2135,6 +2151,7 @@ export function movePlayer(
 /** Where each kit skill keeps its cooldown. */
 const KIT_COOLDOWN: Partial<Record<SkillId, 'flurryCd' | 'slashCd' | 'counterCd' | 'dashCd' | 'reinforceCd'>> = {
   'guardian.flurry': 'flurryCd',
+  'guardian.dash': 'dashCd',
   'vanguard.slash': 'slashCd',
   'vanguard.counter': 'counterCd',
   'vanguard.dash': 'dashCd',
@@ -2186,6 +2203,7 @@ export function newPlayer(
     dashIframes: false,
     dashHit: 0,
     dashPush: 0,
+    dashShock: 0,
     vx: 0,
     vy: 0,
     guardHeld: false,
@@ -2204,6 +2222,9 @@ export function newPlayer(
     trapLeft: 0,
     volleyCd: 0,
     stunLeft: 0,
+    shock: 0,
+    shockLeft: 0,
+    shockImmune: 0,
     windDash: 0,
     slashCd: 0,
     furyLeft: 0,
@@ -2828,6 +2849,26 @@ export class Duel {
       p.move = '';
       p.moveT = 0;
     }
+  }
+  /**
+   * Electrifies a player: stacks build up and slow, and a full charge discharges into a short stun,
+   * after which the body shrugs off new stacks for a moment.
+   */
+  protected shockPlayer(target: Player, stacks: number) {
+    if (!(stacks > 0) || target.hp <= 0 || target.shockImmune > 0) return;
+    target.shock = Math.min(SHOCK.max, target.shock + stacks);
+    target.shockLeft = SHOCK.duration;
+    if (target.shock < SHOCK.max) return;
+    target.shock = 0;
+    target.shockLeft = 0;
+    target.shockImmune = SHOCK.immunity;
+    // An iron body takes the discharge without locking up.
+    if (target.empowered !== 'reinforce') {
+      target.stunLeft = Math.max(target.stunLeft, SHOCK.stun);
+      target.windup = 0;
+      target.dashLeft = 0;
+    }
+    this.event('shock', target, target.team, undefined, target.classId, 1);
   }
   /** A blade stopped on a guard: whoever swung it reels back from the blow `angle` carried. */
   protected stagger(attacker: Player | Zombie, angle: number) {
@@ -4447,6 +4488,7 @@ export class Duel {
       if (action.dashStarted && p.dashHit > 0) {
         this.dashHits.set(p.id, new Set());
         this.event('dash', p, p.team, Math.atan2(p.dashY, p.dashX), p.classId);
+        this.state.events.at(-1)!.radius = p.dashLeft * p.dashSpeed;
       }
       if (action.blink) {
         this.event(
@@ -4556,8 +4598,10 @@ export class Duel {
           continue;
         struck.add(q.id);
         const angle = Math.atan2(q.y - p.y, q.x - p.x);
-        if (this.damage(q, p, angle, p.dashHit, { knockback: p.dashPush, melee: p }))
+        if (this.damage(q, p, angle, p.dashHit, { knockback: p.dashPush, melee: p })) {
           this.event('dash', q, p.team, angle, p.classId, 1);
+          this.shockPlayer(q, p.dashShock);
+        }
       }
       for (const z of s.zombies) {
         if (
@@ -4669,7 +4713,10 @@ export class Duel {
         ignoreInvuln: !!strike.sibling && met.again,
         melee: p,
       });
-      if (landed) earned();
+      if (landed) {
+        earned();
+        this.shockPlayer(q, strike.shock ?? 0);
+      }
     }
     for (const z of this.state.zombies) {
       if (z.hp <= 0 || !this.hostile(p, z) || !meets(z, z.id, RULES.zombieRadius)) continue;
@@ -4868,8 +4915,10 @@ export class Duel {
       if (!strength) continue;
       const parry = (w.reflected ?? 0) < WARRIOR_PARRY.bounces ? this.parryOf(p, w.angle + Math.PI) : null;
       if (parry) this.returnWave(w, p, carried * strength, parry);
-      else if (this.damage(p, owner, w.angle, carried * strength, { knockback: w.knockback }))
+      else if (this.damage(p, owner, w.angle, carried * strength, { knockback: w.knockback })) {
         this.waveGain(w, 'hit', 1);
+        this.shockPlayer(p, w.shock ?? 0);
+      }
     }
     for (const z of s.zombies) {
       if (z.hp <= 0 || !this.hostile(w, z)) continue;

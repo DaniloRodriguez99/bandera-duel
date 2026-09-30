@@ -89,15 +89,8 @@ export function blueprintSpec(p: Player, abilityId: string): BlueprintSpec | nul
     // The reach grows with the hold; even a tap waits for the minimum charge, so show that one.
     if (p.classId === 'mage')
       return { kind: 'blink', range: blinkReach(Math.max(p.blinkCharge, RULES.mageBlinkMinCharge)), radius: RULES.radius };
-    const duration =
-      p.classId === 'guardian'
-        ? RULES.guardianDashDuration
-        : RULES.dashDuration * (1 + 0.8 * chargePower(p.specialCharge));
-    return {
-      kind: 'dash',
-      range: duration * (p.classId === 'guardian' ? RULES.guardianDashSpeed : RULES.dashSpeed),
-      radius: RULES.radius,
-    };
+    const duration = RULES.dashDuration * (1 + 0.8 * chargePower(p.specialCharge));
+    return { kind: 'dash', range: duration * RULES.dashSpeed, radius: RULES.radius };
   }
   if (abilityId === 'black-hole') {
     // On cooldown the key only implodes the hole already out: nothing to aim.

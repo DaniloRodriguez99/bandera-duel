@@ -1,7 +1,7 @@
 import type { SkillId } from '../index.js';
 import type { ChargeSpec, WaveSpec, WaveTint } from './defs.js';
 import { curve, type Curve } from './geometry.js';
-import { frames, type KitSkill, type MoveDef, type StrikeDef } from './moves.js';
+import { frames, type KitSkill, type MoveDef, type StrikeDef, type StrikeShape } from './moves.js';
 
 /**
  * The knight's and the warrior's kits, as data. Every number that balances them is in this file:
@@ -20,19 +20,34 @@ const register = (id: string, move: MoveDef) => {
 };
 
 // ── Knight ─────────────────────────────────────────────────────────────────────────────────────
-// Fast and precise: two horizontal cuts and a vertical finisher, a blade that cuts skills the
-// harder the longer it was held, and a flurry in the shield's place.
+// A lightning swordsman, fast and precise. Two horizontal cuts that flow into each other and a
+// raised, committed finisher brought down from overhead; a blade that cuts skills the harder the
+// longer it was held; techniques that charge the body with lightning and leave rivals electrified.
 
 /** Seconds the knight's chain waits for its next cut before starting over. */
 const KNIGHT_CHAIN_RESET = 0.9;
 
+/**
+ * Electrified: each lightning blow adds a stack that slows its victim, and a full charge discharges
+ * into a short stun; the body then shrugs off new stacks for a moment.
+ */
+export const SHOCK = {
+  max: 3,
+  /** Seconds the stacks last, refreshed by every new one. */
+  duration: 3,
+  /** Share of walking speed each stack takes. */
+  slow: 0.1,
+  stun: 0.45,
+  immunity: 1.2,
+};
+
 export const KNIGHT_SWORD_CHARGE: ChargeSpec = {
   tiers: [
     { id: 'tap', at: 0, label: 'Toque · corte' },
-    { id: 'low', at: 0.22, label: 'Carga baja · filo corto' },
-    { id: 'mid', at: 0.6, label: 'Carga media · corta a medias', tint: 'gold' },
-    { id: 'high', at: 1, label: 'Carga alta · casi corta del todo', tint: 'gold' },
-    { id: 'max', at: 1.4, label: '100 % · corte absoluto', tint: 'violet' },
+    { id: 'low', at: 0.22, label: 'Carga baja · filo corto', tint: 'lightning' },
+    { id: 'mid', at: 0.6, label: 'Carga media · corta a medias', tint: 'lightning' },
+    { id: 'high', at: 1, label: 'Carga alta · casi corta del todo', tint: 'violet' },
+    { id: 'max', at: 1.4, label: '100 % · corte absoluto', tint: 'crimson' },
   ],
   cap: 1.4,
   breakOnDamage: { cooldown: 0 },
@@ -46,16 +61,16 @@ const SWORD = {
   /** The slash that leaves the blade; a tap launches none. */
   wave: [null, 0, 1, 2, 3] as (number | null)[],
 };
-/** The slashes of the basic cuts, weakest to strongest. */
+/** The slashes of the basic cuts, weakest to strongest: lightning, then violet, then red. */
 const SWORD_WAVES: { range: number; halfWidth: number; damage: number; cut: number; tint: WaveTint }[] = [
-  { range: 100, halfWidth: 16, damage: 0.5, cut: 0.3, tint: 'steel' },
-  { range: 150, halfWidth: 22, damage: 0.75, cut: 0.5, tint: 'steel' },
-  { range: 200, halfWidth: 28, damage: 1, cut: 0.75, tint: 'gold' },
-  { range: 250, halfWidth: 34, damage: 1.5, cut: 1, tint: 'violet' },
+  { range: 100, halfWidth: 16, damage: 0.5, cut: 0.3, tint: 'lightning' },
+  { range: 150, halfWidth: 22, damage: 0.75, cut: 0.5, tint: 'lightning' },
+  { range: 200, halfWidth: 28, damage: 1, cut: 0.75, tint: 'violet' },
+  { range: 250, halfWidth: 34, damage: 1.5, cut: 1, tint: 'crimson' },
 ];
 
-/** A slash that leaves the knight's blade: quick, short and fading as it goes. */
-const knightWave = (level: number, vertical: boolean): WaveSpec => {
+/** A slash that leaves the knight's blade: quick, short and fading as it goes. Awake, it electrifies. */
+const knightWave = (level: number, vertical: boolean, awake: boolean): WaveSpec => {
   const base = SWORD_WAVES[level];
   return {
     // The vertical cut throws a narrow blade of air that reaches farther and bites harder.
@@ -70,42 +85,52 @@ const knightWave = (level: number, vertical: boolean): WaveSpec => {
     knockback: vertical ? 30 : 14,
     cut: base.cut,
     resist: 0.5 + level * 0.25,
-    tint: base.tint,
+    tint: awake && base.tint !== 'crimson' ? 'lightning' : base.tint,
+    shock: awake ? 1 : 0,
   };
 };
 
-const SWORD_STEPS = ['Primer corte', 'Segundo corte', 'Veredicto'];
+/**
+ * The three cuts, each starting where the last one left the blade: right to left across the front,
+ * back left to right, then raised overhead and brought down along the aim. The finisher takes
+ * longer to wind up, and lands all at once.
+ */
+const CUTS: { name: string; start: number; end: number; duration: number; enter?: number; lunge: number; shape: StrikeShape }[] = [
+  { name: 'Primer corte', start: 3, end: 6, duration: 13, lunge: 12, shape: { kind: 'arc', from: deg(60), to: deg(-60), inner: 6, reach: 58 } },
+  { name: 'Corte de regreso', start: 2, end: 5, duration: 12, enter: deg(-60), lunge: 12, shape: { kind: 'arc', from: deg(-60), to: deg(60), inner: 6, reach: 58 } },
+  { name: 'Veredicto', start: 6, end: 8, duration: 17, enter: deg(60), lunge: 16, shape: { kind: 'lane', length: 84, halfWidth: 13, drop: true } },
+];
 
 function knightCut(step: number, tier: number, awake: boolean): MoveDef {
-  const vertical = step === 2;
-  const start = vertical ? frames(4) : frames(2);
-  const end = vertical ? frames(6) : frames(5);
+  const cut = CUTS[step];
+  const vertical = cut.shape.kind === 'lane';
   const strike: StrikeDef = {
-    start,
-    end,
-    // Right to left across the front; the finisher comes down along the aim.
-    shape: vertical
-      ? { kind: 'lane', length: 84, halfWidth: 13 }
-      : { kind: 'arc', from: deg(60), to: deg(-60), inner: 6, reach: 58 },
+    start: frames(cut.start),
+    end: frames(cut.end),
+    shape: cut.shape,
     damage: (vertical ? 1.5 : 1) * SWORD.damage[tier],
     knockback: vertical ? 40 : 12,
     cut: SWORD.cut[tier],
     crit: vertical,
-    lunge: vertical ? 16 : 12,
+    lunge: cut.lunge,
+    // Awake, the blade leaves its lightning in whoever it cuts; the finisher, twice.
+    shock: awake ? (vertical ? 2 : 1) : 0,
   };
   // Awake, every cut throws its slash, two steps stronger than its charge alone would.
   const level = awake ? Math.min(SWORD_WAVES.length - 1, (SWORD.wave[tier] ?? -1) + 2) : SWORD.wave[tier];
   return {
-    name: SWORD_STEPS[step],
-    duration: vertical ? frames(14) : frames(12),
+    name: cut.name,
+    duration: frames(cut.duration),
+    enter: cut.enter,
     strikes: [strike],
-    waves: level === null ? [] : [{ at: end, wave: knightWave(level, vertical) }],
+    waves: level === null ? [] : [{ at: frames(cut.end), wave: knightWave(level, vertical, awake) }],
     speed: 0.85,
-    recoverFrom: end,
+    recoverFrom: frames(cut.end),
+    tint: awake ? 'lightning' : undefined,
   };
 }
 
-for (let step = 0; step < 3; step++)
+for (let step = 0; step < CUTS.length; step++)
   for (let tier = 0; tier < KNIGHT_SWORD_CHARGE.tiers.length; tier++)
     for (const awake of [false, true])
       register(`guardian.sword:${step}:${tier}${awake ? ':awake' : ''}`, knightCut(step, tier, awake));
@@ -113,7 +138,7 @@ for (let step = 0; step < 3; step++)
 export const KNIGHT_FLURRY_CHARGE: ChargeSpec = {
   tiers: [
     { id: 'low', at: 0, label: 'Toque · Tres Relámpagos' },
-    { id: 'mid', at: 0.45, label: 'Media · Cruz Gemela', tint: 'gold' },
+    { id: 'mid', at: 0.45, label: 'Media · Cruz Gemela', tint: 'lightning' },
     { id: 'max', at: 1.1, label: 'Máxima · Juicio Carmesí', tint: 'crimson' },
   ],
   cap: 1.1,
@@ -125,25 +150,25 @@ export const KNIGHT_FLURRY_COOLDOWN = 5;
 const flurryArc = (from: number, to: number, reach: number) =>
   ({ kind: 'arc', from: deg(from), to: deg(to), inner: 6, reach }) as const;
 
-/** Three quick cuts that walk into the rival: light each, and only the last one pushes. */
+/**
+ * Three lightning strikes, each its own: a rising cut from low on the right, a wide backhand that
+ * turns the body round, and a thrust that carries the whole knight forward. Quick, quick, then the
+ * one that counts; each hit leaves a shock, so all three discharge.
+ */
 register('guardian.flurry:0', {
   name: 'Tres Relámpagos',
-  duration: frames(15),
-  strikes: [0, 1, 2].map((index): StrikeDef => ({
-    start: frames(2 + index * 3),
-    end: frames(4 + index * 3),
-    shape: index === 1 ? flurryArc(-55, 55, 62) : flurryArc(55, -55, 62),
-    damage: 0.5,
-    knockback: index === 2 ? 26 : 0,
-    cut: 0.3,
-    sibling: true,
-    lunge: 12,
-  })),
+  duration: frames(24),
+  strikes: [
+    { start: frames(3), end: frames(5), shape: flurryArc(100, -20, 58), damage: 0.5, knockback: 0, cut: 0.3, sibling: true, lunge: 8, shock: 1 },
+    { start: frames(8), end: frames(11), shape: flurryArc(-110, 40, 64), damage: 0.5, knockback: 0, cut: 0.3, sibling: true, lunge: 6, shock: 1 },
+    { start: frames(15), end: frames(17), shape: { kind: 'lane', length: 82, halfWidth: 10 }, damage: 0.75, knockback: 26, cut: 0.4, sibling: true, lunge: 24, shock: 1 },
+  ],
   waves: [],
   speed: 0.7,
-  recoverFrom: frames(10),
+  recoverFrom: frames(17),
+  tint: 'lightning',
 });
-/** Two heavier cuts that cross, each throwing a short slash. */
+/** Two heavier cuts that cross, each throwing a short lightning slash. */
 register('guardian.flurry:1', {
   name: 'Cruz Gemela',
   duration: frames(19),
@@ -156,16 +181,18 @@ register('guardian.flurry:1', {
     cut: 0.6,
     sibling: true,
     lunge: 14,
+    shock: 1,
   })),
   waves: [0, 1].map((index) => ({
     at: frames(6 + index * 5),
     wave: {
       halfWidth: 26, spread: 0, bow: 8, thickness: 12, range: 110, speed: 520, damage: 0.5,
-      falloff: [[0, 1], [1, 0.5]], knockback: 14, cut: 0.5, resist: 0.75, tint: 'gold',
+      falloff: [[0, 1], [1, 0.5]], knockback: 14, cut: 0.5, resist: 0.75, tint: 'lightning',
     } satisfies WaveSpec,
   })),
   speed: 0.6,
   recoverFrom: frames(11),
+  tint: 'lightning',
 });
 /** One cut with everything behind it: the widest blade, a critical, and a slash that parts skills. */
 register('guardian.flurry:2', {
@@ -180,6 +207,7 @@ register('guardian.flurry:2', {
     cut: 1.5,
     crit: true,
     lunge: 18,
+    shock: 2,
   }],
   waves: [{
     at: frames(9),
@@ -191,6 +219,41 @@ register('guardian.flurry:2', {
   speed: 0.4,
   recoverFrom: frames(9),
 });
+
+/**
+ * Paso Relámpago: the body charges with lightning and lets it all go at once, toward the aim. A tap
+ * is a flash step; held, the charge carries it farther and hits harder, and whoever it crosses is
+ * left electrified.
+ */
+export const KNIGHT_STEP_CHARGE: ChargeSpec = {
+  tiers: [
+    { id: 'tap', at: 0, label: 'Toque · paso relámpago' },
+    { id: 'max', at: 0.7, label: 'Cargado · relámpago largo que electriza', tint: 'lightning' },
+  ],
+  cap: 0.7,
+  breakOnDamage: { cooldown: 0 },
+  cancelOnMobility: false,
+};
+export const KNIGHT_STEP = { cooldown: 3, near: 170, far: 300, speed: 950 };
+const lightningStep = (charged: boolean): MoveDef => ({
+  name: charged ? 'Relámpago' : 'Paso Relámpago',
+  duration: frames(3),
+  strikes: [],
+  waves: [],
+  speed: 0.3,
+  recoverFrom: frames(3),
+  tint: 'lightning',
+  dash: {
+    at: frames(2),
+    speed: KNIGHT_STEP.speed,
+    distance: (charge) =>
+      KNIGHT_STEP.near + (KNIGHT_STEP.far - KNIGHT_STEP.near) * Math.min(1, charge / KNIGHT_STEP_CHARGE.cap),
+    iframes: false,
+    hit: charged ? { damage: 1.5, knockback: 30, shock: 2 } : { damage: 1, knockback: 16, shock: 1 },
+  },
+});
+register('guardian.dash:0', lightningStep(false));
+register('guardian.dash:1', lightningStep(true));
 
 /** The awakening: a breath while the mandala passes through the body, then the blade wakes. */
 export const KNIGHT_AWAKEN = { duration: 8, damage: 1.2, rage: 100 };
@@ -489,6 +552,15 @@ export const KIT: Record<string, KitSkill> = {
     chainReset: 0,
     move: (_step, tier) => `guardian.flurry:${tier}`,
     cooldown: () => KNIGHT_FLURRY_COOLDOWN,
+  },
+  'guardian.dash': {
+    charge: KNIGHT_STEP_CHARGE,
+    chain: 1,
+    chainReset: 0,
+    move: (_step, tier) => `guardian.dash:${tier}`,
+    cooldown: () => KNIGHT_STEP.cooldown,
+    interrupts: true,
+    alongside: true,
   },
   'guardian.fury': {
     charge: PRESS,

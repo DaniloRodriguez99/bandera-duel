@@ -36,6 +36,8 @@ export interface StrikeDef {
   sibling?: boolean;
   /** Forward step taken while it cuts. */
   lunge?: number;
+  /** Shock stacks it leaves on whoever it hits. */
+  shock?: number;
 }
 
 /** A slash that leaves the blade at `at`. A function makes it from the seconds the move was charged. */
@@ -86,7 +88,7 @@ export interface MoveDash {
   /** Invulnerable while travelling. */
   iframes: boolean;
   /** What running into an enemy does, once per enemy per launch. */
-  hit?: { damage: number; knockback: number };
+  hit?: { damage: number; knockback: number; shock?: number };
 }
 
 /** How a kit skill turns a press into moves. */
