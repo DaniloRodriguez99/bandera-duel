@@ -27,6 +27,6 @@ test('crea 2v2 con mapa fijo y muestra cupo, equipo y metadatos públicos',async
   try{
     await other.goto('/');
     const card=other.locator('.room-list-card').filter({hasText:'Batalla del bosque'});
-    await expect(card).toContainText('Equipos 2v2 · Bosque de Emboscadas · 1/4 jugadores');
+    await expect(card).toContainText('Equipos 2v2 · Captura la bandera · primero a 3 capturas · Bosque de Emboscadas · 1/4 jugadores');
   }finally{await other.close();}
 });

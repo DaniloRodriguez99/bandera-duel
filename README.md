@@ -4,7 +4,7 @@ Android: instalación de la APK, servidor configurable y compilación en [MOBILE
 
 [Registro de cambios](CHANGELOG.md).
 
-Juego web de captura de bandera para **duelos 1v1, equipos 2v2 o todos contra todos de 3–4 jugadores**, con espada, arco, magia y dash. Partidas de tres minutos, salas públicas o privadas por link, cuatro mapas, controles para PC y celular y servidor autoritativo. No requiere cuentas ni base de datos.
+Juego web y Android de **Captura la bandera o Deathmatch** para duelos 1v1, equipos 2v2 o todos contra todos de 3–4 jugadores, con espada, arco, magia y dash. Salas públicas o privadas, cuatro mapas, controles para PC y celular y servidor autoritativo. No requiere cuentas ni base de datos para las salas PvP.
 
 ## Requisitos e inicio
 
@@ -67,6 +67,7 @@ El arquero dispara flechas y usa una daga. El mago lanza bolas de fuego con clic
 - En duelo las bases quedan a izquierda y derecha. En 2v2, los compañeros comparten base, bandera y marcador, tienen apariciones separadas y no pueden dañarse. En todos contra todos cada color (◆ Azul, ✚ Carmesí, ▲ Jade, ● Violeta) ocupa una esquina.
 - Las reapariciones son ilimitadas; las muertes quedan como estadística. Si una facción pierde a todos sus participantes por abandono, su bandera sale del juego. La última facción restante gana.
 - Cada captura reinicia la arena y pausa el reloj 2 s. Tres capturas ganan; a los 3 minutos gana el mayor marcador, o se declara empate.
+- En **Deathmatch** no hay banderas ni capturas. Cada muerte causada por un rival, su habilidad, trampa o invocación suma una baja para su lado; los abandonos no suman. En 2v2 se comparte el marcador del equipo; en 1v1 y todos contra todos es individual. Las reapariciones siguen siendo ilimitadas. El anfitrión elige primero a 3, 5 o 10 bajas sin reloj, o la mayor cantidad en 3, 5 o 10 minutos; un empate por tiempo termina en tablas.
 - El formato exige el cupo completo y que todos estén listos. Todos deben aceptar la revancha. Una desconexión pausa y reserva el asiento 15 s; si no vuelve, abandona. En 2v2 su compañero puede continuar.
 
 ### Mapas y arbustos
@@ -199,7 +200,7 @@ Al abrir una invitación, marcá **Entrar como espectador**, elegí una perspect
 
 ## Salas públicas y privadas
 
-Al crear una sala podés elegir título, mapa, formato, visibilidad pública o privada, contraseña opcional y permitir o desactivar espectadores. La lista pública se actualiza cada 2 segundos, muestra mapa, formato, cupo y partidas en curso. Las salas privadas solo se comparten por enlace. La contraseña se exige a jugadores y espectadores y nunca se incluye en el enlace ni en el listado. El contador muestra espectadores conectados en tiempo real. `GET /rooms` devuelve únicamente datos públicos.
+Al crear una sala podés elegir título, mapa, formato, objetivo PvP, regla de Deathmatch, visibilidad pública o privada, contraseña opcional y permitir o desactivar espectadores. El anfitrión puede cambiar formato, objetivo y visibilidad en el lobby o después del resultado; el cambio desmarca a todos, limpia el marcador y, tras una partida, devuelve la sala al lobby. No se puede reducir el cupo por debajo de la ocupación actual. Los demás jugadores y espectadores ven los ajustes sin poder editarlos. Hordas sigue separado. La lista pública se actualiza cada 2 segundos y muestra objetivo, regla, mapa, formato, cupo y partidas en curso. Las salas privadas solo se comparten por invitación. La contraseña se exige a jugadores y espectadores y nunca se incluye en la invitación ni en el listado. El contador muestra espectadores conectados en tiempo real. `GET /rooms` devuelve únicamente datos públicos.
 
 ## Práctica local
 

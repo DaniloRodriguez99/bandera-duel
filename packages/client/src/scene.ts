@@ -314,8 +314,8 @@ export class Arena extends Phaser.Scene {
           });
       }
   }
-  private drawBases(bases: Base[]) {
-    const key = JSON.stringify(bases);
+  private drawBases(bases: Base[], objective: Snapshot['objective'] = 'ctf') {
+    const key = JSON.stringify([bases, objective]);
     if (key === this.layoutKey) return;
     this.layoutKey = key;
     const g = this.bases;
@@ -323,16 +323,18 @@ export class Arena extends Phaser.Scene {
     this.baseLabels.forEach((label) => label.destroy());
     this.baseLabels = bases.map(({ team, home: h, spawn: sp }) => {
       const color = COLORS[team];
-      g.fillStyle(color, 0.1);
-      g.fillRoundedRect(h.x < RULES.width / 2 ? h.x - 117 : h.x - 51, h.y - 56, 168, 112, 10);
-      g.lineStyle(2, color, 0.45);
-      g.strokeCircle(h.x, h.y, 38);
-      g.lineStyle(1, color, 0.17);
-      g.strokeCircle(h.x, h.y, 45);
+      if (objective === 'ctf') {
+        g.fillStyle(color, 0.1);
+        g.fillRoundedRect(h.x < RULES.width / 2 ? h.x - 117 : h.x - 51, h.y - 56, 168, 112, 10);
+        g.lineStyle(2, color, 0.45);
+        g.strokeCircle(h.x, h.y, 38);
+        g.lineStyle(1, color, 0.17);
+        g.strokeCircle(h.x, h.y, 45);
+      }
       g.fillStyle(color, 0.18);
       g.fillCircle(sp.x, sp.y, 19);
       return this.add
-        .text(h.x, h.y + 56, `${TEAM_ICONS[team]}  ${TEAM_NAMES[team]}`, {
+        .text(objective === 'ctf' ? h.x : sp.x, (objective === 'ctf' ? h.y + 56 : sp.y + 29), `${TEAM_ICONS[team]}  ${TEAM_NAMES[team]}`, {
           fontFamily: 'monospace',
           fontSize: '11px',
           color: LIGHT[team],
@@ -812,7 +814,7 @@ export class Arena extends Phaser.Scene {
     this.paintDuels(snapshot);
     this.localId = id;
     this.receivedAt = performance.now();
-    this.drawBases(snapshot.bases);
+    this.drawBases(snapshot.bases, snapshot.objective);
     for (const [key, v] of this.visuals) {
       if (snapshot.players.some((p) => p.id === key)) continue;
       v.body.destroy();

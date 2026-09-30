@@ -20,6 +20,7 @@ import {
   DEFAULT_MAP,
   MODE_INFO,
   DEFAULT_MODE,
+  validMode,
   pointBush,
   type MapId,
   type GameMode,
@@ -31,6 +32,24 @@ import { mobStats } from './rpg/mobs.js';
 
 export type Team = 'blue' | 'red' | 'green' | 'violet';
 export type Phase = 'lobby' | 'countdown' | 'playing' | 'capture' | 'rewards' | 'finished';
+export type MatchObjective = 'ctf' | 'deathmatch' | 'pve';
+export type DeathmatchRule = { kind: 'kills'; target: 3 | 5 | 10 } | { kind: 'time'; duration: 180 | 300 | 600 };
+export type PvpConfig = { mode: Exclude<GameMode, 'pve'>; objective: 'ctf' | 'deathmatch'; deathmatch: DeathmatchRule };
+export const DEFAULT_DEATHMATCH_RULE: DeathmatchRule = { kind: 'kills', target: 3 };
+export function validDeathmatchRule(value: unknown): value is DeathmatchRule {
+  if (!value || typeof value !== 'object') return false;
+  const rule = value as Record<string, unknown>;
+  return rule.kind === 'kills'
+    ? [3, 5, 10].includes(rule.target as number)
+    : rule.kind === 'time' && [180, 300, 600].includes(rule.duration as number);
+}
+export function validPvpConfig(value: unknown): value is PvpConfig {
+  if (!value || typeof value !== 'object') return false;
+  const config = value as Record<string, unknown>;
+  return validMode(config.mode) && config.mode !== 'pve' &&
+    (config.objective === 'ctf' || config.objective === 'deathmatch') &&
+    validDeathmatchRule(config.deathmatch);
+}
 export type ClassId = 'archer' | 'mage' | 'necromancer' | 'guardian' | 'vanguard';
 export const CLASS_IDS: ClassId[] = ['archer', 'mage', 'necromancer', 'guardian', 'vanguard'];
 export const DEFAULT_CLASS: ClassId = 'guardian';
@@ -1086,6 +1105,8 @@ export interface Participant {
 export interface Snapshot {
   mapId: MapId;
   mode: GameMode;
+  objective: MatchObjective;
+  deathmatch: DeathmatchRule;
   maxPlayers: number;
   perspective: Team | null;
   tick: number;
@@ -2079,6 +2100,8 @@ export class Duel {
   state: Snapshot = {
     mapId: DEFAULT_MAP,
     mode: DEFAULT_MODE,
+    objective: 'ctf',
+    deathmatch: { ...DEFAULT_DEATHMATCH_RULE },
     maxPlayers: MODE_INFO[DEFAULT_MODE].maxPlayers,
     perspective: null,
     tick: 0,
@@ -2126,9 +2149,14 @@ export class Duel {
   protected raising = new Map<string, { classId: ClassId; name: string }>();
   /** Enemy ids already struck by each knight's current offensive dash. */
   private guardianDashHits = new Map<string, Set<string>>();
-  constructor(mapId: MapId = DEFAULT_MAP, mode: GameMode = DEFAULT_MODE) {
+  constructor(mapId: MapId = DEFAULT_MAP, mode: GameMode = DEFAULT_MODE, objective: 'ctf' | 'deathmatch' = 'ctf', deathmatch: DeathmatchRule = DEFAULT_DEATHMATCH_RULE) {
     this.state.mapId = mapId;
     this.state.mode = mode;
+    this.state.objective = mode === 'pve' ? 'pve' : objective;
+    this.state.deathmatch = { ...deathmatch };
+    this.state.timeLeft = objective === 'deathmatch'
+      ? deathmatch.kind === 'time' ? deathmatch.duration : 0
+      : RULES.matchTime;
     this.state.maxPlayers = MODE_INFO[mode].maxPlayers;
   }
   get map(): MapDefinition {
@@ -2217,7 +2245,7 @@ export class Duel {
       s.mapId,
       s.mode,
     );
-    s.flags = s.bases.map(newFlag);
+    s.flags = s.objective === 'ctf' ? s.bases.map(newFlag) : [];
     for (const p of s.players) {
       const spawn = this.spawnFor(p);
       Object.assign(p, spawn, { angle: spawn.x < RULES.width / 2 ? 0 : Math.PI });
@@ -2246,6 +2274,34 @@ export class Duel {
       maxMana: p.maxMana,
     });
     p.maxHp=CLASSES[p.classId].hp*(1+(p.pve?.maxHpBonus??0));p.hp=p.maxHp;
+  }
+  configurePvp(config: PvpConfig): boolean {
+    const s = this.state;
+    if (s.mode === 'pve' || !validPvpConfig(config) || !['lobby', 'finished'].includes(s.phase) ||
+      s.paused || s.players.length > MODE_INFO[config.mode].maxPlayers) return false;
+    s.mode = config.mode;
+    s.maxPlayers = MODE_INFO[config.mode].maxPlayers;
+    s.objective = config.objective;
+    s.deathmatch = { ...config.deathmatch };
+    s.phase = 'lobby';
+    s.phaseLeft = 0;
+    s.winner = null;
+    s.reason = '';
+    s.score = emptyScore();
+    s.events = [];
+    s.timeLeft = config.objective === 'deathmatch'
+      ? config.deathmatch.kind === 'time' ? config.deathmatch.duration : 0
+      : RULES.matchTime;
+    s.players.forEach((player, index) => {
+      player.team = config.mode === 'teams' ? (index % 2 ? 'red' : 'blue') : TEAMS[index];
+      player.ready = false;
+      player.deaths = 0;
+      player.eliminated = false;
+    });
+    this.arrange();
+    this.resetArena();
+    this.syncParticipants();
+    return true;
   }
   setCustomization(id: string, customization: CharacterCustomization): boolean {
     const p = this.state.players.find((player) => player.id === id);
@@ -2289,7 +2345,9 @@ export class Duel {
     if (s.mode === 'pve') { this.syncParticipants(); return; }
     if (s.players.length === s.maxPlayers && s.players.every((p) => p.ready && p.connected)) {
       s.score = emptyScore();
-      s.timeLeft = RULES.matchTime;
+      s.timeLeft = s.objective === 'deathmatch'
+        ? s.deathmatch.kind === 'time' ? s.deathmatch.duration : 0
+        : RULES.matchTime;
       s.winner = null;
       s.reason = '';
       s.phase = 'countdown';
@@ -2375,9 +2433,9 @@ export class Duel {
     s.traps = [];
     this.paths.clear();
     this.guardianDashHits.clear();
-    s.flags = s.bases
+    s.flags = s.objective === 'ctf' ? s.bases
       .filter((b) => s.players.some((p) => p.team === b.team && !p.eliminated))
-      .map(newFlag);
+      .map(newFlag) : [];
     for (const p of s.players) {
       this.revive(p);
       if (p.eliminated) p.hp = 0;
@@ -2442,6 +2500,7 @@ export class Duel {
     options: { pierce?: boolean; ignoreInvuln?: boolean; freeze?: boolean; execute?: boolean } = {},
   ): boolean {
     if (
+      (this.state.objective === 'deathmatch' && this.state.winner !== null) ||
       !this.hostile(source, target) ||
       target.hp <= 0 ||
       (target.invuln > 0 && !options.ignoreInvuln) ||
@@ -2501,6 +2560,12 @@ export class Duel {
       target.dashInvulnerable = false;
       lowerGuard(target);
       target.deaths++;
+      if (this.state.objective === 'deathmatch') {
+        const match = this.state;
+        match.score[source.team]++;
+        if (match.phase === 'playing' && match.deathmatch.kind === 'kills' &&
+          match.score[source.team] >= match.deathmatch.target) this.finish(source.team, 'bajas');
+      }
       this.event('death', target, target.team);
     } else if (!options.pierce)
       translate(target, Math.cos(angle) * 24, Math.sin(angle) * 24, this.terrainFor(target));
@@ -3959,8 +4024,9 @@ export class Duel {
       if (s.phaseLeft <= 0) { if(s.mode==='pve')this.beginPveWave(1); else s.phase = 'playing'; }
       return;
     }
-    if(s.mode!=='pve') s.timeLeft = Math.max(0, s.timeLeft - dt);
-    if (s.mode!=='pve' && s.timeLeft <= 0) {
+    const timed = s.objective === 'ctf' || (s.objective === 'deathmatch' && s.deathmatch.kind === 'time');
+    if (timed) s.timeLeft = Math.max(0, s.timeLeft - dt);
+    if (timed && s.timeLeft <= 0) {
       const teams = [...new Set(s.players.filter((p) => !p.eliminated).map((p) => p.team))];
       const best = Math.max(...teams.map((t) => s.score[t]));
       const leaders = teams.filter((t) => s.score[t] === best);
@@ -3982,6 +4048,7 @@ export class Duel {
     }
     for (const p of s.players) p.activeTraps = s.traps.filter((t) => t.owner === p.id).length;
     if(s.mode==='pve'){this.stepPveWorld(dt);this.syncParticipants();return;}
+    if (s.objective === 'deathmatch') { this.syncParticipants(); return; }
     // Own-flag returns precede enemy pickups and scoring, independent of player iteration order.
     for (const f of s.flags) {
       f.lockLeft = Math.max(0, f.lockLeft - dt);

@@ -10,6 +10,8 @@ const server = createServer();
 const sdk = new Client('ws://127.0.0.1:2568');
 const sessions: ClientRoom[] = [];
 const states = new Map<string, Snapshot>();
+const roomInfos = new Map<string, { mode: string; objective: string; visibility: string; deathmatch: { kind: string; target?: number; duration?: number }; maxPlayers: number }>();
+const selectionErrors = new Map<string, string>();
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 async function until(fn: () => boolean, timeout = 5000) {
   const start = Date.now();
@@ -22,8 +24,9 @@ async function track(p: Promise<ClientRoom>) {
   const r = await p;
   sessions.push(r);
   r.onMessage('snapshot', (s: Snapshot) => states.set(r.sessionId, s));
-  r.onMessage('pong', () => {}); r.onMessage('roomInfo', () => {});
-  r.onMessage('selectionError', () => {});
+  r.onMessage('pong', () => {});
+  r.onMessage('roomInfo', (info) => roomInfos.set(r.sessionId, info));
+  r.onMessage('selectionError', (message: string) => selectionErrors.set(r.sessionId, message));
   r.send('sync');
   await until(() => states.has(r.sessionId));
   return r;
@@ -48,6 +51,50 @@ afterAll(async () => {
   await server.gracefullyShutdown(false);
 });
 describe('servidor con clientes Colyseus reales', () => {
+  it('solo el anfitrión cambia reglas, plazas y visibilidad; sincroniza espectadores y listado', async () => {
+    const { a, b, host } = await pair('guardian', 'archer', { visibility: 'public' });
+    const viewer = await track(sdk.joinById(a.roomId, { name: 'Vista', spectator: true }));
+    const configure = { mode: 'ffa3', objective: 'deathmatch', deathmatch: { kind: 'time', duration: 300 }, visibility: 'public' };
+    b.send('configureRoom', configure);
+    await until(() => selectionErrors.has(b.sessionId));
+    expect(selectionErrors.get(b.sessionId)).toMatch(/anfitrión/);
+    expect(host.game.state.mode).toBe('duel');
+    a.send('ready');
+    await until(() => host.game.state.players[0].ready);
+    a.send('configureRoom', configure);
+    await until(() => states.get(viewer.sessionId)?.mode === 'ffa3' && roomInfos.get(b.sessionId)?.mode === 'ffa3');
+    expect(host.game.state.players.every(p => !p.ready)).toBe(true);
+    expect(states.get(viewer.sessionId)?.objective).toBe('deathmatch');
+    expect(roomInfos.get(a.sessionId)?.deathmatch).toEqual({ kind: 'time', duration: 300 });
+    expect(roomInfos.get(a.sessionId)?.maxPlayers).toBe(3);
+    const publicList = await (await fetch('http://127.0.0.1:2568/rooms')).json() as Array<{ roomId: string; objective: string; maxPlayers: number }>;
+    expect(publicList.find(info => info.roomId === a.roomId)).toMatchObject({ objective: 'deathmatch', maxPlayers: 3 });
+    a.send('configureRoom', { ...configure, mode: 'duel', visibility: 'private' });
+    await until(() => roomInfos.get(viewer.sessionId)?.visibility === 'private');
+    const privateList = await (await fetch('http://127.0.0.1:2568/rooms')).json() as Array<{ roomId: string }>;
+    expect(privateList.some(info => info.roomId === a.roomId)).toBe(false);
+    host.game.state.phase = 'playing';
+    a.send('configureRoom', configure);
+    await until(() => selectionErrors.get(a.sessionId)?.includes('termine'));
+    expect(host.game.state.mode).toBe('duel');
+  });
+  it('rechaza reducir plazas ocupadas y permite cambiar objetivo tras el resultado para revancha', async () => {
+    const { a, b, host } = await pair('guardian', 'guardian', { mode: 'ffa3' });
+    const c = await track(sdk.joinById(a.roomId, { name: 'Verde' }));
+    a.send('configureRoom', { mode: 'duel', objective: 'deathmatch', deathmatch: { kind: 'kills', target: 3 }, visibility: 'private' });
+    await until(() => selectionErrors.get(a.sessionId)?.includes('lugares'));
+    expect(host.game.state.players).toHaveLength(3);
+    expect(host.game.state.mode).toBe('ffa3');
+    host.game.finish('blue', 'capturas');
+    host.game.state.score.blue = 3;
+    a.send('configureRoom', { mode: 'ffa3', objective: 'deathmatch', deathmatch: { kind: 'kills', target: 5 }, visibility: 'private' });
+    await until(() => states.get(c.sessionId)?.phase === 'lobby' && states.get(c.sessionId)?.objective === 'deathmatch');
+    expect(host.game.state.score.blue).toBe(0);
+    expect(host.game.state.players.every(p => !p.ready)).toBe(true);
+    for (const r of [a, b, c]) r.send('ready');
+    await until(() => states.get(a.sessionId)?.phase === 'countdown');
+    expect(host.game.state.deathmatch).toEqual({ kind: 'kills', target: 5 });
+  });
   it.each([['archer','guardian'],['archer','vanguard'],['guardian','vanguard'],['necromancer','vanguard']] as [ClassId,ClassId][])('sincroniza clases %s vs %s y rechaza armas no autorizadas',async(first,second)=>{
     const {a,b,host}=await pair(first,second);await until(()=>states.get(a.sessionId)?.players.length===2);
     expect(states.get(b.sessionId)?.players.map(p=>p.classId)).toEqual([first,second]);host.game.state.phase='playing';
@@ -74,6 +121,8 @@ describe('servidor con clientes Colyseus reales', () => {
   });
   it('valida selección, anula listo y bloquea cambios en partida',async()=>{
     await expect(sdk.create('duel',{name:'X',classId:'wizard'})).rejects.toThrow();
+    await expect(sdk.create('duel',{name:'X',objective:'deathmatch',deathmatch:{kind:'kills',target:4}})).rejects.toThrow();
+    await expect(sdk.create('duel',{name:'X',mode:'pve',objective:'deathmatch'})).rejects.toThrow();
     const {a,b,host}=await pair();a.send('ready');await until(()=>host.game.state.players[0].ready);
     b.send('selectClass','vanguard');await until(()=>host.game.state.players[1].classId==='vanguard');expect(host.game.state.players[0].ready).toBe(false);
     b.send('selectClass','wizard');await sleep(100);expect(host.game.state.players[1].classId).toBe('vanguard');

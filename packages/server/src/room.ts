@@ -9,11 +9,12 @@ import {
   sanitizeChatText,
   validClass,
   defaultCustomization,validCustomization,
+  DEFAULT_DEATHMATCH_RULE,validPvpConfig,
   idleSlots,SKILL_SLOTS,
   DEFAULT_CLASS,
   DEFAULT_MAP,DEFAULT_MODE,MAPS,MODE_INFO,validMap,validMode,playerVisibleTo,zombieVisibleTo,pointBush,lineClear,
   type ClassId,
-  type Team,type Snapshot,type MapId,type GameMode,
+  type Team,type Snapshot,type MapId,type GameMode,type DeathmatchRule,
   type Input,
   type ChatMessage, type ChatHistory, type ChatStatus, type RoomClosingReason,
   type CharacterCustomization,
@@ -39,6 +40,7 @@ export class DuelRoom extends Room {
       players: this.game.state.players.filter(p => p.connected).length,
       playerSlots: this.game.state.players.length, phase: this.game.state.phase,
       mapId:this.game.state.mapId,mapName:MAPS[this.game.state.mapId].name,mode:this.game.state.mode,modeName:MODE_INFO[this.game.state.mode].name,maxPlayers:this.game.state.maxPlayers,
+      objective:this.game.state.objective,deathmatch:this.game.state.deathmatch,
       score: {...this.game.state.score}, timeLeft: this.game.state.timeLeft, paused: this.game.state.paused,
       hostId:this.hostId,wave:this.game.state.pve?.wave??0,enemies:this.game.state.pve?.enemiesRemaining??0,pveCompleted:this.game.state.pve?.completed??false,
       names: this.game.state.players.map(p => p.name),teams:this.game.state.players.map(p=>p.team) };
@@ -100,7 +102,7 @@ export class DuelRoom extends Room {
   private seen = new Map<string, number>();
   private receivedAt = new Map<string, number>();
   private drops = new Map<string, number>();
-  onCreate(options: { title?: unknown; visibility?: unknown; password?: unknown; allowSpectators?: unknown;mapId?:unknown;mode?:unknown } = {}) {
+  onCreate(options: { title?: unknown; visibility?: unknown; password?: unknown; allowSpectators?: unknown;mapId?:unknown;mode?:unknown;objective?:unknown;deathmatch?:unknown } = {}) {
     if (options.title !== undefined && (typeof options.title !== 'string' || !options.title.trim() || options.title.trim().length > 48 || /[\x00-\x1f<>]/.test(options.title)))
       throw new ServerError(400, 'El título debe tener entre 1 y 48 caracteres, sin etiquetas.');
     if (options.visibility !== undefined && !['public', 'private'].includes(options.visibility as string))
@@ -109,6 +111,13 @@ export class DuelRoom extends Room {
       throw new ServerError(400, 'Opción de espectadores inválida.');
     if(options.mapId!==undefined&&!validMap(options.mapId))throw new ServerError(400,'Mapa desconocido.');
     if(options.mode!==undefined&&!validMode(options.mode))throw new ServerError(400,'Formato desconocido.');
+    const mode = (options.mode as GameMode) ?? DEFAULT_MODE;
+    const objective = options.objective ?? 'ctf';
+    const deathmatch = options.deathmatch ?? DEFAULT_DEATHMATCH_RULE;
+    if (mode === 'pve'
+      ? options.objective !== undefined || options.deathmatch !== undefined
+      : !validPvpConfig({ mode, objective, deathmatch }))
+      throw new ServerError(400, 'Reglas de partida inválidas.');
     if (options.password !== undefined && (typeof options.password !== 'string' || options.password.length > 64))
       throw new ServerError(400, 'La contraseña admite hasta 64 caracteres.');
     this.autoDispose = false;
@@ -116,7 +125,7 @@ export class DuelRoom extends Room {
     this.title = typeof options.title === 'string' ? options.title.trim() : 'Duelo medieval';
     this.visibility = options.visibility === 'public' ? 'public' : 'private';
     this.allowSpectators = options.allowSpectators !== false;
-    this.game=new Duel((options.mapId as MapId)??DEFAULT_MAP,(options.mode as GameMode)??DEFAULT_MODE);
+    this.game=new Duel((options.mapId as MapId)??DEFAULT_MAP,mode,objective as 'ctf' | 'deathmatch',deathmatch as DeathmatchRule);
     if (options.password) this.passwordHash = createHmac('sha256', this.passwordKey).update(options.password as string).digest();
     this.roomId = randomBytes(16).toString('hex');
     void this.setPrivate(true); // Discovery uses our password-free public DTO only.
@@ -135,6 +144,25 @@ export class DuelRoom extends Room {
       this.receivedAt.set(client.sessionId, Date.now());
     });
     this.onMessage('ready', (client) => { if (this.closing) return; this.game.ready(client.sessionId); this.touchActivity(); });
+    this.onMessage('configureRoom', (client, raw: unknown) => {
+      if (this.closing) return;
+      if (client.sessionId !== this.hostId) return client.send('selectionError', 'Solo el anfitrión puede cambiar la sala.');
+      if (!raw || typeof raw !== 'object') return client.send('selectionError', 'Configuración de sala inválida.');
+      const config = raw as Record<string, unknown>;
+      const visibility = config.visibility;
+      if (!validPvpConfig(config) || !['public', 'private'].includes(visibility as string))
+        return client.send('selectionError', 'Configuración de sala inválida.');
+      if (!['lobby', 'finished'].includes(this.game.state.phase))
+        return client.send('selectionError', 'Esperá a que termine la partida para cambiar la sala.');
+      if (this.game.state.players.length > MODE_INFO[config.mode].maxPlayers)
+        return client.send('selectionError', 'Hay más jugadores que lugares en ese formato.');
+      if (!this.game.configurePvp(config)) return client.send('selectionError', 'No se puede cambiar la sala ahora.');
+      this.visibility = visibility as 'public' | 'private';
+      for (const id of this.spectators) this.perspectives.set(id, this.game.state.players[0]?.team ?? 'blue');
+      this.touchActivity();
+      this.publishInfo();
+      this.sendSnapshots();
+    });
     this.onMessage('selectClass', (client, classId) => {
       if (this.closing) return;
       if (!validClass(classId) || !this.game.selectClass(client.sessionId, classId)) {
