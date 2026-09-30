@@ -2403,7 +2403,10 @@ export class Arena extends Phaser.Scene {
     if(this.controls.worldAimDragging&&this.controls.aimX>=0){
       this.blinkSeal(this.holes,this.controls.aimX,this.controls.aimY,20,time,0xc278f5,0.9);
     }
-    this.accumulator += Math.min(delta, 100);
+    // The simulation counts real time. Phaser's `delta` is smoothed and, during its first frames and
+    // whenever the page is out of focus, capped to a 60 Hz frame: below 60 fps that ran the local
+    // simulation, and the inputs sent to the server, in slow motion.
+    this.accumulator += Math.min(this.game.loop.rawDelta, 100);
     if (this.predicted) {
       // The aim, as seen from where the body stands this frame: a still cursor keeps being the
       // target while the character walks. A stick has no cursor, so its direction is projected

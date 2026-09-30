@@ -10,6 +10,10 @@
 - Arrastrar el botón de una habilidad sigue apuntándola, y Singularidad sigue yendo al punto del mapa que se toca.
 - Cerca del borde de la arena, el punto de mira de una palanca queda sobre la dirección apuntada en vez de torcerse hacia el borde.
 
+### Correcciones
+
+- La simulación local y los inputs que se envían al servidor avanzan en tiempo real a cualquier tasa de cuadros. Por debajo de 60 fps, el juego corría en cámara lenta durante sus primeros segundos y siempre que la página no tuviera el foco: las cargas tardaban de más y la predicción se atrasaba respecto del servidor.
+
 ## 2026-09-26
 
 ### Controles universales
