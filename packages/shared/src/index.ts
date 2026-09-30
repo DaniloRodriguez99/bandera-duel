@@ -21,7 +21,7 @@ import {
 } from './combat/geometry.js';
 import { bladeAt } from './combat/moves.js';
 import {
-  KIT, KNIGHT_AWAKEN, KNIGHT_FLURRY_CHARGE, KNIGHT_FLURRY_COOLDOWN, KNIGHT_STEP, KNIGHT_STEP_CHARGE, KNIGHT_SWORD_CHARGE,
+  CELESTIAL_CUT, KIT, KNIGHT_AWAKEN, KNIGHT_FLURRY_CHARGE, KNIGHT_FLURRY_COOLDOWN, KNIGHT_STEP, KNIGHT_STEP_CHARGE, KNIGHT_SWORD_CHARGE,
   MOVES, SHOCK, moveSkill,
   WARRIOR_LAUNCH, WARRIOR_LAUNCH_CHARGE, WARRIOR_PARRY, WARRIOR_REINFORCE, WARRIOR_SLASH_CHARGE, WARRIOR_SLASH_COOLDOWN,
   WARRIOR_SWORD_CHARGE, warriorWave,
@@ -428,10 +428,10 @@ export const SKILLS: Record<SkillId, SkillDefinition> = {
   'mage.blackHole': skill({id:'mage.blackHole',name:'Singularidad',branch:'mage',description:'Mantené hasta 2 s: el agujero crece, pega más y llega más lejos. Soltá para lanzarlo; su núcleo consume a quien llega al centro y estalla contra un muro, al volver a pulsar o tras atraer en su destino.',icon:'mage-blackhole',compatibleClasses:['mage'],compatibleSlots:['f','r'],trigger:'hold-release',animationAction:'castChannel',cooldown:RULES.blackHoleCooldown,damage:'0,75–2,25 en área; letal en el centro',howTo:'Mantené {key} para cargar; soltá para lanzar. Volvé a pulsar para detonar.',blocks:['primary','secondary'],chargeSlow:RULES.chargeMoveSpeed}),
   'necromancer.fire': skill({id:'necromancer.fire',name:'Llama de ultratumba',branch:'necromancer',description:'Fuego espectral que puede canalizarse.',icon:'necromancer-fire',compatibleClasses:['mage','necromancer'],compatibleSlots:['primary'],trigger:'hold-release',animationAction:'castForward',cooldown:RULES.fireCooldown,damage:'1–2',grants:['ranged'],howTo:'Pulsá {key} para fuego espectral; mantené para canalizarlo.'}),
   'necromancer.summon': skill({id:'necromancer.summon',name:'Alzar a los caídos',branch:'necromancer',description:'Invoca zombies, arcanistas y esclavos.',icon:'necromancer-summon',compatibleClasses:['mage','necromancer'],compatibleSlots:['f','r'],trigger:'hold-release',animationAction:'castGround',cooldown:RULES.summonCooldown,damage:'1 por golpe',grants:['summon','companionControl'],howTo:'Pulsá {key} para 2 zombies; mantené para el zombie mago, y hasta el final para resucitar.'}),
-  'guardian.sword': skill({id:'guardian.sword',name:'Tres Cortes',branch:'guardian',description:'Un corte de derecha a izquierda, el regreso de izquierda a derecha y un remate que levanta la espada y la baja de un golpe: crítico si conecta. Mantené para cargar el que sigue: pega más, lanza un tajo y corta habilidades enemigas según la carga.',icon:'guardian-slash',compatibleClasses:['guardian'],compatibleSlots:['primary'],trigger:'hold-release',animationAction:'attack',cooldown:0,damage:'1 · 1 · 1,5; hasta ×2 cargado',grants:['melee'],howTo:'Pulsá {key} para encadenar tres cortes; mantené para cargar el que sigue.',blocks:['secondary'],chargeSlow:0.7,charge:KNIGHT_SWORD_CHARGE,gain:{resource:'rage',hit:12,crit:18,cut:15}}),
-  'guardian.flurry': skill({id:'guardian.flurry',name:'Ráfaga de Acero',branch:'guardian',description:'La espada se electriza. Un toque son tres golpes distintos que avanzan: un corte ascendente, un revés y una estocada; cada uno electriza, y los tres juntos descargan en un aturdimiento breve. Cargada son dos cortes potenciados o uno devastador que parte habilidades.',icon:'vanguard-slash',compatibleClasses:['guardian'],compatibleSlots:['q','e','secondary'],trigger:'hold-release',animationAction:'attack',cooldown:KNIGHT_FLURRY_COOLDOWN,damage:'0,5 · 0,5 · 0,75 · 2 × 1 · 2,5',howTo:'Pulsá {key} para tres golpes eléctricos; mantené para dos potenciados y, a fondo, uno devastador.',blocks:['primary'],chargeSlow:0.6,charge:KNIGHT_FLURRY_CHARGE,gain:{resource:'rage',hit:10},cost:{resource:'mana',amount:20,perSecond:15}}),
-  'guardian.dash': skill({id:'guardian.dash',name:'Paso Relámpago',branch:'guardian',description:`El cuerpo se carga de relámpago y lo suelta de golpe hacia donde apuntás: ${KNIGHT_STEP.near} u con un toque, hasta ${KNIGHT_STEP.far} cargado. Daña y electriza a quien atraviesa. No da invulnerabilidad.`,icon:'guardian-bash',compatibleClasses:['guardian'],compatibleSlots:['mobility'],trigger:'hold-release',animationAction:'dash',cooldown:KNIGHT_STEP.cooldown,damage:'1–1,5',grants:['mobility'],howTo:'Pulsá {key} para un paso relámpago hacia donde apuntás; mantené para ir más lejos y electrizar más.',chargeSlow:0.5,charge:KNIGHT_STEP_CHARGE,cost:{resource:'mana',amount:10,perSecond:20}}),
-  'guardian.fury': skill({id:'guardian.fury',name:'Despertar del Relámpago',branch:'guardian',description:`La Furia se llena al golpear y al cortar habilidades. Llena, un mandala eléctrico recorre el cuerpo y la espada despierta ${KNIGHT_AWAKEN.duration} s: cada corte lanza su tajo, pega más fuerte y electriza.`,icon:'guardian-fury',compatibleClasses:['guardian'],compatibleSlots:['r','f'],trigger:'press',animationAction:'castChannel',cooldown:0,damage:`+${Math.round((KNIGHT_AWAKEN.damage-1)*100)} %`,howTo:'Con la Furia llena, pulsá {key} para despertar la espada.',cost:{resource:'rage',amount:0,min:KNIGHT_AWAKEN.rage}}),
+  'guardian.sword': skill({id:'guardian.sword',name:'Tres Cortes',branch:'guardian',description:'Un corte de derecha a izquierda, el regreso de izquierda a derecha y el Tajo Descendente: la espada sube sobre el hombro y baja en diagonal con todo el peso, crítico si conecta. Mantené para cargar el corte que sigue: pega más, lanza su tajo (el del descendente, una grieta de energía a ras del suelo) y corta habilidades enemigas según la carga. Un golpe leve no interrumpe la carga.',icon:'guardian-slash',compatibleClasses:['guardian'],compatibleSlots:['primary'],trigger:'hold-release',animationAction:'attack',cooldown:0,damage:'1 · 1 · 1,5; hasta ×2 cargado',grants:['melee'],howTo:'Pulsá {key} para encadenar tres cortes; mantené para cargar el que sigue.',blocks:['secondary'],chargeSlow:0.7,charge:KNIGHT_SWORD_CHARGE}),
+  'guardian.flurry': skill({id:'guardian.flurry',name:'Ráfaga de Acero',branch:'guardian',description:'La espada se electriza. Un toque son Tres Relámpagos: un corte ascendente, un revés y una estocada que avanzan; cada uno electriza y los tres juntos descargan en un aturdimiento breve. A media carga, la Cruz Gemela: dos cortes con su tajo. A fondo, el Corte Celestial: un tajo horizontal blanco y dorado, angosto y veloz, que cruza el mapa; devastador de cerca, mucho menos de lejos, y parte las habilidades que cruza. Solo un golpe fuerte interrumpe la carga.',icon:'guardian-flurry',compatibleClasses:['guardian'],compatibleSlots:['q','e','secondary'],trigger:'hold-release',animationAction:'attack',cooldown:KNIGHT_FLURRY_COOLDOWN,damage:`0,5 · 0,5 · 0,75 · 2 × 1 · ${String(CELESTIAL_CUT.damage).replace('.', ',')} de cerca`,howTo:'Pulsá {key} para tres golpes eléctricos; mantené para dos cortes y, a fondo, el Corte Celestial.',blocks:['primary'],chargeSlow:0.6,charge:KNIGHT_FLURRY_CHARGE,cost:{resource:'mana',amount:20,perSecond:15}}),
+  'guardian.dash': skill({id:'guardian.dash',name:'Paso Relámpago',branch:'guardian',description:`El cuerpo se carga de relámpago y lo suelta de golpe hacia donde apuntás: ${KNIGHT_STEP.near} u con un toque, hasta ${KNIGHT_STEP.far} cargado. Sale al instante aunque estés cortando o cargando otra técnica, y el corte sigue. Daña y electriza a quien atraviesa. No da invulnerabilidad.`,icon:'guardian-step',compatibleClasses:['guardian'],compatibleSlots:['mobility'],trigger:'hold-release',animationAction:'dash',cooldown:KNIGHT_STEP.cooldown,damage:'1–1,5',grants:['mobility'],howTo:'Pulsá {key} para un paso relámpago hacia donde apuntás; mantené para ir más lejos y electrizar más.',chargeSlow:0.5,charge:KNIGHT_STEP_CHARGE,cost:{resource:'mana',amount:10,perSecond:20}}),
+  'guardian.fury': skill({id:'guardian.fury',name:'Despertar del Relámpago',branch:'guardian',description:`Un mandala baja despacio por el cuerpo, de la cabeza a los pies, y el relámpago violeta lo toma. Durante ${KNIGHT_AWAKEN.duration} s cada técnica es su versión eléctrica: todo corte lanza un tajo violeta que electriza, la Ráfaga suelta rayos, el Paso llega más lejos y pega más, y el daño sube ${Math.round((KNIGHT_AWAKEN.damage-1)*100)} %. Se recarga en ${KNIGHT_AWAKEN.cooldown} s.`,icon:'guardian-awaken',compatibleClasses:['guardian'],compatibleSlots:['r','f'],trigger:'press',animationAction:'castChannel',cooldown:KNIGHT_AWAKEN.cooldown,damage:`+${Math.round((KNIGHT_AWAKEN.damage-1)*100)} %`,howTo:'Pulsá {key} para despertar el relámpago.'}),
   'vanguard.sword': skill({id:'vanguard.sword',name:'Mandoble Colosal',branch:'vanguard',description:'Dos golpes pesados que se alternan: un barrido ancho y un martillazo desde arriba que empuja lejos. Tardan en salir y pegan como ningún otro. Cargado, el golpe manda una onda roja hacia adelante.',icon:'vanguard-sword',compatibleClasses:['vanguard'],compatibleSlots:['primary'],trigger:'hold-release',animationAction:'attack',cooldown:0,damage:'2 · 2,5; hasta ×1,75 cargado',grants:['melee'],howTo:'Pulsá {key} para el barrido y otra vez para el martillazo; mantené para cargar el que sigue.',chargeSlow:0.6,charge:WARRIOR_SWORD_CHARGE}),
   'vanguard.slash': skill({id:'vanguard.slash',name:'Creciente Escarlata',branch:'vanguard',description:'Un tajo rojo que viaja y atraviesa. Mantené para agrandarlo: a los 3 s está completo y, si seguís, se sobrecarga hasta una ola que cruza el mapa. Pega más cerca que lejos, y los muros cubren. Cargando sos lento, se te ve en los arbustos y un golpe te interrumpe.',icon:'vanguard-slash',compatibleClasses:['vanguard'],compatibleSlots:['q','e'],trigger:'hold-release',animationAction:'attack',cooldown:WARRIOR_SLASH_COOLDOWN,damage:'1,5–5 de cerca; menos con la distancia',howTo:'Pulsá {key} para un tajo corto; mantené para agrandarlo y soltá. La movilidad lo cancela.',blocks:['primary','q','e'],chargeSlow:0.4,charge:WARRIOR_SLASH_CHARGE,cost:{resource:'mana',amount:15,perSecond:12}}),
   'vanguard.counter': skill({id:'vanguard.counter',name:'Revancha de Hierro',branch:'vanguard',description:`Un parry: durante ${String(WARRIOR_PARRY.window).replace('.', ',')} s todo proyectil o tajo que llegue de frente vuelve hacia quien lo lanzó, y un golpe cuerpo a cuerpo se frena y deja tambaleando al atacante. No frena al Guerrero. Fallarlo cuesta ${WARRIOR_PARRY.cooldown} s.`,icon:'vanguard-counter',compatibleClasses:['vanguard'],compatibleSlots:['e','q'],trigger:'press',animationAction:'castChannel',cooldown:WARRIOR_PARRY.cooldown,damage:'devuelve el ataque',howTo:'Pulsá {key} justo antes del impacto, de frente al ataque.'}),
@@ -576,7 +576,7 @@ export const kitSkills = (p:{loadout:CharacterLoadout}):SkillId[] => SKILL_SLOTS
  * Whether the player can pay for a skill. A skill without a cost, or a player without that pool,
  * never blocks. An ability that cannot be paid does not start at all rather than half-activating.
  */
-export function affordable(p: Pick<Player, 'mana' | 'maxMana' | 'rage'>, id: SkillId) {
+export function affordable(p: Pick<Player, 'mana' | 'maxMana'>, id: SkillId) {
   const cost = skillCost(id);
   const pool = cost && resourcePool(p, cost.resource);
   return !cost || !pool || pool.value >= (cost.min ?? cost.amount) - 1e-8;
@@ -588,31 +588,21 @@ export function skillCost(id: SkillId): ResourceCost | undefined {
 }
 /**
  * A player's pool of a resource, or null where there is none. The simulation owns these numbers;
- * the HUD only reads them. Mana exists for the classes that bring a pool (`maxMana` above 0), and
- * Rage is every player's, though only the knight's kit fills it.
+ * the HUD only reads them. Mana exists for the classes that bring a pool (`maxMana` above 0).
  */
-export function resourcePool(p: Pick<Player, 'mana' | 'maxMana' | 'rage'>, resource: ResourceId) {
+export function resourcePool(p: Pick<Player, 'mana' | 'maxMana'>, resource: ResourceId) {
   if (resource === 'mana') return p.maxMana > 0 ? { value: p.mana, max: p.maxMana } : null;
-  if (resource === 'rage') return { value: p.rage, max: RESOURCES.rage.max };
   return null;
 }
-/** Adds to a pool, up to its limit. Gaining Rage also restarts the wait before it cools off. */
+/** Adds to a pool, up to its limit. */
 export function gainResource(p: Player, resource: ResourceId, amount: number) {
   if (!(amount > 0)) return;
-  if (resource === 'rage') {
-    // Awake, the bar is a clock: nothing refills it until it runs out.
-    if (p.empowered === 'awaken') return;
-    // Hordas: each rank of the knight's own upgrade fills it faster.
-    const earned = amount * (1 + (p.pve?.classRanks.guardian ?? 0) * 0.15);
-    p.rage = Math.min(RESOURCES.rage.max, p.rage + earned);
-    p.rageIdle = 0;
-  } else if (resource === 'mana' && p.maxMana > 0) p.mana = Math.min(p.maxMana, p.mana + amount);
+  if (resource === 'mana' && p.maxMana > 0) p.mana = Math.min(p.maxMana, p.mana + amount);
 }
 /** Takes from a pool. Spending mana makes it wait before it starts coming back. */
 function spend(p: Player, resource: ResourceId, amount: number) {
   if (!(amount > 0)) return;
-  if (resource === 'rage') p.rage = Math.max(0, p.rage - amount);
-  else if (resource === 'mana') {
+  if (resource === 'mana') {
     p.mana = Math.max(0, p.mana - amount);
     p.manaIdle = 0;
   }
@@ -961,6 +951,8 @@ export interface Player extends Vec {
   bufferLeft: number;
   /** Cooldown of the knight's flurry. */
   flurryCd: number;
+  /** Cooldown of the knight's awakening. */
+  furyCd: number;
   /** Cooldown of the warrior's reinforcement. */
   reinforceCd: number;
   /**
@@ -1004,9 +996,6 @@ export interface Player extends Vec {
   maxMana: number;
   /** Seconds since mana was last spent: it only comes back after a moment. */
   manaIdle: number;
-  /** Rage, 0 to 100: earned by fighting, and the seconds since any was last earned. */
-  rage: number;
-  rageIdle: number;
 }
 export interface Flag extends Vec {
   team: Team;
@@ -1734,6 +1723,7 @@ export function movePlayer(
     'slashCd',
     'counterCd',
     'flurryCd',
+    'furyCd',
     'reinforceCd',
   ] as const)
     p[key] = Math.max(0, p[key] - dt);
@@ -1751,21 +1741,10 @@ export function movePlayer(
     p.counterLeft = Math.max(0, p.counterLeft - dt);
     if (p.counterLeft <= 1e-8) p.counterLeft = 0;
   }
-  const burning = p.furyLeft > 0 && p.empowered === 'awaken';
   p.furyLeft = Math.max(0, p.furyLeft - dt);
   if (p.furyLeft <= 1e-8) {
     p.furyLeft = 0;
     p.empowered = '';
-  }
-  if (burning) {
-    // Awake, the bar is the time left: it empties as the blade burns through it.
-    p.rage = (RESOURCES.rage.max * p.furyLeft) / KNIGHT_AWAKEN.duration;
-    p.rageIdle = 0;
-  } else if (p.rage > 0) {
-    // Rage cools off once the fight stops feeding it.
-    p.rageIdle += dt;
-    if (p.rageIdle > RESOURCES.rage.decayDelay)
-      p.rage = Math.max(0, p.rage - RESOURCES.rage.decayRate * dt);
   }
   // Arena mana; Lugunica refills its own pools.
   if (!input.world) regenerate(p, dt);
@@ -2149,9 +2128,10 @@ export function movePlayer(
   return result;
 }
 /** Where each kit skill keeps its cooldown. */
-const KIT_COOLDOWN: Partial<Record<SkillId, 'flurryCd' | 'slashCd' | 'counterCd' | 'dashCd' | 'reinforceCd'>> = {
+const KIT_COOLDOWN: Partial<Record<SkillId, 'flurryCd' | 'furyCd' | 'slashCd' | 'counterCd' | 'dashCd' | 'reinforceCd'>> = {
   'guardian.flurry': 'flurryCd',
   'guardian.dash': 'dashCd',
+  'guardian.fury': 'furyCd',
   'vanguard.slash': 'slashCd',
   'vanguard.counter': 'counterCd',
   'vanguard.dash': 'dashCd',
@@ -2242,6 +2222,7 @@ export function newPlayer(
     bufferCharge: 0,
     bufferLeft: 0,
     flurryCd: 0,
+    furyCd: 0,
     reinforceCd: 0,
     counterLeft: 0,
     counterCharge: 0,
@@ -2271,8 +2252,6 @@ export function newPlayer(
     mana: CLASSES[classId].mana,
     maxMana: CLASSES[classId].mana,
     manaIdle: 0,
-    rage: 0,
-    rageIdle: 0,
   };
 }
 const newFlag = ({ team, home }: Base): Flag => ({
@@ -2785,7 +2764,7 @@ export class Duel {
     target.shotCharge = 0;
     target.specialCharge = 0;
     target.trapLeft = 0;
-    this.breakCharge(target);
+    this.breakCharge(target, amount);
     // A reinforced body takes only part of it.
     target.hp = Math.max(0, target.hp - amount * (iron ? WARRIOR_REINFORCE.taken : 1));
     target.invuln = RULES.hurtProtection;
@@ -2809,7 +2788,6 @@ export class Duel {
       target.blinkCommitted = false;
       target.furyLeft = 0;
       target.empowered = '';
-      target.rage = 0;
       target.counterLeft = 0;
       clearKit(target);
       this.raising.delete(target.id);
@@ -2892,12 +2870,17 @@ export class Duel {
     const toward = Math.atan2(source.y - at.y, source.x - at.x);
     return Math.abs(wrapAngle(toward - back)) <= homing + 1e-9 ? toward : back;
   }
-  /** A blow breaks the charge its victim was holding, where that charge says so, and may cost part of its cooldown. */
-  protected breakCharge(p: Player) {
+  /**
+   * A blow of `amount` breaks the charge its victim was holding, where that charge says so, and may
+   * cost part of its cooldown. A technique may hold through blows up to a weight; a blow that kills
+   * ends everything anyway.
+   */
+  protected breakCharge(p: Player, amount: number) {
     const id = p.chargeSkill;
     const rule = id && KIT[id].charge.breakOnDamage;
     // A reinforced body holds on to what it is charging.
     if (!id || !rule || p.empowered === 'reinforce') return;
+    if (rule.over !== undefined && amount <= rule.over + 1e-9) return;
     dropCharge(p);
     const key = KIT_COOLDOWN[id];
     if (key && rule.cooldown > 0) p[key] = Math.max(p[key], SKILLS[id].cooldown * rule.cooldown);
@@ -4205,11 +4188,11 @@ export class Duel {
     target.hp=Math.max(0,target.hp-amount);
     target.invuln=RULES.hurtProtection; target.hitFlash=.18; target.revealLeft=1.5;
     target.shotCharge=0; target.specialCharge=0; target.trapLeft=0;
-    this.breakCharge(target);
+    this.breakCharge(target, amount);
     this.event('hit',target,'red');
     if (target.hp<=0) {
       target.deaths++; target.windup=0; target.dashLeft=0; target.dashInvulnerable=false;
-      target.furyLeft=0; target.empowered=''; target.rage=0; target.raiseCast=0; clearKit(target);
+      target.furyLeft=0; target.empowered=''; target.raiseCast=0; clearKit(target);
       if (target.pve.selfRevives>0) { target.pve.selfRevives--; target.respawnLeft=2; target.eliminated=false; }
       else { target.respawnLeft=0; target.eliminated=true; }
       this.event('death',target,target.team);
@@ -4488,7 +4471,10 @@ export class Duel {
       if (action.dashStarted && p.dashHit > 0) {
         this.dashHits.set(p.id, new Set());
         this.event('dash', p, p.team, Math.atan2(p.dashY, p.dashX), p.classId);
-        this.state.events.at(-1)!.radius = p.dashLeft * p.dashSpeed;
+        const launch = this.state.events.at(-1)!;
+        launch.radius = p.dashLeft * p.dashSpeed;
+        // An awakened knight's step is violet lightning.
+        if (p.empowered === 'awaken') launch.color = WAVE_COLORS.violet.glow;
       }
       if (action.blink) {
         this.event(

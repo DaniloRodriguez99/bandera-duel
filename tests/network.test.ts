@@ -118,16 +118,16 @@ describe('servidor con clientes Colyseus reales', () => {
     await sleep(200);
     expect(knight.move).toBe('');expect(knight.combo).toBe(1);
     expect(host.game.state.events.filter(e=>e.kind==='swing')).toHaveLength(1);
-    // The ultimate does nothing without its Rage, and wakes the blade with it.
-    a.send('input',key(2,'r'));await sleep(120);
-    expect(knight.furyLeft).toBe(0);
-    knight.rage=100;
-    a.send('input',key(3,'r'));
+    // The ultimate wakes the blade once, and then waits out its cooldown.
+    a.send('input',key(2,'r'));
     await until(()=>knight.furyLeft>0);
     await until(()=>(states.get(a.sessionId)?.players.find(p=>p.id===a.sessionId)?.furyLeft??0)>0);
-    // A message cannot fill the bar: the server owns it.
-    a.send('input',{...key(4,'r'),rage:100} as never);await sleep(80);
-    expect(knight.rage).toBeLessThan(100);
+    expect(knight.furyCd).toBeGreaterThan(0);
+    // A message cannot clear the cooldown: the server owns it.
+    const left=knight.furyLeft;
+    a.send('input',{...key(3,'r'),furyCd:0} as never);await sleep(120);
+    expect(host.game.state.events.filter(e=>e.kind==='fury')).toHaveLength(1);
+    expect(knight.furyLeft).toBeLessThan(left);
     await a.leave();await b.leave();
   });
   it('valida selección, anula listo y bloquea cambios en partida',async()=>{

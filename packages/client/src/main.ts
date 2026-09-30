@@ -1393,11 +1393,9 @@ function render(s: Snapshot) {
             ? `DESPIERTO ${me.furyLeft.toFixed(1)}s`
             : me.empowered === 'reinforce'
               ? `HIERRO ${me.furyLeft.toFixed(1)}s`
-              : me.classId === 'guardian'
-                ? `FURIA ${Math.floor(me.rage)} %`
-                : me.maxMana > 0
-                  ? `MANÁ ${Math.floor(me.mana)}`
-                  : '';
+              : me.maxMana > 0
+                ? `MANÁ ${Math.floor(me.mana)}`
+                : '';
     $('lives').textContent = `☠ ${me.deaths}`;
     $('lives').setAttribute('aria-label', `Muertes: ${me.deaths}; reapariciones ilimitadas`);
     $('stealth-state').textContent = me.bushId

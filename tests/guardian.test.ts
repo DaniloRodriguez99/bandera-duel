@@ -1,27 +1,35 @@
 import { describe, expect, it } from 'vitest';
 import {
+  CELESTIAL_CUT,
   CLASSES,
   DEFAULT_LOADOUTS,
   Duel,
   INPUT_BUFFER,
   KNIGHT_AWAKEN,
+  KNIGHT_FLURRY_CHARGE,
   KNIGHT_FLURRY_COOLDOWN,
   KNIGHT_STEP,
   KNIGHT_STEP_CHARGE,
   KNIGHT_SWORD_CHARGE,
   MOVES,
-  RESOURCES,
   RULES,
   SHOCK,
   SKILLS,
+  WARRIOR_SLASH_CHARGE,
+  WAVE_COLORS,
+  curve,
   idleInput,
   movePlayer,
+  skillCost,
+  warriorWave,
+  waveHalfWidth,
   type Arrow,
   type ClassId,
   type Input,
   type Player,
   type SkillSlot,
   type SlotInputState,
+  type WaveSpec,
 } from '@bandera/shared';
 import { World, newCharacter } from '@bandera/shared/world';
 
@@ -99,6 +107,10 @@ describe('Caballero · Tres Cortes', () => {
     expect(first.strikes[0].shape).toMatchObject({ kind: 'arc' });
     expect(second.strikes[0].shape).toMatchObject({ kind: 'arc' });
     expect(third.strikes[0].shape).toMatchObject({ kind: 'lane', drop: true });
+    // Brought down on a slant: neither straight down nor flat.
+    const slant = (third.strikes[0].shape as { diagonal?: number }).diagonal!;
+    expect(slant).toBeGreaterThan(Math.PI / 12);
+    expect(slant).toBeLessThan(Math.PI / 3);
     const sweep = (move: typeof first) => move.strikes[0].shape as { from: number; to: number };
     expect(sweep(first).from).toBeGreaterThan(0);
     expect(sweep(first).to).toBeLessThan(0);
@@ -338,12 +350,21 @@ describe('Caballero · carga', () => {
     expect(knight.move).toBe('guardian.sword:0:3');
   });
 
-  it('un golpe recibido rompe la carga, y dejar de mantener sin soltar la cancela', () => {
+  it('un golpe leve no interrumpe la carga; uno fuerte sí, y dejar de mantener sin soltar la cancela', () => {
     const hit = arena();
+    hit.knight.hp = hit.knight.maxHp = 10;
     hit.step({ primary: DOWN });
     hit.step({ primary: HOLD }, {}, 10);
-    expect(hit.knight.chargeT).toBeGreaterThan(0.3);
-    hit.duel.damage(hit.knight, hit.rival, 0, 0.5);
+    const held = hit.knight.chargeT;
+    expect(held).toBeGreaterThan(0.3);
+    // An arrow's worth: he charges on through it.
+    hit.duel.damage(hit.knight, hit.rival, 0, 1);
+    expect(hit.knight.chargeSkill).toBe('guardian.sword');
+    hit.step({ primary: HOLD });
+    expect(hit.knight.chargeT).toBeGreaterThan(held);
+    // A heavy blow breaks it, and letting go afterwards throws nothing.
+    hit.knight.invuln = 0;
+    hit.duel.damage(hit.knight, hit.rival, 0, KNIGHT_SWORD_CHARGE.breakOnDamage!.over! + 0.5);
     expect(hit.knight.chargeSkill).toBe('');
     hit.step({ primary: UP });
     expect(hit.knight.move).toBe('');
@@ -456,6 +477,43 @@ describe('Caballero · corte de habilidades', () => {
   });
 });
 
+describe('Caballero · la forma de los tajos', () => {
+  const wave = (step: number, tier = 4) => MOVES[`guardian.sword:${step}:${tier}`].waves[0].wave as WaveSpec;
+
+  it('los cortes horizontales lanzan una media luna ancha; el descendente, una grieta angosta y honda que llega más lejos', () => {
+    for (const step of [0, 1]) expect(wave(step).form ?? 'crescent').toBe('crescent');
+    const rend = wave(2);
+    expect(rend.form).toBe('rend');
+    expect(rend.halfWidth).toBeLessThan(wave(0).halfWidth / 2);
+    expect(rend.thickness).toBeGreaterThan(wave(0).thickness * 3);
+    expect(rend.bow).toBe(0);
+    expect(rend.range).toBeGreaterThan(wave(0).range);
+    expect(rend.damage).toBeGreaterThan(wave(0).damage);
+  });
+
+  it('la grieta corre por la línea del golpe: alcanza lejos en ella y no a quien está al costado', () => {
+    const { duel, knight, rival, other, charged, finish } = arena();
+    knight.combo = 2;
+    knight.comboLeft = 99;
+    Object.assign(rival, { x: knight.x + 280, y: knight.y, invuln: 0 });
+    Object.assign(other, { x: knight.x + 200, y: knight.y + 45, invuln: 0 });
+    charged('primary', 1.4);
+    expect(knight.move).toBe('guardian.sword:2:4');
+    finish();
+    for (let i = 0; i < 30; i++) duel.step(new Map());
+    expect(rival.hp).toBeLessThan(20);
+    expect(other.hp).toBe(20);
+    // The same body beside the line is inside a horizontal cut's crescent.
+    const broad = arena();
+    Object.assign(broad.other, { x: broad.knight.x + 200, y: broad.knight.y + 45, invuln: 0 });
+    broad.charged('primary', 1.4);
+    expect(broad.knight.move).toBe('guardian.sword:0:4');
+    broad.finish();
+    for (let i = 0; i < 30; i++) broad.duel.step(new Map());
+    expect(broad.other.hp).toBeLessThan(20);
+  });
+});
+
 describe('Caballero · Ráfaga de Acero', () => {
   it('un toque son tres golpes distintos que avanzan: cada uno electriza y juntos descargan', () => {
     const { knight, rival, step, finish, inFront, events } = arena();
@@ -492,22 +550,56 @@ describe('Caballero · Ráfaga de Acero', () => {
     expect(MOVES['guardian.flurry:1'].waves).toHaveLength(2);
   });
 
-  it('a carga máxima es un solo corte devastador, crítico, cuyo tajo parte habilidades', () => {
+  it('a carga máxima es el Corte Celestial: de cerca, medio guerrero; lejos, mucho menos', () => {
     const { duel, knight, rival, other, charged, finish, inFront, events } = arena();
-    inFront(rival, 70);
-    inFront(other, 260);
-    charged('q', 1.2);
+    inFront(rival, 60);
+    inFront(other, 480);
+    charged('q', KNIGHT_FLURRY_CHARGE.cap);
     expect(knight.move).toBe('guardian.flurry:2');
+    expect(MOVES['guardian.flurry:2'].name).toBe('Corte Celestial');
     finish();
-    expect(rival.hp).toBe(17.5);
+    for (let i = 0; i < 30; i++) duel.step(new Map());
+    // The blade itself, up close: half of a warrior, as a critical.
+    expect(20 - rival.hp).toBeCloseTo(CLASSES.vanguard.hp / 2);
     expect(events('hit')[0].crit).toBe(true);
-    expect(rival.shock).toBe(2);
-    for (let i = 0; i < 20; i++) duel.step(new Map());
-    expect(20 - other.hp).toBeGreaterThan(1.2);
-    const wave = MOVES['guardian.flurry:2'].waves[0].wave as { cut: number };
-    expect(wave.cut).toBeGreaterThan(1);
+    // Far across the arena its slash still arrives, faded to less than half.
+    expect(20 - other.hp).toBeGreaterThan(0.5);
+    expect(20 - other.hp).toBeLessThan(CELESTIAL_CUT.damage / 2);
+    expect(duel.state.waves).toHaveLength(0);
     // Three different moves, not one with bigger numbers.
     expect([0, 1, 2].map((tier) => MOVES[`guardian.flurry:${tier}`].strikes.length)).toEqual([3, 2, 1]);
+  });
+
+  it('el Corte Celestial es más veloz, más angosto y llega más lejos que la ola del guerrero', () => {
+    const warrior = warriorWave(WARRIOR_SLASH_CHARGE.cap);
+    const shape = (spec: WaveSpec) => ({ x: 0, y: 0, angle: 0, ...spec });
+    expect(CELESTIAL_CUT.speed).toBeGreaterThan(warrior.speed);
+    expect(CELESTIAL_CUT.range).toBeGreaterThanOrEqual(1000);
+    for (const travelled of [0, 300, 600])
+      expect(waveHalfWidth(shape(CELESTIAL_CUT), travelled)).toBeLessThan(waveHalfWidth(shape(warrior), travelled));
+    // Strong falloff: all of it up close, less than half past the middle of its run, never nothing.
+    expect(curve(CELESTIAL_CUT.falloff, 0)).toBe(1);
+    expect(curve(CELESTIAL_CUT.falloff, 0.5)).toBeLessThan(0.5);
+    expect(curve(CELESTIAL_CUT.falloff, 1)).toBeGreaterThan(0);
+    expect(CELESTIAL_CUT.damage).toBeCloseTo(CLASSES.vanguard.hp / 2);
+    expect(CELESTIAL_CUT.tint).toBe('radiant');
+  });
+
+  it('el Corte Celestial parte en el aire lo que le lanzan desde lejos', () => {
+    const { duel, knight, rival, charged, step, events } = arena('mage');
+    rival.team = 'red';
+    knight.hp = knight.maxHp = 10;
+    charged('q', KNIGHT_FLURRY_CHARGE.cap);
+    step({}, {}, 9);
+    // A charged orb coming at him from across the arena.
+    duel.state.arrows.push({
+      id: 7, owner: 'rival', team: 'red', classId: 'mage', skillId: 'mage.fireball', power: 1,
+      x: knight.x + 400, y: knight.y, angle: Math.PI, life: 2,
+    });
+    step({}, {}, 15);
+    expect(events('projectileCut').some((event) => event.share === undefined)).toBe(true);
+    expect(events('explosion')).toHaveLength(0);
+    expect(knight.hp).toBe(10);
   });
 
   it('tiene recarga, no sale mientras se recarga y cargarla ocupa la espada', () => {
@@ -528,92 +620,98 @@ describe('Caballero · Ráfaga de Acero', () => {
   });
 });
 
-describe('Caballero · Furia y Despertar', () => {
-  it('la Furia se gana golpeando y cortando, y el remate da más', () => {
-    const { knight, rival, step, finish, inFront } = arena();
-    const gained: number[] = [];
-    for (let i = 0; i < 3; i++) {
-      inFront(rival);
-      const before = knight.rage;
-      step({ primary: TAP });
-      finish();
-      gained.push(knight.rage - before);
-    }
-    expect(gained).toEqual([12, 12, 18]);
-    // Missing earns nothing.
-    Object.assign(rival, { x: 800 });
-    const before = knight.rage;
-    step({ primary: TAP });
-    finish();
-    expect(knight.rage).toBe(before);
-  });
-
-  it('cortar una habilidad también la llena, según cuánto cortó', () => {
-    const { duel, knight, rival, charged, step } = arena('archer');
-    rival.team = 'red';
-    charged('primary', 1.5);
-    step({}, {}, 3);
-    duel.state.arrows.push({ id: 1, owner: 'rival', team: 'red', classId: 'archer', x: knight.x + 62, y: knight.y, angle: Math.PI, life: 1 });
-    step({}, {}, 3);
-    expect(knight.rage).toBe(15);
-  });
-
-  it('con la barra llena, R despierta la espada: 8 s, más daño y un tajo en cada corte', () => {
-    const { duel, knight, rival, other, step, finish, inFront, events } = arena();
-    knight.rage = RESOURCES.rage.max - 1;
-    step({ r: TAP });
-    expect(knight.furyLeft).toBe(0);
-    knight.rage = RESOURCES.rage.max;
+describe('Caballero · Despertar del Relámpago', () => {
+  it('R no pide Furia: despierta al instante y después espera su recarga', () => {
+    const { knight, step, finish, events } = arena();
+    expect(skillCost('guardian.fury')).toBeUndefined();
     step({ r: TAP });
     expect(knight.move).toBe('guardian.fury:0');
+    expect(knight.empowered).toBe('awaken');
     expect(knight.furyLeft).toBe(KNIGHT_AWAKEN.duration);
+    expect(knight.furyCd).toBe(KNIGHT_AWAKEN.cooldown);
     expect(events('fury')).toHaveLength(1);
     finish();
-    // Awake, even a tap throws its slash, and the blade bites harder.
+    step({}, {}, ticks(KNIGHT_AWAKEN.duration));
+    expect([knight.empowered, knight.furyLeft]).toEqual(['', 0]);
+    // Still cooling down: another press does nothing until the rest of the minute is over.
+    step({ r: TAP });
+    expect(knight.move).toBe('');
+    expect(events('fury')).toHaveLength(1);
+    step({}, {}, ticks(KNIGHT_AWAKEN.cooldown - KNIGHT_AWAKEN.duration));
+    step({ r: TAP });
+    expect(knight.move).toBe('guardian.fury:0');
+  });
+
+  it('el mandala lo recorre una sola vez, despacio, y mientras pasa ningún paso lo saca de ahí', () => {
+    const awaken = MOVES['guardian.fury:0'];
+    expect(awaken.effect).toBe('awaken');
+    expect(awaken.duration).toBeGreaterThanOrEqual(0.8);
+    expect(awaken.planted).toBe(true);
+    const { knight, step, finish } = arena();
+    step({ r: TAP });
+    step({ mobility: TAP });
+    expect([knight.dashLeft, knight.dashCd]).toEqual([0, 0]);
+    finish();
+    step({ mobility: TAP });
+    expect(knight.dashLeft).toBeGreaterThan(0);
+  });
+
+  it('despierto, los cortes son violetas: pegan más y cada uno lanza un tajo que electriza', () => {
+    const { duel, knight, rival, other, step, finish, inFront } = arena();
+    step({ r: TAP });
+    finish();
     inFront(rival);
     inFront(other, 120);
     step({ primary: TAP });
     expect(knight.move).toBe('guardian.sword:0:0:awake');
     finish();
+    expect(rival.shock).toBe(1);
     for (let i = 0; i < 12; i++) duel.step(new Map());
     expect(20 - rival.hp).toBeCloseTo(KNIGHT_AWAKEN.damage);
     expect(other.hp).toBeLessThan(20);
-    // The bar is the clock: it runs down and nothing refills it until it is over.
-    expect(knight.rage).toBeLessThan(RESOURCES.rage.max);
-    expect(knight.rage).toBeCloseTo((RESOURCES.rage.max * knight.furyLeft) / KNIGHT_AWAKEN.duration, 0);
-    step({}, {}, ticks(KNIGHT_AWAKEN.duration));
-    expect(knight.furyLeft).toBe(0);
-    expect(knight.rage).toBe(0);
+    const wave = MOVES['guardian.sword:0:0:awake'].waves[0].wave as WaveSpec;
+    expect([wave.tint, wave.shock]).toEqual(['violet', 1]);
   });
 
   it('despierto, cada corte y su tajo electrizan; el remate, el doble', () => {
     const cut = (step: number) => MOVES[`guardian.sword:${step}:0:awake`];
     expect(cut(0).strikes[0].shock).toBe(1);
     expect(cut(2).strikes[0].shock).toBe(2);
-    expect((cut(0).waves[0].wave as { shock?: number }).shock).toBe(1);
+    expect((cut(0).waves[0].wave as WaveSpec).shock).toBe(1);
+    expect((cut(2).waves[0].wave as WaveSpec).shock).toBe(2);
     expect(MOVES['guardian.sword:0:0'].strikes[0].shock).toBe(0);
-    const { knight, rival, step, finish, inFront } = arena();
-    knight.rage = RESOURCES.rage.max;
-    step({ r: TAP });
-    finish();
-    inFront(rival);
-    step({ primary: TAP });
-    finish();
-    expect(rival.shock).toBe(1);
   });
 
   it('el remate despierto lanza el tajo más fuerte de la cadena', () => {
-    const wave = (step: number) => MOVES[`guardian.sword:${step}:0:awake`].waves[0].wave as { damage: number; range: number };
+    const wave = (step: number) => MOVES[`guardian.sword:${step}:0:awake`].waves[0].wave as WaveSpec;
     expect(wave(2).damage).toBeGreaterThan(wave(0).damage);
     expect(wave(2).range).toBeGreaterThan(wave(1).range);
     expect(wave(0)).toEqual(wave(1));
   });
 
-  it('morir apaga el Despertar y vacía la Furia', () => {
+  it('despierto, la Ráfaga suelta rayos, el Corte Celestial es violeta y el paso llega más lejos y pega más', () => {
+    expect(MOVES['guardian.flurry:0'].waves).toHaveLength(0);
+    expect(MOVES['guardian.flurry:0:awake'].waves).toHaveLength(3);
+    const celestial = MOVES['guardian.flurry:2:awake'].waves[0].wave as WaveSpec;
+    expect(celestial.tint).toBe('violet');
+    expect(celestial.shock).toBeGreaterThan(0);
+    const launch = (id: string) => MOVES[id].dash!;
+    expect(launch('guardian.dash:0:awake').distance(0)).toBeGreaterThan(launch('guardian.dash:0').distance(0));
+    expect(launch('guardian.dash:1:awake').hit!.damage).toBeGreaterThan(launch('guardian.dash:1').hit!.damage);
+    expect(launch('guardian.dash:0:awake').hit!.shock).toBeGreaterThan(launch('guardian.dash:0').hit!.shock!);
+    // Played: the awakened step goes out as violet lightning.
+    const { step, finish, events } = arena();
+    step({ r: TAP });
+    finish();
+    step({ mobility: TAP });
+    expect(events('dash')[0].color).toBe(WAVE_COLORS.violet.glow);
+  });
+
+  it('morir apaga el Despertar', () => {
     const { duel, knight, rival } = arena();
-    Object.assign(knight, { rage: 60, furyLeft: 4, invuln: 0 });
+    Object.assign(knight, { empowered: 'awaken', furyLeft: 4, invuln: 0 });
     duel.damage(knight, rival, 0, 99);
-    expect([knight.rage, knight.furyLeft]).toEqual([0, 0]);
+    expect([knight.empowered, knight.furyLeft]).toEqual(['', 0]);
   });
 });
 
@@ -623,16 +721,15 @@ describe('Caballero · Paso Relámpago', () => {
     Object.assign(rival, { x: 380, y: 270 });
     Object.assign(other, { x: 440, y: 270 });
     const from = knight.x;
-    // Walking south, aiming east: it goes where it aims.
+    // Walking south, aiming east: it goes where it aims, at once.
     step({ mobility: TAP }, { y: 1 });
-    expect(knight.move).toBe('guardian.dash:0');
-    expect(knight.dashCd).toBeCloseTo(KNIGHT_STEP.cooldown);
-    step({}, {}, 4);
     expect(knight.dashLeft).toBeGreaterThan(0);
+    expect(knight.move).toBe('');
+    expect(knight.dashCd).toBeCloseTo(KNIGHT_STEP.cooldown);
+    step({}, {}, 3);
     expect(knight.dashInvulnerable).toBe(false);
     step({}, {}, 8);
     expect(knight.x - from).toBeCloseTo(KNIGHT_STEP.near, -1);
-    // Only the tick before the step went out walked it south.
     expect(Math.abs(knight.y - 270)).toBeLessThan(8);
     expect([rival.hp, other.hp]).toEqual([19, 19]);
     expect([rival.shock, other.shock]).toEqual([1, 1]);
@@ -641,11 +738,11 @@ describe('Caballero · Paso Relámpago', () => {
   });
 
   it('cargado, el cuerpo se llena de relámpago: llega más lejos, pega más y electriza el doble', () => {
-    const { knight, rival, step, charged } = arena();
+    const { knight, rival, step, charged, events } = arena();
     Object.assign(rival, { x: 560, y: 270 });
     const from = knight.x;
     charged('mobility', KNIGHT_STEP_CHARGE.cap);
-    expect(knight.move).toBe('guardian.dash:1');
+    expect(events('dash')[0].radius).toBeCloseTo(KNIGHT_STEP.far);
     step({}, {}, 16);
     expect(knight.x - from).toBeCloseTo(KNIGHT_STEP.far, -1);
     expect(rival.hp).toBe(18.5);
@@ -654,16 +751,34 @@ describe('Caballero · Paso Relámpago', () => {
     expect(knight.mana).toBeLessThan(CLASSES.guardian.mana - SKILLS['guardian.dash'].cost!.amount - 10);
   });
 
-  it('espera a que la hoja termine: corta la recuperación de un corte, nunca su preparación ni su filo', () => {
-    const { knight, step } = arena();
+  it('sale al instante aun en medio de un corte, y el corte sigue: la hoja viaja con él', () => {
+    const { knight, rival, step, finish } = arena();
+    knight.combo = 2;
+    knight.comboLeft = 5;
+    // Out of the finisher's reach from where he stands, inside it from where the step leaves him.
+    Object.assign(rival, { x: knight.x + KNIGHT_STEP.near + 60, y: knight.y, invuln: 0 });
     step({ primary: TAP });
     step({ mobility: TAP });
-    expect(knight.move).toBe('guardian.sword:0:0');
-    expect(knight.dashCd).toBe(0);
-    // The blade is out: the waiting step goes at once, cutting the recovery short.
-    step({}, {}, 5);
-    expect(knight.move).toBe('guardian.dash:0');
-    expect(knight.dashCd).toBeGreaterThan(0);
+    expect(knight.dashLeft).toBeGreaterThan(0);
+    expect(knight.move).toBe('guardian.sword:2:0');
+    finish();
+    expect(rival.hp).toBe(18.5);
+  });
+
+  it('no saca al Caballero del Corte Celestial: espera a que termine', () => {
+    const { knight, step, charged } = arena();
+    charged('q', KNIGHT_FLURRY_CHARGE.cap);
+    expect(knight.move).toBe('guardian.flurry:2');
+    step({ mobility: TAP });
+    expect(knight.dashLeft).toBe(0);
+    expect(knight.buffered).toBe('guardian.dash');
+    // Asked for near its end, it goes out the moment the cut is over.
+    step({}, {}, ticks(MOVES['guardian.flurry:2'].duration) - 4);
+    step({ mobility: TAP });
+    expect(knight.dashLeft).toBe(0);
+    step({}, {}, 4);
+    expect(knight.move).toBe('');
+    expect(knight.dashLeft).toBeGreaterThan(0);
   });
 
   it('sale aunque esté cargando un corte, y esa carga sigue', () => {
@@ -672,8 +787,51 @@ describe('Caballero · Paso Relámpago', () => {
     step({ primary: HOLD }, {}, 8);
     step({ primary: HOLD, mobility: DOWN });
     step({ primary: HOLD, mobility: UP });
-    expect(knight.move).toBe('guardian.dash:0');
+    expect(knight.dashLeft).toBeGreaterThan(0);
     expect(knight.chargeSkill).toBe('guardian.sword');
+  });
+});
+
+describe('Caballero · cargar bajo ataque', () => {
+  it('cada técnica aguanta según su peso: el corte, golpes de hasta 1,5; la Ráfaga, hasta 2; el paso, cualquiera', () => {
+    expect(KNIGHT_SWORD_CHARGE.breakOnDamage).toEqual({ cooldown: 0, over: 1.5 });
+    expect(KNIGHT_FLURRY_CHARGE.breakOnDamage).toEqual({ cooldown: 0, over: 2 });
+    expect(KNIGHT_STEP_CHARGE.breakOnDamage).toBeNull();
+    const hold = (slot: SkillSlot, blow: number) => {
+      const game = arena();
+      game.knight.hp = game.knight.maxHp = 10;
+      game.step({ [slot]: DOWN });
+      game.step({ [slot]: HOLD }, {}, 6);
+      game.duel.damage(game.knight, game.rival, 0, blow);
+      return game.knight.chargeSkill;
+    };
+    expect(hold('q', 1)).toBe('guardian.flurry');
+    expect(hold('q', 2)).toBe('guardian.flurry');
+    expect(hold('q', 2.5)).toBe('');
+    expect(hold('primary', 1.5)).toBe('guardian.sword');
+    expect(hold('primary', 2)).toBe('');
+    expect(hold('mobility', 3)).toBe('guardian.dash');
+  });
+
+  it('una flecha que le pega mientras carga el Corte Celestial no lo interrumpe, y el corte sale igual', () => {
+    const { duel, knight, rival, step } = arena('archer');
+    rival.team = 'red';
+    knight.hp = knight.maxHp = 10;
+    step({ q: DOWN });
+    step({ q: HOLD }, {}, 10);
+    duel.state.arrows.push({ id: 5, owner: 'rival', team: 'red', classId: 'archer', x: knight.x + 30, y: knight.y, angle: Math.PI, life: 1 });
+    step({ q: HOLD }, {}, ticks(KNIGHT_FLURRY_CHARGE.cap));
+    expect(knight.hp).toBe(9);
+    step({ q: UP });
+    expect(knight.move).toBe('guardian.flurry:2');
+  });
+
+  it('un golpe que lo mata sí termina con todo', () => {
+    const { duel, knight, rival, step } = arena();
+    step({ q: DOWN });
+    step({ q: HOLD }, {}, 10);
+    duel.damage(knight, rival, 0, knight.hp);
+    expect([knight.chargeSkill, knight.move]).toEqual(['', '']);
   });
 });
 

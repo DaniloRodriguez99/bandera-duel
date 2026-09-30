@@ -99,10 +99,20 @@ const SPELL_NOTES: Record<string, number[]> = {
   // The warrior's greatsword: low and heavy. His parry rings like struck metal.
   swingHeavy: [196, 131],
   counter: [1320, 990],
-  // The knight's: sharp and fast, with lightning in it.
+  // The knight's: sharp and fast, with lightning in it. The descending cut falls in pitch; the
+  // celestial cut rings clear and high; the awakening climbs.
   swingLight: [988, 1319],
+  swingDescend: [1319, 880, 440],
+  celestial: [1760, 2349, 2794, 3520],
+  awaken: [392, 494, 587, 784, 988],
   bolt: [1568, 784, 392],
   shock: [2093, 1568, 2637],
+  // A charge crossing into a stronger state: higher each time, a chord at its height. The
+  // warrior's, an octave and more below.
+  tier: [880],
+  tierMax: [1319, 1760],
+  tierHeavy: [196],
+  tierHeavyMax: [262, 392],
 };
 export function sound(kind: string) {
   if (muted || !context || context.state !== 'running' || document.hidden) return;

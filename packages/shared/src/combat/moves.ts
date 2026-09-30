@@ -17,7 +17,17 @@ export const frames = (count: number) => count * TICK;
  */
 export type StrikeShape =
   | { kind: 'arc'; from: number; to: number; inner: number; reach: number }
-  | { kind: 'lane'; length: number; halfWidth: number; drop?: boolean };
+  | {
+      kind: 'lane';
+      length: number;
+      halfWidth: number;
+      drop?: boolean;
+      /**
+       * Brought down on a slant: its swing leans this far from the vertical toward the sword hand,
+       * so it falls from over the shoulder onto the line. Drawn, not tested: it lands on the lane.
+       */
+      diagonal?: number;
+    };
 
 export interface StrikeDef {
   /** Seconds into the move the blade starts and stops cutting. */
@@ -71,6 +81,11 @@ export interface MoveDef {
   /** The colour of its trail, when it throws no slash to take it from. */
   tint?: WaveTint;
   /**
+   * The whole body goes into it: nothing runs beside it, so a launch waits for it to end instead
+   * of carrying the fighter away in the middle of it.
+   */
+  planted?: boolean;
+  /**
    * The swing the blade makes when the move has no strike of its own: the turn that throws a slash
    * from a distance. It is drawn, never tested against anyone.
    */
@@ -106,6 +121,11 @@ export interface KitSkill {
   instant?: boolean;
   /** May cut into another move's recovery instead of waiting for it to end. */
   interrupts?: boolean;
+  /**
+   * Runs beside whatever move is going on instead of taking its place: a launch that carries the
+   * fighter while the blade keeps swinging, unless that move is planted. Its moves are only a launch.
+   */
+  concurrent?: boolean;
   /**
    * Mobility: while another skill is being charged it still goes out, uncharged, when its key is
    * let go, and that charge is kept unless it says a mobility cancels it.

@@ -30,8 +30,12 @@ export interface ChargeSpec {
    * full at `cap` and there is nothing beyond.
    */
   full?: number;
-  /** Taking damage drops the charge, and costs this share of the ability's cooldown. Null: it holds. */
-  breakOnDamage: { cooldown: number } | null;
+  /**
+   * Taking damage drops the charge, and costs this share of the ability's cooldown. With `over`,
+   * only a blow of more than that much damage does: the technique holds through lighter ones.
+   * Null: nothing breaks it but a stun.
+   */
+  breakOnDamage: { cooldown: number; over?: number } | null;
   /** Using the mobility slot drops the charge. */
   cancelOnMobility: boolean;
   /** Charging it gives its user away through the bushes: the telegraph is the counterplay. */
@@ -60,7 +64,7 @@ export const overcharge = (spec: ChargeSpec, seconds: number) =>
 
 // ── Resources ──────────────────────────────────────────────────────────────────────────────────
 
-export type ResourceId = 'mana' | 'rage' | 'stamina';
+export type ResourceId = 'mana' | 'stamina';
 
 export interface ResourceSpec {
   max: number;
@@ -101,8 +105,6 @@ export interface ResourceGain {
 }
 
 export const RESOURCES: Record<ResourceId, ResourceSpec> = {
-  // The knight's: earned by fighting, lost by standing back.
-  rage: { max: 100, regen: 0, regenDelay: 0, decayDelay: 4, decayRate: 6 },
   // In the arenas each class brings its own pool (`CLASSES.*.mana`) and it comes back by itself a
   // moment after it was spent. In Lugunica the character sheet sizes it and the world refills it.
   mana: { max: 100, regen: 14, regenDelay: 0.8, decayDelay: 0, decayRate: 0 },
@@ -198,16 +200,29 @@ export function parryOutcome(power: number, target: InteractionProfile): ParryOu
 
 // ── Waves ──────────────────────────────────────────────────────────────────────────────────────
 
-export type WaveTint = 'steel' | 'gold' | 'crimson' | 'violet' | 'scarlet' | 'lightning';
+export type WaveTint =
+  | 'steel' | 'gold' | 'crimson' | 'violet' | 'scarlet' | 'lightning' | 'azure' | 'radiant'
+  | 'bloodViolet' | 'blaze' | 'inferno';
 
-/** Each kind of slash in its colours: the bright core of the blade and the glow around it. */
-export const WAVE_COLORS: Record<WaveTint, { core: string; glow: string }> = {
+/**
+ * Each kind of slash in its colours: the bright core of the blade, the glow around it and, for the
+ * two-toned ones, the rim at its edge.
+ */
+export const WAVE_COLORS: Record<WaveTint, { core: string; glow: string; edge?: string }> = {
   steel: { core: '#f4f6ee', glow: '#b9c4c4' },
   gold: { core: '#fff3c4', glow: '#f3ce86' },
   crimson: { core: '#ffd7d2', glow: '#e0473e' },
   violet: { core: '#f0d8ff', glow: '#a64fe0' },
   scarlet: { core: '#ffe1d6', glow: '#d8261f' },
   lightning: { core: '#f2fbff', glow: '#5cc8ff' },
+  // The knight's charge at its height, before it turns red.
+  azure: { core: '#e8f0ff', glow: '#3b6cff' },
+  // The knight's highest technique: white-gold, like nothing else he throws.
+  radiant: { core: '#ffffff', glow: '#ffd35a', edge: '#fff2b8' },
+  // The warrior's crescent as its power grows: blood and violet, red, blazing, white-hot.
+  bloodViolet: { core: '#ffd9e8', glow: '#c21f3a', edge: '#7b2cbf' },
+  blaze: { core: '#fff4dd', glow: '#ff4f1a', edge: '#b3121f' },
+  inferno: { core: '#ffffff', glow: '#ff3b3b', edge: '#9d2cff' },
 };
 
 /** A travelling slash as it leaves the blade. */
@@ -231,4 +246,9 @@ export interface WaveSpec {
   tint: WaveTint;
   /** Shock stacks it leaves on whoever it reaches. */
   shock?: number;
+  /**
+   * Its silhouette: a crescent is a horizontal cut's broad front; a rend is the narrow, deep streak
+   * a blow brought down from overhead drives along the ground.
+   */
+  form?: 'crescent' | 'rend';
 }

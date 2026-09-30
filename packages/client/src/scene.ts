@@ -1,5 +1,5 @@
 import { COMBAT_LINGER, Locomotion, fighting } from './locomotion';
-import { bladePose, drawKitBlade, drawTrail } from './combat-fx';
+import { bladePose, drawKitBlade, drawStreak, drawTrail, onScreen } from './combat-fx';
 import { ensureActorAtlas } from './directional-art';
 import { ParticlePool, visualSettings } from './visual-effects';
 import Phaser from 'phaser';
@@ -34,7 +34,6 @@ import {
   KIT,
   KNIGHT_AWAKEN,
   MOVES,
-  RESOURCES,
   WAVE_COLORS,
   WAVE_SAMPLES,
   WARRIOR_PARRY,
@@ -68,10 +67,13 @@ import { SHRINE_WARD, worldInput, type ChestView, type Weapon } from '@bandera/s
 
 const CHEST_COLOR: Record<ChestView['tier'], number> = { comun: 0xc9a36b, raro: 0x56b8ff, legendario: 0xffc84d };
 /** The glow an empowered state gives a blade: the knight's awakening, the warrior's iron body. */
-const EMPOWERED_TINT: Partial<Record<Player['empowered'], WaveTint>> = { awaken: 'lightning', reinforce: 'scarlet' };
+const EMPOWERED_TINT: Partial<Record<Player['empowered'], WaveTint>> = { awaken: 'violet', reinforce: 'scarlet' };
 /** The knight's lightning, in its two tones. */
 const BOLT = 0x5cc8ff;
 const BOLT_CORE = 0xe8f8ff;
+/** The knight's lightning once he is awake. */
+const VIOLET = 0xa64fe0;
+const VIOLET_CORE = 0xf0d8ff;
 import { Controls } from './input.js';
 import { blueprintSpec, clipRay } from './targeting.js';
 import { sound } from './audio.js';
@@ -97,6 +99,21 @@ import type { MobFamilyId } from '@bandera/shared/rpg/zones';
 import type { WeaponLook } from '@bandera/shared/rpg/weapons';
 
 const GOLD = 0xf3ce86;
+/**
+ * What an event sounds like. Each class's blade has its voice, and the knight's great techniques
+ * their own: the descending cut, the celestial cut and the awakening.
+ */
+function soundOf(e: Snapshot['events'][number]) {
+  if (e.kind === 'swing' && e.classId === 'vanguard') return 'swingHeavy';
+  if (e.kind === 'swing' && e.classId === 'guardian') {
+    if (e.move?.startsWith('guardian.flurry:2')) return 'celestial';
+    if (e.move?.startsWith('guardian.sword:2:')) return 'swingDescend';
+    return 'swingLight';
+  }
+  if (e.kind === 'dash' && e.classId === 'guardian') return 'bolt';
+  if (e.kind === 'fury' && e.classId === 'guardian' && !e.color) return 'awaken';
+  return e.kind;
+}
 const COLORS: Record<Team, number> = {
   blue: 0x73bbef,
   red: 0xee8b79,
@@ -182,6 +199,9 @@ export class Arena extends Phaser.Scene {
       y: number;
       /** Until when the body keeps facing the aim after its last blow. */
       combatUntil?: number;
+      /** The charge last drawn and the state it had reached, to hear it cross into the next. */
+      chargeSkill?: string;
+      chargeTier?: number;
     }
   >();
   private flags!: Phaser.GameObjects.Graphics;
@@ -876,15 +896,7 @@ export class Arena extends Phaser.Scene {
     for (const e of snapshot.events) {
       if (e.id <= this.lastEvent) continue;
       this.lastEvent = e.id;
-      sound(
-        e.kind === 'swing' && e.classId === 'vanguard'
-          ? 'swingHeavy'
-          : e.kind === 'swing' && e.classId === 'guardian'
-            ? 'swingLight'
-            : e.kind === 'dash' && e.classId === 'guardian'
-              ? 'bolt'
-              : e.kind,
-      );
+      sound(soundOf(e));
       if (e.kind === 'sword') {
         const slash = this.add.graphics().setDepth(LAYER.strikes);
         const power = e.power ?? 0;
@@ -1136,8 +1148,13 @@ export class Arena extends Phaser.Scene {
       for (let i = 0; i < 6; i++) this.drawBolt(e.x, e.y - 4, (i * Math.PI) / 3 + Math.random() * 0.4, 26 + Math.random() * 14);
       if (visualSettings.shake && !visualSettings.reduced) this.cameras.main.shake(70, 0.002);
     } else if (e.kind === 'dash' && e.classId === 'guardian' && !e.power) {
-      // The flash step: a bolt along the path it is about to take.
-      this.drawBolt(e.x, e.y, e.angle ?? 0, e.radius ?? 170);
+      // The flash step: a bolt along the path it is about to take; violet and doubled once awake.
+      if (e.color) {
+        const color = Phaser.Display.Color.HexStringToColor(e.color).color;
+        this.drawBolt(e.x, e.y, e.angle ?? 0, e.radius ?? 170, color, VIOLET_CORE);
+        this.drawBolt(e.x, e.y, e.angle ?? 0, e.radius ?? 170, color, VIOLET_CORE);
+        this.fade(this.add.circle(e.x, e.y, 12, color, 0.45).setDepth(LAYER.lowFx), { scale: 2.4 }, 260);
+      } else this.drawBolt(e.x, e.y, e.angle ?? 0, e.radius ?? 170);
     } else if (e.kind === 'dash') {
       const angle = e.angle ?? 0;
       const trail = this.add
@@ -1184,8 +1201,8 @@ export class Arena extends Phaser.Scene {
       // A world skill brings its own colour: an electrified dagger is not a red rage. Without one,
       // it is a fighter's empowered state: the knight's awakening is violet, the warrior's iron red.
       const iron = !e.color && e.classId === 'vanguard';
-      const inner = e.color ? Phaser.Display.Color.HexStringToColor(e.color).darken(40).color : iron ? 0x4a0f0c : 0x0e3350;
-      const outer = e.color ? Phaser.Display.Color.HexStringToColor(e.color).color : iron ? 0xe0473e : BOLT;
+      const inner = e.color ? Phaser.Display.Color.HexStringToColor(e.color).darken(40).color : iron ? 0x4a0f0c : 0x2a0f40;
+      const outer = e.color ? Phaser.Display.Color.HexStringToColor(e.color).color : iron ? 0xe0473e : VIOLET;
       this.fade(this.add.circle(e.x, e.y - 3, 17, inner, 0.42).setDepth(LAYER.projectiles), { scale: 2.8 }, 520);
       this.fade(
         this.add
@@ -1428,19 +1445,28 @@ export class Arena extends Phaser.Scene {
     const travelled = Math.min(w.range, w.travelled + w.speed * age);
     // It thins out over the last third of its reach.
     const fade = 1 - 0.7 * Math.max(0, Math.min(1, (travelled / w.range - 0.66) / 0.34));
-    const core = hex(WAVE_COLORS[w.tint].core);
-    const glow = hex(WAVE_COLORS[w.tint].glow);
+    if (w.form === 'rend') {
+      this.drawRend(w, travelled, fade);
+      return;
+    }
+    const colors = WAVE_COLORS[w.tint];
+    const core = hex(colors.core);
+    const glow = hex(colors.glow);
     const dx = Math.cos(w.angle);
     const dy = Math.sin(w.angle);
+    // The two-toned slashes carry a rim of their second colour behind the glow.
+    const layers: [number, number, number, number][] = [
+      ...(colors.edge ? [[13, 2.5, hex(colors.edge), 0.75] as [number, number, number, number]] : []),
+      [9, w.thickness, glow, 0.16],
+      [4, w.thickness * 0.5, glow, 0.42],
+      [0, 3, core, 0.95],
+    ];
+    const front: Vec[] = [];
     let run: Vec[] = [];
     let strength = 0;
     const stroke = () => {
       if (run.length > 1)
-        for (const [back, width, color, alpha] of [
-          [9, w.thickness, glow, 0.16],
-          [4, w.thickness * 0.5, glow, 0.42],
-          [0, 3, core, 0.95],
-        ] as const) {
+        for (const [back, width, color, alpha] of layers) {
           g.lineStyle(width, color, alpha * fade * strength);
           g.strokePoints(run.map((point) => ({ x: point.x - dx * back, y: point.y - dy * back })));
         }
@@ -1455,9 +1481,106 @@ export class Arena extends Phaser.Scene {
         stroke();
         strength = left;
       }
-      if (left > 0) run.push(wavePoint(w, travelled, across));
+      if (left > 0) {
+        const point = wavePoint(w, travelled, across);
+        run.push(point);
+        front.push(point);
+      }
     }
     stroke();
+    const time = this.time.now;
+    if (w.shock && front.length > 1) {
+      // An electrified slash crackles along its front.
+      g.lineStyle(1.4, core, 0.85 * fade);
+      g.beginPath();
+      front.forEach((point, index) => {
+        const jag = Math.sin(time * 0.08 + index * 2.1) * 3.5;
+        const x = point.x - dx * (4 + jag) - dy * jag * 0.4;
+        const y = point.y - dy * (4 + jag) + dx * jag * 0.4;
+        if (index) g.lineTo(x, y);
+        else g.moveTo(x, y);
+      });
+      g.strokePath();
+    }
+    if (w.tint === 'radiant' && front.length > 2) {
+      // The celestial cut is fast: its front leaves afterimages behind it.
+      for (let k = 1; k <= 3; k++) {
+        g.lineStyle(2.5 - k * 0.5, glow, (0.4 / k) * fade);
+        g.strokePoints(front.map((point) => ({ x: point.x - dx * (10 + k * 16), y: point.y - dy * (10 + k * 16) })));
+      }
+    }
+    if (w.tint === 'radiant' && front.length > 2) {
+      // The celestial cut glitters along its whole length.
+      for (let k = 0; k < 4; k++) {
+        const point = front[Math.floor(((k + 0.5) / 4) * front.length)];
+        const size = 2.5 + 2 * Math.abs(Math.sin(time * 0.012 + k * 1.7));
+        g.fillStyle(0xffffff, 0.9 * fade);
+        g.fillTriangle(point.x, point.y - size, point.x + size * 0.35, point.y, point.x, point.y + size);
+        g.fillTriangle(point.x, point.y - size, point.x - size * 0.35, point.y, point.x, point.y + size);
+        g.fillTriangle(point.x - size, point.y, point.x, point.y - size * 0.35, point.x + size, point.y);
+        g.fillTriangle(point.x - size, point.y, point.x, point.y + size * 0.35, point.x + size, point.y);
+      }
+    }
+  }
+  /**
+   * The slash of a blow brought down from overhead: a narrow blade of energy standing up out of
+   * the ground, cleaving a crack behind it all the way back to where it left the sword.
+   */
+  private drawRend(w: Wave, travelled: number, fade: number) {
+    const g = this.arrows;
+    const middle = (WAVE_SAMPLES - 1) / 2;
+    const strength = w.shadow & (1 << middle) ? 0 : waveStrength(w.gaps, 0);
+    if (strength <= 0) return;
+    const colors = WAVE_COLORS[w.tint];
+    const core = hex(colors.core);
+    const glow = hex(colors.glow);
+    const dx = Math.cos(w.angle);
+    const dy = Math.sin(w.angle);
+    const tip = wavePoint(w, travelled, 0);
+    const side = wavePoint(w, travelled, 1);
+    const half = Math.hypot(side.x - tip.x, side.y - tip.y);
+    const alpha = fade * strength;
+    const at = (along: number, across: number) => ({
+      x: tip.x + dx * along - dy * across,
+      y: tip.y + dy * along + dx * across,
+    });
+    // The crack it leaves, jagged, fading toward the blade that opened it.
+    const start = wavePoint(w, 0, 0);
+    const length = Math.hypot(tip.x - start.x, tip.y - start.y);
+    const steps = Math.max(2, Math.round(length / 14));
+    let previous = start;
+    for (let i = 1; i <= steps; i++) {
+      const share = i / steps;
+      const jag = i === steps ? 0 : Math.sin(w.id * 7.3 + i * 2.7) * 4;
+      const point = {
+        x: start.x + (tip.x - start.x) * share - dy * jag,
+        y: start.y + (tip.y - start.y) * share + dx * jag,
+      };
+      g.lineStyle(3.5, glow, 0.3 * share * alpha);
+      g.lineBetween(previous.x, previous.y, point.x, point.y);
+      g.lineStyle(1.2, core, 0.75 * share * alpha);
+      g.lineBetween(previous.x, previous.y, point.x, point.y);
+      previous = point;
+    }
+    // The blade of energy: sharp ahead, deep behind, as long as the slash is thick.
+    const deep = w.thickness;
+    g.fillStyle(glow, 0.42 * alpha);
+    g.fillPoints([at(9, 0), at(-deep * 0.3, -half), at(-deep, -half * 0.35), at(-deep, half * 0.35), at(-deep * 0.3, half)], true);
+    g.fillStyle(core, 0.92 * alpha);
+    g.fillPoints([at(6, 0), at(-deep * 0.28, -half * 0.42), at(-deep * 0.85, 0), at(-deep * 0.28, half * 0.42)], true);
+    if (colors.edge) {
+      g.lineStyle(1.5, hex(colors.edge), 0.8 * alpha);
+      g.strokePoints([at(9, 0), at(-deep * 0.3, -half), at(-deep, -half * 0.35), at(-deep, half * 0.35), at(-deep * 0.3, half)], true);
+    }
+    // Earth thrown up on both sides of the front.
+    const time = this.time.now;
+    for (let k = 0; k < 4; k++) {
+      const flick = Math.sin(time * 0.05 + k * 1.9 + w.id);
+      const spot = at(-deep * (0.15 + k * 0.18), (k % 2 ? 1 : -1) * (half + 3 + Math.abs(flick) * 4));
+      g.fillStyle(k % 2 ? core : glow, 0.7 * alpha);
+      g.fillCircle(spot.x, spot.y, 1.4 + Math.abs(flick));
+    }
+    if (w.shock) this.drawArcs(g, tip.x - dx * deep * 0.4, tip.y - dy * deep * 0.4, 2, half + 6, time, 0.8 * alpha, glow, core);
   }
   /** Wind arrow: a pale shaft wrapped in spiralling gusts and a streaming trail. */
   private drawWind(p: { x: number; y: number }, angle: number, time: number, small: boolean) {
@@ -1652,14 +1775,24 @@ export class Arena extends Phaser.Scene {
     }
   }
   /** Lightning around a body: short jagged arcs that jump from place to place, `count` at a time. */
-  private drawArcs(g: Phaser.GameObjects.Graphics, x: number, y: number, count: number, radius: number, time: number, alpha = 0.85) {
+  private drawArcs(
+    g: Phaser.GameObjects.Graphics,
+    x: number,
+    y: number,
+    count: number,
+    radius: number,
+    time: number,
+    alpha = 0.85,
+    color = BOLT,
+    core = BOLT_CORE,
+  ) {
     const flicker = Math.floor(time / 70);
     for (let i = 0; i < count; i++) {
       // A new place every flicker, the same between two of them.
       const seed = Math.sin((flicker + i * 17.3) * 12.9898) * 43758.5453;
       const angle = (seed - Math.floor(seed)) * Math.PI * 2;
       const from = { x: x + Math.cos(angle) * radius, y: y + Math.sin(angle) * radius * 0.8 };
-      g.lineStyle(1.5, i % 2 ? BOLT_CORE : BOLT, alpha);
+      g.lineStyle(1.5, i % 2 ? core : color, alpha);
       g.beginPath();
       g.moveTo(from.x, from.y);
       for (let k = 1; k <= 3; k++) {
@@ -1670,7 +1803,7 @@ export class Arena extends Phaser.Scene {
     }
   }
   /** A bolt of lightning from one point along `angle`: the path of a flash step. */
-  private drawBolt(x: number, y: number, angle: number, length: number) {
+  private drawBolt(x: number, y: number, angle: number, length: number, color = BOLT, core = BOLT_CORE) {
     const g = this.add.graphics().setDepth(LAYER.effects);
     const points = [{ x, y }];
     const steps = Math.max(3, Math.round(length / 22));
@@ -1679,9 +1812,9 @@ export class Arena extends Phaser.Scene {
       const aside = i === steps ? 0 : (Math.random() - 0.5) * 16;
       points.push({ x: x + Math.cos(angle) * along - Math.sin(angle) * aside, y: y + Math.sin(angle) * along + Math.cos(angle) * aside });
     }
-    g.lineStyle(7, BOLT, 0.3);
+    g.lineStyle(7, color, 0.3);
     g.strokePoints(points);
-    g.lineStyle(2.5, BOLT_CORE, 0.95);
+    g.lineStyle(2.5, core, 0.95);
     g.strokePoints(points);
     this.fade(g, {}, visualSettings.reduced ? 140 : 260);
   }
@@ -1943,10 +2076,11 @@ export class Arena extends Phaser.Scene {
     const stats = CLASSES[p.classId],
       w = v.weapon;
     w.clear();
-    const held = pose ? pose.angle : p.angle;
+    // A blade raised overhead stands up the screen, held a little up off the body.
+    const shown = pose ? { ...pose, ...onScreen(pose) } : null;
+    const held = shown ? shown.angle : p.angle;
     w.setDepth(Math.sin(held) < -0.25 ? LAYER.bodies - .1 : LAYER.weapons);
-    // A blade raised overhead is held up off the body.
-    w.setPosition(v.x, v.y + (moving ? Math.sin(v.locomotion.phase * Math.PI / 3) : 0) - (pose?.lift ?? 0) * 9);
+    w.setPosition(v.x, v.y + (moving ? Math.sin(v.locomotion.phase * Math.PI / 3) : 0) - (pose?.lift ?? 0) * 6);
     w.setRotation(held);
     if (p.hp > 0 && p.imbue) {
       // The weapon carries an affinity: a glow and a crackle along the blade, in its colour.
@@ -1961,7 +2095,7 @@ export class Arena extends Phaser.Scene {
       w.strokePath();
     }
     if (p.hp > 0) {
-      if (pose) drawKitBlade(w, pose, heavy ? 44 : 30, time, EMPOWERED_TINT[p.empowered] ?? null, heavy);
+      if (shown) drawKitBlade(w, shown, heavy ? 44 : 30, time, EMPOWERED_TINT[p.empowered] ?? null, heavy);
       else if (hand === 'blade') {
         // The knight's slim sword at rest (a preview, a lobby): no moves to follow.
         w.setRotation(p.angle + 0.55);
@@ -2057,8 +2191,18 @@ export class Arena extends Phaser.Scene {
       }
     }
     v.hp.clear();
-    if (pose?.trail) drawTrail(v.hp, pose.trail, p.empowered === 'awaken' ? 'lightning' : pose.tint, pose.trailAlpha, heavy);
+    const trailTint = p.empowered === 'awaken' ? 'violet' : pose?.tint ?? 'steel';
+    if (pose?.trail) drawTrail(v.hp, pose.trail, trailTint, pose.trailAlpha, heavy);
+    if (pose?.streak) drawStreak(v.hp, p, pose.streak, trailTint, pose.streakAlpha);
     if (p.hp > 0) this.drawCharge(v.hp, p, v.x, v.y, time);
+    // Every state a charge crosses into sounds, higher each time: a blow becoming dangerous is
+    // heard as well as seen, whoever is charging it.
+    const spec = p.hp > 0 && p.chargeSkill && KIT[p.chargeSkill] ? KIT[p.chargeSkill].charge : null;
+    const tier = spec ? chargeTier(spec, p.chargeT).index : -1;
+    if (spec && tier > 0 && p.chargeSkill === v.chargeSkill && tier > (v.chargeTier ?? 0))
+      sound(`${heavy ? 'tierHeavy' : 'tier'}${tier === spec.tiers.length - 1 ? 'Max' : ''}`);
+    v.chargeSkill = p.chargeSkill;
+    v.chargeTier = tier;
     if (p.hp > 0 && p.frozenLeft > 0) {
       v.body.setTint(0x9fe8ff);
       v.hp.fillStyle(0xbff4ff, 0.28);
@@ -2076,22 +2220,28 @@ export class Arena extends Phaser.Scene {
         v.hp.strokeCircle(v.x, v.y - 3, 29);
       }
     }
+    const effect = p.hp > 0 && p.move ? MOVES[p.move].effect : undefined;
+    // How far the empowering has gone through the body: 1 once it is over.
+    const through = effect ? Math.min(1, (p.moveT + age) / MOVES[p.move].duration) : 1;
     if (p.hp > 0 && p.empowered === 'awaken') {
-      // Awake: the body hums with lightning, and arcs jump around it.
+      // Awake: violet lightning takes the body. It gathers behind the mandala as it goes down,
+      // then hums around him, arcs jumping off it.
+      const grown = effect === 'awaken' ? through : 1;
       const pulse = (Math.sin(time * 0.012) + 1) / 2;
-      v.hp.fillStyle(0x0e3350, 0.14 + pulse * 0.08);
+      v.hp.fillStyle(0x2a0f40, (0.16 + pulse * 0.08) * grown);
       v.hp.fillCircle(v.x, v.y - 3, 25 + pulse * 4);
-      v.hp.lineStyle(2, BOLT, 0.6 + pulse * 0.3);
+      v.hp.lineStyle(2, VIOLET, (0.6 + pulse * 0.3) * grown);
       v.hp.strokeCircle(v.x, v.y - 3, 27 + pulse * 4);
-      this.drawArcs(v.hp, v.x, v.y - 4, 4, 22, time);
+      this.drawArcs(v.hp, v.x, v.y - 4, Math.round(1 + 4 * grown), 22, time, 0.85 * grown, VIOLET, VIOLET_CORE);
     }
     if (p.hp > 0 && p.shock > 0) this.drawArcs(v.hp, v.x, v.y - 4, p.shock, 15, time + 999, 0.55 + p.shock * 0.15);
-    const effect = p.hp > 0 && p.move ? MOVES[p.move].effect : undefined;
-    if (effect === 'awaken' || effect === 'reinforce') {
-      // The empowering itself: a mandala passes through the body once, from the feet to the head.
-      const rise = Math.min(1, (p.moveT + age) / MOVES[p.move].duration);
-      const [ring, light] = effect === 'awaken' ? [BOLT, BOLT_CORE] : [0xe0473e, 0xffd7d2];
-      this.drawMandala(v.hp, v.x, v.y + 10 - rise * 40, effect === 'awaken' ? 20 : 24, time, 0.95 - rise * 0.35, ring, light);
+    if (effect === 'awaken') {
+      // The awakening: one mandala going slowly down through the body, from the head to the feet.
+      const fall = through * through * (3 - 2 * through);
+      this.drawMandala(v.hp, v.x, v.y - 32 + fall * 42, 22, time, 0.95 - fall * 0.25, VIOLET, VIOLET_CORE);
+    } else if (effect === 'reinforce') {
+      // The reinforcement: a mandala rising through the body, from the feet to the head.
+      this.drawMandala(v.hp, v.x, v.y + 10 - through * 40, 24, time, 0.95 - through * 0.35, 0xe0473e, 0xffd7d2);
     }
     if (p.hp > 0 && p.empowered === 'reinforce') this.drawIron(v.hp, v.x, v.y, time);
     if (p.hp > 0 && p.chargeSkill === 'guardian.dash') {
@@ -2136,17 +2286,7 @@ export class Arena extends Phaser.Scene {
       }
       // The pools under the hearts, for everyone to read: what the fighter can still afford.
       const width = p.maxHp * 8 - 2;
-      let row = v.y - 20;
-      if (kit && p.classId === 'guardian') {
-        // Rage: gold while it fills, violet while it burns.
-        const share = Math.min(1, p.rage / RESOURCES.rage.max);
-        const full = share >= 1 && p.furyLeft <= 0;
-        v.hp.fillStyle(0x1a282c);
-        v.hp.fillRect(left, row, width, 2);
-        v.hp.fillStyle(p.empowered === 'awaken' ? BOLT : full && Math.sin(time * 0.02) > 0 ? 0xffffff : GOLD);
-        v.hp.fillRect(left, row, width * share, 2);
-        row += 3;
-      }
+      const row = v.y - 20;
       if (!look && p.maxMana > 0) {
         v.hp.fillStyle(0x1a282c);
         v.hp.fillRect(left, row, width, 2);
