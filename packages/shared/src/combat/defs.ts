@@ -46,12 +46,19 @@ export type ResourceId = 'mana' | 'rage' | 'stamina';
 
 export interface ResourceSpec {
   max: number;
+  /** Comes back this much per second, once `regenDelay` seconds have passed since it was last spent. */
+  regen: number;
+  regenDelay: number;
   /** Seconds without gaining any before it starts to drain, and how fast it then does. */
   decayDelay: number;
   decayRate: number;
 }
 
-/** What using a skill takes. */
+/**
+ * What using a skill takes. Charging can cost too: the longer the hold, the more it has spent, and
+ * a pool that runs dry freezes the charge where it is. Holding never eats into what the release
+ * itself costs, so a skill that could start can always go out.
+ */
 export interface ResourceCost {
   resource: ResourceId;
   /** Spent when the skill goes out. */
@@ -77,11 +84,17 @@ export interface ResourceGain {
 
 export const RESOURCES: Record<ResourceId, ResourceSpec> = {
   // The knight's: earned by fighting, lost by standing back.
-  rage: { max: 100, decayDelay: 4, decayRate: 6 },
-  // Each character brings its own pool of mana; nothing drains it on a timer.
-  mana: { max: 0, decayDelay: 0, decayRate: 0 },
-  stamina: { max: 100, decayDelay: 0, decayRate: 0 },
+  rage: { max: 100, regen: 0, regenDelay: 0, decayDelay: 4, decayRate: 6 },
+  // In the arenas each class brings its own pool (`CLASSES.*.mana`) and it comes back by itself a
+  // moment after it was spent. In Lugunica the character sheet sizes it and the world refills it.
+  mana: { max: 100, regen: 14, regenDelay: 0.8, decayDelay: 0, decayRate: 0 },
+  stamina: { max: 100, regen: 0, regenDelay: 0, decayDelay: 0, decayRate: 0 },
 };
+
+/** Development controls a room may carry: the mana limit can be switched off to test freely. */
+export interface DevTools {
+  manaLimit: boolean;
+}
 
 // ── Skill against skill ────────────────────────────────────────────────────────────────────────
 

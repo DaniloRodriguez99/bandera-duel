@@ -510,6 +510,11 @@ export class World extends Duel {
     p.hp = p.maxHp;
   }
 
+  /** A character keeps the mana it had: the sheet sizes the pool and the world refills it. */
+  protected override poolsAfterDeath(p: Player): Pick<Player, 'mana' | 'maxMana'> {
+    return { mana: p.mana, maxMana: p.maxMana };
+  }
+
   /** The stolen passives a character carries, added together. */
   passivesOf(character: Character): Required<Omit<Passive, 'id' | 'name' | 'text'>> {
     const total = { regen: 0, maxHp: 0, speed: 0, damage: 0, xp: 0 };

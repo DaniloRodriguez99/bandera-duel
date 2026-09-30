@@ -47,6 +47,10 @@ export interface KitContext {
   ready(id: SkillId): boolean;
   /** Puts a skill on cooldown. */
   cool(id: SkillId, seconds: number): void;
+  /** Takes what a skill costs as it goes out. */
+  pay(id: SkillId): void;
+  /** Pays for holding a skill `seconds` longer; false when the pool cannot, and the charge stops growing. */
+  hold(id: SkillId, seconds: number): boolean;
 }
 
 /** Whether nothing the player is doing stops mobility or a parry from cutting in. */
@@ -81,6 +85,7 @@ function startMove(p: Player, id: SkillId, charge: number, ctx: KitContext, out:
   }
   const cooldown = skill.cooldown(tier, charge);
   if (cooldown > 0) ctx.cool(id, cooldown);
+  ctx.pay(id);
   if (MOVES[move].effect === 'awaken') {
     p.furyLeft = KNIGHT_AWAKEN.duration;
     out.awakened = true;
@@ -171,7 +176,9 @@ export function stepKit(
       p.bufferCharge = p.chargeT;
       p.bufferLeft = INPUT_BUFFER;
     } else if (held) {
-      p.chargeT = Math.min(skill.charge.cap, p.chargeT + dt);
+      // Holding may cost by the second; a pool that runs dry leaves the charge where it is.
+      const growth = Math.min(dt, skill.charge.cap - p.chargeT);
+      if (growth > 1e-9 && ctx.hold(id, growth)) p.chargeT = Math.min(skill.charge.cap, p.chargeT + dt);
       continue;
     }
     p.chargeSkill = '';

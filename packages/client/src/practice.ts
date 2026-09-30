@@ -37,6 +37,8 @@ export class Practice {
     readonly sparring: SparringMode = 'still',
   ) {
     this.duel = new Duel(mapId, 'duel');
+    // Practice is where skills get tested: the mana limit can be switched off from the toolbar.
+    this.duel.enableDevTools();
     this.duel.add(PRACTICE_PLAYER, name, classId, customization);
     this.duel.add(PRACTICE_DUMMY, 'Rival de práctica', SPARRING[sparring].classId);
     this.duel.state.phase = 'playing';

@@ -365,3 +365,25 @@ it('cinco espectadores como máximo y contador al salir y reconectar', async () 
   for(const viewer of [...viewers,replacement])await viewer.leave();
   await a.leave();await b.leave();
 });
+
+it('los controles de prueba del maná viajan por la sala fuera de producción', async () => {
+  const { a, b, host } = await pair('guardian', 'vanguard');
+  // Vitest does not run in production, so the room allows them and every snapshot says so.
+  expect(host.game.state.devTools).toEqual({ manaLimit: true });
+  expect(states.get(b.sessionId)?.devTools).toEqual({ manaLimit: true });
+  const knight = host.game.state.players.find((p) => p.id === a.sessionId)!;
+  const warrior = host.game.state.players.find((p) => p.id === b.sessionId)!;
+  knight.mana = 4;
+  warrior.mana = 9;
+  a.send('devMana', { refill: true });
+  await until(() => knight.mana === knight.maxMana);
+  expect(warrior.mana).toBe(9);
+  b.send('devMana', { limit: false });
+  await until(() => states.get(a.sessionId)?.devTools?.manaLimit === false);
+  // Junk changes nothing.
+  a.send('devMana', { limit: 'no', refill: 'sí' });
+  a.send('devMana', null);
+  await sleep(100);
+  expect(host.game.state.devTools).toEqual({ manaLimit: false });
+  await a.leave(); await b.leave();
+});
