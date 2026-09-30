@@ -64,6 +64,10 @@ export interface KitContext {
   hold(id: SkillId, seconds: number): boolean;
 }
 
+/** Seconds a guard stays up once let go. Hordas: each rank of the warrior's own upgrade adds to it. */
+export const guardWindow = (p: Pick<Player, 'pve'>) =>
+  WARRIOR_PARRY.window * (1 + (p.pve?.classRanks.vanguard ?? 0) * 0.15);
+
 /** Whether nothing the player is doing stops mobility or a parry from cutting in. */
 export const moveRecovering = (p: Pick<Player, 'move' | 'moveT'>) =>
   !p.move || p.moveT >= MOVES[p.move].recoverFrom - EPS;
@@ -101,7 +105,7 @@ function launchBeside(p: Player, id: SkillId, charge: number, ctx: KitContext, o
   const skill = KIT[id];
   const tier = chargeTier(skill.charge, charge).index;
   const dash = MOVES[skill.move(0, tier, p.furyLeft > 0)].dash!;
-  const cooldown = skill.cooldown(tier, charge);
+  const cooldown = skill.cooldown(tier, charge, p);
   if (cooldown > 0) ctx.cool(id, cooldown);
   ctx.pay(id);
   out.dash = { angle: ctx.angle, distance: dash.distance(charge), speed: dash.speed, iframes: dash.iframes, hit: dash.hit };
@@ -138,7 +142,7 @@ function startMove(p: Player, id: SkillId, charge: number, ctx: KitContext, out:
     p.combo = (step + 1) % skill.chain;
     p.comboLeft = def.duration + skill.chainReset;
   }
-  const cooldown = skill.cooldown(tier, charge);
+  const cooldown = skill.cooldown(tier, charge, p);
   if (cooldown > 0) ctx.cool(id, cooldown);
   ctx.pay(id);
   if (def.effect === 'awaken' || def.effect === 'reinforce') {
@@ -150,8 +154,9 @@ function startMove(p: Player, id: SkillId, charge: number, ctx: KitContext, out:
         : WARRIOR_REINFORCE.duration;
     out.empowered = true;
   } else if (def.effect === 'parry') {
-    // Hordas: each rank of the warrior's own upgrade holds the guard up longer.
-    p.counterLeft = WARRIOR_PARRY.window * (1 + (p.pve?.classRanks.vanguard ?? 0) * 0.15);
+    // Let go, the guard stays up a moment longer: all of it, on a tap. Hordas: each rank of the
+    // warrior's own upgrade holds it up longer.
+    p.counterLeft = Math.max(p.counterLeft, guardWindow(p));
   }
   // Mobility drops the charge of a skill that cannot survive it.
   if (skill.alongside && p.chargeSkill && p.chargeSkill !== id && KIT[p.chargeSkill].charge.cancelOnMobility)
@@ -260,8 +265,14 @@ export function stepKit(
     else if (held) {
       // Holding may cost by the second; a pool that runs dry leaves the charge where it is.
       const growth = Math.min(dt, skill.charge.cap - p.chargeT);
-      if (growth > 1e-9 && ctx.hold(id, growth)) p.chargeT = Math.min(skill.charge.cap, p.chargeT + dt);
-      continue;
+      const paid = growth > 1e-9 && ctx.hold(id, growth);
+      if (paid) p.chargeT = Math.min(skill.charge.cap, p.chargeT + dt);
+      // One that lets go by itself does, at its cap or once it cannot be paid for; its key must
+      // then be pressed again.
+      const spent = p.chargeT >= skill.charge.cap - EPS || (growth > 1e-9 && !paid);
+      if (!skill.charge.autoRelease || !spent) continue;
+      request(p, id, p.chargeT, ctx, out);
+      p.chargeBroken = id;
     }
     p.chargeSkill = '';
     p.chargeT = 0;

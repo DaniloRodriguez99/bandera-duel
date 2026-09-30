@@ -30,8 +30,8 @@ const TOUCH_META: Record<string, Omit<TouchAbilitySlot, keyof AbilitySlot>> = {
   flurry: { mode: 'charge', directional: true, primary: false },
   fury: { mode: 'release', directional: false, primary: false },
   slash: { mode: 'charge', directional: true, primary: false },
-  // A parry goes up the moment the finger lands; dragging still turns the guard.
-  counter: { mode: 'press', directional: true, primary: false },
+  // The guard goes up the moment the finger lands and stays while it holds; dragging turns it.
+  counter: { mode: 'charge', directional: true, primary: false },
   reinforce: { mode: 'press', directional: false, primary: false },
 };
 export const touchMeta=(id:string,classId:ClassId)=>{const meta=TOUCH_META[id];if(!meta)throw new Error(`Falta configuración táctil para ${classId}/${id}`);return {...meta};};

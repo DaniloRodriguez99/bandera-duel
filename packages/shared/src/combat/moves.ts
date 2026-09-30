@@ -1,3 +1,4 @@
+import type { Player } from '../index.js';
 import type { ChargeSpec, WaveSpec, WaveTint } from './defs.js';
 import type { Blade, Point } from './geometry.js';
 
@@ -115,8 +116,8 @@ export interface KitSkill {
   chainReset: number;
   /** The move for a step of the chain, released at a charge tier. `awake`: the empowered state. */
   move(step: number, tier: number, awake: boolean): string;
-  /** Seconds before it can be used again, by the tier it went out at. */
-  cooldown(tier: number, charge: number): number;
+  /** Seconds before it can be used again, by the tier it went out at and how its user fared. */
+  cooldown(tier: number, charge: number, p: Player): number;
   /** Goes out the moment its key goes down, with no charge to hold. */
   instant?: boolean;
   /** May cut into another move's recovery instead of waiting for it to end. */

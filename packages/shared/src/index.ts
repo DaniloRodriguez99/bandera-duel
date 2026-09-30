@@ -23,13 +23,14 @@ import { bladeAt } from './combat/moves.js';
 import {
   CELESTIAL_CUT, KIT, KNIGHT_AWAKEN, KNIGHT_FLURRY_CHARGE, KNIGHT_FLURRY_COOLDOWN, KNIGHT_STEP, KNIGHT_STEP_CHARGE, KNIGHT_SWORD_CHARGE,
   MOVES, SHOCK, moveSkill,
-  WARRIOR_LAUNCH, WARRIOR_LAUNCH_CHARGE, WARRIOR_PARRY, WARRIOR_REINFORCE, WARRIOR_SLASH_CHARGE, WARRIOR_SLASH_COOLDOWN,
+  WARRIOR_LAUNCH, WARRIOR_LAUNCH_CHARGE, WARRIOR_PARRY, WARRIOR_PARRY_CHARGE, WARRIOR_REINFORCE, WARRIOR_SLASH_CHARGE, WARRIOR_SLASH_COOLDOWN,
   WARRIOR_SWORD_CHARGE, warriorWave,
 } from './combat/kits.js';
-import { clearKit, dropCharge, moveRecovering, stepKit, type KitResult, type KitSweep } from './combat/run.js';
+import { clearKit, dropCharge, guardWindow, moveRecovering, stepKit, type KitResult, type KitSweep } from './combat/run.js';
 import {
-  INTERACTIONS, RESOURCES, WAVE_COLORS, cutOutcome,
-  type ChargeSpec, type CutOutcome, type DevTools, type InteractionProfile, type ResourceCost, type ResourceGain, type ResourceId, type WaveSpec,
+  INTERACTIONS, RESOURCES, WAVE_COLORS, cutOutcome, parryOutcome,
+  type ChargeSpec, type CutOutcome, type DevTools, type InteractionProfile, type ParryOutcome, type ResourceCost, type ResourceGain,
+  type ResourceId, type WaveSpec,
 } from './combat/defs.js';
 import {
   MOB_STATS, availableMobs, waveBudget, emptyUpgrades, makeUpgradeChoices,
@@ -432,11 +433,11 @@ export const SKILLS: Record<SkillId, SkillDefinition> = {
   'guardian.flurry': skill({id:'guardian.flurry',name:'Ráfaga de Acero',branch:'guardian',description:'La espada se electriza. Un toque son Tres Relámpagos: un corte ascendente, un revés y una estocada que avanzan; cada uno electriza y los tres juntos descargan en un aturdimiento breve. A media carga, la Cruz Gemela: dos cortes con su tajo. A fondo, el Corte Celestial: un tajo horizontal blanco y dorado, angosto y veloz, que cruza el mapa; devastador de cerca, mucho menos de lejos, y parte las habilidades que cruza. Solo un golpe fuerte interrumpe la carga.',icon:'guardian-flurry',compatibleClasses:['guardian'],compatibleSlots:['q','e','secondary'],trigger:'hold-release',animationAction:'attack',cooldown:KNIGHT_FLURRY_COOLDOWN,damage:`0,5 · 0,5 · 0,75 · 2 × 1 · ${String(CELESTIAL_CUT.damage).replace('.', ',')} de cerca`,howTo:'Pulsá {key} para tres golpes eléctricos; mantené para dos cortes y, a fondo, el Corte Celestial.',blocks:['primary'],chargeSlow:0.6,charge:KNIGHT_FLURRY_CHARGE,cost:{resource:'mana',amount:20,perSecond:15}}),
   'guardian.dash': skill({id:'guardian.dash',name:'Paso Relámpago',branch:'guardian',description:`El cuerpo se carga de relámpago y lo suelta de golpe hacia donde apuntás: ${KNIGHT_STEP.near} u con un toque, hasta ${KNIGHT_STEP.far} cargado. Sale al instante aunque estés cortando o cargando otra técnica, y el corte sigue. Daña y electriza a quien atraviesa. No da invulnerabilidad.`,icon:'guardian-step',compatibleClasses:['guardian'],compatibleSlots:['mobility'],trigger:'hold-release',animationAction:'dash',cooldown:KNIGHT_STEP.cooldown,damage:'1–1,5',grants:['mobility'],howTo:'Pulsá {key} para un paso relámpago hacia donde apuntás; mantené para ir más lejos y electrizar más.',chargeSlow:0.5,charge:KNIGHT_STEP_CHARGE,cost:{resource:'mana',amount:10,perSecond:20}}),
   'guardian.fury': skill({id:'guardian.fury',name:'Despertar del Relámpago',branch:'guardian',description:`Un mandala baja despacio por el cuerpo, de la cabeza a los pies, y el relámpago violeta lo toma. Durante ${KNIGHT_AWAKEN.duration} s cada técnica es su versión eléctrica: todo corte lanza un tajo violeta que electriza, la Ráfaga suelta rayos, el Paso llega más lejos y pega más, y el daño sube ${Math.round((KNIGHT_AWAKEN.damage-1)*100)} %. Se recarga en ${KNIGHT_AWAKEN.cooldown} s.`,icon:'guardian-awaken',compatibleClasses:['guardian'],compatibleSlots:['r','f'],trigger:'press',animationAction:'castChannel',cooldown:KNIGHT_AWAKEN.cooldown,damage:`+${Math.round((KNIGHT_AWAKEN.damage-1)*100)} %`,howTo:'Pulsá {key} para despertar el relámpago.'}),
-  'vanguard.sword': skill({id:'vanguard.sword',name:'Mandoble Colosal',branch:'vanguard',description:'Dos golpes pesados que se alternan: un barrido ancho y un martillazo desde arriba que empuja lejos. Tardan en salir y pegan como ningún otro. Cargado, el golpe manda una onda roja hacia adelante.',icon:'vanguard-sword',compatibleClasses:['vanguard'],compatibleSlots:['primary'],trigger:'hold-release',animationAction:'attack',cooldown:0,damage:'2 · 2,5; hasta ×1,75 cargado',grants:['melee'],howTo:'Pulsá {key} para el barrido y otra vez para el martillazo; mantené para cargar el que sigue.',chargeSlow:0.6,charge:WARRIOR_SWORD_CHARGE}),
-  'vanguard.slash': skill({id:'vanguard.slash',name:'Creciente Escarlata',branch:'vanguard',description:'Un tajo rojo que viaja y atraviesa. Mantené para agrandarlo: a los 3 s está completo y, si seguís, se sobrecarga hasta una ola que cruza el mapa. Pega más cerca que lejos, y los muros cubren. Cargando sos lento, se te ve en los arbustos y un golpe te interrumpe.',icon:'vanguard-slash',compatibleClasses:['vanguard'],compatibleSlots:['q','e'],trigger:'hold-release',animationAction:'attack',cooldown:WARRIOR_SLASH_COOLDOWN,damage:'1,5–5 de cerca; menos con la distancia',howTo:'Pulsá {key} para un tajo corto; mantené para agrandarlo y soltá. La movilidad lo cancela.',blocks:['primary','q','e'],chargeSlow:0.4,charge:WARRIOR_SLASH_CHARGE,cost:{resource:'mana',amount:15,perSecond:12}}),
-  'vanguard.counter': skill({id:'vanguard.counter',name:'Revancha de Hierro',branch:'vanguard',description:`Un parry: durante ${String(WARRIOR_PARRY.window).replace('.', ',')} s todo proyectil o tajo que llegue de frente vuelve hacia quien lo lanzó, y un golpe cuerpo a cuerpo se frena y deja tambaleando al atacante. No frena al Guerrero. Fallarlo cuesta ${WARRIOR_PARRY.cooldown} s.`,icon:'vanguard-counter',compatibleClasses:['vanguard'],compatibleSlots:['e','q'],trigger:'press',animationAction:'castChannel',cooldown:WARRIOR_PARRY.cooldown,damage:'devuelve el ataque',howTo:'Pulsá {key} justo antes del impacto, de frente al ataque.'}),
-  'vanguard.dash': skill({id:'vanguard.dash',name:'Avance Imparable',branch:'vanguard',description:'Las piernas se cargan y el cuerpo sale despedido hacia donde apuntás, apartando a quien se cruce. Mantené para ir más lejos. No da invulnerabilidad.',icon:'vanguard-dash',compatibleClasses:['vanguard'],compatibleSlots:['mobility'],trigger:'hold-release',animationAction:'dash',cooldown:WARRIOR_LAUNCH.cooldown,damage:String(WARRIOR_LAUNCH.hit.damage).replace('.', ','),grants:['mobility'],howTo:'Pulsá {key} para embestir hacia donde apuntás; mantené para ir más lejos.',chargeSlow:0.5,charge:WARRIOR_LAUNCH_CHARGE,cost:{resource:'mana',amount:10,perSecond:15}}),
-  'vanguard.reinforce': skill({id:'vanguard.reinforce',name:'Cuerpo de Hierro',branch:'vanguard',description:`Un mandala rojo sube por el cuerpo y lo refuerza ${WARRIOR_REINFORCE.duration} s: recibe ${Math.round((1 - WARRIOR_REINFORCE.taken) * 100)} % menos de daño, nada lo empuja ni le rompe la carga, y cada golpe del mandoble manda su onda.`,icon:'vanguard-counter',compatibleClasses:['vanguard'],compatibleSlots:['r','f'],trigger:'press',animationAction:'castChannel',cooldown:WARRIOR_REINFORCE.cooldown,damage:`−${Math.round((1 - WARRIOR_REINFORCE.taken) * 100)} % de daño recibido`,howTo:'Pulsá {key} para reforzar el cuerpo.',cost:{resource:'mana',amount:40}}),
+  'vanguard.sword': skill({id:'vanguard.sword',name:'Mandoble del Titán',branch:'vanguard',description:'Dos golpes pesados que se alternan: el Barrido del Titán, ancho, y la Caída de Montaña, desde arriba, que empuja lejos. Tardan en salir y pegan como ningún otro. Cargado, el golpe manda una onda roja hacia adelante.',icon:'vanguard-titan',compatibleClasses:['vanguard'],compatibleSlots:['primary'],trigger:'hold-release',animationAction:'attack',cooldown:0,damage:'2 · 2,5; hasta ×1,75 cargado',grants:['melee'],howTo:'Pulsá {key} para el barrido y otra vez para la caída; mantené para cargar el que sigue.',chargeSlow:0.6,charge:WARRIOR_SWORD_CHARGE}),
+  'vanguard.slash': skill({id:'vanguard.slash',name:'Creciente Escarlata',branch:'vanguard',description:'Un tajo que viaja, atraviesa y corta lo que le lanzan. Mantené para agrandarlo: de sangre y violeta corta flechas, rojo corta orbes, y completo, a los 3 s, arde y parte tajos y olas; si seguís, se sobrecarga hasta una ola al rojo blanco que cruza el mapa y lo parte todo. Pega más cerca que lejos, y los muros cubren. Cargando sos lento, se te ve en los arbustos y un golpe te interrumpe.',icon:'vanguard-crescent',compatibleClasses:['vanguard'],compatibleSlots:['q','e'],trigger:'hold-release',animationAction:'attack',cooldown:WARRIOR_SLASH_COOLDOWN,damage:'1,5–5 de cerca; menos con la distancia',howTo:'Pulsá {key} para un tajo corto; mantené para agrandarlo y soltá. La movilidad lo cancela.',blocks:['primary','q','e'],chargeSlow:0.4,charge:WARRIOR_SLASH_CHARGE,cost:{resource:'mana',amount:15,perSecond:12}}),
+  'vanguard.counter': skill({id:'vanguard.counter',name:'Represalia del Coloso',branch:'vanguard',description:`Una guardia de frente. Pulsada, se levanta ${String(WARRIOR_PARRY.window).replace('.', ',')} s: a tiempo, todo proyectil o tajo que llegue de frente vuelve hacia quien lo lanzó, y un golpe cuerpo a cuerpo se frena y deja tambaleando al atacante. Mantenida, sigue arriba mientras un mandala naranja endurece el cuerpo: cuanto más la sostenés, más rápido, más fuerte y más grande devuelve lo que llega, y más pesado es lo que puede devolver, hasta una Singularidad. Lo que no alcanza a devolver lo frena, si puede. Acertar la deja lista en ${String(WARRIOR_PARRY.successCooldown).replace('.', ',')} s; fallar cuesta de ${curve(WARRIOR_PARRY.cooldown, 0)} a ${curve(WARRIOR_PARRY.cooldown, WARRIOR_PARRY_CHARGE.cap)} s.`,icon:'vanguard-reprisal',compatibleClasses:['vanguard'],compatibleSlots:['e','q'],trigger:'hold-release',animationAction:'castChannel',cooldown:curve(WARRIOR_PARRY.cooldown, 0),damage:'devuelve el ataque, hasta ×2',howTo:'Pulsá {key} justo antes del impacto, de frente al ataque; mantenela para devolverlo más fuerte.',blocks:['primary','q'],chargeSlow:0.55,charge:WARRIOR_PARRY_CHARGE,cost:{resource:'mana',amount:0,perSecond:12}}),
+  'vanguard.dash': skill({id:'vanguard.dash',name:'Embestida Sísmica',branch:'vanguard',description:'Las piernas se cargan, el suelo cede bajo el pie y el cuerpo sale despedido hacia donde apuntás, apartando a quien se cruce. Mantené para ir más lejos. No da invulnerabilidad.',icon:'vanguard-seismic',compatibleClasses:['vanguard'],compatibleSlots:['mobility'],trigger:'hold-release',animationAction:'dash',cooldown:WARRIOR_LAUNCH.cooldown,damage:String(WARRIOR_LAUNCH.hit.damage).replace('.', ','),grants:['mobility'],howTo:'Pulsá {key} para embestir hacia donde apuntás; mantené para ir más lejos.',chargeSlow:0.5,charge:WARRIOR_LAUNCH_CHARGE,cost:{resource:'mana',amount:10,perSecond:15}}),
+  'vanguard.reinforce': skill({id:'vanguard.reinforce',name:'Cuerpo de Titán',branch:'vanguard',description:`Un mandala rojo sube por el cuerpo y lo refuerza ${WARRIOR_REINFORCE.duration} s: recibe ${Math.round((1 - WARRIOR_REINFORCE.taken) * 100)} % menos de daño, nada lo empuja ni le rompe la carga, y cada golpe del mandoble manda su onda.`,icon:'vanguard-titanbody',compatibleClasses:['vanguard'],compatibleSlots:['r','f'],trigger:'press',animationAction:'castChannel',cooldown:WARRIOR_REINFORCE.cooldown,damage:`−${Math.round((1 - WARRIOR_REINFORCE.taken) * 100)} % de daño recibido`,howTo:'Pulsá {key} para reforzar el cuerpo.',cost:{resource:'mana',amount:40}}),
   'common.dash': skill({id:'common.dash',name:'Traslación',branch:'common',description:'Desplazamiento cargable.',icon:'mage-dash',compatibleClasses:['archer'],compatibleSlots:['mobility'],trigger:'hold-release',animationAction:'dash',cooldown:RULES.dashCooldown,damage:'0',grants:['mobility'],howTo:'Pulsá {key} para esquivar hacia donde te movés; mantené para ir más lejos.'}),
 };
 export type PhysicalBinding = 'MouseLeft' | 'MouseRight' | 'MouseMiddle' | 'Space' | 'Shift' | 'Ctrl' | `Key${'Q'|'E'|'R'|'F'|'C'|'X'|'Z'|'V'|'G'|'T'}`;
@@ -962,6 +963,8 @@ export interface Player extends Vec {
   counterLeft: number;
   counterCharge: number;
   counterCd: number;
+  /** Attacks the guard now up has turned: one that turned any comes back sooner. */
+  countered: number;
   /** Guard zombies killed in the red circle, waiting to come back as sword zombies. */
   fallenGuards: number;
   activeTraps: number;
@@ -1013,6 +1016,8 @@ export interface Arrow extends Vec {
   damageScale?: number;
   /** Multiplies its speed: a parried shot comes back faster. */
   speedScale?: number;
+  /** Multiplies its size: a shot returned by a held guard comes back bigger. */
+  sizeScale?: number;
   element?: 'fire' | 'ice';
   /** World only: the affinity it carries, which decides how it looks (a lightning bolt, an ember). */
   worldElement?: string;
@@ -1486,7 +1491,7 @@ export function arrowMotion(a: Arrow) {
   return {
     stats,
     speed: speed * (a.speedScale ?? 1),
-    radius: a.blast ? RULES.hatFireRadius : stats.radius,
+    radius: (a.blast ? RULES.hatFireRadius : stats.radius) * (a.sizeScale ?? 1),
   };
 }
 export function projectileSkillStats(skillId: SkillId | undefined, casterClassId: ClassId, charged = false, power = 0) {
@@ -1739,7 +1744,11 @@ export function movePlayer(
   // A parry stays up for its window, whoever holds it.
   if (p.counterLeft > 0) {
     p.counterLeft = Math.max(0, p.counterLeft - dt);
-    if (p.counterLeft <= 1e-8) p.counterLeft = 0;
+    if (p.counterLeft <= 1e-8) {
+      p.counterLeft = 0;
+      // The arena's guard is down: what it had held is spent. Lugunica sets its own each tick.
+      if (!input.world) p.counterCharge = 0;
+    }
   }
   p.furyLeft = Math.max(0, p.furyLeft - dt);
   if (p.furyLeft <= 1e-8) {
@@ -2107,6 +2116,19 @@ export function movePlayer(
     });
     if (kit.lunge > 0 && frozenDt === 0)
       translate(p, Math.cos(kit.lungeAngle) * kit.lunge, Math.sin(kit.lungeAngle) * kit.lunge, walls);
+    // The warrior's guard is up for as long as it is held, once his hands are free of a blow: it
+    // cuts the recovery of one, never its wind-up. What it turns grows with the seconds held.
+    if (p.chargeSkill === 'vanguard.counter') {
+      if (kit.chargeStarted === 'vanguard.counter') p.countered = 0;
+      if (moveRecovering(p)) {
+        if (p.move && !MOVES[p.move].effect) {
+          p.move = '';
+          p.moveT = 0;
+        }
+        p.counterLeft = Math.max(p.counterLeft, guardWindow(p));
+      }
+      p.counterCharge = p.chargeT;
+    }
     // Attacking gives up the protection of a fresh spawn.
     if (kit.started) p.invuln = 0;
     if (kit.chargeStarted) result.chargeStarted = kit.chargeStarted;
@@ -2227,6 +2249,7 @@ export function newPlayer(
     counterLeft: 0,
     counterCharge: 0,
     counterCd: 0,
+    countered: 0,
     fallenGuards: 0,
     activeTraps: 0,
     specialCharge: 0,
@@ -2284,6 +2307,9 @@ export interface Parry {
   /** What it comes back with, as multiples of what it had. */
   speed: number;
   damage: number;
+  size: number;
+  /** How heavy an attack it can turn, against each attack's `parryResistance`. */
+  power: number;
 }
 /** Something cutting enemy skills this tick: a blade in the middle of its swing. */
 interface Cutter {
@@ -2741,10 +2767,11 @@ export class Duel {
     )
       return false;
     // A blade from the front meets the guard: stopped, and whoever swung it staggers back.
-    if (options.melee && !options.execute && this.parryOf(target, angle + Math.PI)) {
-      this.stagger(options.melee, angle);
+    const guard = options.melee && !options.execute ? this.parryOf(target, angle + Math.PI) : null;
+    if (options.melee && guard && this.parryAnswer(guard, INTERACTIONS.melee) !== 'none') {
+      this.stagger(options.melee, angle, guard.size);
       this.parried(target);
-      this.event('counter', target, target.team, angle + Math.PI, target.classId, 0);
+      this.event('counter', target, target.team, angle + Math.PI, target.classId, guard.size > 1 ? 1 : 0);
       return false;
     }
     if (!options.execute && (target.classId === 'mage' || equippedSkill(target, 'mage.magicShield')) && target.magicShieldHits > 0 && (amount > 0 || options.freeze)) {
@@ -2816,12 +2843,24 @@ export class Duel {
   protected parryOf(target: Player, from: number): Parry | null {
     if (target.hp <= 0 || target.counterLeft <= 0) return null;
     if (Math.abs(wrapAngle(from - target.angle)) > WARRIOR_PARRY.arc / 2 + 1e-9) return null;
-    return { homing: WARRIOR_PARRY.turn, speed: WARRIOR_PARRY.speed, damage: 1 };
+    // The longer the guard was held, the harder it turns what it meets.
+    const held = target.chargeSkill === 'vanguard.counter' ? target.chargeT : target.counterCharge;
+    return {
+      homing: WARRIOR_PARRY.turn,
+      speed: WARRIOR_PARRY.speed * curve(WARRIOR_PARRY.returnSpeed, held),
+      damage: curve(WARRIOR_PARRY.returnDamage, held),
+      size: curve(WARRIOR_PARRY.returnSize, held),
+      power: curve(WARRIOR_PARRY.power, held),
+    };
+  }
+  /** What a guard does to an attack of this kind: sends it back, only stops it, or gives way. */
+  protected parryAnswer(parry: Parry, profile: InteractionProfile): ParryOutcome {
+    return parryOutcome(parry.power, profile);
   }
   /** A parry that worked: the guard gets some of its time back, the next comes sooner, and the pose ends at once. */
   protected parried(p: Player) {
-    const full = WARRIOR_PARRY.window * (1 + (p.pve?.classRanks.vanguard ?? 0) * 0.15);
-    p.counterLeft = Math.min(full, p.counterLeft + WARRIOR_PARRY.extend);
+    p.countered++;
+    p.counterLeft = Math.max(p.counterLeft, Math.min(guardWindow(p), p.counterLeft + WARRIOR_PARRY.extend));
     p.counterCd = Math.min(p.counterCd, WARRIOR_PARRY.successCooldown);
     if (p.move && MOVES[p.move].effect === 'parry') {
       p.move = '';
@@ -2849,12 +2888,12 @@ export class Duel {
     this.event('shock', target, target.team, undefined, target.classId, 1);
   }
   /** A blade stopped on a guard: whoever swung it reels back from the blow `angle` carried. */
-  protected stagger(attacker: Player | Zombie, angle: number) {
+  protected stagger(attacker: Player | Zombie, angle: number, scale = 1) {
     const away = angle + Math.PI;
-    const push = { x: Math.cos(away) * WARRIOR_PARRY.push, y: Math.sin(away) * WARRIOR_PARRY.push };
+    const push = { x: Math.cos(away) * WARRIOR_PARRY.push * scale, y: Math.sin(away) * WARRIOR_PARRY.push * scale };
     if ('stunLeft' in attacker) {
       if (attacker.hp <= 0 || attacker.empowered === 'reinforce') return;
-      attacker.stunLeft = Math.max(attacker.stunLeft, WARRIOR_PARRY.stagger);
+      attacker.stunLeft = Math.max(attacker.stunLeft, WARRIOR_PARRY.stagger * scale);
       translate(attacker, push.x, push.y, this.terrainFor(attacker));
     } else {
       if (attacker.hp <= 0) return;
@@ -2945,6 +2984,35 @@ export class Duel {
     this.event('blackhole', hole, owner.team, undefined, owner.classId, 1, 'mage.blackHole');
     return hole;
   }
+  /**
+   * A hole turned by a guard: it becomes the defender's, stronger for how long the guard was held,
+   * and flies back toward the mage who threw it (or straight back), to open again where it lands.
+   */
+  protected returnBlackHole(hole: BlackHole, by: Player, thrower: Player | undefined, parry: Parry) {
+    const flight = Math.atan2(by.y - hole.y, by.x - hole.x);
+    const alive = thrower && thrower.hp > 0 ? thrower : undefined;
+    const angle = this.returnAngle(by, flight, alive, parry.homing);
+    const aimed = alive && Math.abs(wrapAngle(angle - (flight + Math.PI))) > 1e-9;
+    const reach = aimed ? distance(by, alive) : RULES.blackHoleRangeMax;
+    // Out of the guard, so its own core does not take the one who turned it.
+    const clear = RULES.radius + RULES.blackHoleConsumeRadius + 6;
+    Object.assign(hole, {
+      owner: by.id,
+      team: by.team,
+      x: by.x + Math.cos(angle) * clear,
+      y: by.y + Math.sin(angle) * clear,
+      targetX: by.x + Math.cos(angle) * Math.max(clear + 1, reach),
+      targetY: by.y + Math.sin(angle) * Math.max(clear + 1, reach),
+      traveling: true,
+      left: hole.total,
+      damage: hole.damage * parry.damage,
+      radius: hole.radius * parry.size,
+      burstRadius: hole.burstRadius * parry.size,
+    });
+    this.parried(by);
+    this.event('counter', by, by.team, angle, by.classId, 1);
+    this.event('blackhole', hole, by.team, angle, by.classId, 1, 'mage.blackHole');
+  }
   /** Bursts a hole where it is now: on arrival's end, against a wall, or pressed again by its mage. */
   protected detonateBlackHole(hole: BlackHole) {
     hole.traveling = false;
@@ -3013,6 +3081,19 @@ export class Duel {
         const stride = Math.min(gap, hole.pull * dt);
         translate(target, (hole.x - target.x) / gap * stride, (hole.y - target.y) / gap * stride, terrain);
       };
+      // Its core against a guard held long enough: taken, and sent back at its mage.
+      const guard = this.state.players.find(
+        (p) =>
+          p.id !== hole.owner &&
+          p.hp > 0 &&
+          this.hostile(source, p) &&
+          distance(p, hole) <= RULES.radius + RULES.blackHoleConsumeRadius,
+      );
+      const parry = guard ? this.parryOf(guard, Math.atan2(hole.y - guard.y, hole.x - guard.x)) : null;
+      if (guard && parry && this.parryAnswer(parry, INTERACTIONS.singularity) === 'redirect') {
+        this.returnBlackHole(hole, guard, owner, parry);
+        continue;
+      }
       for (const p of this.state.players)
         if (p.id !== hole.owner && p.hp > 0 && this.hostile(source, p)) {
           pull(p, this.terrainFor(p));
@@ -3335,7 +3416,7 @@ export class Duel {
       return true;
     }
     if (incoming && classId === 'vanguard' && ready('counter')) {
-      z.skillCd.counter = WARRIOR_PARRY.cooldown;
+      z.skillCd.counter = curve(WARRIOR_PARRY.cooldown, 0);
       z.counterLeft = WARRIOR_PARRY.window * 3;
     }
     if (!target) return false;
@@ -4900,8 +4981,13 @@ export class Duel {
       const strength = reach(p, p.id, RULES.radius);
       if (!strength) continue;
       const parry = (w.reflected ?? 0) < WARRIOR_PARRY.bounces ? this.parryOf(p, w.angle + Math.PI) : null;
-      if (parry) this.returnWave(w, p, carried * strength, parry);
-      else if (this.damage(p, owner, w.angle, carried * strength, { knockback: w.knockback })) {
+      const answer = parry ? this.parryAnswer(parry, { ...INTERACTIONS.wave, parryResistance: w.resist }) : 'none';
+      if (parry && answer === 'redirect') this.returnWave(w, p, carried * strength, parry);
+      else if (answer === 'block') {
+        // Too heavy to send back: the guard takes its part of the front, and the rest goes on.
+        this.parried(p);
+        this.event('counter', p, p.team, w.angle + Math.PI, p.classId, 0);
+      } else if (this.damage(p, owner, w.angle, carried * strength, { knockback: w.knockback })) {
         this.waveGain(w, 'hit', 1);
         this.shockPlayer(p, w.shock ?? 0);
       }
@@ -4931,13 +5017,14 @@ export class Duel {
     const thrower = this.state.players.find((q) => q.id === w.owner && q.hp > 0);
     const angle = this.returnAngle(by, w.angle, thrower, parry.homing);
     const aimed = thrower && Math.abs(wrapAngle(angle - (w.angle + Math.PI))) > 1e-9;
-    this.spawnWave(
+    const back = this.spawnWave(
       by,
       by,
       angle,
       {
-        // As wide as it arrived, no wider, and it keeps what it had left all the way back.
-        halfWidth: Math.min(waveHalfWidth(w, w.travelled), RULES.returnedWaveHalfWidth),
+        // As wide as it arrived and no wider (a held guard sends it back bigger), and it keeps what
+        // it had left all the way back.
+        halfWidth: Math.min(waveHalfWidth(w, w.travelled), RULES.returnedWaveHalfWidth) * parry.size,
         spread: 0,
         bow: w.bow,
         thickness: w.thickness,
@@ -4952,8 +5039,12 @@ export class Duel {
       },
       { skillId: w.skillId, reflected: (w.reflected ?? 0) + 1 },
     );
+    // The slash sent back and the rest of the one it came from cross where it was turned: neither
+    // cuts the other.
+    back.hits.push(`wave:${w.id}`);
+    w.hits.push(`wave:${back.id}`);
     this.parried(by);
-    this.event('counter', by, by.team, angle, by.classId, 0);
+    this.event('counter', by, by.team, angle, by.classId, parry.power > 1 ? 1 : 0);
   }
   /** Projectile flight and everything they hit. */
   protected stepArrows(dt: number) {
@@ -4992,7 +5083,14 @@ export class Duel {
         );
         const parry =
           target && (a.bounces ?? 0) < WARRIOR_PARRY.bounces ? this.parryOf(target, a.angle + Math.PI) : null;
-        if (target && parry) {
+        const answer = parry ? this.parryAnswer(parry, arrowProfile(a)) : 'none';
+        if (target && answer === 'block') {
+          // Too heavy to send back: it dies on the guard.
+          this.parried(target);
+          this.event('counter', target, target.team, a.angle + Math.PI, target.classId, 0);
+          return false;
+        }
+        if (target && parry && answer === 'redirect') {
           // Parried: it flies back as the defender's own, toward whoever threw it when it can.
           a.angle = this.returnAngle(a, a.angle, owner.hp > 0 ? owner : undefined, parry.homing);
           owner = target;
@@ -5001,6 +5099,7 @@ export class Duel {
           a.reflected = parry.damage > 1 ? 2 : 1;
           a.bounces = (a.bounces ?? 0) + 1;
           a.speedScale = (a.speedScale ?? 1) * parry.speed;
+          if (parry.size !== 1) a.sizeScale = (a.sizeScale ?? 1) * parry.size;
           if (parry.damage !== 1) {
             a.damageScale = (a.damageScale ?? 1) * parry.damage;
             amount *= parry.damage;

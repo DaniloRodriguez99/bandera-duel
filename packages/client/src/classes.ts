@@ -1,4 +1,4 @@
-import { CELESTIAL_CUT, CLASS_IDS, CLASSES, DEFAULT_CLASS, KNIGHT_AWAKEN, KNIGHT_FLURRY_COOLDOWN, KNIGHT_STEP, RULES, WARRIOR_LAUNCH, WARRIOR_PARRY, WARRIOR_REINFORCE, WARRIOR_SLASH_COOLDOWN, validClass, type ClassId } from '@bandera/shared';
+import { CELESTIAL_CUT, CLASS_IDS, CLASSES, DEFAULT_CLASS, curve, KNIGHT_AWAKEN, KNIGHT_FLURRY_COOLDOWN, KNIGHT_STEP, RULES, WARRIOR_LAUNCH, WARRIOR_PARRY, WARRIOR_REINFORCE, WARRIOR_SLASH_COOLDOWN, validClass, type ClassId } from '@bandera/shared';
 import { classIllustration } from './art.js';
 
 interface SkillPreview {
@@ -44,11 +44,11 @@ const CLASS_SKILLS: Record<ClassId, SkillPreview[]> = {
     { name: 'Despertar del Relámpago', icon: icon('guardian-awaken'), description: `Un mandala baja por el cuerpo y el relámpago violeta lo toma ${seconds(KNIGHT_AWAKEN.duration)}: cada técnica es su versión eléctrica, más fuerte y electrizante.`, damage: `+${Math.round((KNIGHT_AWAKEN.damage - 1) * 100)} %`, cooldown: seconds(KNIGHT_AWAKEN.cooldown) },
   ],
   vanguard: [
-    { name: 'Mandoble Colosal', icon: icon('vanguard-sword'), description: 'Un barrido y un martillazo desde arriba, lentos y enormes. Cargados, mandan una onda roja hacia adelante.', damage: '2 · 2,5; hasta ×1,75', cooldown: '0 s' },
-    { name: 'Creciente Escarlata', icon: icon('vanguard-slash'), description: 'Un tajo rojo que crece mientras lo cargás: completo a los 3 s, y sobrecargado hasta una ola que cruza el mapa. Pega más de cerca.', damage: '1,5–5', cooldown: `${seconds(WARRIOR_SLASH_COOLDOWN)} o más` },
-    { name: 'Revancha de Hierro', icon: icon('vanguard-counter'), description: 'Un parry de frente: devuelve proyectiles y tajos hacia quien los lanzó y frena los golpes cuerpo a cuerpo.', damage: 'devuelve el ataque', cooldown: `${seconds(WARRIOR_PARRY.successCooldown)} si acierta · ${seconds(WARRIOR_PARRY.cooldown)} si falla` },
-    { name: 'Avance Imparable', icon: icon('vanguard-dash'), description: 'Carga las piernas y sale despedido hacia donde apunta, apartando a quien se cruce.', damage: String(WARRIOR_LAUNCH.hit.damage).replace('.', ','), cooldown: seconds(WARRIOR_LAUNCH.cooldown) },
-    { name: 'Cuerpo de Hierro', icon: icon('vanguard-counter'), description: `Un mandala rojo refuerza el cuerpo ${seconds(WARRIOR_REINFORCE.duration)}: menos daño, nada lo empuja y cada golpe manda su onda.`, damage: `−${Math.round((1 - WARRIOR_REINFORCE.taken) * 100)} % recibido`, cooldown: seconds(WARRIOR_REINFORCE.cooldown) },
+    { name: 'Mandoble del Titán', icon: icon('vanguard-titan'), description: 'El Barrido del Titán y la Caída de Montaña, desde arriba: lentos y enormes. Cargados, mandan una onda roja hacia adelante.', damage: '2 · 2,5; hasta ×1,75', cooldown: '0 s' },
+    { name: 'Creciente Escarlata', icon: icon('vanguard-crescent'), description: 'Un tajo que crece mientras lo cargás y corta lo que le lanzan: de sangre y violeta corta flechas; completo, a los 3 s, arde y parte tajos y olas; sobrecargado, cruza el mapa y lo parte todo.', damage: '1,5–5', cooldown: `${seconds(WARRIOR_SLASH_COOLDOWN)} o más` },
+    { name: 'Represalia del Coloso', icon: icon('vanguard-reprisal'), description: 'Una guardia de frente. A tiempo devuelve lo que llega; mantenida, un mandala naranja endurece el cuerpo y lo devuelve más rápido, más fuerte y más grande, hasta una Singularidad.', damage: 'devuelve el ataque, hasta ×2', cooldown: `${seconds(WARRIOR_PARRY.successCooldown)} si acierta · ${seconds(curve(WARRIOR_PARRY.cooldown, 0))} o más si falla` },
+    { name: 'Embestida Sísmica', icon: icon('vanguard-seismic'), description: 'Carga las piernas, el suelo cede y sale despedido hacia donde apunta, apartando a quien se cruce.', damage: String(WARRIOR_LAUNCH.hit.damage).replace('.', ','), cooldown: seconds(WARRIOR_LAUNCH.cooldown) },
+    { name: 'Cuerpo de Titán', icon: icon('vanguard-titanbody'), description: `Un mandala rojo refuerza el cuerpo ${seconds(WARRIOR_REINFORCE.duration)}: menos daño, nada lo empuja y cada golpe manda su onda.`, damage: `−${Math.round((1 - WARRIOR_REINFORCE.taken) * 100)} % recibido`, cooldown: seconds(WARRIOR_REINFORCE.cooldown) },
   ],
 };
 

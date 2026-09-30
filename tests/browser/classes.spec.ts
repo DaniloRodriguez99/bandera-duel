@@ -62,7 +62,7 @@ test('caballero móvil con tres dedos, liberación y clase pesada',async({browse
   await enter(page,opponent.url(),'Shield','guardian');await page.screenshot({path:info.outputPath('clases-mobile.png')});await opponent.locator('#ready').click();await page.locator('#ready').click();await expect(page.locator('#stage')).toHaveAttribute('data-phase','playing',{timeout:7000});
   await expect(opponent.locator('#health')).toHaveText('♥ 5/5');await expect(opponent.locator('#cd-dash')).toBeVisible();
   // The warrior's click is his heavy sweep: the HUD names the blow while it plays.
-  await opponent.locator('#game canvas').click();await expect(opponent.locator('#cd-sword')).toHaveText('⚔ Barrido');
+  await opponent.locator('#game canvas').click();await expect(opponent.locator('#cd-sword')).toHaveText('⚔ Barrido del Titán');
   // Three fingers at once: walking, charging a cut while aiming it, and the right thumb's aim stick.
   const cdp=await mobile.newCDPSession(page);const boxes=await Promise.all(['#stick-move','#touch-sword','#aim-zone'].map(id=>page.locator(id).boundingBox()));
   const touches=boxes.map((b,i)=>i===2?{id:3,x:b!.x+40,y:b!.y+50}:{id:i+1,x:b!.x+b!.width/2,y:b!.y+b!.height/2});

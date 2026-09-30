@@ -362,9 +362,10 @@ const PRESS: ChargeSpec = {
 
 // ── Warrior ────────────────────────────────────────────────────────────────────────────────────
 // A reinforced body: his magic makes him stronger instead of casting anything. Two slow blows of a
-// greatsword that, charged, send a red shockwave ahead; a parry that sends an attack back at
-// whoever threw it; a slash that keeps growing for as long as he dares to hold it; a launch off
-// reinforced legs; and a state where his body turns to iron.
+// greatsword that, charged, send a red shockwave ahead; a guard held up to take an attack and send
+// it back harder the longer it was held; a slash that keeps growing for as long as he dares to
+// hold it, and that cuts through what it meets once it is strong enough; a launch off reinforced
+// legs; and a state where his body turns to a titan's.
 
 /** Seconds the warrior's chain waits for its second blow before starting over. */
 const WARRIOR_CHAIN_RESET = 1.2;
@@ -388,7 +389,7 @@ const GREATSWORD = {
   /** The shockwave the blow sends ahead; a tap sends none unless the body is reinforced. */
   shock: [null, 0, 1, 2] as (number | null)[],
 };
-const GREATSWORD_STEPS = ['Barrido', 'Martillo'];
+const GREATSWORD_STEPS = ['Barrido del Titán', 'Caída de Montaña'];
 /** The red shockwaves of the charged blows, weakest to strongest; the last one only reinforced. */
 const SHOCKWAVES = [
   { range: 100, halfWidth: 26, damage: 0.75, knockback: 20, resist: 0.75 },
@@ -460,12 +461,12 @@ for (let step = 0; step < GREATSWORD_STEPS.length; step++)
 
 export const WARRIOR_SLASH_CHARGE: ChargeSpec = {
   tiers: [
-    { id: 'tap', at: 0, label: 'Toque · creciente corta' },
-    { id: 'low', at: 1, label: '1 s · más ancha y más lejos', tint: 'scarlet' },
+    { id: 'tap', at: 0, label: 'Toque · creciente corta, corta flechas', tint: 'bloodViolet' },
+    { id: 'low', at: 1, label: '1 s · más ancha, corta orbes', tint: 'scarlet' },
     { id: 'mid', at: 2, label: '2 s · casi el doble de daño', tint: 'scarlet' },
-    { id: 'max', at: 3, label: '3 s · carga completa', tint: 'scarlet' },
-    { id: 'over', at: 3.5, label: 'Seguir · sobrecarga, se abre en abanico', tint: 'scarlet' },
-    { id: 'colossal', at: 7, label: '7 s · ola que cruza el mapa', tint: 'scarlet' },
+    { id: 'max', at: 3, label: '3 s · completa: parte tajos y olas', tint: 'blaze' },
+    { id: 'over', at: 3.5, label: 'Seguir · sobrecarga, se abre en abanico', tint: 'blaze' },
+    { id: 'colossal', at: 7, label: '7 s · ola que cruza el mapa y lo parte todo', tint: 'inferno' },
   ],
   cap: 7,
   full: 3,
@@ -490,8 +491,21 @@ const CRESCENT = {
   damage: [[0, 1.5], [3, 3], [7, 5]],
   knockback: [[0, 24], [3, 40], [7, 60]],
   resist: [[0, 0.5], [3, 1], [7, 2]],
+  /**
+   * Its cut: enough for arrows from a tap and for charged orbs from a second on, but only a full
+   * charge gives it the power to split slashes and waves, and the colossal wave splits them all.
+   */
+  cut: [[0, 0.8], [1, 1.05], [2.95, 1.2], [3, 1.6], [7, 2.2]],
   cooldown: [[0, 5], [3, 7], [7, 12]],
 } satisfies Record<string, Curve>;
+
+/**
+ * The crescent's colour by the seconds it was held, changing where its power does: blood and violet
+ * while short, red from a second on, blazing once it is complete and splits waves, white-hot and
+ * violet as the colossal wave.
+ */
+const crescentTint = (charge: number): WaveTint =>
+  charge >= 7 - 1e-6 ? 'inferno' : charge >= 3 - 1e-6 ? 'blaze' : charge >= 1 - 1e-6 ? 'scarlet' : 'bloodViolet';
 
 /** The share of its damage the crescent keeps by the share of its reach it has travelled. */
 const CRESCENT_FALLOFF: Curve = [[0, 1], [0.3, 0.85], [0.6, 0.6], [1, 0.4]];
@@ -510,10 +524,9 @@ export const warriorWave = (charge: number): WaveSpec => ({
   damage: curve(CRESCENT.damage, charge),
   falloff: CRESCENT_FALLOFF,
   knockback: curve(CRESCENT.knockback, charge),
-  // It crushes whoever it reaches; it does not cut their skills.
-  cut: 0,
+  cut: curve(CRESCENT.cut, charge),
   resist: curve(CRESCENT.resist, charge),
-  tint: 'scarlet',
+  tint: crescentTint(charge),
 });
 
 /** A turn of the whole body that lets the crescent go at `at`; the bigger ones take longer to come back from. */
@@ -535,17 +548,22 @@ register('vanguard.slash:0', crescent('Creciente', 4, 12, 0.6));
 register('vanguard.slash:1', crescent('Creciente Escarlata', 5, 18, 0.4));
 register('vanguard.slash:2', crescent('Ola Carmesí', 7, 30, 0.25));
 
-/** The parry. */
+/**
+ * The guard. Pressed, it goes up at once for a short window: timed right, it sends an attack back.
+ * Held, it stays up while an orange mandala hardens the body, and the longer it was held the harder
+ * it returns what it meets. By the seconds held: its power (what it can turn, see INTERACTIONS),
+ * and what a returned attack comes back with.
+ */
 export const WARRIOR_PARRY = {
-  /** Seconds the guard stays up after the press. */
+  /** Seconds the guard stays up after it is let go (all of it, on a tap). */
   window: 0.3,
   /** Each attack turned gives this much of the window back, never past its full length: a whole volley can be returned. */
   extend: 0.15,
   /** The front it covers, centred on the aim. */
   arc: Math.PI,
-  /** Seconds before the next one: after a parry that met nothing, and after one that worked. */
-  cooldown: 3,
+  /** Seconds before the next guard once it drops: after one that turned something, and after one that met nothing. */
   successCooldown: 0.6,
+  cooldown: [[0, 3], [2.2, 5]] as Curve,
   /** How much faster an attack flies back, and how far off its way back it turns to find whoever threw it. */
   speed: 1.25,
   turn: deg(60),
@@ -554,9 +572,29 @@ export const WARRIOR_PARRY = {
   /** A blade stopped on the guard: the seconds its owner staggers, and how far back. */
   stagger: 0.5,
   push: 40,
+  /** By seconds held. Not in a straight line: the first moments count the most. */
+  power: [[0, 1], [0.4, 1.25], [1, 1.55], [1.6, 1.85], [2.2, 2.1]] as Curve,
+  /** What it comes back with, on top of the plain parry: faster, harder, bigger. */
+  returnSpeed: [[0, 1], [1, 1.25], [2.2, 1.6]] as Curve,
+  returnDamage: [[0, 1], [0.4, 1.1], [1, 1.35], [1.6, 1.6], [2.2, 2]] as Curve,
+  returnSize: [[0, 1], [1, 1.25], [2.2, 1.6]] as Curve,
+};
+export const WARRIOR_PARRY_CHARGE: ChargeSpec = {
+  tiers: [
+    { id: 'tap', at: 0, label: 'Toque · parry justo a tiempo' },
+    { id: 'firm', at: 0.4, label: 'Firme · devuelve orbes cargados', tint: 'gold' },
+    { id: 'unbroken', at: 1, label: 'Inquebrantable · más rápido y más fuerte', tint: 'blaze' },
+    { id: 'reprisal', at: 1.6, label: 'Represalia total · hasta una Singularidad', tint: 'inferno' },
+  ],
+  cap: 2.2,
+  // Hit from where the guard does not cover, the stance breaks and the guard costs its cooldown.
+  breakOnDamage: { cooldown: 1, over: 0.9 },
+  cancelOnMobility: false,
+  // Nobody holds a guard forever: at its cap, or out of mana to hold it, it lets go by itself.
+  autoRelease: true,
 };
 register('vanguard.counter:0', {
-  name: 'Revancha',
+  name: 'Represalia',
   duration: frames(9),
   strikes: [],
   waves: [],
@@ -587,7 +625,7 @@ export const WARRIOR_LAUNCH = {
   hit: { damage: 0.5, knockback: 40 },
 };
 register('vanguard.dash:0', {
-  name: 'Avance Imparable',
+  name: 'Embestida Sísmica',
   // Three frames of loading the legs; the launch itself outlasts the move.
   duration: frames(4),
   strikes: [],
@@ -606,7 +644,7 @@ register('vanguard.dash:0', {
   },
 });
 
-/** The reinforced body: a red mandala climbs it, and for a while nothing moves him. */
+/** The titan's body: a red mandala climbs it, and for a while nothing moves him. */
 export const WARRIOR_REINFORCE = {
   duration: 6,
   /** Share of every blow he still takes. */
@@ -614,7 +652,7 @@ export const WARRIOR_REINFORCE = {
   cooldown: 16,
 };
 register('vanguard.reinforce:0', {
-  name: 'Cuerpo de Hierro',
+  name: 'Cuerpo de Titán',
   duration: frames(12),
   strikes: [],
   waves: [],
@@ -673,12 +711,13 @@ export const KIT: Record<string, KitSkill> = {
     cooldown: (_tier, charge) => curve(CRESCENT.cooldown, charge),
   },
   'vanguard.counter': {
-    charge: PRESS,
+    charge: WARRIOR_PARRY_CHARGE,
     chain: 1,
     chainReset: 0,
     move: () => 'vanguard.counter:0',
-    cooldown: () => WARRIOR_PARRY.cooldown,
-    instant: true,
+    // A guard that turned something comes back soon; one that met nothing costs more the longer
+    // it was held.
+    cooldown: (_tier, charge, p) => (p.countered > 0 ? WARRIOR_PARRY.successCooldown : curve(WARRIOR_PARRY.cooldown, charge)),
     interrupts: true,
   },
   'vanguard.dash': {

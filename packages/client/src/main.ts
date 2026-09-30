@@ -1369,6 +1369,8 @@ function render(s: Snapshot) {
     $('stage').dataset.class = me.classId;
     $('stage').dataset.fury = String(me.empowered === 'awaken');
     $('stage').dataset.iron = String(me.empowered === 'reinforce');
+    // The warrior's guard: up, and held (its orange mandala) or just raised.
+    $('stage').dataset.guard = me.chargeSkill === 'vanguard.counter' ? 'held' : me.counterLeft > 0 ? 'up' : 'down';
     $('stage').dataset.magicShield = String(me.magicShieldHits);
     $('stage').dataset.frozen = String(me.frozenLeft > 0);
     $('cd-ice').textContent = `❄ ${me.iceCd > 0 ? me.iceCd.toFixed(1) + 's' : 'Listo'}`;
@@ -1392,7 +1394,7 @@ function render(s: Snapshot) {
           : me.empowered === 'awaken'
             ? `DESPIERTO ${me.furyLeft.toFixed(1)}s`
             : me.empowered === 'reinforce'
-              ? `HIERRO ${me.furyLeft.toFixed(1)}s`
+              ? `TITÁN ${me.furyLeft.toFixed(1)}s`
               : me.maxMana > 0
                 ? `MANÁ ${Math.floor(me.mana)}`
                 : '';

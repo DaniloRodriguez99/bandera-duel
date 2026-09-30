@@ -12,11 +12,11 @@ test('el guerrero carga la Creciente más allá del 100 % y la ola alcanza al ri
   page.on('pageerror', (error) => errors.push(error.message));
   await practice(page);
   const abilities = page.locator('#abilities');
-  await expect(abilities.locator('[data-ability="sword"]')).toContainText('Mandoble Colosal');
+  await expect(abilities.locator('[data-ability="sword"]')).toContainText('Mandoble del Titán');
   await expect(abilities.locator('[data-ability="slash"]')).toContainText('Creciente Escarlata');
-  await expect(abilities.locator('[data-ability="counter"]')).toContainText('Revancha de Hierro');
-  await expect(abilities.locator('[data-ability="dash"]')).toContainText('Avance Imparable');
-  await expect(abilities.locator('[data-ability="reinforce"]')).toContainText('Cuerpo de Hierro');
+  await expect(abilities.locator('[data-ability="counter"]')).toContainText('Represalia del Coloso');
+  await expect(abilities.locator('[data-ability="dash"]')).toContainText('Embestida Sísmica');
+  await expect(abilities.locator('[data-ability="reinforce"]')).toContainText('Cuerpo de Titán');
   await expect(page.locator('#practice-toolbar')).toHaveAttribute('data-dummy-hp', '3');
   // Walk in a little, aim at the rival, and hold Q well past a full charge.
   await page.keyboard.down('KeyD');
@@ -31,8 +31,12 @@ test('el guerrero carga la Creciente más allá del 100 % y la ola alcanza al ri
   await page.keyboard.up('KeyQ');
   await expect(page.locator('#practice-toolbar')).not.toHaveAttribute('data-dummy-hp', '3', { timeout: 3000 });
   await expect(abilities.locator('[data-ability="slash"]')).toHaveAttribute('data-ready', 'false');
-  // The parry goes up at once and says so.
-  await page.keyboard.press('KeyE');
+  // The guard goes up at once; held, it stays up and its states light up, and let go it drops.
+  await page.keyboard.down('KeyE');
+  await expect(page.locator('#stage')).toHaveAttribute('data-guard', 'held');
+  await expect(abilities.locator('.ability-tree li[data-active="true"]', { hasText: 'Inquebrantable' })).toBeVisible({ timeout: 3000 });
+  await page.keyboard.up('KeyE');
+  await expect(page.locator('#stage')).toHaveAttribute('data-guard', 'down', { timeout: 2000 });
   await expect(abilities.locator('[data-ability="counter"]')).toHaveAttribute('data-ready', 'false');
   expect(errors).toEqual([]);
 });
@@ -45,11 +49,11 @@ test('en táctil el guerrero tiene sus botones: tajo, parry, embestida y cuerpo 
   await practice(page);
   for (const id of ['sword', 'slash', 'counter', 'dash', 'reinforce'])
     await expect(page.locator(`#touch-${id}`)).toBeVisible();
-  await expect(page.locator('#touch-counter')).toHaveAttribute('data-mode', 'press');
+  await expect(page.locator('#touch-counter')).toHaveAttribute('data-mode', 'charge');
   await expect(page.locator('#touch-slash')).toHaveAttribute('data-mode', 'charge');
   await page.locator('#touch-reinforce').tap();
   await expect(page.locator('#stage')).toHaveAttribute('data-iron', 'true');
-  await expect(page.locator('#mobile-state')).toHaveText(/^HIERRO/);
+  await expect(page.locator('#mobile-state')).toHaveText(/^TITÁN/);
   expect(errors).toEqual([]);
   await context.close();
 });

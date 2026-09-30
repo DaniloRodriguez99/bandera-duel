@@ -288,6 +288,14 @@ export function bladePose(p: Fighter & { x: number; y: number }, age: number): B
     const held = p.chargeT + age;
     const step = skill.chain > 1 ? p.combo % skill.chain : 0;
     const coming = MOVES[skill.move(step, chargeTier(skill.charge, held).index, p.furyLeft > 0)];
+    if (coming.effect === 'parry') {
+      // A guard held up: the blade across the front, braced, following where he faces.
+      pose.angle = p.angle - 1.2;
+      pose.length = 0.95;
+      pose.charge = chargeProgress(skill.charge, held);
+      pose.tint = chargeTier(skill.charge, held).tier.tint ?? 'gold';
+      return pose;
+    }
     const wound = woundUp(swingsOf(coming)[0], p.angle);
     pose.angle = p.angle + wound.turn;
     pose.length = wound.length;

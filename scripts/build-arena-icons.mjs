@@ -1,12 +1,35 @@
-// Draws the arena skill icons that are vector art (the knight's techniques), and rasterises them to
-// the 128 px PNGs the HUD loads from packages/client/public/assets/skills. Run after changing one:
+// Draws the arena skill icons that are vector art (the knight's and the warrior's techniques), and
+// rasterises them to the 128 px PNGs the HUD loads from packages/client/public/assets/skills. Run
+// after changing one:
 //   node scripts/build-arena-icons.mjs
-// It renders with the Chromium that Playwright installs for the browser tests.
-import { writeFileSync } from 'node:fs';
+// It renders with the Chromium that Playwright installs for the browser tests. The warrior's use
+// game-icons.net glyphs from assets-src/game-icons (CC BY 3.0, see its CREDITS.md).
+import { readFileSync, writeFileSync } from 'node:fs';
 import { chromium } from '@playwright/test';
 
 const OUT = 'packages/client/public/assets/skills';
 const SIZE = 128;
+
+/** A game-icons glyph (drawn on 512 units) placed at `x`,`y` and `size` units wide, in `fill`. */
+function glyph(name, x, y, size, fill, outline = '#000') {
+  const svg = readFileSync(`assets-src/game-icons/${name}.svg`, 'utf8');
+  const paths = [...svg.matchAll(/<path[^>]*d="([^"]+)"[^>]*\/>/g)]
+    .filter((m) => !/^M0 0h512v512H0z$/.test(m[1]))
+    .map((m) => `<path d="${m[1]}"/>`)
+    .join('');
+  return `<g transform="translate(${x} ${y}) scale(${size / 512})" fill="${fill}" stroke="${outline}" stroke-opacity=".55" stroke-width="22" paint-order="stroke">${paths}</g>`;
+}
+
+/** A mandala ring: two circles, a six-pointed star and beads, in the colour of its magic. */
+const mandala = (cx, cy, r, color, light) =>
+  `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${color}" stroke-width="5" opacity=".35" filter="url(#glow)"/>` +
+  `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${light}" stroke-width="1.2"/>` +
+  `<circle cx="${cx}" cy="${cy}" r="${r * 0.77}" fill="none" stroke="${color}" stroke-width=".8" stroke-dasharray="2.2 1.6"/>` +
+  `<path d="M${cx} ${cy - r * 0.86} L${cx + r * 0.75} ${cy + r * 0.43} L${cx - r * 0.75} ${cy + r * 0.43} Z M${cx} ${cy + r * 0.86} L${cx - r * 0.75} ${cy - r * 0.43} L${cx + r * 0.75} ${cy - r * 0.43} Z" fill="none" stroke="${color}" stroke-width=".9" opacity=".85"/>` +
+  Array.from({ length: 12 }, (_, i) => {
+    const a = (i / 12) * Math.PI * 2;
+    return `<circle cx="${(cx + Math.cos(a) * r).toFixed(2)}" cy="${(cy + Math.sin(a) * r).toFixed(2)}" r="1.2" fill="${light}"/>`;
+  }).join('');
 
 /** A card in the arena's style: a dark vignette, the art, and a thin rim in the skill's colour. */
 const card = (rim, background, art) =>
@@ -82,6 +105,37 @@ const ICONS = {
     `<path d="${bolt(22, 16, 30, 50, 5, 5, 11)}" fill="none" stroke="#d9a6ff" stroke-width="1.6" stroke-linejoin="round" filter="url(#glow)"/>` +
     `<path d="${bolt(42, 14, 35, 48, 5, 5, 5)}" fill="none" stroke="#ffffff" stroke-width="1.1" stroke-linejoin="round"/>` +
     glint(32, 8, 3.5, '#ffffff')),
+
+  // M1 · Mandoble del Titán: a fist around a greatsword, and the red force its blows throw.
+  'vanguard-titan': card('#e0473e', ['#3a1010', '#0a0404'],
+    `<path d="M6 54 Q30 30 58 40" fill="none" stroke="#e0473e" stroke-width="7" opacity=".45" filter="url(#haze)"/>` +
+    `<path d="M8 55 Q31 33 57 42" fill="none" stroke="#ff8a6a" stroke-width="2" opacity=".8"/>` +
+    glyph('sword-brandish', 10, 9, 45, '#f3e6dc')),
+
+  // Q · Creciente Escarlata: the crescent as its power grows, blood and violet into white-hot.
+  'vanguard-crescent': card('#ff4f1a', ['#2a0c14', '#080306'],
+    `<defs><linearGradient id="heat" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#7b2cbf"/><stop offset=".35" stop-color="#c21f3a"/><stop offset=".75" stop-color="#ff4f1a"/><stop offset="1" stop-color="#fff4dd"/></linearGradient></defs>` +
+    `<path d="M8 54 Q52 58 56 8 Q38 42 8 54 Z" fill="#c21f3a" opacity=".55" filter="url(#haze)"/>` +
+    `<path d="M8 54 Q52 58 56 8 Q38 42 8 54 Z" fill="url(#heat)" stroke="#7b2cbf" stroke-width="1.3" stroke-linejoin="round"/>` +
+    `<path d="M11 53.5 Q49 55 54.5 12" fill="none" stroke="#fff4dd" stroke-width="1.3" opacity=".9"/>` +
+    [[22, 40, 1.6], [30, 33, 1.2], [38, 25, 1.5], [18, 30, 1]].map(([x, y, r]) => `<circle cx="${x}" cy="${y}" r="${r}" fill="#ffb080"/>`).join('') +
+    glint(55, 9, 4, '#fff4dd')),
+
+  // E · Represalia del Coloso: the orange mandala of the held guard, and two blades meeting on it.
+  'vanguard-reprisal': card('#ff8c1a', ['#3a2008', '#0a0602'],
+    mandala(32, 32, 24, '#ff8c1a', '#ffd9a8') +
+    glyph('sword-clash', 11, 11, 42, '#ffe7c4')),
+
+  // Space · Embestida Sísmica: the stomp that throws him forward, and the ground breaking under it.
+  'vanguard-seismic': card('#ff6a2a', ['#301208', '#0a0503'],
+    `<ellipse cx="32" cy="50" rx="26" ry="7" fill="none" stroke="#ff6a2a" stroke-width="2" opacity=".75"/>` +
+    `<ellipse cx="32" cy="50" rx="17" ry="4.5" fill="none" stroke="#ffb080" stroke-width="1.2" opacity=".8"/>` +
+    glyph('quake-stomp', 10, 6, 44, '#f3e6dc')),
+
+  // R · Cuerpo de Titán: the red mandala that goes up through him, and the body it hardens.
+  'vanguard-titanbody': card('#e0473e', ['#3a0c0c', '#0a0303'],
+    mandala(32, 32, 24, '#e0473e', '#ffd7d2') +
+    glyph('muscle-up', 12, 12, 40, '#ffe1d6')),
 };
 
 const browser = await chromium.launch();
@@ -91,4 +145,19 @@ for (const [name, svg] of Object.entries(ICONS)) {
   writeFileSync(`${OUT}/${name}.png`, await page.locator('svg').screenshot({ omitBackground: true }));
 }
 await browser.close();
+writeFileSync(
+  `${OUT}/CREDITS.md`,
+  `# Íconos de habilidades de la arena
+
+Los del Caballero y el Guerrero se dibujan con \`scripts/build-arena-icons.mjs\`. Los del Guerrero
+llevan glifos de [game-icons.net](https://game-icons.net), repositorio
+[game-icons/icons](https://github.com/game-icons/icons), bajo licencia
+[CC BY 3.0](https://creativecommons.org/licenses/by/3.0/), recoloreados y enmarcados:
+
+- sword-brandish, de delapouite (Mandoble del Titán)
+- sword-clash, de lorc (Represalia del Coloso)
+- quake-stomp, de lorc (Embestida Sísmica)
+- muscle-up, de lorc (Cuerpo de Titán)
+`,
+);
 console.log(`${Object.keys(ICONS).length} íconos en ${OUT}`);

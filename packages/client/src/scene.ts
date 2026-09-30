@@ -37,6 +37,7 @@ import {
   WAVE_COLORS,
   WAVE_SAMPLES,
   WARRIOR_PARRY,
+  WARRIOR_PARRY_CHARGE,
   chargeFull,
   chargeProgress,
   chargeTier,
@@ -71,6 +72,9 @@ const EMPOWERED_TINT: Partial<Record<Player['empowered'], WaveTint>> = { awaken:
 /** The knight's lightning, in its two tones. */
 const BOLT = 0x5cc8ff;
 const BOLT_CORE = 0xe8f8ff;
+/** The warrior's held guard: an orange mandala. */
+const GUARD = 0xff8c1a;
+const GUARD_LIGHT = 0xffd9a8;
 /** The knight's lightning once he is awake. */
 const VIOLET = 0xa64fe0;
 const VIOLET_CORE = 0xf0d8ff;
@@ -104,7 +108,13 @@ const GOLD = 0xf3ce86;
  * their own: the descending cut, the celestial cut and the awakening.
  */
 function soundOf(e: Snapshot['events'][number]) {
-  if (e.kind === 'swing' && e.classId === 'vanguard') return 'swingHeavy';
+  if (e.kind === 'swing' && e.classId === 'vanguard') {
+    if (e.move?.startsWith('vanguard.slash:2')) return 'crescentColossal';
+    if (e.move?.startsWith('vanguard.slash:')) return 'crescent';
+    return 'swingHeavy';
+  }
+  // A guard held long returns things with a deeper ring.
+  if (e.kind === 'counter' && e.power) return 'counterHeavy';
   if (e.kind === 'swing' && e.classId === 'guardian') {
     if (e.move?.startsWith('guardian.flurry:2')) return 'celestial';
     if (e.move?.startsWith('guardian.sword:2:')) return 'swingDescend';
@@ -1502,6 +1512,16 @@ export class Arena extends Phaser.Scene {
       });
       g.strokePath();
     }
+    if ((w.tint === 'blaze' || w.tint === 'inferno') && front.length > 2) {
+      // A crescent at full power burns: embers stream off its front, more of them the hotter it is.
+      const embers = w.tint === 'inferno' ? 10 : 6;
+      for (let k = 0; k < embers; k++) {
+        const point = front[Math.floor(((k + 0.5) / embers) * front.length)];
+        const drift = ((time * 0.06 + k * 17 + w.id * 7) % 24);
+        g.fillStyle(k % 3 ? glow : core, 0.8 * fade * (1 - drift / 24));
+        g.fillCircle(point.x - dx * (6 + drift) + Math.sin(k * 3.1 + time * 0.01) * 3, point.y - dy * (6 + drift) + Math.cos(k * 2.3 + time * 0.01) * 3, 1.2 + (k % 2));
+      }
+    }
     if (w.tint === 'radiant' && front.length > 2) {
       // The celestial cut is fast: its front leaves afterimages behind it.
       for (let k = 1; k <= 3; k++) {
@@ -1745,23 +1765,37 @@ export class Arena extends Phaser.Scene {
         notch(31, start + ((step.at - full) / (spec.cap - full)) * Math.PI * 2, i <= index);
   }
   /** The warrior's charge: a red force swelling around the body, and cracking the ground past a full charge. */
-  private drawReinforcement(g: Phaser.GameObjects.Graphics, x: number, y: number, progress: number, over: number, time: number) {
+  private drawReinforcement(
+    g: Phaser.GameObjects.Graphics,
+    x: number,
+    y: number,
+    progress: number,
+    over: number,
+    time: number,
+    tint: WaveTint = 'scarlet',
+  ) {
+    const colors = WAVE_COLORS[tint];
+    const glow = hex(colors.glow);
+    const core = hex(colors.core);
+    const edge = hex(colors.edge ?? colors.glow);
     const pulse = 0.5 + 0.5 * Math.sin(time * (0.01 + progress * 0.015));
     const radius = 20 + progress * 8 + over * 18;
-    g.fillStyle(0xd8261f, 0.06 + progress * 0.08 + over * 0.08);
+    g.fillStyle(glow, 0.06 + progress * 0.08 + over * 0.08);
     g.fillEllipse(x, y + 6, radius * 2.2, radius * 0.9);
-    g.lineStyle(1 + progress * 2, 0xe0473e, 0.35 + pulse * 0.3);
+    g.lineStyle(1 + progress * 2, glow, 0.35 + pulse * 0.3);
     g.strokeEllipse(x, y + 8, radius * 2, radius * 0.8);
-    // Force rising up the body.
-    const veins = 3 + Math.round(progress * 3 + over * 4);
+    g.lineStyle(1, edge, 0.3 + progress * 0.3);
+    g.strokeEllipse(x, y + 8, radius * 2.3, radius * 0.95);
+    // Force rising up the body: more of it the stronger the charge.
+    const veins = 3 + Math.round(progress * 3 + over * 6);
     for (let i = 0; i < veins; i++) {
       const angle = (i / veins) * Math.PI * 2 + time * 0.002;
       const rise = (time * 0.04 + i * 13) % 28;
-      g.fillStyle(i % 2 ? 0xffd7d2 : 0xe0473e, 0.75 * (1 - rise / 28));
+      g.fillStyle(i % 3 === 2 ? edge : i % 2 ? core : glow, 0.75 * (1 - rise / 28));
       g.fillRect(x + Math.cos(angle) * (10 + over * 6) - 1, y + 6 - rise, 2, 4);
     }
     if (over <= 0) return;
-    g.lineStyle(1.5, 0xff6b4f, 0.35 + over * 0.45);
+    g.lineStyle(1.5, glow, 0.35 + over * 0.45);
     for (let i = 0; i < 6; i++) {
       const angle = (i * Math.PI) / 3 + 0.3;
       const near = radius * 0.7;
@@ -1834,20 +1868,32 @@ export class Arena extends Phaser.Scene {
     }
   }
   /** The warrior's parry: a wall of gold over the front half, fading as the window closes. */
-  private drawGuard(g: Phaser.GameObjects.Graphics, x: number, y: number, angle: number, left: number, time: number) {
+  /**
+   * The warrior's guard over his front: gold on a tap, turning orange and thicker the longer it was
+   * held (`hold`, 0 to 1).
+   */
+  private drawGuard(g: Phaser.GameObjects.Graphics, x: number, y: number, angle: number, left: number, time: number, hold = 0) {
     const half = WARRIOR_PARRY.arc / 2;
-    const shimmer = 0.85 + Math.sin(time * 0.04) * 0.15;
-    g.fillStyle(0xffd36b, (0.08 + 0.1 * left) * shimmer);
+    const shimmer = 0.85 + Math.sin(time * (0.04 + hold * 0.03)) * 0.15;
+    const color = Phaser.Display.Color.Interpolate.ColorWithColor(
+      Phaser.Display.Color.ValueToColor(0xffd36b),
+      Phaser.Display.Color.ValueToColor(GUARD),
+      100,
+      Math.round(hold * 100),
+    );
+    const tint = Phaser.Display.Color.GetColor(color.r, color.g, color.b);
+    const reach = 30 + hold * 6;
+    g.fillStyle(tint, (0.08 + 0.1 * left + hold * 0.08) * shimmer);
     g.beginPath();
-    g.slice(x, y - 3, 30, angle - half, angle + half, false);
+    g.slice(x, y - 3, reach, angle - half, angle + half, false);
     g.fillPath();
-    g.lineStyle(4, 0xffd36b, 0.35 + left * 0.6);
+    g.lineStyle(4 + hold * 3, tint, 0.35 + left * 0.6);
     g.beginPath();
-    g.arc(x, y - 3, 27, angle - half, angle + half);
+    g.arc(x, y - 3, reach - 3, angle - half, angle + half);
     g.strokePath();
-    g.lineStyle(1.5, 0xfff3c4, 0.5 * left);
+    g.lineStyle(1.5, hold > 0.5 ? GUARD_LIGHT : 0xfff3c4, 0.5 * left + hold * 0.3);
     g.beginPath();
-    g.arc(x, y - 3, 32, angle - half * 0.8, angle + half * 0.8);
+    g.arc(x, y - 3, reach + 2, angle - half * 0.8, angle + half * 0.8);
     g.strokePath();
   }
   /** Rune circle that grows and spins faster as a held ability charges. */
@@ -2251,10 +2297,22 @@ export class Arena extends Phaser.Scene {
       this.drawMandala(v.hp, v.x, v.y + 10 - climb * 40, 16 + held * 6, time, 0.5 + held * 0.4, BOLT, BOLT_CORE);
       this.drawArcs(v.hp, v.x, v.y - 4, 1 + Math.round(held * 3), 18, time);
     }
-    if (p.hp > 0 && heavy && kit && p.chargeSkill && KIT[p.chargeSkill]) {
-      // His magic is his body: a charge swells a red force around it, past full it keeps growing.
+    if (p.hp > 0 && heavy && kit && p.chargeSkill === 'vanguard.counter') {
+      // Holding the guard: an orange mandala under him hardens the body, wider and brighter the
+      // longer he stands there.
+      const held = chargeProgress(KIT[p.chargeSkill].charge, p.chargeT + age);
+      this.drawMandala(v.hp, v.x, v.y + 9, 18 + held * 12, time * (1 + held), 0.55 + held * 0.4, GUARD, GUARD_LIGHT);
+      for (let i = 0; i < 2 + Math.round(held * 4); i++) {
+        const rise = (time * 0.05 + i * 11) % 30;
+        v.hp.fillStyle(i % 2 ? GUARD_LIGHT : GUARD, 0.8 * (1 - rise / 30));
+        v.hp.fillRect(v.x + Math.cos(i * 2.4 + time * 0.003) * (12 + held * 6) - 1, v.y + 6 - rise, 2, 4);
+      }
+    } else if (p.hp > 0 && heavy && kit && p.chargeSkill && KIT[p.chargeSkill]) {
+      // His magic is his body: a charge swells a force around it, past full it keeps growing, in
+      // the colour of what the charge has become.
       const spec = KIT[p.chargeSkill].charge;
-      this.drawReinforcement(v.hp, v.x, v.y, chargeProgress(spec, p.chargeT + age), overcharge(spec, p.chargeT + age), time);
+      const tint = chargeTier(spec, p.chargeT + age).tier.tint ?? 'scarlet';
+      this.drawReinforcement(v.hp, v.x, v.y, chargeProgress(spec, p.chargeT + age), overcharge(spec, p.chargeT + age), time, tint);
     }
     if (p.hp > 0 && p.dashLeft > 0 && p.dashHit > 0) {
       // A dash that hits what it crosses leaves its body behind in the air.
@@ -2273,7 +2331,11 @@ export class Arena extends Phaser.Scene {
           this.time.now,
         );
       // The arena's parry covers the front: a wall of gold where he faces.
-      else this.drawGuard(v.hp, v.x, v.y, p.angle, Math.min(1, p.counterLeft / WARRIOR_PARRY.window), time);
+      else {
+        const held = p.chargeSkill === 'vanguard.counter' ? p.chargeT + age : p.counterCharge;
+        const hold = Math.min(1, held / WARRIOR_PARRY_CHARGE.cap);
+        this.drawGuard(v.hp, v.x, v.y, p.angle, p.chargeSkill === 'vanguard.counter' ? 1 : Math.min(1, p.counterLeft / WARRIOR_PARRY.window), time, hold);
+      }
     }
     if (p.hp > 0) {
       const left = v.x - (p.maxHp * 8 - 2) / 2;
@@ -2738,6 +2800,11 @@ export class Arena extends Phaser.Scene {
       this.holes.lineStyle(1,0xc58cff,0.35);this.holes.strokeCircle(hole.x,hole.y,Math.max(core+8,radius*0.55*(2-breath)));
       this.holes.fillStyle(0x030208,0.92);this.holes.fillCircle(hole.x,hole.y,core);
       this.holes.lineStyle(3,0xb657ed,0.86);this.holes.strokeCircle(hole.x,hole.y,core+3+pulse*3);
+      // Turned by a warrior's guard: it is his now, and burns orange at the rim.
+      if(s.players.find((q)=>q.id===hole.owner)?.classId==='vanguard'){
+        this.holes.lineStyle(2,GUARD,0.8);this.holes.strokeCircle(hole.x,hole.y,core+8+pulse*4);
+        this.holes.lineStyle(1,GUARD_LIGHT,0.5);this.holes.strokeCircle(hole.x,hole.y,radius*0.9);
+      }
       for(let i=0;i<12;i++){
         const a=spin+i*Math.PI*2/12;
         const travel=((time*0.06+i*31)%Math.max(1,radius-26))+26;
@@ -3009,9 +3076,11 @@ export class Arena extends Phaser.Scene {
         continue;
       }
       if (a.reflected) {
-        // Countered projectile: a golden halo, bigger when the counter was charged.
-        this.arrows.fillStyle(0xffd36b, 0.18 + 0.1 * a.reflected);
-        this.arrows.fillCircle(p.x, p.y, 7 + 5 * a.reflected);
+        // Countered projectile: a golden halo, bigger when the counter was charged, orange and
+        // bigger still when a held guard sent it back.
+        const held = (a.sizeScale ?? 1) > 1;
+        this.arrows.fillStyle(held ? GUARD : 0xffd36b, 0.18 + 0.1 * a.reflected);
+        this.arrows.fillCircle(p.x, p.y, (7 + 5 * a.reflected) * (a.sizeScale ?? 1));
       }
       if (a.blast) {
         // Zombie mage fireball: a rolling area of fire with a scorched ring on the ground.
