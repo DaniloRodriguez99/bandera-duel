@@ -98,25 +98,36 @@ describe('servidor con clientes Colyseus reales', () => {
   it.each([['archer','guardian'],['archer','vanguard'],['guardian','vanguard'],['necromancer','vanguard']] as [ClassId,ClassId][])('sincroniza clases %s vs %s y rechaza armas no autorizadas',async(first,second)=>{
     const {a,b,host}=await pair(first,second);await until(()=>states.get(a.sessionId)?.players.length===2);
     expect(states.get(b.sessionId)?.players.map(p=>p.classId)).toEqual([first,second]);host.game.state.phase='playing';
-    a.send('input',{...idleInput(1),guard:true,shieldBash:true,fury:true});b.send('input',{...idleInput(1),shot:true,dash:true,summon:true});await sleep(120);
+    a.send('input',{...idleInput(1),slash:true,counter:true});b.send('input',{...idleInput(1),shot:true,dash:true,summon:true});await sleep(120);
     expect(host.game.state.arrows).toHaveLength(0);expect(host.game.state.zombies).toHaveLength(0);
     // Warrior and knight have their own Space dash; necromancer cannot use it.
     if(second!=='vanguard'&&second!=='guardian')expect(host.game.state.players[1].dashCd).toBe(0);
-    if(first!=='guardian'){expect(host.game.state.players[0].shieldBashCd).toBe(0);expect(host.game.state.players[0].furyCd).toBe(0);}
-    if(first==='archer'||first==='necromancer')expect(host.game.state.players[0].guarding).toBe(false);
+    // Nobody but the warrior throws the slash or counters, whatever the message says.
+    expect(host.game.state.players[0].slashCd).toBe(0);expect(host.game.state.players[0].counterLeft).toBe(0);
     await a.leave();await b.leave();
   });
-  it('sincroniza furia y golpe de escudo del caballero sin repetir pulsos antiguos',async()=>{
+  it('sincroniza los cortes y el Despertar del caballero sin repetir pulsos antiguos',async()=>{
     const {a,b,host}=await pair('guardian','archer');host.game.state.phase='playing';
-    a.send('input',{...idleInput(1),fury:true});
-    await until(()=>host.game.state.players[0].furyCd>0);
+    const knight=host.game.state.players[0];
+    const key=(seq:number,slot:'primary'|'r')=>{const input=idleInput(seq);input.slots[slot]={pressed:true,held:false,released:true};return input;};
+    // One click: one cut. The server repeats the last input while none arrives, but never its pulses.
+    a.send('input',key(1,'primary'));
+    await until(()=>knight.move==='guardian.sword:0:0');
+    await until(()=>states.get(a.sessionId)?.players.find(p=>p.id===a.sessionId)?.move==='guardian.sword:0:0');
+    await until(()=>knight.move==='');
+    await sleep(200);
+    expect(knight.move).toBe('');expect(knight.combo).toBe(1);
+    expect(host.game.state.events.filter(e=>e.kind==='swing')).toHaveLength(1);
+    // The ultimate does nothing without its Rage, and wakes the blade with it.
+    a.send('input',key(2,'r'));await sleep(120);
+    expect(knight.furyLeft).toBe(0);
+    knight.rage=100;
+    a.send('input',key(3,'r'));
+    await until(()=>knight.furyLeft>0);
     await until(()=>(states.get(a.sessionId)?.players.find(p=>p.id===a.sessionId)?.furyLeft??0)>0);
-    expect(host.game.state.players[0].furyLeft).toBeGreaterThan(4.5);
-    a.send('input',{...idleInput(2),shieldBash:true});
-    await until(()=>host.game.state.players[0].shieldBashCd>0);
-    await sleep(350);
-    expect(host.game.state.players[0].shieldBashCd).toBeGreaterThan(5);
-    expect(host.game.state.players[0].shieldBashLeft).toBe(0);
+    // A message cannot fill the bar: the server owns it.
+    a.send('input',{...key(4,'r'),rage:100} as never);await sleep(80);
+    expect(knight.rage).toBeLessThan(100);
     await a.leave();await b.leave();
   });
   it('valida selección, anula listo y bloquea cambios en partida',async()=>{
@@ -129,9 +140,13 @@ describe('servidor con clientes Colyseus reales', () => {
     host.game.state.phase='playing';b.send('selectClass','archer');await sleep(100);expect(host.game.state.players[1].classId).toBe('vanguard');
     await a.leave();await b.leave();
   });
-  it('libera escudo sostenido si dejan de llegar entradas durante 250 ms',async()=>{
-    const {a,b,host}=await pair();host.game.state.phase='playing';a.send('input',{...idleInput(1),guard:true});await until(()=>host.game.state.players[0].guarding);
-    await until(()=>!host.game.state.players[0].guarding);expect(host.game.state.players[0].guardCd).toBeGreaterThan(0);await a.leave();await b.leave();
+  it('suelta una carga sostenida si dejan de llegar entradas durante 250 ms',async()=>{
+    const {a,b,host}=await pair();host.game.state.phase='playing';const knight=host.game.state.players[0];
+    const held=idleInput(1);held.slots.primary={pressed:true,held:true,released:false};
+    a.send('input',held);await until(()=>knight.chargeSkill==='guardian.sword');
+    // While the input is fresh the server keeps the key held; then it lets go without a release.
+    await sleep(150);expect(knight.chargeSkill).toBe('guardian.sword');expect(knight.chargeT).toBeGreaterThan(0.1);
+    await until(()=>knight.chargeSkill==='');expect(knight.move).toBe('');expect(knight.buffered).toBe('');await a.leave();await b.leave();
   });
   it('salud, validación de nombre, sala privada y cupo', async () => {
     expect((await fetch('http://127.0.0.1:2568/health')).status).toBe(200);

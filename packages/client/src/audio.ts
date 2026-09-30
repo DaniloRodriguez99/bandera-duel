@@ -95,6 +95,7 @@ const SPELL_NOTES: Record<string, number[]> = {
   bash: [130, 86],
   fury: [92, 138, 69],
   projectileCut: [740, 495],
+  swing: [560],
 };
 export function sound(kind: string) {
   if (muted || !context || context.state !== 'running' || document.hidden) return;

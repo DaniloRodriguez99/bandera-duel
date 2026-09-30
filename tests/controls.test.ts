@@ -94,19 +94,24 @@ describe('un solo lenguaje de controles', () => {
     expect(p.specialCharge).toBeGreaterThanOrEqual(RULES.overchargeTime);
   });
 
-  it('Caballero: M2 bloquea, Q golpea con el escudo, R es la Furia y Espacio la carga', () => {
+  it('Caballero: M1 encadena cortes, M2 es la Ráfaga, Espacio el paso y R el Despertar', () => {
     const { p, step } = arena('guardian');
-    step({ secondary: { pressed: true, held: true } });
-    expect(p.guarding).toBe(true);
-    step({}, {}, ticks(RULES.guardCooldown) + 2);
-    step({ q: tap });
-    expect(p.shieldBashCd).toBeGreaterThan(0);
+    step({ primary: tap });
+    expect(p.move).toBe('guardian.sword:0:0');
     step({}, {}, ticks(0.5));
-    step({ r: tap });
-    expect(p.furyLeft).toBeGreaterThan(0);
-    step({}, {}, ticks(0.3));
+    step({ secondary: tap });
+    expect(p.move).toBe('guardian.flurry:0');
+    expect(p.flurryCd).toBeGreaterThan(0);
+    step({}, {}, ticks(0.6));
     step({ mobility: tap });
     expect(p.dashCd).toBeGreaterThan(0);
+    step({}, {}, ticks(0.5));
+    // The ultimate asks for a full bar of Rage; Q, E and F are free.
+    step({ r: tap });
+    expect(p.furyLeft).toBe(0);
+    p.rage = 100;
+    step({ r: tap, q: tap, e: tap, f: tap });
+    expect(p.furyLeft).toBeGreaterThan(0);
   });
 
   it('Guerrero: Q el tajo viajero, E el contraataque', () => {

@@ -13,9 +13,17 @@ export type { MapId, GameMode, MapDefinition, Bush } from './maps.js';
 export * from './pve.js';
 export * from './combat/geometry.js';
 export * from './combat/defs.js';
+export * from './combat/moves.js';
+export * from './combat/kits.js';
+export * from './combat/run.js';
 import {
-  curve, waveHalfWidth, wavePoint, waveSource, waveStrength, waveTouch, wrapAngle, type WaveGap,
+  bladeCrosses, bladeHit, curve, waveHalfWidth, wavePoint, waveSource, waveStrength, waveTouch, wrapAngle, type WaveGap,
 } from './combat/geometry.js';
+import { bladeAt } from './combat/moves.js';
+import {
+  KIT, KNIGHT_AWAKEN, KNIGHT_FLURRY_CHARGE, KNIGHT_FLURRY_COOLDOWN, KNIGHT_SWORD_CHARGE, MOVES, moveSkill,
+} from './combat/kits.js';
+import { clearKit, moveRecovering, stepKit, type KitResult, type KitSweep } from './combat/run.js';
 import {
   INTERACTIONS, RESOURCES, WAVE_COLORS, cutOutcome,
   type ChargeSpec, type CutOutcome, type InteractionProfile, type ResourceCost, type ResourceGain, type ResourceId, type WaveSpec,
@@ -78,7 +86,6 @@ export const CLASSES = {
     windup: 0.1,
     meleeCooldown: 0.5,
     ranged: true,
-    shield: false,
     dash: true,
     melee: true,
     summon: false,
@@ -95,7 +102,6 @@ export const CLASSES = {
     windup: 0,
     meleeCooldown: 0,
     ranged: true,
-    shield: false,
     dash: true,
     melee: false,
     summon: false,
@@ -112,24 +118,22 @@ export const CLASSES = {
     windup: 0,
     meleeCooldown: 0,
     ranged: true,
-    shield: false,
     dash: false,
     melee: false,
     summon: true,
   },
   guardian: {
     name: 'Caballero',
-    label: 'ESPADA Y ESCUDO',
-    description: 'Guardia continua, embestida, golpe de escudo y furia.',
+    label: 'ESPADA VELOZ',
+    description: 'Tres cortes, técnicas cargadas y un filo que parte hechizos.',
     hp: 3,
-    speed: 180,
+    speed: 195,
     meleeDamage: 1,
     meleeRange: 60,
     meleeArc: Math.PI,
     windup: 0.1,
     meleeCooldown: 0.4,
     ranged: false,
-    shield: true,
     dash: true,
     melee: true,
     summon: false,
@@ -146,7 +150,6 @@ export const CLASSES = {
     windup: 0.3,
     meleeCooldown: 1,
     ranged: false,
-    shield: false,
     dash: true,
     melee: true,
     summon: false,
@@ -221,28 +224,14 @@ export const RULES = {
   archerArrowSpeed: 720,
   archerArrowRange: 672,
   arrowDamage: 1,
-  guardDuration: 1.2,
   magicShieldHits: 2,
   magicShieldCooldown: 5,
   iceCooldown: 0.5,
   freezeDuration: 1,
-  guardCooldown: 1,
-  guardRecovery: 0.15,
-  guardSpeed: 0.45,
-  guardArc: (Math.PI * 2) / 3,
   guardianDashDuration: 190 / 650,
   guardianDashSpeed: 650,
   guardianDashCooldown: 3,
   guardianDashDamage: 1,
-  shieldBashRange: 48,
-  shieldBashArc: Math.PI / 2,
-  shieldBashDamage: 0.5,
-  shieldBashStun: 2,
-  shieldBashWindup: 0.12,
-  shieldBashCooldown: 6,
-  furyDuration: 5,
-  furyCooldown: 15,
-  furyDamage: 1.4,
   slashCooldown: 5,
   slashSpeed: 420,
   slashLife: 0.65,
@@ -298,6 +287,10 @@ export const RULES = {
   knockback: 24,
   /** A countered slash comes back no wider than this to each side. */
   returnedWaveHalfWidth: 60,
+  /** How far ahead of the swordsman a slash leaves the blade. */
+  waveLead: 14,
+  /** Seconds between two shots a revived knight cuts out of the air. */
+  thrallCutCooldown: 2.2,
   respawn: 3,
   spawnProtection: 1,
   flagReturn: 10,
@@ -383,7 +376,7 @@ export type SkillId =
   | 'archer.arrow' | 'archer.dagger' | 'archer.trap' | 'archer.volley'
   | 'mage.fireball' | 'mage.magicShield' | 'mage.ice' | 'mage.blink' | 'mage.blackHole'
   | 'necromancer.fire' | 'necromancer.summon'
-  | 'guardian.sword' | 'guardian.guard' | 'guardian.dash' | 'guardian.shieldBash' | 'guardian.fury'
+  | 'guardian.sword' | 'guardian.flurry' | 'guardian.dash' | 'guardian.fury'
   | 'vanguard.sword' | 'vanguard.slash' | 'vanguard.counter'
   | 'common.dash';
 export type AnimationAction =
@@ -431,11 +424,10 @@ export const SKILLS: Record<SkillId, SkillDefinition> = {
   'mage.blackHole': skill({id:'mage.blackHole',name:'Singularidad',branch:'mage',description:'Mantené hasta 2 s: el agujero crece, pega más y llega más lejos. Soltá para lanzarlo; su núcleo consume a quien llega al centro y estalla contra un muro, al volver a pulsar o tras atraer en su destino.',icon:'mage-blackhole',compatibleClasses:['mage'],compatibleSlots:['f','r'],trigger:'hold-release',animationAction:'castChannel',cooldown:RULES.blackHoleCooldown,damage:'0,75–2,25 en área; letal en el centro',howTo:'Mantené {key} para cargar; soltá para lanzar. Volvé a pulsar para detonar.',blocks:['primary','secondary'],chargeSlow:RULES.chargeMoveSpeed}),
   'necromancer.fire': skill({id:'necromancer.fire',name:'Llama de ultratumba',branch:'necromancer',description:'Fuego espectral que puede canalizarse.',icon:'necromancer-fire',compatibleClasses:['mage','necromancer'],compatibleSlots:['primary'],trigger:'hold-release',animationAction:'castForward',cooldown:RULES.fireCooldown,damage:'1–2',grants:['ranged'],howTo:'Pulsá {key} para fuego espectral; mantené para canalizarlo.'}),
   'necromancer.summon': skill({id:'necromancer.summon',name:'Alzar a los caídos',branch:'necromancer',description:'Invoca zombies, arcanistas y esclavos.',icon:'necromancer-summon',compatibleClasses:['mage','necromancer'],compatibleSlots:['f','r'],trigger:'hold-release',animationAction:'castGround',cooldown:RULES.summonCooldown,damage:'1 por golpe',grants:['summon','companionControl'],howTo:'Pulsá {key} para 2 zombies; mantené para el zombie mago, y hasta el final para resucitar.'}),
-  'guardian.sword': skill({id:'guardian.sword',name:'Acero juramentado',branch:'guardian',description:'Tajo frontal cargable.',icon:'guardian-slash',compatibleClasses:['guardian'],compatibleSlots:['primary'],trigger:'hold-release',animationAction:'attack',cooldown:CLASSES.guardian.meleeCooldown,damage:'1–2',grants:['melee'],howTo:'Pulsá {key} para un tajo; mantené para cargarlo.'}),
-  'guardian.guard': skill({id:'guardian.guard',name:'Muralla de acero',branch:'guardian',description:'Bloqueo frontal continuo.',icon:'guardian-shield',compatibleClasses:['guardian'],compatibleSlots:['secondary'],trigger:'hold',animationAction:'castChannel',cooldown:RULES.guardCooldown,damage:'0',grants:['shield'],howTo:'Mantené {key} para bloquear de frente.'}),
-  'guardian.dash': skill({id:'guardian.dash',name:'Carga del bastión',branch:'guardian',description:'Arremetida que daña y empuja.',icon:'guardian-bash',compatibleClasses:['guardian'],compatibleSlots:['mobility'],trigger:'press',animationAction:'dash',cooldown:RULES.guardianDashCooldown,damage:'1',grants:['mobility'],howTo:'Pulsá {key} para embestir hacia donde te movés.'}),
-  'guardian.shieldBash': skill({id:'guardian.shieldBash',name:'Impacto del baluarte',branch:'guardian',description:'Empuja y aturde al rival.',icon:'guardian-bash',compatibleClasses:['guardian'],compatibleSlots:['q','e'],trigger:'press',animationAction:'attack',cooldown:RULES.shieldBashCooldown,damage:'0,5',howTo:'Pulsá {key} para empujar y aturdir con el escudo.'}),
-  'guardian.fury': skill({id:'guardian.fury',name:'Furia dorada',branch:'guardian',description:'Aumenta el daño de espada.',icon:'guardian-fury',compatibleClasses:['guardian'],compatibleSlots:['r','f','e'],trigger:'press',animationAction:'castChannel',cooldown:RULES.furyCooldown,damage:'+40 %',howTo:'Pulsá {key} para 5 s de espada más fuerte.'}),
+  'guardian.sword': skill({id:'guardian.sword',name:'Tres Cortes',branch:'guardian',description:'Dos cortes horizontales y un remate vertical que es crítico si conecta. Mantené para cargar el corte que toca: pega más, lanza un tajo y corta habilidades enemigas según la carga.',icon:'guardian-slash',compatibleClasses:['guardian'],compatibleSlots:['primary'],trigger:'hold-release',animationAction:'attack',cooldown:0,damage:'1 · 1 · 1,5; hasta ×2 cargado',grants:['melee'],howTo:'Pulsá {key} para encadenar tres cortes; mantené para cargar el que sigue.',blocks:['secondary'],chargeSlow:0.7,charge:KNIGHT_SWORD_CHARGE,gain:{resource:'rage',hit:12,crit:18,cut:15}}),
+  'guardian.flurry': skill({id:'guardian.flurry',name:'Ráfaga de Acero',branch:'guardian',description:'Una técnica con tres formas según la carga: tres cortes veloces, dos potenciados o uno devastador que parte habilidades.',icon:'vanguard-slash',compatibleClasses:['guardian'],compatibleSlots:['secondary','q','e'],trigger:'hold-release',animationAction:'attack',cooldown:KNIGHT_FLURRY_COOLDOWN,damage:'3 × 0,5 · 2 × 1 · 2,5',howTo:'Pulsá {key} para tres cortes veloces; mantené para dos potenciados y, a fondo, uno devastador.',blocks:['primary'],chargeSlow:0.6,charge:KNIGHT_FLURRY_CHARGE,gain:{resource:'rage',hit:10}}),
+  'guardian.dash': skill({id:'guardian.dash',name:'Paso Relámpago',branch:'guardian',description:'Un paso fulminante que corta a quien atraviesa.',icon:'guardian-bash',compatibleClasses:['guardian'],compatibleSlots:['mobility'],trigger:'press',animationAction:'dash',cooldown:RULES.guardianDashCooldown,damage:'1',grants:['mobility'],howTo:'Pulsá {key} para cruzar hacia donde te movés, cortando a quien atravieses.'}),
+  'guardian.fury': skill({id:'guardian.fury',name:'Despertar del Juramento',branch:'guardian',description:`La Furia se llena al golpear y al cortar habilidades. Llena, despierta la espada ${KNIGHT_AWAKEN.duration} s: cada corte lanza su tajo y pega más fuerte.`,icon:'guardian-fury',compatibleClasses:['guardian'],compatibleSlots:['r','f'],trigger:'press',animationAction:'castChannel',cooldown:0,damage:`+${Math.round((KNIGHT_AWAKEN.damage-1)*100)} %`,howTo:'Con la Furia llena, pulsá {key} para despertar la espada.',cost:{resource:'rage',amount:0,min:KNIGHT_AWAKEN.rage}}),
   'vanguard.sword': skill({id:'vanguard.sword',name:'Mandoble colosal',branch:'vanguard',description:'Barrido pesado de gran alcance.',icon:'vanguard-sword',compatibleClasses:['vanguard'],compatibleSlots:['primary'],trigger:'hold-release',animationAction:'attack',cooldown:CLASSES.vanguard.meleeCooldown,damage:'2–4',grants:['melee'],howTo:'Pulsá {key} para un barrido; mantené para cargarlo.'}),
   'vanguard.slash': skill({id:'vanguard.slash',name:'Creciente escarlata',branch:'vanguard',description:'Tajo que atraviesa enemigos.',icon:'vanguard-slash',compatibleClasses:['vanguard'],compatibleSlots:['q','e'],trigger:'press',animationAction:'attack',cooldown:RULES.slashCooldown,damage:'1,5',howTo:'Pulsá {key} para un tajo que viaja y atraviesa.'}),
   'vanguard.counter': skill({id:'vanguard.counter',name:'Revancha de hierro',branch:'vanguard',description:'Devuelve proyectiles.',icon:'vanguard-counter',compatibleClasses:['vanguard'],compatibleSlots:['e','q'],trigger:'hold',animationAction:'castChannel',cooldown:RULES.counterCooldown,damage:'×1–×2',howTo:'Mantené {key} para devolver proyectiles; 1 s lo duplica.'}),
@@ -525,7 +517,8 @@ export const DEFAULT_LOADOUTS: Record<ClassId, CharacterLoadout> = {
   mage:loadout({primary:'mage.fireball',mobility:'mage.blink',q:'mage.ice',e:'mage.magicShield',f:'mage.blackHole'}),
   // No mobility of its own: Space stays empty. The summon is its powerful F.
   necromancer:loadout({primary:'necromancer.fire',f:'necromancer.summon'}),
-  guardian:loadout({primary:'guardian.sword',secondary:'guardian.guard',mobility:'guardian.dash',q:'guardian.shieldBash',r:'guardian.fury'}),
+  // No shield: a flurry on M2, and Q, E and F left free for techniques to come.
+  guardian:loadout({primary:'guardian.sword',secondary:'guardian.flurry',mobility:'guardian.dash',r:'guardian.fury'}),
   vanguard:loadout({primary:'vanguard.sword',mobility:'common.dash',q:'vanguard.slash',e:'vanguard.counter'}),
 };
 export const DEFAULT_BINDINGS: Record<ClassId, InputBindings> = {
@@ -564,12 +557,15 @@ export const equippedSkill = (p:{loadout:CharacterLoadout},id:SkillId) => Object
 /** Which slot holds this skill, if the player has it equipped. */
 export const slotOf = (p:{loadout:CharacterLoadout},id:SkillId):SkillSlot|undefined => SKILL_SLOTS.find((slot)=>p.loadout[slot]===id);
 /** The held abilities charging right now, whose `blocks` and `chargeSlow` apply. */
-export function chargingSkills(p:Pick<Player,'blackHoleCharge'|'blinkCharge'>):SkillId[] {
+export function chargingSkills(p:Pick<Player,'blackHoleCharge'|'blinkCharge'|'chargeSkill'>):SkillId[] {
   const charging:SkillId[]=[];
   if(p.blackHoleCharge>0)charging.push('mage.blackHole');
   if(p.blinkCharge>0)charging.push('mage.blink');
+  if(p.chargeSkill)charging.push(p.chargeSkill);
   return charging;
 }
+/** The equipped skills that run as moves, in slot order. */
+export const kitSkills = (p:{loadout:CharacterLoadout}):SkillId[] => SKILL_SLOTS.map((slot)=>p.loadout[slot]).filter((id):id is SkillId=>!!id&&id in KIT);
 /**
  * Whether the player can pay for a skill. A skill without a cost, or a mode without that pool (the
  * arenas have no mana), never blocks. An ability that cannot be paid does not start at all rather
@@ -599,7 +595,11 @@ export function resourcePool(p: Pick<Player, 'mana' | 'maxMana' | 'rage'>, resou
 export function gainResource(p: Player, resource: ResourceId, amount: number) {
   if (!(amount > 0)) return;
   if (resource === 'rage') {
-    p.rage = Math.min(RESOURCES.rage.max, p.rage + amount);
+    // Awake, the bar is a clock: nothing refills it until it runs out.
+    if (p.furyLeft > 0) return;
+    // Hordas: each rank of the knight's own upgrade fills it faster.
+    const earned = amount * (1 + (p.pve?.classRanks.guardian ?? 0) * 0.15);
+    p.rage = Math.min(RESOURCES.rage.max, p.rage + earned);
     p.rageIdle = 0;
   } else if (resource === 'mana' && p.maxMana > 0) p.mana = Math.min(p.maxMana, p.mana + amount);
 }
@@ -703,10 +703,6 @@ export interface Input {
   trap: boolean;
   volley: boolean;
   special: boolean;
-  /** Q by the knight: short shield strike. */
-  shieldBash: boolean;
-  /** E by the knight: five seconds of stronger sword attacks. */
-  fury: boolean;
   /** Q by the warrior: travelling slash. */
   slash: boolean;
   /** E held by the warrior: full counter. */
@@ -720,6 +716,16 @@ export interface Input {
   aimY: number;
   /** Logical controls sent over the network. Skill ids never cross the input boundary. */
   slots: SlotInputMap;
+  /**
+   * The state of each key driving a kit skill, by skill. Set by `resolveSlotInput`, never read
+   * from the network.
+   */
+  kit?: Partial<Record<SkillId, SlotInputState>>;
+  /**
+   * Lugunica: set by `worldInput`, never read from the network. There the engine class only
+   * resolves the weapon's plain swing; the arena kits do not run.
+   */
+  world: boolean;
 }
 export interface SlotInputState { pressed: boolean; held: boolean; released: boolean }
 export type SlotInputMap = Record<SkillSlot, SlotInputState>;
@@ -749,8 +755,6 @@ export const idleInput = (seq = 0, angle = 0): Input => ({
   trap: false,
   volley: false,
   special: false,
-  shieldBash: false,
-  fury: false,
   slash: false,
   counter: false,
   command: false,
@@ -758,6 +762,7 @@ export const idleInput = (seq = 0, angle = 0): Input => ({
   aimX: -1,
   aimY: -1,
   slots: idleSlots(),
+  world: false,
 });
 /** During PvE rewards only movement and facing are authoritative; every combat action is discarded. */
 export const movementInput = (input: Input): Input => ({
@@ -815,8 +820,6 @@ export function sanitizeInput(raw: unknown): Input | null {
     trap: r.trap === true,
     volley: r.volley === true,
     special: r.special === true,
-    shieldBash: r.shieldBash === true,
-    fury: r.fury === true,
     slash: r.slash === true,
     counter: r.counter === true,
     command: r.command === true,
@@ -824,6 +827,7 @@ export function sanitizeInput(raw: unknown): Input | null {
     aimX: aimCoordinate(r.aimX, RULES.width),
     aimY: aimCoordinate(r.aimY, RULES.height),
     slots,
+    world: false,
   };
 }
 export function validName(raw: unknown): string | null {
@@ -867,10 +871,7 @@ export interface Player extends Vec {
   dashX: number;
   dashY: number;
   dashInvulnerable: boolean;
-  guarding: boolean;
-  guardLeft: number;
-  guardCd: number;
-  guardRecovery: number;
+  /** The magic shield's key was already down last tick, so holding it does not recast. */
   guardHeld: boolean;
   magicShieldHits: number;
   magicShieldCd: number;
@@ -887,19 +888,32 @@ export interface Player extends Vec {
   trapLeft: number;
   volleyCd: number;
   stunLeft: number;
-  /** Floor traps stun through knight guard without lowering the held shield. */
-  guardStunExempt: boolean;
   /** Seconds left of a fully charged archer dash: shot or volley released now become the dash combo. */
   windDash: number;
   /** Warrior's travelling slash cooldown (Q). */
   slashCd: number;
-  /** Knight's shield strike preparation and cooldown. */
-  shieldBashLeft: number;
-  shieldBashCd: number;
-  shieldBashAngle: number;
-  /** Knight's damage aura and its cooldown. */
+  /** Seconds left of the knight's awakened blade. */
   furyLeft: number;
-  furyCd: number;
+  /**
+   * The kit move being performed (a key of MOVES, or ''), how far into it, the aim it went out
+   * with and the seconds it was charged. Flat on purpose: prediction copies players shallowly.
+   */
+  move: string;
+  moveT: number;
+  moveAngle: number;
+  moveCharge: number;
+  /** The next step of the basic chain, and the seconds left before it starts over. */
+  combo: number;
+  comboLeft: number;
+  /** The kit skill being held, and for how long. */
+  chargeSkill: SkillId | '';
+  chargeT: number;
+  /** A release that came while another move was running: it goes out when that one ends. */
+  buffered: SkillId | '';
+  bufferCharge: number;
+  bufferLeft: number;
+  /** Cooldown of the knight's flurry. */
+  flurryCd: number;
   /** Warrior's full counter (E): seconds it stays up, seconds held (charge), cooldown, E still held. */
   counterLeft: number;
   counterCharge: number;
@@ -1041,7 +1055,7 @@ export type ThrallSkill =
   | 'summon'
   | 'hat'
   | 'raise'
-  | 'guard'
+  | 'cut'
   | 'riposte'
   | 'slash'
   | 'counter';
@@ -1099,7 +1113,6 @@ export interface Zombie extends Vec {
   skillCd: Partial<Record<ThrallSkill, number>>;
   action: ThrallAction | null;
   shieldHits: number;
-  guardLeft: number;
   counterLeft: number;
   /** Thrall that summoned or raised this zombie; its own caps count by it. */
   summoner?: string;
@@ -1113,6 +1126,8 @@ export interface GameEvent extends Vec {
   id: number;
   kind:
     | 'sword'
+    /** A kit move going out: its sound and its name; the blade is drawn from the player's state. */
+    | 'swing'
     | 'projectileCut'
     | 'shot'
     | 'hit'
@@ -1136,7 +1151,6 @@ export interface GameEvent extends Vec {
     | 'blink'
     | 'blackhole'
     | 'disintegrate'
-    | 'bash'
     | 'fury'
     | 'levelup'
     | 'icecone'
@@ -1161,6 +1175,8 @@ export interface GameEvent extends Vec {
   color?: string;
   /** A hit that landed as a critical. */
   crit?: boolean;
+  /** `swing` only: the move that went out. */
+  move?: string;
   /** A cut that did not go all the way: the share of the skill it took. Absent: cut apart. */
   share?: number;
 }
@@ -1570,13 +1586,6 @@ export function findPath(
   return path;
 }
 const ZOMBIE_PACE = [1, 0.92, 0.96, 0.88];
-export function lowerGuard(p: Player) {
-  if (!p.guarding) return;
-  p.guarding = false;
-  p.guardLeft = 0;
-  p.guardCd = RULES.guardCooldown;
-  p.guardRecovery = RULES.guardRecovery;
-}
 const hasLogicalInput = (input: Input) => SKILL_SLOTS.some((slot) => {
   const state = input.slots[slot];
   return state.pressed || state.held || state.released;
@@ -1585,17 +1594,22 @@ const hasLogicalInput = (input: Input) => SKILL_SLOTS.some((slot) => {
 export function resolveSlotInput(p: Player, input: Input): Input {
   if (!hasLogicalInput(input)) return input;
   const resolved: Input = { ...input, sword:false, shot:false, charge:false, dash:false, blackHole:false, blackHoleRelease:false, blackHoleDetonate:false, blink:false, blinkRelease:false, worldBlink:false, guard:false, summon:false,
-    ice:false, trap:false, volley:false, special:false, shieldBash:false, fury:false, slash:false, counter:false,
+    ice:false, trap:false, volley:false, special:false, slash:false, counter:false, kit:{}, world:false,
     // Mando and Marcar are the summon's own keys, not slots: they pass through untouched.
     command:input.command, mark:input.mark };
   for (const slot of SKILL_SLOTS) {
     const skillId = p.loadout[slot], state = input.slots[slot];
     if (!skillId) continue;
+    // Kit skills take the key as it is: the runner decides what a press, a hold and a release do.
+    if (skillId in KIT) {
+      resolved.kit![skillId] = state;
+      continue;
+    }
     const pulse = state.pressed || state.released;
     switch (skillId) {
       case 'mage.fireball': case 'necromancer.fire': case 'archer.arrow':
         resolved.charge ||= state.held; resolved.shot ||= state.released; break;
-      case 'guardian.sword': case 'vanguard.sword':
+      case 'vanguard.sword':
         resolved.charge ||= state.held; resolved.sword ||= state.released; break;
       case 'common.dash':
         resolved.special ||= state.held; resolved.dash ||= state.released; break;
@@ -1612,9 +1626,6 @@ export function resolveSlotInput(p: Player, input: Input): Input {
       case 'archer.dagger': resolved.sword ||= state.pressed; break;
       case 'archer.trap': resolved.trap ||= state.pressed; break;
       case 'archer.volley': resolved.volley ||= state.pressed; break;
-      case 'guardian.guard': resolved.guard ||= state.held; break;
-      case 'guardian.shieldBash': resolved.shieldBash ||= state.pressed; break;
-      case 'guardian.fury': resolved.fury ||= state.pressed; break;
       case 'vanguard.slash': resolved.slash ||= state.pressed; break;
       case 'vanguard.counter': resolved.counter ||= state.held; break;
     }
@@ -1645,8 +1656,9 @@ export function movePlayer(
     wind: false,
     angle: 0,
     raised: false,
-    bash: false,
     fury: false,
+    /** What the kit skills did this tick: blades swept, slashes launched, a move begun. */
+    kit: null as KitResult | null,
     dashStarted: false,
     dashing: false,
     /** Singularidad released this tick: where it heads from the mage, and how long it was held. */
@@ -1671,8 +1683,6 @@ export function movePlayer(
     'attackLock',
     'invuln',
     'hitFlash',
-    'guardCd',
-    'guardRecovery',
     'summonCd',
     'trapCd',
     'volleyCd',
@@ -1681,18 +1691,22 @@ export function movePlayer(
     'windDash',
     'slashCd',
     'counterCd',
-    'shieldBashCd',
-    'furyCd',
+    'flurryCd',
   ] as const)
     p[key] = Math.max(0, p[key] - dt);
+  const wasAwake = p.furyLeft > 0;
   p.furyLeft = Math.max(0, p.furyLeft - dt);
-  // Rage cools off once the fight stops feeding it.
-  if (p.rage > 0) {
+  if (p.furyLeft <= 1e-8) p.furyLeft = 0;
+  if (wasAwake) {
+    // Awake, the bar is the time left: it empties as the blade burns through it.
+    p.rage = (RESOURCES.rage.max * p.furyLeft) / KNIGHT_AWAKEN.duration;
+    p.rageIdle = 0;
+  } else if (p.rage > 0) {
+    // Rage cools off once the fight stops feeding it.
     p.rageIdle += dt;
     if (p.rageIdle > RESOURCES.rage.decayDelay)
       p.rage = Math.max(0, p.rage - RESOURCES.rage.decayRate * dt);
   }
-  if (p.furyLeft <= 1e-8) p.furyLeft = 0;
   if (p.stunLeft > 0) {
     p.stunLeft = Math.max(0, p.stunLeft - dt);
     p.shotCharge = 0;
@@ -1705,9 +1719,8 @@ export function movePlayer(
     p.windup = 0;
     p.dashLeft = 0;
     p.dashInvulnerable = false;
-    p.shieldBashLeft = 0;
-    if (!p.guardStunExempt || !input.guard) lowerGuard(p);
-    if (p.stunLeft <= 1e-8) p.guardStunExempt = false;
+    // A stun drops whatever was being wound up or charged; no cooldown had started yet.
+    clearKit(p);
     return result;
   }
   p.angle = input.angle;
@@ -1773,28 +1786,6 @@ export function movePlayer(
     return result;
   }
   if (
-    p.guarding &&
-    (!input.guard ||
-      input.sword ||
-      input.shieldBash ||
-      input.dash ||
-      (p.classId !== 'guardian' && p.guardLeft <= 1e-8))
-  )
-    lowerGuard(p);
-  if (
-    stats.shield &&
-    input.guard &&
-    !p.guardHeld &&
-    !p.guarding &&
-    p.guardCd <= 0 &&
-    p.guardRecovery <= 0 &&
-    !wasWinding &&
-    p.attackLock <= 0
-  ) {
-    p.guarding = true;
-    p.guardLeft = RULES.guardDuration;
-  }
-  if (
     p.classId === 'mage' && equippedSkill(p, 'mage.magicShield') &&
     input.guard &&
     !p.guardHeld &&
@@ -1805,42 +1796,6 @@ export function movePlayer(
     p.magicShieldCd = 0;
   }
   p.guardHeld = input.guard;
-  if (
-    p.classId === 'guardian' &&
-    input.fury &&
-    p.furyCd <= 0 &&
-    p.shieldBashLeft <= 0 &&
-    p.dashLeft <= 0 &&
-    !wasWinding &&
-    p.attackLock <= 0
-  ) {
-    p.furyLeft = RULES.furyDuration;
-    p.furyCd = RULES.furyCooldown;
-    p.invuln = 0;
-    result.fury = true;
-  }
-  if (p.shieldBashLeft > 0) {
-    p.shieldBashLeft = Math.max(0, p.shieldBashLeft - dt);
-    if (p.shieldBashLeft <= 1e-8) result.bash = true;
-    return result;
-  }
-  if (
-    p.classId === 'guardian' &&
-    input.shieldBash &&
-    p.shieldBashCd <= 0 &&
-    p.dashLeft <= 0 &&
-    !wasWinding &&
-    p.attackLock <= 0 &&
-    !result.fury
-  ) {
-    lowerGuard(p);
-    p.shieldBashLeft = RULES.shieldBashWindup;
-    p.shieldBashAngle = p.angle;
-    p.shieldBashCd = RULES.shieldBashCooldown;
-    p.shotCharge = 0;
-    p.invuln = 0;
-    return result;
-  }
   // Warrior's full counter (E): held it stays up and charges; released it lingers a moment, then cools
   // down. Holding past the maximum ends it too, and E must be released before the next one.
   if (p.classId === 'vanguard') {
@@ -1901,7 +1856,7 @@ export function movePlayer(
   };
   const blinkFree = frozenDt === 0 && !wasWinding && p.attackLock <= 0;
   // Lugunica's staff blinks at once, onto the cursor, with no charge.
-  if (canBlink && input.worldBlink && p.dashCd <= 0 && blinkFree && !result.fury)
+  if (canBlink && input.worldBlink && p.dashCd <= 0 && blinkFree)
     blinkTo(Infinity, blinkReach(RULES.mageBlinkMinCharge));
   // Parpadeo: held it widens its reach; released, it jumps once the minimum charge is in. A tap
   // therefore still waits out that windup, so the teleport is never an instant escape.
@@ -1943,9 +1898,15 @@ export function movePlayer(
     p.dashCd <= 0 &&
     !wasWinding &&
     p.attackLock <= 0 &&
-    !result.fury
+    // Mobility may cut into a move's recovery, never into its wind-up or its blade.
+    moveRecovering(p)
   ) {
-    if (p.classId === 'guardian') lowerGuard(p);
+    p.move = '';
+    p.moveT = 0;
+    if (p.chargeSkill && KIT[p.chargeSkill].charge.cancelOnMobility) {
+      p.chargeSkill = '';
+      p.chargeT = 0;
+    }
     const mag = Math.hypot(input.x, input.y);
     p.dashX = mag > 0.05 ? input.x / mag : Math.cos(input.angle);
     p.dashY = mag > 0.05 ? input.y / mag : Math.sin(input.angle);
@@ -1983,8 +1944,9 @@ export function movePlayer(
     stats.speed *
     (1 + (p.pve?.speed ?? 0)) *
     (carrying ? RULES.carryMultiplier : 1) *
-    (p.guarding ? RULES.guardSpeed + (p.pve?.classRanks.guardian ?? 0) * .04 : 1) *
     (p.counterLeft > 0 ? RULES.counterSpeed : 1) *
+    // A move in progress commits the feet as much as it says.
+    (p.move ? MOVES[p.move].speed : 1) *
     chargeSlow;
   translate(
     p,
@@ -2012,12 +1974,10 @@ export function movePlayer(
   const blinkFrames = canBlink && p.dashInvulnerable;
   const dashAttackWindow = dashCombo || p.classId === 'vanguard' || blinkFrames;
   const canCharge =
-    !p.guarding &&
     free(p.loadout.primary) &&
     (!p.dashInvulnerable || dashAttackWindow) &&
     !wasWinding &&
     p.attackLock <= 0 &&
-    !result.fury &&
     (stats.ranged ? p.shotCd <= 0 : stats.melee && p.swordCd <= 0);
   if (canCharge && input.charge && !input.shot && !input.sword && !input.volley)
     p.shotCharge = Math.min(
@@ -2026,12 +1986,9 @@ export function movePlayer(
     );
   else if (!canCharge || !(input.shot || input.sword)) p.shotCharge = 0;
   if (
-    !p.guarding &&
-    p.guardRecovery <= 0 &&
     (!p.dashInvulnerable || dashAttackWindow) &&
     p.attackLock <= 0 &&
-    !wasWinding &&
-    !result.fury
+    !wasWinding
   ) {
     if (input.volley && p.classId === 'archer' && p.volleyCd <= 0 && free('archer.volley')) {
       p.invuln = 0;
@@ -2049,7 +2006,11 @@ export function movePlayer(
       p.attackLock = RULES.attackLock;
       result.slash = true;
       result.angle = p.angle;
-    } else if (input.sword && stats.melee && p.swordCd <= 0 && free(swordSkill)) {
+    } else if (
+      input.sword && stats.melee && p.swordCd <= 0 && free(swordSkill) &&
+      // In an arena a kit's blade only moves through its own moves; Lugunica keeps the plain swing.
+      (input.world || !(swordSkill && swordSkill in KIT))
+    ) {
       p.invuln = 0;
       p.windup = stats.windup;
       p.swingAngle = p.angle;
@@ -2101,8 +2062,35 @@ export function movePlayer(
     p.specialCharge = 0;
   }
   if (input.shot || input.sword || input.volley) p.shotCharge = 0;
-  if (p.guarding && p.classId !== 'guardian') p.guardLeft = Math.max(0, p.guardLeft - dt);
+  // The kit skills (the knight's) run as moves, all through the same steps. Not in Lugunica, where
+  // the engine class only resolves the weapon's plain swing.
+  const skills = input.world ? [] : kitSkills(p);
+  if (skills.length) {
+    const kit = stepKit(p, skills, input.kit ?? {}, {
+      angle: p.angle,
+      dt,
+      ready: (id) => free(id) && kitCooldown(p, id) <= 0 && affordable(p, id),
+      cool: (id, seconds) => {
+        const key = KIT_COOLDOWN[id];
+        if (key) p[key] = seconds;
+      },
+    });
+    if (kit.lunge > 0 && frozenDt === 0)
+      translate(p, Math.cos(kit.lungeAngle) * kit.lunge, Math.sin(kit.lungeAngle) * kit.lunge, walls);
+    // Attacking gives up the protection of a fresh spawn.
+    if (kit.started) p.invuln = 0;
+    if (kit.chargeStarted) result.chargeStarted = kit.chargeStarted;
+    if (kit.awakened) result.fury = true;
+    result.kit = kit;
+  }
   return result;
+}
+/** Where each kit skill keeps its cooldown. */
+const KIT_COOLDOWN: Partial<Record<SkillId, 'flurryCd'>> = { 'guardian.flurry': 'flurryCd' };
+/** Seconds before a kit skill can be used again. */
+export function kitCooldown(p: Player, id: SkillId) {
+  const key = KIT_COOLDOWN[id];
+  return key ? p[key] : 0;
 }
 export function newPlayer(
   id: string,
@@ -2141,10 +2129,6 @@ export function newPlayer(
     dashX: 0,
     dashY: 0,
     dashInvulnerable: false,
-    guarding: false,
-    guardLeft: 0,
-    guardCd: 0,
-    guardRecovery: 0,
     guardHeld: false,
     magicShieldHits: activePreset(profile).loadout.secondary === 'mage.magicShield' || Object.values(activePreset(profile).loadout).includes('mage.magicShield') ? RULES.magicShieldHits : 0,
     magicShieldCd: 0,
@@ -2161,14 +2145,21 @@ export function newPlayer(
     trapLeft: 0,
     volleyCd: 0,
     stunLeft: 0,
-    guardStunExempt: false,
     windDash: 0,
     slashCd: 0,
-    shieldBashLeft: 0,
-    shieldBashCd: 0,
-    shieldBashAngle: 0,
     furyLeft: 0,
-    furyCd: 0,
+    move: '',
+    moveT: 0,
+    moveAngle: 0,
+    moveCharge: 0,
+    combo: 0,
+    comboLeft: 0,
+    chargeSkill: '',
+    chargeT: 0,
+    buffered: '',
+    bufferCharge: 0,
+    bufferLeft: 0,
+    flurryCd: 0,
     counterLeft: 0,
     counterCharge: 0,
     counterCd: 0,
@@ -2233,6 +2224,8 @@ interface Cutter {
   done: Set<string>;
   /** Where a skill flying from `from` to `to` meets the blade, or null when it does not. */
   meets(from: Vec, to: Vec, flightAngle: number, radius: number): Vec | null;
+  /** What cutting gives the swordsman, by the share of the skill cut. */
+  onCut?(share: number): void;
 }
 export class Duel {
   state: Snapshot = {
@@ -2292,6 +2285,9 @@ export class Duel {
   protected raising = new Map<string, { classId: ClassId; name: string }>();
   /** Enemy ids already struck by each knight's current offensive dash. */
   private guardianDashHits = new Map<string, Set<string>>();
+  /** What each player's running move has already hit (`strike:body`) and the skills it has cut. */
+  private moveHits = new Map<string, Set<string>>();
+  private moveCuts = new Map<string, Set<string>>();
   constructor(mapId: MapId = DEFAULT_MAP, mode: GameMode = DEFAULT_MODE, objective: 'ctf' | 'deathmatch' = 'ctf', deathmatch: DeathmatchRule = DEFAULT_DEATHMATCH_RULE) {
     this.state.mapId = mapId;
     this.state.mode = mode;
@@ -2577,6 +2573,8 @@ export class Duel {
     s.traps = [];
     this.paths.clear();
     this.guardianDashHits.clear();
+    this.moveHits.clear();
+    this.moveCuts.clear();
     s.flags = s.objective === 'ctf' ? s.bases
       .filter((b) => s.players.some((p) => p.team === b.team && !p.eliminated))
       .map(newFlag) : [];
@@ -2623,7 +2621,7 @@ export class Duel {
       dashLeft: 0,
       dashInvulnerable: false,
     });
-    lowerGuard(p);
+    clearKit(p);
     this.drop(p);
     s.flags = s.flags.filter((f) => f.team !== p.team);
     s.zombies = s.zombies.filter((z) => z.owner !== p.id);
@@ -2656,16 +2654,6 @@ export class Duel {
       this.event('block', target, target.team, angle, target.classId);
       if (!options.pierce) return false;
     }
-    // Incoming direction is the reverse of projectile/swing travel, not the
-    // attacker's current position (arrows can arrive after their owner moves).
-    const relative = angle + Math.PI - target.angle;
-    const difference = Math.atan2(Math.sin(relative), Math.cos(relative));
-    if (!options.execute && target.guarding && Math.abs(difference) <= RULES.guardArc / 2 + 1e-8) {
-      this.event('block', target, target.team, target.angle, target.classId);
-      if (!options.pierce) return false;
-      // Wind can pierce the knight's shield, but never tears down the held guard.
-      if (target.classId !== 'guardian') lowerGuard(target);
-    }
     target.revealLeft = 1.5;
     if (options.freeze) {
       target.frozenLeft = RULES.freezeDuration;
@@ -2676,6 +2664,7 @@ export class Duel {
     target.shotCharge = 0;
     target.specialCharge = 0;
     target.trapLeft = 0;
+    this.breakCharge(target);
     target.hp = Math.max(0, target.hp - amount);
     target.invuln = RULES.hurtProtection;
     target.hitFlash = 0.18;
@@ -2697,12 +2686,12 @@ export class Duel {
       target.blinkCharge = 0;
       target.blinkCommitted = false;
       target.furyLeft = 0;
-      target.shieldBashLeft = 0;
+      target.rage = 0;
+      clearKit(target);
       this.raising.delete(target.id);
       target.windup = 0;
       target.dashLeft = 0;
       target.dashInvulnerable = false;
-      lowerGuard(target);
       target.deaths++;
       if (this.state.objective === 'deathmatch') {
         const match = this.state;
@@ -2717,6 +2706,16 @@ export class Duel {
     }
     return true;
   }
+  /** A blow breaks the charge its victim was holding, where that charge says so, and may cost part of its cooldown. */
+  protected breakCharge(p: Player) {
+    const id = p.chargeSkill;
+    const rule = id && KIT[id].charge.breakOnDamage;
+    if (!id || !rule) return;
+    p.chargeSkill = '';
+    p.chargeT = 0;
+    const key = KIT_COOLDOWN[id];
+    if (key && rule.cooldown > 0) p[key] = Math.max(p[key], SKILLS[id].cooldown * rule.cooldown);
+  }
   /** How far a monster notices someone, as a share of its aggro. The world lets stealth shrink it. */
   protected noticeScale(_id: string) {
     return 1;
@@ -2726,21 +2725,14 @@ export class Duel {
     return CLASSES[p.classId];
   }
   protected freeze(p: Player) {
-    if (
-      p.hp <= 0 ||
-      (p.classId === 'guardian' && p.guarding) ||
-      (p.classId === 'vanguard' && p.counterLeft > 0)
-    )
-      return;
+    if (p.hp <= 0 || (p.classId === 'vanguard' && p.counterLeft > 0)) return;
     p.stunLeft = Math.max(p.stunLeft, RULES.freeze);
-    p.guardStunExempt = false;
     p.frozenLeft = RULES.freeze;
     p.windup = 0;
     p.shotCharge = 0;
     p.specialCharge = 0;
     p.dashLeft = 0;
     p.trapLeft = 0;
-    lowerGuard(p);
     this.event('freeze', p, p.team);
   }
   /** A charged fireball bursts on impact, splashing half its damage around. */
@@ -2890,23 +2882,12 @@ export class Duel {
   }
   /** `by` names the striking entity (a player or a zombie id); matches ignore it, the world credits kills with it. */
   damageZombie(z: Zombie, team: Team, amount = 1, angle?: number, _by?: string, execute = false) {
-    // A revived mage's magic shield absorbs hits; a revived knight's raised guard blocks from the front.
+    // A revived mage's magic shield absorbs hits.
     if (!execute && z.shieldHits > 0 && amount > 0) {
       z.shieldHits--;
       if (z.shieldHits === 0) z.skillCd.shield = RULES.magicShieldCooldown;
       this.event('block', z, z.team, angle, z.classId);
       return;
-    }
-    if (!execute && z.guardLeft > 0 && angle !== undefined) {
-      const relative = angle + Math.PI - z.angle;
-      if (
-        Math.abs(Math.atan2(Math.sin(relative), Math.cos(relative))) <=
-        RULES.guardArc / 2 + 1e-8
-      ) {
-        z.skillCd.riposte = 0.8;
-        this.event('block', z, z.team, z.angle, z.classId);
-        return;
-      }
     }
     z.hp = Math.max(0, z.hp - amount);
     this.event('hit', z, team);
@@ -2955,7 +2936,6 @@ export class Duel {
       skillCd: {},
       action: null,
       shieldHits: 0,
-      guardLeft: 0,
       counterLeft: 0,
       ...extra,
     };
@@ -3165,7 +3145,6 @@ export class Duel {
   ) {
     for (const key of Object.keys(z.skillCd) as ThrallSkill[])
       z.skillCd[key] = Math.max(0, (z.skillCd[key] ?? 0) - dt);
-    z.guardLeft = Math.max(0, z.guardLeft - dt);
     z.counterLeft = Math.max(0, z.counterLeft - dt);
     const ready = (skill: ThrallSkill) => !z.skillCd[skill];
     const classId = z.classId ?? 'guardian';
@@ -3173,13 +3152,17 @@ export class Duel {
       z.shieldHits = RULES.magicShieldHits;
     if (classId === 'necromancer' && !z.action) this.thrallSummons(z, owner, minions);
     if (z.action) return this.stepThrallAction(z, target, owner, minions, dt);
-    // Defensive reactions first: a knight raises its guard, a warrior counters an incoming shot.
+    // Defensive reactions first: a knight cuts an incoming shot out of the air, a warrior counters it.
     const incoming =
       classId === 'guardian' || classId === 'vanguard' ? this.incomingShot(z) : undefined;
-    if (incoming && classId === 'guardian' && ready('guard')) {
-      z.skillCd.guard = RULES.guardCooldown + RULES.guardDuration;
-      z.guardLeft = RULES.guardDuration;
+    if (incoming && classId === 'guardian' && ready('cut')) {
+      z.skillCd.cut = RULES.thrallCutCooldown;
+      // The cut is answered with a quick charged swing.
+      z.skillCd.riposte = 0.8;
       z.angle = incoming.angle + Math.PI;
+      this.state.arrows = this.state.arrows.filter((a) => a !== incoming);
+      this.cutEvent(incoming, { team: z.team, classId: 'guardian' }, z.angle, arrowMotion(incoming).radius, 1);
+      this.event('swing', z, z.team, z.angle, 'guardian', 0);
       return true;
     }
     if (incoming && classId === 'vanguard' && ready('counter')) {
@@ -4023,18 +4006,15 @@ export class Duel {
       this.event('block', target, target.team, target.angle, target.classId);
       return false;
     }
-    const relative=angle+Math.PI-target.angle;
-    if (target.guarding && Math.abs(wrapAngle(relative)) <= RULES.guardArc/2) {
-      this.event('block',target,target.team,target.angle,target.classId); return false;
-    }
     const amount=raw*(1-(target.pve?.resistance??0));
     target.hp=Math.max(0,target.hp-amount);
     target.invuln=RULES.hurtProtection; target.hitFlash=.18; target.revealLeft=1.5;
     target.shotCharge=0; target.specialCharge=0; target.trapLeft=0;
+    this.breakCharge(target);
     this.event('hit',target,'red');
     if (target.hp<=0) {
       target.deaths++; target.windup=0; target.dashLeft=0; target.dashInvulnerable=false;
-      target.furyLeft=0; target.raiseCast=0; lowerGuard(target);
+      target.furyLeft=0; target.rage=0; target.raiseCast=0; clearKit(target);
       if (target.pve.selfRevives>0) { target.pve.selfRevives--; target.respawnLeft=2; target.eliminated=false; }
       else { target.respawnLeft=0; target.eliminated=true; }
       this.event('death',target,target.team);
@@ -4047,7 +4027,7 @@ export class Duel {
     for (const p of s.players) {
       p.windup = 0; p.dashLeft = 0; p.dashInvulnerable = false; p.shotCharge = 0;
       p.specialCharge = 0; p.trapLeft = 0; p.raiseCast = 0; p.counterLeft = 0;
-      lowerGuard(p);
+      clearKit(p);
     }
     const alive=s.players.filter(p=>p.hp>0&&!p.eliminated), dead=s.players.filter(p=>p.eliminated);
     const forced=dead.length&&alive.length?alive[Math.floor(Math.random()*alive.length)]?.id:undefined;
@@ -4259,8 +4239,8 @@ export class Duel {
     const s = this.state;
     this.cutters = [];
     const swings: Player[] = [];
+    const sweeps: (KitSweep & { player: Player })[] = [];
     const placements: Player[] = [];
-    const bashers: Player[] = [];
     const guardianDashers: Player[] = [];
     // First advance every player's defenses, movement and attack preparation.
     // Only then resolve impacts, so the order of joining never defeats a guard.
@@ -4294,8 +4274,8 @@ export class Duel {
         action.ice ||
         action.summon ||
         action.raised ||
-        action.bash ||
         action.fury ||
+        action.kit?.started ||
         action.dashStarted ||
         action.blink ||
         action.blackHole ||
@@ -4348,7 +4328,17 @@ export class Duel {
       }
       if (action.dashing && p.classId === 'guardian') guardianDashers.push(p);
       else if (p.classId === 'guardian' && p.dashLeft <= 0) this.guardianDashHits.delete(p.id);
-      if (action.bash) bashers.push(p);
+      if (action.kit) {
+        if (action.kit.started) {
+          // A new move: its blades have met no one yet.
+          this.moveHits.set(p.id, new Set());
+          this.moveCuts.set(p.id, new Set());
+          this.event('swing', p, p.team, p.moveAngle, p.classId, p.moveCharge);
+          this.state.events.at(-1)!.move = action.kit.started;
+        }
+        for (const sweep of action.kit.sweeps) sweeps.push({ ...sweep, player: p });
+        for (const wave of action.kit.waves) this.launchMoveWave(p, wave);
+      }
       if (action.swing) swings.push(p);
       if (action.trap) placements.push(p);
       if (action.shoot || action.volley || action.ice || action.slash) {
@@ -4435,55 +4425,7 @@ export class Duel {
         this.event('dash', mob, p.team, p.angle, p.classId, 1);
       }
     }
-    for (const p of bashers) {
-      this.event('bash', p, p.team, p.shieldBashAngle, p.classId);
-      const candidates = [
-        ...s.players
-          .filter((q) => this.hostile(p, q) && q.hp > 0)
-          .map((q) => ({ kind: 'player' as const, entity: q, radius: 0 })),
-        ...s.zombies
-          .filter((z) => this.hostile(p, z) && z.hp > 0)
-          .map((z) => ({ kind: 'zombie' as const, entity: z, radius: 0 })),
-        ...s.mobs
-          .filter((mob) => mob.hp > 0 && mob.spawnLeft <= 0)
-          .map((mob) => ({ kind: 'mob' as const, entity: mob, radius: MOB_STATS[mob.kind].radius })),
-      ]
-        .filter(({ entity, radius }) => {
-          const angle = Math.atan2(entity.y - p.y, entity.x - p.x);
-          const diff = wrapAngle(angle - p.shieldBashAngle);
-          return (
-            distance(p, entity) <= RULES.shieldBashRange + radius &&
-            Math.abs(diff) <= RULES.shieldBashArc / 2 &&
-            lineClear(p, entity, this.terrain)
-          );
-        })
-        .sort((a, b) => distance(p, a.entity) - distance(p, b.entity));
-      const hit = candidates[0];
-      if (!hit) continue;
-      const angle = Math.atan2(hit.entity.y - p.y, hit.entity.x - p.x);
-      if (hit.kind === 'player') {
-        if (this.damage(hit.entity, p, angle, RULES.shieldBashDamage)) {
-          if (
-            (hit.entity.classId === 'guardian' && hit.entity.guarding) ||
-            (hit.entity.classId === 'vanguard' && hit.entity.counterLeft > 0)
-          )
-            continue;
-          hit.entity.stunLeft = RULES.shieldBashStun;
-          hit.entity.guardStunExempt = false;
-          hit.entity.windup = 0;
-          hit.entity.shotCharge = 0;
-          hit.entity.specialCharge = 0;
-          hit.entity.dashLeft = 0;
-          hit.entity.dashInvulnerable = false;
-          lowerGuard(hit.entity);
-        }
-      } else if (hit.kind === 'zombie') {
-        this.damageZombie(hit.entity, p.team, RULES.shieldBashDamage, undefined, p.id);
-        hit.entity.frozenLeft = Math.max(hit.entity.frozenLeft, RULES.shieldBashStun);
-      } else {
-        this.damageMob(hit.entity, p, RULES.shieldBashDamage, RULES.shieldBashStun);
-      }
-    }
+    for (const sweep of sweeps) this.resolveSweep(sweep);
     const hits: { target: Player; source: Player; angle: number; amount: number }[] = [];
     for (const p of swings) {
       const stats = this.meleeStats(p);
@@ -4492,12 +4434,10 @@ export class Duel {
         arc = stats.meleeArc * (1 + 0.2 * power),
         amount =
           stats.meleeDamage *
-          (1 + power * ((MELEE_OVERCHARGE[p.classId] ?? 1) - 1)) *
-          (p.classId === 'guardian' && p.furyLeft > 0 ? RULES.furyDamage : 1);
+          (1 + power * ((MELEE_OVERCHARGE[p.classId] ?? 1) - 1));
       p.swingPower = 0;
       this.event('sword', p, p.team, p.swingAngle, p.classId, power);
-      if (p.classId === 'guardian' || p.classId === 'vanguard')
-        this.cutters.push(this.swingCutter(p, p.swingAngle, range, arc));
+      if (this.plainSwingCuts(p)) this.cutters.push(this.swingCutter(p, p.swingAngle, range, arc));
       for (const q of s.players) {
         const angle = Math.atan2(q.y - p.y, q.x - p.x);
         const diff = Math.atan2(Math.sin(angle - p.swingAngle), Math.cos(angle - p.swingAngle));
@@ -4536,6 +4476,87 @@ export class Duel {
     }
     for (const hit of hits) this.damage(hit.target, hit.source, hit.angle, hit.amount);
     return placements;
+  }
+  /**
+   * The stretch of a blade swept this tick: every body it passes over, once per strike, and the
+   * skills that cross what the strike has swept so far.
+   */
+  private resolveSweep({ player: p, move, strike: index, since, until, angle }: KitSweep & { player: Player }) {
+    const strike = MOVES[move].strikes[index];
+    const blade = bladeAt(strike, p, angle, since, until);
+    if (!blade || p.hp <= 0) return;
+    const struck = this.moveHits.get(p.id) ?? new Set<string>();
+    this.moveHits.set(p.id, struck);
+    const gain = SKILLS[moveSkill(move)].gain;
+    const amount = strike.damage * (p.furyLeft > 0 ? KNIGHT_AWAKEN.damage : 1);
+    /** Whether the blade reaches a body this strike has not met yet, and whether an earlier strike of the move had. */
+    const meets = (target: Vec, id: string, radius: number) => {
+      const key = `${index}:${id}`;
+      if (struck.has(key) || !bladeHit(blade, target, radius) || !lineClear(p, target, this.terrain)) return null;
+      const again = [...struck].some((other) => other.endsWith(`:${id}`));
+      struck.add(key);
+      return { again };
+    };
+    const earned = () => {
+      if (gain) gainResource(p, gain.resource, (strike.crit ? gain.crit : undefined) ?? gain.hit ?? 0);
+    };
+    for (const q of this.state.players) {
+      if (q.hp <= 0 || !this.hostile(p, q)) continue;
+      const met = meets(q, q.id, RULES.radius);
+      if (!met) continue;
+      const landed = this.damage(q, p, Math.atan2(q.y - p.y, q.x - p.x), amount, {
+        knockback: strike.knockback,
+        crit: strike.crit,
+        // The later blows of one move land through the protection its first one left.
+        ignoreInvuln: !!strike.sibling && met.again,
+      });
+      if (landed) earned();
+    }
+    for (const z of this.state.zombies) {
+      if (z.hp <= 0 || !this.hostile(p, z) || !meets(z, z.id, RULES.zombieRadius)) continue;
+      this.damageZombie(z, p.team, amount, undefined, p.id);
+      earned();
+    }
+    for (const mob of this.state.mobs) {
+      if (mob.hp <= 0 || mob.spawnLeft > 0 || !meets(mob, mob.id, MOB_STATS[mob.kind].radius)) continue;
+      this.damageMob(mob, p, amount);
+      earned();
+    }
+    if (strike.cut <= 0) return;
+    const done = this.moveCuts.get(p.id) ?? new Set<string>();
+    this.moveCuts.set(p.id, done);
+    // The trail: everything this strike has swept so far. A skill crossing it is cut.
+    const trail = bladeAt(strike, p, angle, strike.start, until)!;
+    this.cutters.push({
+      owner: p,
+      power: strike.cut,
+      angle,
+      done,
+      meets: (from, to, _flightAngle, radius) => (bladeCrosses(trail, from, to, radius) ? { x: to.x, y: to.y } : null),
+      onCut: (share) => {
+        if (gain?.cut) gainResource(p, gain.resource, gain.cut * share);
+      },
+    });
+  }
+  /** A slash leaving a blade: it starts a step ahead of the swordsman and skips whoever the blade already cut. */
+  private launchMoveWave(p: Player, { move, index, angle, charge }: KitResult['waves'][number]) {
+    const spawn = MOVES[move].waves[index];
+    const spec = typeof spawn.wave === 'function' ? spawn.wave(charge) : spawn.wave;
+    const wave = this.spawnWave(
+      p,
+      { x: p.x + Math.cos(angle) * RULES.waveLead, y: p.y + Math.sin(angle) * RULES.waveLead },
+      angle,
+      { ...spec, damage: spec.damage * (p.furyLeft > 0 ? KNIGHT_AWAKEN.damage : 1) },
+      { skillId: moveSkill(move) },
+    );
+    for (const key of this.moveHits.get(p.id) ?? []) wave.hits.push(key.slice(key.indexOf(':') + 1));
+  }
+  /**
+   * Whether a plain sword swing cuts the skills that come at it. In an arena, only a blade with no
+   * moves of its own: the knight cuts through his techniques, by how long he charged them.
+   */
+  protected plainSwingCuts(p: Player) {
+    return (p.classId === 'guardian' || p.classId === 'vanguard') && !(p.loadout.primary && p.loadout.primary in KIT);
   }
   /** A plain sword swing: for its one tick it cuts apart whatever hostile skill comes at it through its arc. */
   private swingCutter(p: Player, angle: number, range: number, arc: number): Cutter {
@@ -4580,6 +4601,7 @@ export class Duel {
       const outcome = cutOutcome(cutter.power, target);
       if (outcome.result === 'none') continue;
       cutter.done.add(key);
+      cutter.onCut?.(outcome.share);
       this.cutEvent(at, p, cutter.angle, radius, outcome.share, color);
       return outcome;
     }
@@ -4591,6 +4613,7 @@ export class Duel {
       const outcome = cutOutcome(w.cut, target);
       if (outcome.result === 'none') continue;
       w.hits.push(key);
+      this.waveGain(w, 'cut', outcome.share);
       this.cutEvent(to, w, w.angle, radius, outcome.share, color);
       return outcome;
     }
@@ -4661,6 +4684,7 @@ export class Duel {
       if (outcome.result === 'none') continue;
       const half = width / Math.max(1, waveHalfWidth(other, other.travelled));
       other.gaps.push({ from: place - half, to: place + half, strength: outcome.share });
+      this.waveGain(w, 'cut', outcome.share);
       this.cutEvent(centre, w, w.angle, Math.min(14, width), outcome.share, WAVE_COLORS[other.tint].glow);
     }
   }
@@ -4684,7 +4708,8 @@ export class Duel {
       const strength = reach(p, p.id, RULES.radius);
       if (!strength) continue;
       if (p.counterLeft > 0) this.returnWave(w, p, carried * strength);
-      else this.damage(p, owner, w.angle, carried * strength, { knockback: w.knockback });
+      else if (this.damage(p, owner, w.angle, carried * strength, { knockback: w.knockback }))
+        this.waveGain(w, 'hit', 1);
     }
     for (const z of s.zombies) {
       if (z.hp <= 0 || !this.hostile(w, z)) continue;
@@ -4696,6 +4721,12 @@ export class Duel {
       const strength = reach(mob, mob.id, MOB_STATS[mob.kind].radius);
       if (strength) this.damageMob(mob, owner, carried * strength);
     }
+  }
+  /** What a slash earns its owner when it lands or cuts, by its skill's own table. */
+  private waveGain(w: Wave, what: 'hit' | 'cut', share: number) {
+    const gain = w.skillId && SKILLS[w.skillId].gain;
+    const owner = gain && this.state.players.find((p) => p.id === w.owner);
+    if (gain && owner) gainResource(owner, gain.resource, (gain[what] ?? 0) * share);
   }
   /** A countered slash flies back the way it came as the defender's own, with what it still carried. */
   protected returnWave(w: Wave, by: Player, damage: number) {
@@ -4905,20 +4936,16 @@ export class Duel {
         return false;
       }
       if (!target || target.invuln > 0 || target.dashInvulnerable) return true;
-      // A floor trap strikes beneath the shield, while normal damage protection still applies.
+      // A floor trap strikes from beneath, while normal damage protection still applies.
       this.damage(target, owner, target.angle, RULES.trapDamage);
       if (target.hp > 0) {
-        const controlImmune =
-          (target.classId === 'guardian' && target.guarding) ||
-          (target.classId === 'vanguard' && target.counterLeft > 0);
-        if (controlImmune) return false;
+        // A warrior mid-counter keeps his feet.
+        if (target.classId === 'vanguard' && target.counterLeft > 0) return false;
         target.stunLeft = RULES.trapStun;
-        target.guardStunExempt = target.classId === 'guardian';
         target.windup = 0;
         target.shotCharge = 0;
         target.trapLeft = 0;
         target.dashLeft = 0;
-        if (target.classId !== 'guardian') lowerGuard(target);
       }
       return false;
     });

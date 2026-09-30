@@ -5,7 +5,10 @@ import Phaser from 'phaser';
 import { Client, type Room } from '@colyseus/sdk';
 import {
   RULES,
+  KIT,
+  MOVES,
   chargePower,
+  chargeProgress,
   blackHoleStats,
   CLASSES,
   CLASS_IDS,
@@ -44,7 +47,7 @@ import { savedClass, saveClass, mountClasses, updateClasses, updateClassSkin } f
 import { abilityCards, liveBlackHole, updateAbilities } from './abilities.js';
 import { mountTouchAbilities, updateTouchAbilities } from './mobile-controls.js';
 import './style.css';
-import { Practice, PRACTICE_PLAYER } from './practice.js';
+import { Practice, PRACTICE_PLAYER, SPARRING, validSparring, type SparringMode } from './practice.js';
 import { loadCustomization, mountCharacterCustomization } from './customization.js';
 import { UPGRADE_META, UPGRADE_ORDER } from './pve-upgrades.js';
 import { WorldHud } from './isekai-hud.js';
@@ -75,7 +78,7 @@ document.querySelector('#app')!.innerHTML = `
 <div class="entry-card"><div class="card-top"><span class="tiny">EL DESAFÍO EMPIEZA ACÁ</span><span class="swords">⚔</span></div><h2 id="entry-title">Prepará tu estandarte.</h2><p id="entry-description">Elegí tu guerrero, prepará una sala e invitá a tu rival.</p><form id="entry-form"><div class="player-setup"><div class="setup-heading"><span>01</span><h3>Tu guerrero</h3></div><label for="name">TU APODO</label><input id="name" name="name" placeholder="Caballero sin nombre" maxlength="16" autocomplete="nickname" required><fieldset id="entry-class-picker" class="class-picker"><legend>ELEGÍ TU GUERRERO</legend><div id="entry-classes" class="class-grid"></div></fieldset></div><div class="room-setup"><div class="setup-heading"><span>02</span><h3>Tu próxima partida</h3></div><fieldset id="room-options"><legend>TU SALA</legend><label for="room-title">TÍTULO</label><input id="room-title" maxlength="48" value="Duelo medieval"><label for="visibility">VISIBILIDAD</label><select id="visibility"><option value="private">Privada · solo por enlace</option><option value="public">Pública · aparece en el listado</option></select><div class="option-row"><label>FORMATO<select id="game-mode"><option value="duel">Duelo · 1v1</option><option value="teams">Equipos · 2v2</option><option value="ffa3">Todos contra todos · 3</option><option value="ffa4">Todos contra todos · 4</option><option value="pve">Hordas PvE · 1–4</option></select></label><label>MAPA<select id="map-select"><option value="courtyard">Patio del Rey</option><option value="forest">Bosque de Emboscadas</option><option value="ruins">Ruinas del Bastión</option><option value="crossroads">Encrucijada</option></select></label></div><div id="pvp-create-settings" class="pvp-settings"><label>OBJETIVO<select id="game-objective"><option value="ctf">Captura la bandera</option><option value="deathmatch">Deathmatch</option></select></label><label id="create-deathmatch-kind" hidden>REGLA<select id="deathmatch-kind"><option value="kills">Por bajas</option><option value="time">Por tiempo</option></select></label><label id="create-kill-target" hidden>META DE BAJAS<select id="kill-target"><option value="3">3 bajas</option><option value="5">5 bajas</option><option value="10">10 bajas</option></select></label><label id="create-time-duration" hidden>DURACION<select id="time-duration"><option value="180">3 minutos</option><option value="300">5 minutos</option><option value="600">10 minutos</option></select></label></div><div id="map-preview" class="map-preview"></div><label class="check-option"><input id="allow-spectators" type="checkbox" checked> Permitir espectadores (máximo 5)</label></fieldset><label for="room-password">CONTRASEÑA (OPCIONAL)</label><input id="room-password" type="password" maxlength="64" autocomplete="off" placeholder="Sin contraseña"><label id="spectator-choice" hidden><input id="spectator" type="checkbox"> Entrar como espectador</label><label id="perspective-choice" hidden>PERSPECTIVA<select id="spectator-perspective"><option value="blue">Azul</option><option value="red">Carmesí</option><option value="green">Jade</option><option value="violet">Violeta</option></select></label></div><div class="entry-actions"><button id="enter" class="primary" type="submit">Crear un duelo <span>↗</span></button><button id="practice-start" class="secondary" type="button">Probar contra un rival inmóvil</button><span class="entry-note">Práctica local, sin sala.</span></div></form><div id="status" class="status" role="status" aria-live="polite">Sin cuentas. Sin descargas. Solo el duelo.</div><button id="new-instead" class="text-btn" hidden>Crear otra sala</button></div></section>
 <section id="room-browser" class="room-browser"><div class="browser-heading"><div><span class="tiny">BUSCÁ TU PRÓXIMO RIVAL</span><h2>Salas públicas</h2></div><button id="refresh-rooms" class="secondary">↻ Actualizar salas</button></div><p id="rooms-status" role="status"></p><h3 class="room-group-title">● Combates en vivo</h3><p id="live-empty">No hay combates públicos en curso.</p><div id="live-rooms-list"></div><h3 class="room-group-title">Salas para jugar y próximas rondas</h3><div id="rooms-list"></div></section><section id="world-gate" class="world-gate" aria-labelledby="world-gate-title"><div class="world-gate-sky" aria-hidden="true"></div><div class="world-gate-copy"><span class="world-gate-kicker">O DEJÁ EL DUELO · MUNDO ISEKAI PERSISTENTE</span><h2 id="world-gate-title">Despertaste en <em>Lugunica.</em></h2><p>Un mundo abierto de magia y peligro donde cualquiera puede esconder un poder increíble, y tu personaje se guarda. Mismo servidor, otra forma de jugar: sin relojes, sin salas.</p>${gateShowcase()}<button id="world-open" class="world-gate-button" type="button">Entrar a Lugunica <span>↗</span></button></div><form id="world-form" class="world-form" hidden><h3>Tu alma, antes de nacer</h3><label for="world-name">NOMBRE DEL PERSONAJE</label><input id="world-name" maxlength="16" autocomplete="nickname" placeholder="Cómo te van a llamar allá" required><fieldset id="world-account" class="world-account"><legend>TU CUENTA DEL MUNDO</legend><p class="world-hint">El mundo guarda tus personajes. Entrá con tu cuenta o creá una nueva.</p><label for="world-user">CUENTA</label><input id="world-user" maxlength="16" autocomplete="username" placeholder="Tu nombre de cuenta" required><label for="world-pass">CLAVE</label><input id="world-pass" type="password" minlength="6" maxlength="64" autocomplete="current-password" placeholder="Al menos 6 caracteres" required><label class="check" for="world-new"><input id="world-new" type="checkbox"><span>Es mi primera vez: crear la cuenta</span></label></fieldset><button id="world-enter" class="world-gate-button" type="submit">Cruzar <span>↗</span></button><p id="world-status" class="world-status" role="status" aria-live="polite"></p></form></section>
 <section class="arena-section"><div class="arena-heading"><div><span class="live-dot"></span><span id="arena-label">EL PATIO DEL REY</span><span class="map-label">ARENA 01</span></div><span id="connection-label">ACERO · ARCO · MAGIA</span></div>
-<div id="practice-toolbar" hidden><span>PRÁCTICA · RIVAL INMÓVIL</span><button id="practice-reset" class="secondary">Reiniciar</button><button id="practice-exit" class="secondary">Salir</button></div><div id="hud" class="hud" hidden>${hudTeam('blue')}${hudTeam('green')}<div class="clock"><span id="timer">3:00</span><small id="clock-note">PRIMERO A 3</small></div>${hudTeam('violet', true)}${hudTeam('red', true)}<span id="spectator-count" hidden aria-live="polite"></span><div id="pve-hud" hidden><b id="pve-wave">OLEADA 0</b><span id="pve-enemies">0 enemigos</span><span id="pve-alive"></span></div><div id="pve-upgrades" hidden aria-label="Mejoras elegidas"></div><div id="boss-hud" hidden><span>GUARDIÁN DE LA CRIPTA</span><i><b id="boss-health"></b></i></div><div id="mobile-player-status" hidden><b id="mobile-health"></b><span id="mobile-state"></span></div></div>
+<div id="practice-toolbar" hidden><span>PRÁCTICA</span><label id="practice-rival-label">RIVAL <select id="practice-rival" aria-label="Qué hace el rival de práctica">${Object.entries(SPARRING).map(([id, mode]) => `<option value="${id}" title="${mode.text}">${mode.label}</option>`).join('')}</select></label><button id="practice-reset" class="secondary">Reiniciar</button><button id="practice-exit" class="secondary">Salir</button></div><div id="hud" class="hud" hidden>${hudTeam('blue')}${hudTeam('green')}<div class="clock"><span id="timer">3:00</span><small id="clock-note">PRIMERO A 3</small></div>${hudTeam('violet', true)}${hudTeam('red', true)}<span id="spectator-count" hidden aria-live="polite"></span><div id="pve-hud" hidden><b id="pve-wave">OLEADA 0</b><span id="pve-enemies">0 enemigos</span><span id="pve-alive"></span></div><div id="pve-upgrades" hidden aria-label="Mejoras elegidas"></div><div id="boss-hud" hidden><span>GUARDIÁN DE LA CRIPTA</span><i><b id="boss-health"></b></i></div><div id="mobile-player-status" hidden><b id="mobile-health"></b><span id="mobile-state"></span></div></div>
 <div id="stage" class="stage"><section id="pve-rewards" class="pve-rewards" hidden><header><span id="reward-wave"></span><b id="reward-time"></b></header><p>Elegí una recompensa. Si el tiempo termina, no recibirás ninguna.</p><div id="reward-cards"></div></section><label id="room-perspective-choice" hidden>PERSPECTIVA<select id="room-perspective"></select></label><div id="game"></div><div id="abilities" class="abilities" hidden aria-label="Habilidades"></div><div class="preview-tag" id="preview-tag">HASTA CUATRO ESTANDARTES. UNA SOLA GLORIA.</div>
 <button id="chat-toggle" class="chat-toggle" type="button" hidden aria-expanded="false" aria-controls="chat-panel"><span aria-hidden="true">◈</span><span class="chat-label">CHAT</span><b id="chat-unread" hidden></b></button>
 <aside id="chat-panel" class="chat-panel" hidden aria-label="Chat de sala"><header><div><span>CHAT DE SALA</span><small id="chat-players"></small></div><button id="chat-close" type="button" aria-label="Cerrar chat">×</button></header><ol id="chat-messages" role="log" aria-live="polite"></ol><p id="chat-status" role="status"></p><form id="chat-form"><input id="chat-input" maxlength="240" autocomplete="off" placeholder="Escribí un mensaje…" aria-label="Mensaje"><button id="chat-send" type="submit">Enviar</button></form></aside>
@@ -273,6 +276,8 @@ new Phaser.Game({
   input: { activePointers: 5 },
 });
 let practice: Practice | undefined;
+const savedSparring = localStorage.getItem('bandera-sparring');
+let sparring: SparringMode = validSparring(savedSparring) ? savedSparring : 'still';
 /**
  * The world is not a match format: it has its own gate above the duel's card. Entering through it
  * sets this, and every join after that (choosing, creating, coming back) stays in the world.
@@ -428,7 +433,7 @@ function showClassControls(id: ClassId) {
   $('cd-black-hole').hidden = !equipped('mage.blackHole');
   $('cd-shot').hidden = !stats.ranged;
   $('cd-dash').hidden = !preset.loadout.mobility;
-  $('cd-guard').hidden = !equipped('guardian.guard') && !equipped('mage.magicShield');
+  $('cd-guard').hidden = !equipped('mage.magicShield');
   $('cd-trap').hidden = !equipped('archer.trap');
   $('cd-volley').hidden = !equipped('archer.volley');
   $('cd-summon').hidden = !equipped('necromancer.summon');
@@ -1357,7 +1362,6 @@ function render(s: Snapshot) {
     updateClasses($('room-classes'), me.classId, !overlay || s.paused);
     $('room-picker').hidden = !overlay;
     $('stage').dataset.class = me.classId;
-    $('stage').dataset.guarding = String(me.guarding);
     $('stage').dataset.fury = String(me.furyLeft > 0);
     $('stage').dataset.magicShield = String(me.magicShieldHits);
     $('stage').dataset.frozen = String(me.frozenLeft > 0);
@@ -1381,10 +1385,10 @@ function render(s: Snapshot) {
           ? me.revealLeft > 0
             ? 'REVELADO'
             : 'OCULTO'
-          : me.guarding
-            ? 'GUARDIA'
-            : me.furyLeft > 0
-              ? `FURIA ${me.furyLeft.toFixed(1)}s`
+          : me.furyLeft > 0
+            ? `DESPIERTO ${me.furyLeft.toFixed(1)}s`
+            : me.classId === 'guardian'
+              ? `FURIA ${Math.floor(me.rage)} %`
               : '';
     $('lives').textContent = `☠ ${me.deaths}`;
     $('lives').setAttribute('aria-label', `Muertes: ${me.deaths}; reapariciones ilimitadas`);
@@ -1395,15 +1399,16 @@ function render(s: Snapshot) {
       : '';
     $('stealth-state').className =
       me.bushId && me.revealLeft <= 0 ? 'hidden-state' : 'revealed-state';
-    $('cd-guard').textContent = me.guarding
-      ? `⛨ Guardia continua`
-      : `⛨ ${me.guardCd > 0 ? me.guardCd.toFixed(1) + 's' : 'Lista'}`;
     if (me.classId === 'mage')
       $('cd-guard').textContent =
         me.magicShieldHits > 0
           ? `⛨ ${me.magicShieldHits}/2 golpes`
           : `⛨ ${me.magicShieldCd > 0 ? me.magicShieldCd.toFixed(1) + 's' : 'Listo · clic derecho'}`;
     $('cd-sword').textContent = `⚔ ${me.swordCd > 0 ? me.swordCd.toFixed(1) + 's' : 'Lista'}`;
+    // A kit blade has no cooldown of its own: it shows the charge being held, or the move going out.
+    if (me.chargeSkill)
+      $('cd-sword').textContent = `⚡ Cargando ${Math.round(chargeProgress(KIT[me.chargeSkill].charge, me.chargeT) * 100)} %`;
+    else if (me.move) $('cd-sword').textContent = `⚔ ${MOVES[me.move].name}`;
     $('stage').dataset.charge = String(me.shotCharge);
     $('stage').dataset.specialCharge = String(me.specialCharge);
     $('cd-shot').textContent =
@@ -1762,6 +1767,7 @@ function startPractice() {
     validName(nameInput.value) || 'Vos',
     selectedMap,
     customization,
+    sparring,
   );
   arena.controls.configure(selectedClass, customization);
   arena.reset();
@@ -1789,6 +1795,17 @@ function startPractice() {
 }
 $('practice-start').onclick = startPractice;
 $('practice-reset').onclick = startPractice;
+// What the practice rival does: choosing starts the practice over with it.
+$<HTMLSelectElement>('practice-rival').value = sparring;
+$<HTMLSelectElement>('practice-rival').onchange = (event) => {
+  const value = (event.target as HTMLSelectElement).value;
+  if (!validSparring(value)) return;
+  sparring = value;
+  localStorage.setItem('bandera-sparring', value);
+  // Hand the keyboard back to the game: an arrow key must not change the rival again.
+  (event.target as HTMLSelectElement).blur();
+  if (practice) startPractice();
+};
 $('practice-exit').onclick = () => {
   practice = undefined;
   arena.reset();

@@ -42,13 +42,13 @@ Todas las clases hablan el mismo lenguaje de controles: cambia el personaje, no 
 | -------------- | ---------------------------- | ------------- | ------------- | ------------------- | ---------------- | -------------- |
 | WASD / flechas | Mover                        | ·             | ·             | ·                   | ·                | ·              |
 | Mouse          | Apuntar                      | ·             | ·             | ·                   | ·                | ·              |
-| Clic izquierdo | Ataque básico                | Flecha        | Orbe de fuego | Fuego               | Espada           | Espada pesada  |
-| Clic derecho   | Secundario                   | Daga          | —             | Marcar (un zombie)  | Guardia continua | —              |
-| Espacio        | Movilidad                    | Esquivar      | Parpadeo      | —                   | Embestida        | Esquivar       |
-| Q              | Básica, de uso frecuente     | Triple        | Saeta glacial | —                   | Golpe de escudo  | Tajo viajero   |
+| Clic izquierdo | Ataque básico                | Flecha        | Orbe de fuego | Fuego               | Tres Cortes      | Espada pesada  |
+| Clic derecho   | Secundario                   | Daga          | —             | Marcar (un zombie)  | Ráfaga de Acero  | —              |
+| Espacio        | Movilidad                    | Esquivar      | Parpadeo      | —                   | Paso Relámpago   | Esquivar       |
+| Q              | Básica, de uso frecuente     | Triple        | Saeta glacial | —                   | —                | Tajo viajero   |
 | E              | Secundaria                   | Cepo          | Égida         | Mando               | —                | Contraataque   |
 | F              | Poderosa                     | —             | Singularidad  | Invocar zombies     | —                | —              |
-| R              | Definitiva                   | —             | —             | —                   | Furia            | —              |
+| R              | Definitiva                   | —             | —             | —                   | Despertar        | —              |
 
 Tocar una tecla usa las habilidades instantáneas; mantenerla carga las que se cargan (la flecha, el orbe, Parpadeo, Singularidad, la invocación) y soltarla las lanza. Las habilidades se combinan: por ejemplo, el mago puede caminar, parpadear con Espacio y seguir cargando Singularidad con F. Cada una declara qué deja ocupado mientras carga: Singularidad deja las manos ocupadas para los clics, pero no para Q, E ni Espacio. El panel de habilidades muestra siempre las siete posiciones (las vacías, con «—») y, debajo de la arena, cómo se usa cada una con tus teclas. Los controles se pueden reasignar en Personalizar.
 
@@ -248,12 +248,16 @@ Mientras se mantiene o apunta una habilidad aparece una guía blueprint local: c
 
 ### Caballero
 
-- **Espada:** ataque rápido en un arco frontal de 180°, alcance 60, 0,1 s de preparación y 0,4 s de recarga. Puede cortar a varios enemigos, pero nunca a aliados. Mantener clic hasta 1,5 s aumenta gradualmente alcance y daño hasta ×2.
-- **Clic derecho · guardia continua:** bloquea de frente, en un arco de 120°, todos los golpes cuerpo a cuerpo, flechas normales y hielo mientras se mantenga pulsado. No tiene límite ni se rompe al bloquear; permite caminar al 45 % de la velocidad. Las trampas y flechas de viento atraviesan la defensa sin bajarla. Soltar, atacar, quedar aturdido, morir o embestir inicia 1 s de recarga.
-- **Espacio · embestida:** recorre unas 190 unidades en la dirección de movimiento o de apuntado, hace 1 de daño y empuja una vez a cada enemigo atravesado. No daña aliados, se detiene en paredes, no concede invulnerabilidad y recarga en 3 s.
-- **Q · golpe de escudo:** golpe frontal corto de 0,5 de daño, empujón y 2 s de aturdimiento. Puede iniciarse desde guardia, pero baja el escudo durante el golpe. Otro caballero orientado correctamente puede bloquearlo. Recarga de 6 s.
-- **Corte de proyectiles:** la espada normal del caballero y del guerrero destruye los proyectiles enemigos que intercepta en su arco frontal. El espadachín no recibe el impacto; las dos mitades salen hacia atrás a ±45° como efecto visual y desaparecen sin causar daño.
-- **E · furia:** durante 5 s la espada hace 40 % más daño, multiplicado también por la carga. El aura roja oscura revela al caballero durante 1,5 s si está en arbustos. Recarga de 15 s; termina al morir, cambiar de clase, capturar o reiniciarse la ronda.
+Espadachín veloz: el más rápido de la arena, sin escudo. Se defiende moviéndose y cortando lo que le tiran. Q, E y F quedan libres.
+
+- **Clic · Tres Cortes:** cadena fija de tres golpes: dos cortes horizontales de derecha a izquierda (1 de daño) y un remate vertical (1,5) que es crítico cuando conecta. La cadena vuelve a empezar 0,9 s después del último golpe. Un clic dado durante un corte queda en cola y sale al terminar.
+- **El golpe sigue a la hoja.** Los horizontales barren un arco de 120° al frente, con alcance 58; golpean primero a quien está a la derecha. El remate es una franja angosta de 84 de largo hacia donde se apunta. Cada corte golpea una vez a cada rival, no atraviesa muros y nunca alcanza detrás.
+- **Carga:** mantener el clic carga el corte que toca, en cinco estados (toque, baja a 0,22 s, media a 0,6 s, alta a 1 s y 100 % a 1,4 s). Cargado pega hasta el doble y lanza un tajo que sale de la hoja, más largo y fuerte con cada estado (de 100 a 250 de alcance). Cargando camina al 70 %, no puede usar la Ráfaga, y un golpe recibido o un aturdimiento rompen la carga. La cadena espera mientras se carga.
+- **Corte de habilidades:** la hoja y sus tajos cortan las habilidades enemigas que cruzan, según la carga. Un toque apenas las debilita; al 100 % las parte en el aire. Una flecha común se corta del todo con menos carga que un orbe cargado. Un tajo enemigo cortado queda con un hueco por donde pasó la hoja. Hay que interceptar: solo se corta mientras la hoja pasa.
+- **Clic derecho · Ráfaga de Acero:** una técnica con tres formas según la carga. Toque, *Tres Relámpagos*: tres cortes veloces de 0,5 que entran todos y avanzan hacia el rival. Media carga (0,45 s), *Cruz Gemela*: dos cortes de 1, cada uno con su tajo corto. Carga máxima (1,1 s), *Juicio Carmesí*: un solo corte de 2,5, crítico, cuyo tajo largo parte habilidades. Recarga de 5 s.
+- **Espacio · Paso Relámpago:** recorre unas 190 unidades hacia donde se mueve (o apunta, si está quieto), hace 1 de daño una vez a cada enemigo atravesado, se detiene en paredes, no da invulnerabilidad y recarga en 3 s. Puede cortar la recuperación de un corte, nunca su preparación ni su filo.
+- **Furia:** se llena al golpear (12 por corte, 18 por el remate) y al cortar habilidades (hasta 15). Se ve como una barra bajo la vida. Tras 4 s sin ganarla empieza a bajar.
+- **R · Despertar del Juramento:** con la Furia llena, un mandala recorre el cuerpo de los pies a la cabeza y la espada despierta 8 s: cada corte lanza su tajo (el del remate es el más fuerte) y el daño sube 20 %. La barra pasa a ser el tiempo que queda. Morir lo apaga.
 
 ### Guerrero
 

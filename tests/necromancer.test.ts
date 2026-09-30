@@ -52,7 +52,7 @@ describe('nigromante', () => {
     run(d, 10);
     expect(d.state.arrows).toHaveLength(0);
   });
-  it('el fuego daña, lo frenan los muros y lo bloquea el escudo', () => {
+  it('el fuego daña, lo frenan los muros y lo absorbe el escudo mágico', () => {
     const hit = setup();
     Object.assign(hit.players[0], { x: 200, y: 270, angle: 0 });
     Object.assign(hit.players[1], { x: 300, y: 270 });
@@ -66,19 +66,18 @@ describe('nigromante', () => {
     run(wall.d, 12);
     expect(wall.players[1].hp).toBe(3);
     expect(wall.d.state.arrows).toHaveLength(0);
-    const shield = setup();
+    const shield = setup(['necromancer', 'mage']);
     Object.assign(shield.players[0], { x: 200, y: 270, angle: 0 });
     Object.assign(shield.players[1], { x: 300, y: 270, angle: Math.PI });
-    run(shield.d, 1, { 0: { shot: true }, 1: { guard: true, angle: Math.PI } });
-    run(shield.d, 10, { 1: { guard: true, angle: Math.PI } });
+    run(shield.d, 1, { 0: { shot: true } });
+    run(shield.d, 10);
     expect(shield.players[1].hp).toBe(3);
     expect(shield.d.state.events.some((e) => e.kind === 'block')).toBe(true);
   });
-  it('no usa espada, escudo ni dash, y las demás clases no invocan', () => {
+  it('no usa espada ni dash, y las demás clases no invocan', () => {
     const { d, players: [n] } = setup();
-    run(d, 1, { 0: { sword: true, guard: true, dash: true } });
+    run(d, 1, { 0: { sword: true, dash: true } });
     expect(n.windup).toBe(0);
-    expect(n.guarding).toBe(false);
     expect(n.dashCd).toBe(0);
     for (const classId of CLASS_IDS.filter((id) => !CLASSES[id].summon)) {
       const other = setup([classId, 'guardian']);

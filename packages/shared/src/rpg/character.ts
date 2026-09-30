@@ -246,12 +246,13 @@ export function worldInput(input: Input, weapon: Weapon, rooted = false): Input 
     trap: false,
     volley: false,
     special: false,
-    shieldBash: false,
-    fury: false,
     slash: false,
     counter: false,
     command: false,
     mark: false,
     slots: idleSlots(),
+    kit: undefined,
+    // The arena kits stay off: a weapon's click is the engine class's plain swing.
+    world: true,
   };
 }

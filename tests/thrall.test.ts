@@ -115,14 +115,15 @@ describe('esclavos que pelean con sus habilidades', () => {
     run(ticks(2));
     expect(d.state.zombies.some((z) => z.summoner === raised.id && z.kind === 'thrall')).toBe(false);
   });
-  it('caballero: levanta el escudo ante una flecha y responde con un golpe cargado', () => {
+  it('caballero: corta la flecha en el aire y responde con un golpe cargado', () => {
     const { d, foe, thrall, run, events } = setup('guardian');
     Object.assign(foe, { x: thrall.x + 60, y: thrall.y, hp: 99 });
     thrall.angle = 0;
     d.state.arrows.push(incoming(d, foe, { x: thrall.x + 110, y: thrall.y }));
     run(ticks(0.6));
     expect(thrall.hp).toBe(CLASSES.guardian.hp);
-    expect(events.some((e) => e.kind === 'block')).toBe(true);
+    expect(events.some((e) => e.kind === 'projectileCut')).toBe(true);
+    expect(d.state.arrows).toHaveLength(0);
     run(ticks(1));
     expect(events.some((e) => e.kind === 'sword' && (e.power ?? 0) >= 1)).toBe(true);
     expect(foe.hp).toBeLessThan(99);

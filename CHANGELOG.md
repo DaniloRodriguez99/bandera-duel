@@ -10,6 +10,25 @@
 - Arrastrar el botón de una habilidad sigue apuntándola, y Singularidad sigue yendo al punto del mapa que se toca.
 - Cerca del borde de la arena, el punto de mira de una palanca queda sobre la dirección apuntada en vez de torcerse hacia el borde.
 
+### Caballero: espadachín veloz
+
+El Caballero deja el escudo. Ahora es el más rápido de la arena y se defiende moviéndose y cortando lo que le tiran. Versión de prototipo: la jugabilidad está completa, los efectos visuales y de sonido son provisorios.
+
+- **Tres Cortes (clic).** El ataque básico es una cadena fija: dos cortes horizontales de derecha a izquierda y un remate vertical que es crítico si conecta. Un clic dado durante un corte queda en cola.
+- **El golpe sigue a la hoja.** Se acabó el semicírculo de 180°: los horizontales barren 120° al frente y golpean primero a quien está a la derecha; el remate es una franja angosta y más larga. Nada detrás del Caballero recibe el golpe, y cada corte pega una vez por rival.
+- **Carga por estados.** Mantener el clic carga el corte que toca: baja, media, alta y 100 %. Cada estado pega más y lanza un tajo más largo que sale de la hoja. La cadena espera mientras se carga.
+- **Corte de habilidades según la carga.** Un toque apenas debilita un proyectil; al 100 % lo parte en el aire. Antes cualquier golpe de espada destruía lo que cruzaba, sin carga. El Guerrero conserva ese corte por ahora.
+- **Ráfaga de Acero (clic derecho)** reemplaza a la guardia. Según la carga son tres cortes veloces, dos potenciados o uno devastador cuyo tajo parte habilidades. Recarga de 5 s.
+- **Paso Relámpago (Espacio)** es la embestida de antes con otro nombre. Puede cortar la recuperación de un corte.
+- **Furia y Despertar (R).** La Furia es un recurso: se llena al golpear y al cortar, se ve bajo la vida y se enfría si no se pelea. Llena, R despierta la espada 8 s: cada corte lanza su tajo y el daño sube 20 %. Ya no es una recarga de 15 s.
+- Se quitan la guardia y el golpe de escudo. Q, E y F quedan libres. Los perfiles guardados se reparan solos: la Ráfaga ocupa el lugar de la guardia y se conserva la skin.
+- El Caballero revivido por un Nigromante corta la flecha que le llega en vez de levantar el escudo.
+- Lugunica no cambia: la espada del mundo conserva su tajo de siempre.
+
+### Práctica
+
+- El rival de práctica se elige en la barra: inmóvil, dispara flechas, lanza orbes cargados o ataca con espada. Sirve para probar cortes y, más adelante, el parry.
+
 ### Base de combate
 
 Sistemas compartidos para el rediseño del Caballero y el Guerrero. Todavía no cambian cómo se juega ninguna clase.
