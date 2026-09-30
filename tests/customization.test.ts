@@ -77,6 +77,21 @@ describe('character customization model',()=>{
     expect(archer.presets.default.loadout).toMatchObject({q:'archer.volley',e:'archer.trap'});
     // A profile already on version 2 is left alone.
     expect(migrateCustomization('mage',defaultCustomization('mage'))).toEqual(defaultCustomization('mage'));
+    // A warrior saved before his launch and his iron body: the shared dodge becomes his launch and
+    // the free R takes the reinforcement; everything else stays.
+    const warrior=defaultCustomization('vanguard');
+    warrior.selectedSkin='vanguard.ironTitan';
+    warrior.presets.default.loadout={primary:'vanguard.sword',secondary:null,mobility:'common.dash',q:'vanguard.slash',e:'vanguard.counter',f:null,r:null};
+    warrior.presets.default.skillTreeSelection=['vanguard.sword','common.dash','vanguard.slash','vanguard.counter'];
+    expect(validCustomization('vanguard',warrior)).toBe(false);
+    const upgraded=migrateCustomization('vanguard',warrior) as CharacterCustomization;
+    expect(validCustomization('vanguard',upgraded)).toBe(true);
+    expect(upgraded.selectedSkin).toBe('vanguard.ironTitan');
+    expect(upgraded.presets.default.loadout).toEqual(DEFAULT_LOADOUTS.vanguard);
+    expect(upgraded.presets.default.skillTreeSelection).toEqual(['vanguard.sword','vanguard.dash','vanguard.slash','vanguard.counter','vanguard.reinforce']);
+    // One who moved something else into R keeps it.
+    const busy=structuredClone(warrior);busy.presets.default.loadout.r='vanguard.counter';busy.presets.default.loadout.e=null;
+    expect((migrateCustomization('vanguard',busy) as CharacterCustomization).presets.default.loadout.r).toBe('vanguard.counter');
   });
   it('todas las clases comparten los mismos siete controles',()=>{
     for(const classId of CLASS_IDS)

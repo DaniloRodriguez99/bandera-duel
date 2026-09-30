@@ -12,6 +12,7 @@ export const SPARRING = {
   arrows: { label: 'Dispara flechas', classId: 'archer', text: 'Una flecha cada 1,4 s, para cortarlas o devolverlas.' },
   orbs: { label: 'Lanza orbes cargados', classId: 'mage', text: 'Un orbe de fuego a plena carga cada 2,6 s.' },
   blade: { label: 'Ataca con espada', classId: 'guardian', text: 'Se acerca y encadena cortes.' },
+  waves: { label: 'Lanza tajos', classId: 'vanguard', text: 'Una Creciente Escarlata cargada cada 3,5 s, para cortarla o devolverla.' },
 } as const satisfies Record<string, { label: string; classId: ClassId; text: string }>;
 export type SparringMode = keyof typeof SPARRING;
 export const validSparring = (value: unknown): value is SparringMode =>
@@ -24,6 +25,9 @@ const ORB_EVERY = ticks(2.6);
 /** A charged orb is held this long before it goes. */
 const ORB_HOLD = ticks(RULES.overchargeTime + 0.1);
 const CUT_EVERY = ticks(0.5);
+const WAVE_EVERY = ticks(3.5);
+/** A crescent held this long before it goes: past its first step, well short of a full charge. */
+const WAVE_HOLD = ticks(1.2);
 
 export class Practice {
   readonly duel: Duel;
@@ -59,11 +63,17 @@ export class Practice {
     const [player, dummy] = this.duel.state.players;
     const input = idleInput(this.duel.state.tick, Math.atan2(player.y - dummy.y, player.x - dummy.x));
     if (dummy.hp <= 0 || player.hp <= 0) return input;
-    const click = (state: Partial<Input['slots']['primary']>) => {
-      input.slots.primary = { pressed: false, held: false, released: false, ...state };
+    const click = (state: Partial<Input['slots']['primary']>, slot: keyof Input['slots'] = 'primary') => {
+      input.slots[slot] = { pressed: false, held: false, released: false, ...state };
     };
     if (this.sparring === 'arrows') {
       if (this.clock % ARROW_EVERY === 0) click({ pressed: true, released: true });
+    } else if (this.sparring === 'waves') {
+      // A rival for testing: every beat starts rested, with its crescent ready and its mana full.
+      const phase = this.clock % WAVE_EVERY;
+      if (phase === 0) Object.assign(dummy, { slashCd: 0, mana: dummy.maxMana });
+      if (phase < WAVE_HOLD) click({ pressed: phase === 0, held: true }, 'q');
+      else if (phase === WAVE_HOLD) click({ released: true }, 'q');
     } else if (this.sparring === 'orbs') {
       // Held for the whole charge, then let go.
       const phase = this.clock % ORB_EVERY;

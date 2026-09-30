@@ -19,6 +19,10 @@ export function loadCustomization(classId:ClassId):CharacterCustomization {
 }
 /** Skills that no longer exist, and what took their place in the kit; null when nothing did. */
 const RETIRED: Record<string, SkillId | null> = { 'guardian.guard': 'guardian.flurry', 'guardian.shieldBash': null };
+/** Skills a class no longer uses, by class, and what took their place. */
+const REPLACED: Partial<Record<ClassId, Record<string, SkillId>>> = { vanguard: { 'common.dash': 'vanguard.dash' } };
+/** Skills a class gained: a saved profile gets them where the default puts them, if that slot is free. */
+const GAINED: Partial<Record<ClassId, SkillId[]>> = { vanguard: ['vanguard.reinforce'] };
 /**
  * Brings a saved profile up to date.
  *
@@ -35,10 +39,24 @@ export function migrateCustomization(classId:ClassId,raw:unknown):unknown {
   const value=clone(raw) as unknown as {version:number;classId:ClassId;presets:Record<string,{loadout:Record<string,unknown>;bindings:unknown;skillTreeSelection?:SkillId[]}>};
   if(value.classId!==classId||!value.presets||typeof value.presets!=='object')return raw;
   let repaired=false;
+  const replaced=REPLACED[classId]??{};
   for(const preset of Object.values(value.presets)){
     if(!preset?.loadout||typeof preset.loadout!=='object')continue;
-    for(const [slot,id] of Object.entries(preset.loadout))
+    for(const [slot,id] of Object.entries(preset.loadout)){
       if(typeof id==='string'&&id in RETIRED){preset.loadout[slot]=RETIRED[id];repaired=true;}
+      else if(typeof id==='string'&&id in replaced){preset.loadout[slot]=replaced[id];repaired=true;}
+    }
+    if(Array.isArray(preset.skillTreeSelection)&&preset.skillTreeSelection.some(id=>id in replaced)){
+      preset.skillTreeSelection=preset.skillTreeSelection.map(id=>replaced[id]??id);
+      repaired=true;
+    }
+    for(const id of GAINED[classId]??[]){
+      const home=SKILL_SLOTS.find(slot=>DEFAULT_LOADOUTS[classId][slot]===id);
+      if(!home||preset.loadout[home]||Object.values(preset.loadout).includes(id))continue;
+      preset.loadout[home]=id;
+      if(Array.isArray(preset.skillTreeSelection)&&!preset.skillTreeSelection.includes(id))preset.skillTreeSelection.push(id);
+      repaired=true;
+    }
     if(Array.isArray(preset.skillTreeSelection)&&preset.skillTreeSelection.some(id=>id in RETIRED)){
       preset.skillTreeSelection=[...new Set(preset.skillTreeSelection.flatMap(id=>id in RETIRED?(RETIRED[id]?[RETIRED[id]!]:[]):[id]))];
       repaired=true;

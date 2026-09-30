@@ -87,7 +87,7 @@ export class DuelRoom extends Room {
     this.lastHumanInput.set(id, { angle: input.angle, aimX: input.aimX, aimY: input.aimY });
     // Every key of the universal layout counts: a press, a hold or a release on any slot.
     const keys = SKILL_SLOTS.some(slot => input.slots[slot].pressed || input.slots[slot].held || input.slots[slot].released);
-    const action = keys || input.sword || input.shot || input.dash || input.summon || input.trap || input.volley || input.command || input.mark || input.ice || input.slash || input.guard;
+    const action = keys || input.sword || input.shot || input.dash || input.summon || input.trap || input.volley || input.command || input.mark || input.ice || input.guard;
     return !!action || Math.abs(input.x) > 0.01 || Math.abs(input.y) > 0.01 || (!!previous && (Math.abs(input.angle - previous.angle) > 0.01 || Math.abs(input.aimX - previous.aimX) > 0.01 || Math.abs(input.aimY - previous.aimY) > 0.01));
   }
   private closeRoom(reason: RoomClosingReason) {
@@ -241,7 +241,7 @@ export class DuelRoom extends Room {
         const input =
           next ??
           (Date.now() - (this.receivedAt.get(p.id) ?? 0) < 250
-            ? { ...old, sword: false, shot: false, dash: false, blackHoleRelease: false, blackHoleDetonate: false, blinkRelease: false, summon: false, trap: false, volley: false, command: false, mark: false, ice: false, slash: false,
+            ? { ...old, sword: false, shot: false, dash: false, blackHoleRelease: false, blackHoleDetonate: false, blinkRelease: false, summon: false, trap: false, volley: false, command: false, mark: false, ice: false,
                 slots:Object.assign(idleSlots(),Object.fromEntries(SKILL_SLOTS.map(slot=>[slot,{pressed:false,held:old.slots[slot].held,released:false}])))}
             : idleInput(old.seq, p.angle));
         this.last.set(p.id, input);

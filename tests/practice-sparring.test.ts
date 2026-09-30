@@ -76,6 +76,30 @@ describe('rival de práctica', () => {
     expect(99 - player.hp).toBeCloseTo(2.5);
   });
 
+  it('el que lanza tajos carga una Creciente Escarlata a ritmo fijo, y el Guerrero se la puede devolver', () => {
+    const practice = new Practice('vanguard', 'Vos', 'courtyard', undefined, 'waves');
+    const [player, dummy] = practice.duel.state.players;
+    Object.assign(player, { x: 400, y: 270, angle: 0, hp: 99, maxHp: 99 });
+    let thrown = 0;
+    let before = 0;
+    let parried = false;
+    for (let i = 0; i < ticks(8); i++) {
+      const wave = practice.duel.state.waves.find((w) => w.owner === dummy.id);
+      // Face the dummy and raise the guard as its crescent arrives.
+      const input = wave && player.x - (wave.x - wave.travelled) > -60 && !player.counterCd
+        ? key('e', { pressed: true }, { angle: 0 })
+        : idleInput(i, 0);
+      practice.step(input);
+      const now = practice.duel.state.waves.filter((w) => w.owner === dummy.id).length;
+      if (now > before) thrown++;
+      before = now;
+      parried ||= practice.duel.state.waves.some((w) => w.owner === player.id);
+    }
+    // One every 3.5 s, charged past its first step.
+    expect(thrown).toBe(2);
+    expect(parried).toBe(true);
+  });
+
   it('el que ataca con espada se acerca a medio paso y encadena cortes al llegar', () => {
     const practice = new Practice('archer', 'Vos', 'courtyard', undefined, 'blade');
     const [player, dummy] = practice.duel.state.players;

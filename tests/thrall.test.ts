@@ -128,15 +128,21 @@ describe('esclavos que pelean con sus habilidades', () => {
     expect(events.some((e) => e.kind === 'sword' && (e.power ?? 0) >= 1)).toBe(true);
     expect(foe.hp).toBeLessThan(99);
   });
-  it('guerrero: contraataca una flecha, se acerca con dash y lanza el tajo', () => {
-    const { d, foe, thrall, run, shots, events, actions } = setup('vanguard');
+  it('guerrero: devuelve una flecha, se acerca con dash y lanza la creciente', () => {
+    const { d, foe, thrall, run, events, actions } = setup('vanguard');
     Object.assign(foe, { x: thrall.x + 230, y: thrall.y, hp: 99 });
     d.state.arrows.push(incoming(d, foe, { x: thrall.x + 100, y: thrall.y }));
     run(ticks(0.5));
     expect(events.some((e) => e.kind === 'counter')).toBe(true);
     expect(thrall.hp).toBe(CLASSES.vanguard.hp);
-    run(ticks(3));
+    let crescents = 0;
+    for (let i = 0; i < ticks(3); i++) {
+      run(1);
+      crescents = Math.max(crescents, d.state.waves.filter((w) => w.owner === 'n' && w.classId === 'vanguard').length);
+    }
     expect(actions.has('dash')).toBe(true);
-    expect(shots().some((a) => a.slash)).toBe(true);
+    // The crescent a tap throws, in its necromancer's name.
+    expect(crescents).toBeGreaterThan(0);
+    expect(events.some((e) => e.kind === 'slash')).toBe(true);
   });
 });

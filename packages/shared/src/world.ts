@@ -21,6 +21,7 @@ import {
   type ClassId,
   type DamageOptions,
   type Grave,
+  type Parry,
   type Input,
   type MapDefinition,
   type Player,
@@ -509,6 +510,17 @@ export class World extends Duel {
     // clamp to instead of refilling: a character came back from the shrine at a third of its life.
     p.hp = p.maxHp;
   }
+
+  /**
+   * Lugunica's parada covers every side and sends things straight back; held long enough it
+   * returns them twice as fast and hard. Its window and cooldown are the world skill's own.
+   */
+  protected override parryOf(target: Player): Parry | null {
+    if (target.hp <= 0 || target.counterLeft <= 0) return null;
+    const boost = target.counterCharge >= RULES.counterChargeTime - 1e-8 ? RULES.counterBoost : 1;
+    return { homing: 0, speed: boost, damage: boost };
+  }
+  protected override parried() {}
 
   /** A character keeps the mana it had: the sheet sizes the pool and the world refills it. */
   protected override poolsAfterDeath(p: Player): Pick<Player, 'mana' | 'maxMana'> {

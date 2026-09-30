@@ -56,10 +56,10 @@ describe('creación del personaje', () => {
   });
 
   it('las habilidades de clase del duelo no existen en el mundo', () => {
-    const input = { ...idleInput(), x: 1, slash: true, dash: true, counter: true, volley: true, shot: true };
+    const input = { ...idleInput(), x: 1, dash: true, volley: true, shot: true };
     input.slots.primary = { pressed: true, held: true, released: false };
     const espada = worldInput(input, 'espada');
-    expect(espada).toMatchObject({ x: 1, slash: false, dash: false, counter: false, volley: false, shot: true });
+    expect(espada).toMatchObject({ x: 1, dash: false, volley: false, shot: true });
     // No arena kit runs there: the keys arrive empty and the input says it is the world's.
     expect(espada.world).toBe(true);
     expect(espada.kit).toBeUndefined();

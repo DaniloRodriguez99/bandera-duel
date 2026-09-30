@@ -8,8 +8,10 @@ function input(options:Partial<Input>={}):Input{return {...idleInput(),...option
 function step(d:Duel,p:Player,options:Partial<Input>={},count=1){for(let i=0;i<count;i++)d.step(new Map([[p.id,input(options)]]));}
 describe('clases y persistencia',()=>{
   it.each(CLASS_IDS)('%s usa vida y velocidad propias, incluida penalización de bandera',id=>{
-    const p=newPlayer('p','P','blue',id);const x=p.x;movePlayer(p,input({x:1}),false,1/30);expect(p.x-x).toBeCloseTo(CLASSES[id].speed/30);expect(p.hp).toBe(CLASSES[id].hp);expect(p.maxHp).toBe(p.hp);
-    const q=newPlayer('q','Q','red',id);const qx=q.x;movePlayer(q,input({x:-1}),true);expect(qx-q.x).toBeCloseTo(CLASSES[id].speed*.85/30);
+    // Up to speed first: the warrior takes a moment to get going.
+    const run=(p:Player,x:number,carrying:boolean)=>{for(let i=0;i<10;i++)movePlayer(p,input({x}),carrying,1/30);};
+    const p=newPlayer('p','P','blue',id);run(p,1,false);const x=p.x;movePlayer(p,input({x:1}),false,1/30);expect(p.x-x).toBeCloseTo(CLASSES[id].speed/30);expect(p.hp).toBe(CLASSES[id].hp);expect(p.maxHp).toBe(p.hp);
+    const q=newPlayer('q','Q','red',id);run(q,-1,true);const qx=q.x;movePlayer(q,input({x:-1}),true);expect(qx-q.x).toBeCloseTo(CLASSES[id].speed*.85/30);
   });
   it('clase inicial, cambio compartido de listo y bloqueo de selección',()=>{
     const d=new Duel(),p=d.add('a','A'),q=d.add('b','B');expect(p.classId).toBe('guardian');d.ready(p.id);expect(p.ready).toBe(true);
@@ -25,8 +27,8 @@ describe('clases y persistencia',()=>{
   });
 });
 describe('armas y permisos',()=>{
-  // The knight's blade runs through its own moves (tests/guardian.test.ts).
-  it.each(CLASS_IDS.filter(id=>CLASSES[id].melee&&id!=='guardian'))('%s: daño, alcance y preparación cuerpo a cuerpo',id=>{
+  // The knight's and the warrior's blades run through their own moves (guardian and vanguard tests).
+  it.each(CLASS_IDS.filter(id=>CLASSES[id].melee&&id!=='guardian'&&id!=='vanguard'))('%s: daño, alcance y preparación cuerpo a cuerpo',id=>{
     const {d,p,q}=setup(id,'vanguard');q.x=p.x+CLASSES[id].meleeRange-1;step(d,p,{sword:true});expect(q.hp).toBe(5);
     step(d,p,{},Math.ceil(CLASSES[id].windup/RULES.tick)+1);expect(q.hp).toBe(5-CLASSES[id].meleeDamage);
     const fresh=setup(id,'vanguard');fresh.q.x=fresh.p.x+CLASSES[id].meleeRange+1;step(fresh.d,fresh.p,{sword:true});step(fresh.d,fresh.p,{},12);expect(fresh.q.hp).toBe(5);
@@ -34,8 +36,9 @@ describe('armas y permisos',()=>{
   it.each(['guardian'] as ClassId[])('%s rechaza flechas y usa embestida',id=>{
     const {d,p}=setup(id);const x=p.x;step(d,p,{shot:true,dash:true,x:1});expect(d.state.arrows).toHaveLength(0);expect(p.x).toBeGreaterThan(x);expect(p.dashCd).toBeGreaterThan(0);
   });
-  it('vanguard rechaza flechas pero esquiva con espacio',()=>{
-    const {d,p}=setup('vanguard');step(d,p,{shot:true,dash:true});expect(d.state.arrows).toHaveLength(0);expect(p.dashCd).toBeGreaterThan(0);
+  it('vanguard rechaza flechas y la entrada vieja del dash no lo mueve: embiste con su tecla',()=>{
+    const {d,p}=setup('vanguard');step(d,p,{shot:true,dash:true});expect(d.state.arrows).toHaveLength(0);expect(p.dashCd).toBe(0);
+    const slots=idleInput().slots;slots.mobility={pressed:true,held:false,released:true};step(d,p,{slots});expect(p.dashCd).toBeGreaterThan(0);
   });
   it('el mago lanza fuego, rechaza báculo y puede esquivar',()=>{
     const {d,p,q}=setup('mage','vanguard');q.y=450;step(d,p,{shot:true});expect(d.state.arrows[0].classId).toBe('mage');
@@ -46,7 +49,7 @@ describe('armas y permisos',()=>{
     const {d,p,q}=setup('archer');p.x=80;q.y=450;step(d,p,{shot:true});const arrow=d.state.arrows[0];expect(arrow.x-80).toBeCloseTo(RULES.archerArrowSpeed/30);
     step(d,p,{},35);expect(arrow.x-80).toBeCloseTo(672);step(d,p);expect(d.state.arrows).toHaveLength(0);
   });
-  it('la espada pesada tampoco atraviesa paredes',()=>{const {d,p,q}=setup('vanguard');Object.assign(p,{x:480,y:150});Object.assign(q,{x:480,y:219});step(d,p,{sword:true,angle:Math.PI/2});step(d,p,{},12);expect(q.hp).toBe(3);});
+  it('la espada pesada tampoco atraviesa paredes',()=>{const {d,p,q}=setup('vanguard');Object.assign(p,{x:480,y:150});Object.assign(q,{x:480,y:219});const slots=idleInput().slots;slots.primary={pressed:true,held:false,released:true};step(d,p,{slots,angle:Math.PI/2});step(d,p,{angle:Math.PI/2},30);expect(q.hp).toBe(3);});
 });
 describe('escudo mágico',()=>{
   it('el escudo mágico absorbe dos golpes de cualquier daño y dirección; el tercero hiere',()=>{

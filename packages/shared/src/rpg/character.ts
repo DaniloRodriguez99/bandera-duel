@@ -246,8 +246,6 @@ export function worldInput(input: Input, weapon: Weapon, rooted = false): Input 
     trap: false,
     volley: false,
     special: false,
-    slash: false,
-    counter: false,
     command: false,
     mark: false,
     slots: idleSlots(),

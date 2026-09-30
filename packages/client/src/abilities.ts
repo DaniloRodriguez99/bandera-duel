@@ -1,4 +1,4 @@
-import { CLASSES, DEFAULT_BINDINGS, KIT, KNIGHT_AWAKEN, MOVES, RESOURCES, RULES, SKILLS, affordable, blackHoleStats, chargePower, chargeProgress, chargeTier, kitCooldown, projectileSkillStats, skillCost, type ClassId, type InputBindings, type PhysicalBinding, type Player, type ResourceCost, type SkillId, type SkillSlot, type Snapshot } from '@bandera/shared';
+import { CLASSES, DEFAULT_BINDINGS, KIT, KNIGHT_AWAKEN, MOVES, RESOURCES, RULES, SKILLS, WARRIOR_PARRY, WARRIOR_REINFORCE, affordable, blackHoleStats, chargePower, chargeProgress, chargeTier, kitCooldown, overcharge, projectileSkillStats, skillCost, type ClassId, type InputBindings, type PhysicalBinding, type Player, type ResourceCost, type SkillId, type SkillSlot, type Snapshot } from '@bandera/shared';
 
 /**
  * Whether this player's Singularidad is still out. Its key then bursts the hole, so its card and
@@ -59,7 +59,8 @@ export const ABILITY_IDS: Record<SkillId, string> = {
   'mage.blackHole': 'black-hole', 'necromancer.fire': 'shot', 'necromancer.summon': 'summon',
   'guardian.sword': 'sword', 'guardian.flurry': 'flurry', 'guardian.dash': 'dash',
   'guardian.fury': 'fury', 'vanguard.sword': 'sword',
-  'vanguard.slash': 'slash', 'vanguard.counter': 'counter', 'common.dash': 'dash',
+  'vanguard.slash': 'slash', 'vanguard.counter': 'counter', 'vanguard.dash': 'dash',
+  'vanguard.reinforce': 'reinforce', 'common.dash': 'dash',
 };
 /** Short names that fit a card. */
 const CARD_NAMES: Record<SkillId, string> = {
@@ -68,8 +69,8 @@ const CARD_NAMES: Record<SkillId, string> = {
   'mage.blink': 'Parpadeo', 'mage.blackHole': 'Singularidad', 'necromancer.fire': 'Fuego',
   'necromancer.summon': 'Invocar zombies', 'guardian.sword': 'Tres Cortes', 'guardian.flurry': 'Ráfaga de Acero',
   'guardian.dash': 'Paso Relámpago', 'guardian.fury': 'Despertar',
-  'vanguard.sword': 'Espada pesada', 'vanguard.slash': 'Tajo viajero', 'vanguard.counter': 'Contraataque',
-  'common.dash': 'Esquivar',
+  'vanguard.sword': 'Mandoble Colosal', 'vanguard.slash': 'Creciente Escarlata', 'vanguard.counter': 'Revancha de Hierro',
+  'vanguard.dash': 'Avance Imparable', 'vanguard.reinforce': 'Cuerpo de Hierro', 'common.dash': 'Esquivar',
 };
 const COMPANION_NAMES: Record<Companion, string> = { companionCommand: 'Mando', companionMark: 'Marcar' };
 const COMPANION_HOW_TO: Record<Companion, string> = {
@@ -95,16 +96,14 @@ function cooldownOf(id: SkillId, p: Player): number {
     case 'common.dash': case 'mage.blink': case 'guardian.dash': return p.dashCd;
     case 'archer.trap': return p.trapCd;
     case 'archer.volley': return p.volleyCd;
-    case 'archer.dagger': case 'vanguard.sword': return p.swordCd;
-    case 'vanguard.slash': return p.slashCd;
-    case 'vanguard.counter': return p.counterCd;
+    case 'archer.dagger': return p.swordCd;
     default: return p.shotCd;
   }
 }
 function maxCooldown(id: SkillId, classId: ClassId) {
   if (id === 'archer.arrow' || id === 'mage.fireball' || id === 'necromancer.fire')
     return projectileSkillStats(id, classId).cooldown;
-  if (id === 'archer.dagger' || id === 'vanguard.sword') return CLASSES[classId].meleeCooldown;
+  if (id === 'archer.dagger') return CLASSES[classId].meleeCooldown;
   return SKILLS[id].cooldown || 1;
 }
 /** What a card says when it is off cooldown: a charge, the shield's seals, an active state. */
@@ -114,13 +113,18 @@ function detailOf(id: SkillId, p: Player): string | null {
   if (id === 'mage.blackHole') return p.blackHoleCharge > 0 ? percent(blackHoleStats(p.blackHoleCharge).power) : null;
   if (id === 'archer.trap') return p.trapLeft > 0 ? 'Preparando' : null;
   // The awakening shows its own fuel: the Rage that fills it, then the seconds it lasts.
-  if (id === 'guardian.fury') return p.furyLeft > 0 ? `${p.furyLeft.toFixed(1)}s` : `${Math.floor(p.rage)} %`;
-  // A kit skill says how far its charge has gone, then the move it is performing.
+  if (id === 'guardian.fury') return p.empowered === 'awaken' ? `${p.furyLeft.toFixed(1)}s` : `${Math.floor(p.rage)} %`;
+  if (id === 'vanguard.reinforce') return p.empowered === 'reinforce' ? `${p.furyLeft.toFixed(1)}s` : null;
+  if (id === 'vanguard.counter') return p.counterLeft > 0 ? 'Activo' : null;
+  // A kit skill says how far its charge has gone (past 100 % when it overcharges), then the move
+  // it is performing.
   if (id in KIT) {
-    if (p.chargeSkill === id) return percent(chargeProgress(KIT[id].charge, p.chargeT));
+    if (p.chargeSkill === id) {
+      const over = overcharge(KIT[id].charge, p.chargeT);
+      return over > 0 ? `${100 + Math.round(over * 100)} %` : percent(chargeProgress(KIT[id].charge, p.chargeT));
+    }
     return p.move.startsWith(`${id}:`) ? MOVES[p.move].name : null;
   }
-  if (id === 'vanguard.counter') return p.counterLeft > 0 ? 'Activo' : null;
   return null;
 }
 /** Each ability's branches: what a tap, a hold or a full charge does, lit while it applies. */
@@ -146,23 +150,14 @@ function tiersOf(id: SkillId, classId: ClassId): AbilityTier[] | undefined {
           state: (p) => (p.shotCharge > 0 ? percent(chargePower(p.shotCharge)) : null),
         },
       ];
-    case 'vanguard.sword':
-      return [
-        { label: 'Toque · golpe', active: (p) => tapped(p.shotCharge) },
-        {
-          label: 'Mantener · golpe cargado',
-          active: (p) => p.shotCharge >= RULES.overchargeTap,
-          state: (p) => (p.shotCharge > 0 ? percent(chargePower(p.shotCharge)) : null),
-        },
-      ];
     case 'guardian.dash':
       return [{ label: '190 u · corta a quien atraviesa', active: (p) => p.dashLeft > 0 }];
     case 'guardian.fury':
       return [
         {
           label: `Furia llena · ${KNIGHT_AWAKEN.duration} s de espada despierta`,
-          active: (p) => p.furyLeft > 0 || p.rage >= RESOURCES.rage.max,
-          state: (p) => (p.furyLeft > 0 ? `${p.furyLeft.toFixed(1)}s` : `${Math.floor(p.rage)} %`),
+          active: (p) => p.empowered === 'awaken' || p.rage >= RESOURCES.rage.max,
+          state: (p) => (p.empowered === 'awaken' ? `${p.furyLeft.toFixed(1)}s` : `${Math.floor(p.rage)} %`),
         },
       ];
     case 'mage.blink':
@@ -222,11 +217,16 @@ function tiersOf(id: SkillId, classId: ClassId): AbilityTier[] | undefined {
       return [{ label: 'Inmoviliza 1 s' }];
     case 'vanguard.counter':
       return [
-        { label: 'Toque · devuelve proyectiles', active: (p) => p.counterLeft > 0 && p.counterCharge < RULES.counterChargeTime - 1e-8 },
+        { label: 'De frente · lo devuelve hacia quien lo lanzó', active: (p) => p.counterLeft > 0 },
+        { label: 'Cuerpo a cuerpo · lo frena y lo hace tambalear', active: (p) => p.counterLeft > 0 },
+        { label: `Si falla · ${String(WARRIOR_PARRY.cooldown).replace('.', ',')} s de recarga` },
+      ];
+    case 'vanguard.reinforce':
+      return [
         {
-          label: 'Mantener 1 s · doble de rápido y fuerte',
-          active: (p) => p.counterCharge >= RULES.counterChargeTime - 1e-8,
-          state: (p) => (p.counterLeft > 0 ? percent(p.counterCharge / RULES.counterChargeTime) : null),
+          label: `${WARRIOR_REINFORCE.duration} s · −${Math.round((1 - WARRIOR_REINFORCE.taken) * 100)} % de daño, nada lo empuja`,
+          active: (p) => p.empowered === 'reinforce',
+          state: (p) => (p.empowered === 'reinforce' ? `${p.furyLeft.toFixed(1)}s` : null),
         },
       ];
     default:

@@ -96,6 +96,9 @@ const SPELL_NOTES: Record<string, number[]> = {
   fury: [92, 138, 69],
   projectileCut: [740, 495],
   swing: [560],
+  // The warrior's greatsword: low and heavy. His parry rings like struck metal.
+  swingHeavy: [196, 131],
+  counter: [1320, 990],
 };
 export function sound(kind: string) {
   if (muted || !context || context.state !== 'running' || document.hidden) return;
