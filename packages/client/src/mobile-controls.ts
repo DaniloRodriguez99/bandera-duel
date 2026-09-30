@@ -1,5 +1,5 @@
 import { CLASSES, DEFAULT_LOADOUTS, KIT, RULES, affordable, chargeProgress, overcharge, type ClassId, type Player, type SkillSlot } from '@bandera/shared';
-import { abilityCards, type AbilitySlot } from './abilities.js';
+import { abilityCards, chargeGlow, type AbilitySlot } from './abilities.js';
 import { hasFaces, showFace } from './combo-icons.js';
 
 /** Thumb order: the big attack button first, mobility beside it, then the class's abilities. */
@@ -143,6 +143,9 @@ export function updateTouchAbilities(root: HTMLElement, p: Player, holeLive = fa
     node.dataset.active = String(live || activeFor(slot.id, p));
     node.style.setProperty('--cd', String(live ? 0 : Math.min(1, cooldown / Math.max(0.001, slot.max))));
     node.style.setProperty('--charge', String(charge));
+    // The ring takes the colour of the state the charge has reached.
+    const glow = chargeGlow(slot.skillId, p);
+    if (glow) node.style.setProperty('--charge-color', glow);
     node.querySelector<HTMLElement>('.touch-ability-status')!.textContent = status;
     if (hasFaces(slot.skillId)) showFace(node.querySelector<HTMLElement>('.touch-ability-face')!, p, slot.skillId);
     node.setAttribute('aria-label', `${slot.name} · ${live ? 'tocá para detonar' : cooldown > 0 ? `${cooldown.toFixed(1)} segundos` : 'lista'}`);

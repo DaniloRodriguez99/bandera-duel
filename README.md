@@ -214,7 +214,7 @@ El Caballero y el Guerrero traen 100 de maná a la arena; las otras clases todav
 
 Cada habilidad declara su costo como datos: lo que gasta al salir, lo mínimo para empezar y lo que gasta por segundo mientras se carga. Cargar nunca se come lo que cuesta soltar: si el maná no alcanza para seguir, la carga se queda donde está. La Ráfaga de Acero cuesta 20 al salir y 15 por segundo de carga.
 
-Para probar habilidades hay una franja **PRUEBAS** con el maná actual, **Límite de maná** (apagado, todos los pozos de la sala quedan llenos, aunque las recargas siguen corriendo) y **Recargar maná**, que llena el tuyo al instante. Aparece siempre en la práctica y en las salas de un servidor que no corre en producción (`NODE_ENV` distinto de `production`); en producción no existe.
+Para probar habilidades hay una franja **PRUEBAS** con el maná actual, **Límite de maná** (apagado, todos los pozos de la sala quedan llenos, aunque las recargas siguen corriendo) y **Recargar maná**, que llena el tuyo al instante. Aparece en la práctica de las versiones de desarrollo (`vite dev`, o un build hecho con `VITE_DEV_TOOLS=true`) y en las salas de un servidor que no corre en producción (`NODE_ENV` distinto de `production`). La versión publicada no la tiene: su práctica juega con las reglas normales.
 
 ### Combates en vivo
 

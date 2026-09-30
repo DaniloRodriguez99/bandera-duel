@@ -103,9 +103,13 @@ test('el caballero muestra sus técnicas: cadena de cortes, carga por estados, R
   await page.mouse.up();
   await expect(chain).toHaveText('2/3');
   await expect(face).toHaveAttribute('data-face', '1');
-  // Holding charges through its states; the last one lights up, and the chain waits for it.
+  // Holding charges through its states; the last one lights up, and the chain waits for it. The
+  // card's icon glows while it charges.
+  const card = abilities.locator('[data-position="primary"] .ability');
+  await expect(card).toHaveAttribute('data-charging', 'false');
   await page.mouse.down();
   await expect(page.locator('#cd-sword')).toContainText('Cargando');
+  await expect(card).toHaveAttribute('data-charging', 'true');
   await expect(tree.filter({ hasText: '100 %' })).toHaveAttribute('data-active', 'true', { timeout: 4000 });
   await page.screenshot({ path: info.outputPath('caballero-carga.png') });
   await page.mouse.up();
