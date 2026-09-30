@@ -29,6 +29,12 @@ const WAVE_EVERY = ticks(3.5);
 /** A crescent held this long before it goes: past its first step, well short of a full charge. */
 const WAVE_HOLD = ticks(1.2);
 
+/**
+ * Whether the testing controls (the mana limit switch and the refill) exist: in development builds,
+ * or in a build made with VITE_DEV_TOOLS=true. Never in the published game.
+ */
+export const DEV_TOOLS = import.meta.env.DEV || import.meta.env.VITE_DEV_TOOLS === 'true';
+
 export class Practice {
   readonly duel: Duel;
   /** Ticks the rival has been sparring, which pace what it does. */
@@ -41,8 +47,9 @@ export class Practice {
     readonly sparring: SparringMode = 'still',
   ) {
     this.duel = new Duel(mapId, 'duel');
-    // Practice is where skills get tested: the mana limit can be switched off from the toolbar.
-    this.duel.enableDevTools();
+    // In a development build, practice is where skills get tested: the mana limit can be switched
+    // off from the toolbar. The published game plays by its normal rules.
+    if (DEV_TOOLS) this.duel.enableDevTools();
     this.duel.add(PRACTICE_PLAYER, name, classId, customization);
     this.duel.add(PRACTICE_DUMMY, 'Rival de práctica', SPARRING[sparring].classId);
     this.duel.state.phase = 'playing';

@@ -1,4 +1,4 @@
-import { CLASSES, DEFAULT_BINDINGS, KIT, KNIGHT_AWAKEN, MOVES, RULES, curve, SKILLS, WARRIOR_PARRY, WARRIOR_REINFORCE, affordable, blackHoleStats, chargePower, chargeProgress, chargeTier, kitCooldown, overcharge, projectileSkillStats, skillCost, type ClassId, type InputBindings, type PhysicalBinding, type Player, type ResourceCost, type SkillId, type SkillSlot, type Snapshot } from '@bandera/shared';
+import { CLASSES, DEFAULT_BINDINGS, KIT, KNIGHT_AWAKEN, MOVES, RULES, WAVE_COLORS, curve, SKILLS, WARRIOR_PARRY, WARRIOR_REINFORCE, affordable, blackHoleStats, chargePower, chargeProgress, chargeTier, kitCooldown, overcharge, projectileSkillStats, skillCost, type ClassId, type InputBindings, type PhysicalBinding, type Player, type ResourceCost, type SkillId, type SkillSlot, type Snapshot } from '@bandera/shared';
 import { hasFaces, showFace } from './combo-icons.js';
 
 /**
@@ -127,6 +127,24 @@ function detailOf(id: SkillId, p: Player): string | null {
     return p.move.startsWith(`${id}:`) ? MOVES[p.move].name : null;
   }
   return null;
+}
+/**
+ * The colour a charging skill's card glows in: its charge state's own for the kit skills, gold for
+ * the other held ones. Null while it is not being charged.
+ */
+export function chargeGlow(id: SkillId | undefined, p: Player): string | null {
+  if (!id) return null;
+  if (id in KIT) {
+    if (p.chargeSkill !== id) return null;
+    const tint = chargeTier(KIT[id].charge, p.chargeT).tier.tint;
+    return tint ? WAVE_COLORS[tint].glow : '#e6ecec';
+  }
+  const held =
+    id === 'mage.blink' ? p.blinkCharge :
+    id === 'mage.blackHole' ? p.blackHoleCharge :
+    id === 'necromancer.summon' || id === 'common.dash' ? p.specialCharge :
+    id === 'archer.arrow' || id === 'mage.fireball' || id === 'necromancer.fire' ? p.shotCharge : 0;
+  return held > 0 ? '#f3ce86' : null;
 }
 /** Each ability's branches: what a tap, a hold or a full charge does, lit while it applies. */
 function tiersOf(id: SkillId, classId: ClassId): AbilityTier[] | undefined {
@@ -414,6 +432,10 @@ export function updateAbilities(root: HTMLElement, p: Player, bindings: InputBin
     card.querySelector('.ability-state')!.textContent = live ? 'Detonar' : left > 0 ? `${left.toFixed(1)}s` : (detail ?? '');
     card.querySelector('.ability-cd')!.textContent = live && left > 0 ? `${left.toFixed(1)}s` : '';
     const lacking = `sin maná (${slot.cost?.amount} M)`;
+    // A charge shows on its card too: the icon glows in the colour of the state it has reached.
+    const glow = chargeGlow(slot.skillId, p);
+    card.dataset.charging = String(!!glow);
+    if (glow) card.style.setProperty('--tier-glow', glow);
     if (hasFaces(slot.skillId)) showFace(card.querySelector<HTMLElement>('.ability-face')!, p, slot.skillId);
     card.setAttribute('aria-label', `${slot.name} · ${slot.key} · ${!paid ? lacking : live ? `detonar · recarga ${left.toFixed(1)} s` : left > 0 ? `${left.toFixed(1)} s` : 'lista'}`);
     branch.querySelectorAll('li').forEach((item, j) => {

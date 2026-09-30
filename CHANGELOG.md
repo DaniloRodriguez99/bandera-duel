@@ -2,6 +2,14 @@
 
 ## 2026-09-30
 
+### Cargas que se ven y se oyen
+
+- Mientras se carga una habilidad, su ícono brilla en el color del estado que alcanzó, y el aro del botón táctil también. Cada estado nuevo suena más agudo.
+
+### Pruebas solo en desarrollo
+
+- La franja **PRUEBAS** (límite de maná y recarga) ya no aparece en la versión publicada: queda para la práctica de las versiones de desarrollo y para los servidores que no corren en producción.
+
 ### Guerrero: técnicas
 
 - **Nombres e íconos nuevos:** Mandoble del Titán (Barrido del Titán y Caída de Montaña), Creciente Escarlata, Represalia del Coloso, Embestida Sísmica y Cuerpo de Titán. Cada técnica tiene su ícono; el del Cuerpo de Titán ya no repite el del parry.
