@@ -33,7 +33,7 @@ const TOUCH_META: Record<string, Omit<TouchAbilitySlot, keyof AbilitySlot>> = {
   counter: { mode: 'press', directional: true, primary: false },
   reinforce: { mode: 'press', directional: false, primary: false },
 };
-export const touchMeta=(id:string,classId:ClassId)=>{const meta=TOUCH_META[id];if(!meta)throw new Error(`Falta configuración táctil para ${classId}/${id}`);return {...meta,mode:id==='dash'&&classId==='guardian'?'release' as const:meta.mode};};
+export const touchMeta=(id:string,classId:ClassId)=>{const meta=TOUCH_META[id];if(!meta)throw new Error(`Falta configuración táctil para ${classId}/${id}`);return {...meta};};
 
 /**
  * Every class's buttons come from the same cards as the ability bar. Empty positions have no button,

@@ -99,6 +99,10 @@ const SPELL_NOTES: Record<string, number[]> = {
   // The warrior's greatsword: low and heavy. His parry rings like struck metal.
   swingHeavy: [196, 131],
   counter: [1320, 990],
+  // The knight's: sharp and fast, with lightning in it.
+  swingLight: [988, 1319],
+  bolt: [1568, 784, 392],
+  shock: [2093, 1568, 2637],
 };
 export function sound(kind: string) {
   if (muted || !context || context.state !== 'running' || document.hidden) return;

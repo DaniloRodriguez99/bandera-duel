@@ -11,11 +11,11 @@ test('selección compartida, ataques de arquero y técnicas del caballero con mo
   await page.locator('#game canvas').click({position:{x:200,y:150}});await expect(page.locator('#cd-shot')).toHaveText(/➶ 0\.\ds/);await page.waitForTimeout(250);
   await page.locator('#game canvas').click({button:'right',position:{x:200,y:150}});await expect(page.locator('#cd-sword')).toHaveText(/⚔ 0\.\ds/);await page.waitForTimeout(250);
   await page.keyboard.press('Space');await expect(page.locator('#cd-dash')).toHaveText(/➟ [01]\.\ds/);
-  // The knight carries no shield: the right click charges the Ráfaga, resolved by the server.
-  const canvas=(await rival.locator('#game canvas').boundingBox())!;await rival.mouse.move(canvas.x+canvas.width*.8,canvas.y+canvas.height*.5);await rival.mouse.down({button:'right'});
+  // The knight carries no shield: Q charges the lightning Ráfaga, resolved by the server.
+  const canvas=(await rival.locator('#game canvas').boundingBox())!;await rival.mouse.move(canvas.x+canvas.width*.8,canvas.y+canvas.height*.5);await rival.keyboard.down('KeyQ');
   await expect(rival.locator('#cd-sword')).toContainText('Cargando');
   await expect(rival.locator('#cd-sword')).toHaveText('⚡ Cargando 100 %',{timeout:4000});
-  await rival.screenshot({path:info.outputPath('rafaga-pc.png'),fullPage:true});await rival.mouse.up({button:'right'});
+  await rival.screenshot({path:info.outputPath('rafaga-pc.png'),fullPage:true});await rival.keyboard.up('KeyQ');
   await expect(rival.locator('#abilities [data-ability="flurry"]')).toHaveAttribute('data-ready','false');await expect(rival.locator('#cd-sword')).toHaveText('⚔ Lista',{timeout:3000});
   // A left click is the first cut of the chain.
   await rival.mouse.down({button:'left'});await rival.mouse.up({button:'left'});await expect(rival.locator('#abilities [data-position="primary"] .tier-state').first()).toHaveText('2/3');

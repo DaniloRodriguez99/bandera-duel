@@ -198,7 +198,7 @@ export function parryOutcome(power: number, target: InteractionProfile): ParryOu
 
 // ── Waves ──────────────────────────────────────────────────────────────────────────────────────
 
-export type WaveTint = 'steel' | 'gold' | 'crimson' | 'violet' | 'scarlet';
+export type WaveTint = 'steel' | 'gold' | 'crimson' | 'violet' | 'scarlet' | 'lightning';
 
 /** Each kind of slash in its colours: the bright core of the blade and the glow around it. */
 export const WAVE_COLORS: Record<WaveTint, { core: string; glow: string }> = {
@@ -207,6 +207,7 @@ export const WAVE_COLORS: Record<WaveTint, { core: string; glow: string }> = {
   crimson: { core: '#ffd7d2', glow: '#e0473e' },
   violet: { core: '#f0d8ff', glow: '#a64fe0' },
   scarlet: { core: '#ffe1d6', glow: '#d8261f' },
+  lightning: { core: '#f2fbff', glow: '#5cc8ff' },
 };
 
 /** A travelling slash as it leaves the blade. */
@@ -228,4 +229,6 @@ export interface WaveSpec {
   /** What it takes to cut it apart. */
   resist: number;
   tint: WaveTint;
+  /** Shock stacks it leaves on whoever it reaches. */
+  shock?: number;
 }

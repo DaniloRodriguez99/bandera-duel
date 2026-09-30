@@ -31,7 +31,7 @@ export interface KitDash {
   distance: number;
   speed: number;
   iframes: boolean;
-  hit?: { damage: number; knockback: number };
+  hit?: { damage: number; knockback: number; shock?: number };
 }
 
 export interface KitResult {

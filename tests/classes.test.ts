@@ -33,8 +33,10 @@ describe('armas y permisos',()=>{
     step(d,p,{},Math.ceil(CLASSES[id].windup/RULES.tick)+1);expect(q.hp).toBe(5-CLASSES[id].meleeDamage);
     const fresh=setup(id,'vanguard');fresh.q.x=fresh.p.x+CLASSES[id].meleeRange+1;step(fresh.d,fresh.p,{sword:true});step(fresh.d,fresh.p,{},12);expect(fresh.q.hp).toBe(5);
   });
-  it.each(['guardian'] as ClassId[])('%s rechaza flechas y usa embestida',id=>{
-    const {d,p}=setup(id);const x=p.x;step(d,p,{shot:true,dash:true,x:1});expect(d.state.arrows).toHaveLength(0);expect(p.x).toBeGreaterThan(x);expect(p.dashCd).toBeGreaterThan(0);
+  it.each(['guardian'] as ClassId[])('%s rechaza flechas y da su paso con la tecla de movilidad',id=>{
+    const {d,p}=setup(id);const x=p.x;const slots=idleInput().slots;slots.mobility={pressed:true,held:false,released:true};
+    step(d,p,{shot:true,slots,x:1});expect(d.state.arrows).toHaveLength(0);expect(p.dashCd).toBeGreaterThan(0);
+    step(d,p,{},8);expect(p.x-x).toBeGreaterThan(150);
   });
   it('vanguard rechaza flechas y la entrada vieja del dash no lo mueve: embiste con su tecla',()=>{
     const {d,p}=setup('vanguard');step(d,p,{shot:true,dash:true});expect(d.state.arrows).toHaveLength(0);expect(p.dashCd).toBe(0);

@@ -68,7 +68,10 @@ import { SHRINE_WARD, worldInput, type ChestView, type Weapon } from '@bandera/s
 
 const CHEST_COLOR: Record<ChestView['tier'], number> = { comun: 0xc9a36b, raro: 0x56b8ff, legendario: 0xffc84d };
 /** The glow an empowered state gives a blade: the knight's awakening, the warrior's iron body. */
-const EMPOWERED_TINT: Partial<Record<Player['empowered'], WaveTint>> = { awaken: 'violet', reinforce: 'scarlet' };
+const EMPOWERED_TINT: Partial<Record<Player['empowered'], WaveTint>> = { awaken: 'lightning', reinforce: 'scarlet' };
+/** The knight's lightning, in its two tones. */
+const BOLT = 0x5cc8ff;
+const BOLT_CORE = 0xe8f8ff;
 import { Controls } from './input.js';
 import { blueprintSpec, clipRay } from './targeting.js';
 import { sound } from './audio.js';
@@ -871,7 +874,15 @@ export class Arena extends Phaser.Scene {
     for (const e of snapshot.events) {
       if (e.id <= this.lastEvent) continue;
       this.lastEvent = e.id;
-      sound(e.kind === 'swing' && e.classId === 'vanguard' ? 'swingHeavy' : e.kind);
+      sound(
+        e.kind === 'swing' && e.classId === 'vanguard'
+          ? 'swingHeavy'
+          : e.kind === 'swing' && e.classId === 'guardian'
+            ? 'swingLight'
+            : e.kind === 'dash' && e.classId === 'guardian'
+              ? 'bolt'
+              : e.kind,
+      );
       if (e.kind === 'sword') {
         const slash = this.add.graphics().setDepth(LAYER.strikes);
         const power = e.power ?? 0;
@@ -1117,6 +1128,14 @@ export class Arena extends Phaser.Scene {
       flash.arc(e.x, e.y - 4, 30, (e.angle ?? 0) - 1.2, (e.angle ?? 0) + 1.2);
       flash.strokePath();
       this.fade(flash, {}, 260);
+    } else if (e.kind === 'shock') {
+      // A full charge discharges: a white flash and lightning thrown out in every direction.
+      this.fade(this.add.circle(e.x, e.y - 4, 10, BOLT_CORE, 0.8).setDepth(LAYER.effects), { scale: 2.6 }, 240);
+      for (let i = 0; i < 6; i++) this.drawBolt(e.x, e.y - 4, (i * Math.PI) / 3 + Math.random() * 0.4, 26 + Math.random() * 14);
+      if (visualSettings.shake && !visualSettings.reduced) this.cameras.main.shake(70, 0.002);
+    } else if (e.kind === 'dash' && e.classId === 'guardian' && !e.power) {
+      // The flash step: a bolt along the path it is about to take.
+      this.drawBolt(e.x, e.y, e.angle ?? 0, e.radius ?? 170);
     } else if (e.kind === 'dash') {
       const angle = e.angle ?? 0;
       const trail = this.add
@@ -1163,8 +1182,8 @@ export class Arena extends Phaser.Scene {
       // A world skill brings its own colour: an electrified dagger is not a red rage. Without one,
       // it is a fighter's empowered state: the knight's awakening is violet, the warrior's iron red.
       const iron = !e.color && e.classId === 'vanguard';
-      const inner = e.color ? Phaser.Display.Color.HexStringToColor(e.color).darken(40).color : iron ? 0x4a0f0c : 0x3c2168;
-      const outer = e.color ? Phaser.Display.Color.HexStringToColor(e.color).color : iron ? 0xe0473e : 0xa76cf0;
+      const inner = e.color ? Phaser.Display.Color.HexStringToColor(e.color).darken(40).color : iron ? 0x4a0f0c : 0x0e3350;
+      const outer = e.color ? Phaser.Display.Color.HexStringToColor(e.color).color : iron ? 0xe0473e : BOLT;
       this.fade(this.add.circle(e.x, e.y - 3, 17, inner, 0.42).setDepth(LAYER.projectiles), { scale: 2.8 }, 520);
       this.fade(
         this.add
@@ -1630,6 +1649,40 @@ export class Arena extends Phaser.Scene {
       );
     }
   }
+  /** Lightning around a body: short jagged arcs that jump from place to place, `count` at a time. */
+  private drawArcs(g: Phaser.GameObjects.Graphics, x: number, y: number, count: number, radius: number, time: number, alpha = 0.85) {
+    const flicker = Math.floor(time / 70);
+    for (let i = 0; i < count; i++) {
+      // A new place every flicker, the same between two of them.
+      const seed = Math.sin((flicker + i * 17.3) * 12.9898) * 43758.5453;
+      const angle = (seed - Math.floor(seed)) * Math.PI * 2;
+      const from = { x: x + Math.cos(angle) * radius, y: y + Math.sin(angle) * radius * 0.8 };
+      g.lineStyle(1.5, i % 2 ? BOLT_CORE : BOLT, alpha);
+      g.beginPath();
+      g.moveTo(from.x, from.y);
+      for (let k = 1; k <= 3; k++) {
+        const bend = Math.sin(seed * k) * 4;
+        g.lineTo(from.x + Math.cos(angle + 1.6) * k * 3 + bend, from.y + Math.sin(angle + 1.6) * k * 3 - bend * 0.5);
+      }
+      g.strokePath();
+    }
+  }
+  /** A bolt of lightning from one point along `angle`: the path of a flash step. */
+  private drawBolt(x: number, y: number, angle: number, length: number) {
+    const g = this.add.graphics().setDepth(LAYER.effects);
+    const points = [{ x, y }];
+    const steps = Math.max(3, Math.round(length / 22));
+    for (let i = 1; i <= steps; i++) {
+      const along = (length * i) / steps;
+      const aside = i === steps ? 0 : (Math.random() - 0.5) * 16;
+      points.push({ x: x + Math.cos(angle) * along - Math.sin(angle) * aside, y: y + Math.sin(angle) * along + Math.cos(angle) * aside });
+    }
+    g.lineStyle(7, BOLT, 0.3);
+    g.strokePoints(points);
+    g.lineStyle(2.5, BOLT_CORE, 0.95);
+    g.strokePoints(points);
+    this.fade(g, {}, visualSettings.reduced ? 140 : 260);
+  }
   /** The iron body: a steady red glow, and plates of force turning slowly around it. */
   private drawIron(g: Phaser.GameObjects.Graphics, x: number, y: number, time: number) {
     const pulse = (Math.sin(time * 0.008) + 1) / 2;
@@ -1998,7 +2051,7 @@ export class Arena extends Phaser.Scene {
       }
     }
     v.hp.clear();
-    if (pose?.trail) drawTrail(v.hp, pose.trail, p.empowered === 'awaken' ? 'violet' : pose.tint, pose.trailAlpha, heavy);
+    if (pose?.trail) drawTrail(v.hp, pose.trail, p.empowered === 'awaken' ? 'lightning' : pose.tint, pose.trailAlpha, heavy);
     if (p.hp > 0) this.drawCharge(v.hp, p, v.x, v.y, time);
     if (p.hp > 0 && p.frozenLeft > 0) {
       v.body.setTint(0x9fe8ff);
@@ -2018,31 +2071,30 @@ export class Arena extends Phaser.Scene {
       }
     }
     if (p.hp > 0 && p.empowered === 'awaken') {
-      // Awake: a violet aura with sparks circling the body.
+      // Awake: the body hums with lightning, and arcs jump around it.
       const pulse = (Math.sin(time * 0.012) + 1) / 2;
-      v.hp.fillStyle(0x3c2168, 0.12 + pulse * 0.08);
+      v.hp.fillStyle(0x0e3350, 0.14 + pulse * 0.08);
       v.hp.fillCircle(v.x, v.y - 3, 25 + pulse * 4);
-      v.hp.lineStyle(2, 0xa76cf0, 0.65 + pulse * 0.25);
-      v.hp.strokeCircle(v.x, v.y - 3, 27 + pulse * 5);
-      for (let i = 0; i < 5; i++) {
-        const angle = time * 0.004 + (i * Math.PI * 2) / 5;
-        const radius = 18 + ((time * 0.025 + i * 9) % 13);
-        v.hp.fillStyle(i % 2 ? 0xe9d8ff : 0xb37cf5, 0.7);
-        v.hp.fillCircle(
-          v.x + Math.cos(angle) * radius,
-          v.y - 5 + Math.sin(angle) * radius * 0.65,
-          1.5 + pulse,
-        );
-      }
+      v.hp.lineStyle(2, BOLT, 0.6 + pulse * 0.3);
+      v.hp.strokeCircle(v.x, v.y - 3, 27 + pulse * 4);
+      this.drawArcs(v.hp, v.x, v.y - 4, 4, 22, time);
     }
+    if (p.hp > 0 && p.shock > 0) this.drawArcs(v.hp, v.x, v.y - 4, p.shock, 15, time + 999, 0.55 + p.shock * 0.15);
     const effect = p.hp > 0 && p.move ? MOVES[p.move].effect : undefined;
     if (effect === 'awaken' || effect === 'reinforce') {
       // The empowering itself: a mandala passes through the body once, from the feet to the head.
       const rise = Math.min(1, (p.moveT + age) / MOVES[p.move].duration);
-      const [ring, light] = effect === 'awaken' ? [0xa76cf0, 0xf0e2ff] : [0xe0473e, 0xffd7d2];
+      const [ring, light] = effect === 'awaken' ? [BOLT, BOLT_CORE] : [0xe0473e, 0xffd7d2];
       this.drawMandala(v.hp, v.x, v.y + 10 - rise * 40, effect === 'awaken' ? 20 : 24, time, 0.95 - rise * 0.35, ring, light);
     }
     if (p.hp > 0 && p.empowered === 'reinforce') this.drawIron(v.hp, v.x, v.y, time);
+    if (p.hp > 0 && p.chargeSkill === 'guardian.dash') {
+      // The body charging with lightning before the step: a mandala climbs it, faster as it fills.
+      const held = chargeProgress(KIT['guardian.dash'].charge, p.chargeT + age);
+      const climb = ((time * (0.0015 + held * 0.004)) % 1);
+      this.drawMandala(v.hp, v.x, v.y + 10 - climb * 40, 16 + held * 6, time, 0.5 + held * 0.4, BOLT, BOLT_CORE);
+      this.drawArcs(v.hp, v.x, v.y - 4, 1 + Math.round(held * 3), 18, time);
+    }
     if (p.hp > 0 && heavy && kit && p.chargeSkill && KIT[p.chargeSkill]) {
       // His magic is his body: a charge swells a red force around it, past full it keeps growing.
       const spec = KIT[p.chargeSkill].charge;
@@ -2085,7 +2137,7 @@ export class Arena extends Phaser.Scene {
         const full = share >= 1 && p.furyLeft <= 0;
         v.hp.fillStyle(0x1a282c);
         v.hp.fillRect(left, row, width, 2);
-        v.hp.fillStyle(p.furyLeft > 0 ? 0xa76cf0 : full && Math.sin(time * 0.02) > 0 ? 0xffffff : GOLD);
+        v.hp.fillStyle(p.empowered === 'awaken' ? BOLT : full && Math.sin(time * 0.02) > 0 ? 0xffffff : GOLD);
         v.hp.fillRect(left, row, width * share, 2);
         row += 3;
       }

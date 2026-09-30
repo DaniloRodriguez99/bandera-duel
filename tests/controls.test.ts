@@ -94,27 +94,27 @@ describe('un solo lenguaje de controles', () => {
     expect(p.specialCharge).toBeGreaterThanOrEqual(RULES.overchargeTime);
   });
 
-  it('Caballero: M1 encadena cortes, M2 es la Ráfaga, Espacio el paso y R el Despertar', () => {
+  it('Caballero: M1 encadena cortes, Q es la Ráfaga, Espacio el paso y R el Despertar', () => {
     const { p, step } = arena('guardian');
     step({ primary: tap });
     expect(p.move).toBe('guardian.sword:0:0');
     step({}, {}, ticks(0.5));
-    step({ secondary: tap });
+    step({ q: tap });
     expect(p.move).toBe('guardian.flurry:0');
     expect(p.flurryCd).toBeGreaterThan(0);
-    step({}, {}, ticks(0.6));
+    step({}, {}, ticks(0.9));
     step({ mobility: tap });
     expect(p.dashCd).toBeGreaterThan(0);
     step({}, {}, ticks(0.5));
-    // The ultimate asks for a full bar of Rage; Q, E and F are free.
+    // The ultimate asks for a full bar of Rage; M2, E and F are free.
     step({ r: tap });
     expect(p.furyLeft).toBe(0);
     p.rage = 100;
-    step({ r: tap, q: tap, e: tap, f: tap });
+    step({ r: tap, secondary: tap, e: tap, f: tap });
     expect(p.furyLeft).toBeGreaterThan(0);
   });
 
-  it('Guerrero: Q el tajo viajero, E el contraataque', () => {
+  it('Guerrero: Q la Creciente, E el parry', () => {
     const { p, step } = arena('vanguard');
     step({ q: tap });
     expect(p.slashCd).toBeGreaterThan(0);

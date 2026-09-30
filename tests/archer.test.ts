@@ -1,5 +1,5 @@
 import {it,expect} from 'vitest';
-import {Duel,idleInput,RULES,movePlayer,newPlayer,type ClassId} from '@bandera/shared';
+import {DEFAULT_LOADOUTS,Duel,idleInput,RULES,movePlayer,newPlayer,type ClassId} from '@bandera/shared';
 function game(){const d=new Duel();d.add('a','A','archer');d.add('b','B','guardian');d.state.phase='playing';return d;}
 function ticks(d:Duel,n:number){for(let i=0;i<n;i++)d.step(new Map());}
 function place(d:Duel){const p=d.state.players[0];p.trapCd=0;d.step(new Map([['a',{...idleInput(),trap:true}]]));ticks(d,15);}
@@ -51,6 +51,6 @@ it('máximo tres, vencimiento y limpieza al reiniciar',()=>{
  place(d);d.resetArena();expect(d.state.traps).toHaveLength(0);expect(d.state.players[0].trapLeft).toBe(0);
 });
 it('dash evita la trampa durante la ventana de invulnerabilidad',()=>{
- const d=game();place(d);ticks(d,20);const q=d.state.players[1],t=d.state.traps[0];q.classId='archer';q.x=t.x;q.y=t.y;
+ const d=game();place(d);ticks(d,20);const q=d.state.players[1],t=d.state.traps[0];q.classId='archer';q.loadout={...DEFAULT_LOADOUTS.archer};q.x=t.x;q.y=t.y;
  d.step(new Map([['b',{...idleInput(),dash:true}]]));expect(q.hp).toBe(3);expect(d.state.traps).toHaveLength(1);
 });

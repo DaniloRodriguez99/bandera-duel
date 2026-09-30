@@ -1,4 +1,4 @@
-import { CLASS_IDS, CLASSES, DEFAULT_CLASS, KNIGHT_AWAKEN, KNIGHT_FLURRY_COOLDOWN, RULES, WARRIOR_LAUNCH, WARRIOR_PARRY, WARRIOR_REINFORCE, WARRIOR_SLASH_COOLDOWN, validClass, type ClassId } from '@bandera/shared';
+import { CLASS_IDS, CLASSES, DEFAULT_CLASS, KNIGHT_AWAKEN, KNIGHT_FLURRY_COOLDOWN, KNIGHT_STEP, RULES, WARRIOR_LAUNCH, WARRIOR_PARRY, WARRIOR_REINFORCE, WARRIOR_SLASH_COOLDOWN, validClass, type ClassId } from '@bandera/shared';
 import { classIllustration } from './art.js';
 
 interface SkillPreview {
@@ -37,11 +37,11 @@ const CLASS_SKILLS: Record<ClassId, SkillPreview[]> = {
     { name: 'Marca funeraria', icon: icon('necromancer-resurrection'), description: 'Traslada al zombie señalado entre el círculo del amo y el cursor.', damage: '0', cooldown: '0 s' },
   ],
   guardian: [
-    { name: 'Tres Cortes', icon: icon('guardian-slash'), description: 'Dos cortes horizontales y un remate vertical, crítico si conecta. La hoja golpea por donde pasa.', damage: '1 · 1 · 1,5', cooldown: '0 s' },
+    { name: 'Tres Cortes', icon: icon('guardian-slash'), description: 'Un corte, su regreso y un remate que baja desde arriba, crítico si conecta. La hoja golpea por donde pasa.', damage: '1 · 1 · 1,5', cooldown: '0 s' },
     { name: 'Filo cargado', icon: icon('guardian-slash'), description: 'Mantené el corte: pega hasta el doble, lanza un tajo y corta habilidades enemigas. Al 100 % las parte en el aire.', damage: 'hasta ×2', cooldown: '0 s' },
-    { name: 'Ráfaga de Acero', icon: icon('vanguard-slash'), description: 'Según la carga: tres cortes veloces, dos potenciados o uno devastador que parte habilidades.', damage: '3 × 0,5 · 2 × 1 · 2,5', cooldown: seconds(KNIGHT_FLURRY_COOLDOWN) },
-    { name: 'Paso Relámpago', icon: icon('vanguard-dash'), description: 'Un paso fulminante que corta a quien atraviesa y se encadena con la espada.', damage: String(RULES.guardianDashDamage), cooldown: seconds(RULES.guardianDashCooldown) },
-    { name: 'Despertar del Juramento', icon: icon('guardian-fury'), description: `La Furia se llena al golpear y al cortar. Llena, despierta la espada ${seconds(KNIGHT_AWAKEN.duration)}: cada corte lanza su tajo.`, damage: `+${Math.round((KNIGHT_AWAKEN.damage - 1) * 100)} %`, cooldown: 'Furia llena' },
+    { name: 'Ráfaga de Acero', icon: icon('vanguard-slash'), description: 'La espada se electriza: tres golpes distintos que electrizan y, juntos, aturden. Cargada, dos cortes potenciados o uno devastador.', damage: '0,5 · 0,5 · 0,75 · 2 × 1 · 2,5', cooldown: seconds(KNIGHT_FLURRY_COOLDOWN) },
+    { name: 'Paso Relámpago', icon: icon('vanguard-dash'), description: 'El cuerpo se carga de relámpago y sale hacia donde apunta; cargado llega más lejos. Electriza a quien atraviesa.', damage: '1–1,5', cooldown: seconds(KNIGHT_STEP.cooldown) },
+    { name: 'Despertar del Relámpago', icon: icon('guardian-fury'), description: `La Furia se llena al golpear y al cortar. Llena, un mandala eléctrico despierta la espada ${seconds(KNIGHT_AWAKEN.duration)}: cada corte lanza su tajo y electriza.`, damage: `+${Math.round((KNIGHT_AWAKEN.damage - 1) * 100)} %`, cooldown: 'Furia llena' },
   ],
   vanguard: [
     { name: 'Mandoble Colosal', icon: icon('vanguard-sword'), description: 'Un barrido y un martillazo desde arriba, lentos y enormes. Cargados, mandan una onda roja hacia adelante.', damage: '2 · 2,5; hasta ×1,75', cooldown: '0 s' },

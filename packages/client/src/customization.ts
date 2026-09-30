@@ -21,6 +21,10 @@ export function loadCustomization(classId:ClassId):CharacterCustomization {
 const RETIRED: Record<string, SkillId | null> = { 'guardian.guard': 'guardian.flurry', 'guardian.shieldBash': null };
 /** Skills a class no longer uses, by class, and what took their place. */
 const REPLACED: Partial<Record<ClassId, Record<string, SkillId>>> = { vanguard: { 'common.dash': 'vanguard.dash' } };
+/** Skills that moved to another default slot: from the old one to the new, if the new one is free. */
+const MOVED: Partial<Record<ClassId, { id: SkillId; from: SkillSlot; to: SkillSlot }[]>> = {
+  guardian: [{ id: 'guardian.flurry', from: 'secondary', to: 'q' }],
+};
 /** Skills a class gained: a saved profile gets them where the default puts them, if that slot is free. */
 const GAINED: Partial<Record<ClassId, SkillId[]>> = { vanguard: ['vanguard.reinforce'] };
 /**
@@ -50,6 +54,8 @@ export function migrateCustomization(classId:ClassId,raw:unknown):unknown {
       preset.skillTreeSelection=preset.skillTreeSelection.map(id=>replaced[id]??id);
       repaired=true;
     }
+    for(const {id,from,to} of MOVED[classId]??[])
+      if(preset.loadout[from]===id&&!preset.loadout[to]){preset.loadout[to]=id;preset.loadout[from]=null;repaired=true;}
     for(const id of GAINED[classId]??[]){
       const home=SKILL_SLOTS.find(slot=>DEFAULT_LOADOUTS[classId][slot]===id);
       if(!home||preset.loadout[home]||Object.values(preset.loadout).includes(id))continue;

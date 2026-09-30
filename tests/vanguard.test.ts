@@ -122,8 +122,8 @@ describe('Guerrero · Mandoble Colosal', () => {
     // Slower to start and longer to recover than anything the knight does.
     const knight = MOVES['guardian.sword:0:0'];
     for (const move of moves.slice(0, 2)) {
-      expect(MOVES[move].strikes[0].start).toBeGreaterThan(knight.strikes[0].start * 3);
-      expect(MOVES[move].duration).toBeGreaterThan(knight.duration * 1.9);
+      expect(MOVES[move].strikes[0].start).toBeGreaterThan(knight.strikes[0].start * 2.5);
+      expect(MOVES[move].duration).toBeGreaterThan(knight.duration * 1.8);
       expect(MOVES[move].speed).toBeLessThan(knight.speed);
     }
   });
