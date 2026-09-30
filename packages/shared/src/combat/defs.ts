@@ -13,6 +13,8 @@ export interface ChargeTier {
   at: number;
   /** Shown beside the ability while this step applies. */
   label: string;
+  /** The colour the charge takes while this step applies; plain steel when absent. */
+  tint?: WaveTint;
 }
 
 export interface ChargeSpec {
@@ -23,10 +25,17 @@ export interface ChargeSpec {
    * abilities that keep scaling beyond their named steps.
    */
   cap: number;
+  /**
+   * Seconds at which the charge is full. Holding on past it overcharges, up to `cap`. Absent: it is
+   * full at `cap` and there is nothing beyond.
+   */
+  full?: number;
   /** Taking damage drops the charge, and costs this share of the ability's cooldown. Null: it holds. */
   breakOnDamage: { cooldown: number } | null;
   /** Using the mobility slot drops the charge. */
   cancelOnMobility: boolean;
+  /** Charging it gives its user away through the bushes: the telegraph is the counterplay. */
+  reveals?: boolean;
 }
 
 /** The step a hold of `seconds` has reached, and its place in the list. */
@@ -36,9 +45,18 @@ export function chargeTier(spec: ChargeSpec, seconds: number): { tier: ChargeTie
   return { tier: spec.tiers[index], index };
 }
 
-/** 0 to 1 across the whole charge, for bars and glows. */
+/** Seconds of hold at which a charge counts as full. */
+export const chargeFull = (spec: ChargeSpec) => spec.full ?? spec.cap;
+
+/** 0 to 1 up to a full charge, for bars and glows. */
 export const chargeProgress = (spec: ChargeSpec, seconds: number) =>
-  spec.cap > 0 ? Math.max(0, Math.min(1, seconds / spec.cap)) : 1;
+  chargeFull(spec) > 0 ? Math.max(0, Math.min(1, seconds / chargeFull(spec))) : 1;
+
+/** 0 to 1 across what lies past a full charge; always 0 for the abilities that stop there. */
+export const overcharge = (spec: ChargeSpec, seconds: number) =>
+  spec.cap > chargeFull(spec)
+    ? Math.max(0, Math.min(1, (seconds - chargeFull(spec)) / (spec.cap - chargeFull(spec))))
+    : 0;
 
 // ── Resources ──────────────────────────────────────────────────────────────────────────────────
 

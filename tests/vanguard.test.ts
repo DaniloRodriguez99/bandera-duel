@@ -1,121 +1,535 @@
-import { describe, it, expect } from 'vitest';
-import { Duel, CLASSES, RULES, idleInput, sanitizeInput, projectileStats, type Input } from '@bandera/shared';
-const input = (options: Partial<Input> = {}): Input => ({ ...idleInput(), ...options });
-function setup() {
-  const d = new Duel('courtyard', 'ffa3');
-  const w = d.add('w', 'W', 'vanguard'),
-    g = d.add('g', 'G', 'guardian'),
-    a = d.add('a', 'A', 'archer');
-  d.state.phase = 'playing';
-  Object.assign(w, { x: 200, y: 270, angle: 0 });
-  Object.assign(g, { x: 880, y: 500 });
-  Object.assign(a, { x: 880, y: 100 });
-  return { d, w, g, a };
+import { describe, expect, it } from 'vitest';
+import {
+  CLASSES,
+  DEFAULT_LOADOUTS,
+  Duel,
+  MAPS,
+  MOVES,
+  RULES,
+  SKILLS,
+  WARRIOR_LAUNCH,
+  WARRIOR_PARRY,
+  WARRIOR_REINFORCE,
+  WARRIOR_SLASH_CHARGE,
+  WARRIOR_SWORD_CHARGE,
+  idleInput,
+  movePlayer,
+  newPlayer,
+  warriorWave,
+  waveHalfWidth,
+  type Arrow,
+  type ClassId,
+  type Input,
+  type Player,
+  type SkillSlot,
+  type SlotInputState,
+} from '@bandera/shared';
+import { World, newCharacter } from '@bandera/shared/world';
+
+const ticks = (seconds: number) => Math.ceil(seconds / RULES.tick - 1e-6);
+type Keys = Partial<Record<SkillSlot, Partial<SlotInputState>>>;
+const TAP = { pressed: true, released: true };
+const DOWN = { pressed: true, held: true };
+const HOLD = { held: true };
+const UP = { released: true };
+const input = (keys: Keys = {}, extra: Partial<Input> = {}): Input => {
+  const next = { ...idleInput(1), ...extra };
+  for (const [slot, state] of Object.entries(keys))
+    next.slots[slot as SkillSlot] = { pressed: false, held: false, released: false, ...state };
+  return next;
+};
+
+function arena(enemy: ClassId = 'guardian', third: ClassId = 'archer') {
+  const duel = new Duel('courtyard', 'ffa3');
+  const warrior = duel.add('warrior', 'Guerrero', 'vanguard');
+  const rival = duel.add('rival', 'Rival', enemy);
+  const other = duel.add('other', 'Otro', third);
+  duel.state.phase = 'playing';
+  // The open lane in the middle of the courtyard; the warrior looks east.
+  Object.assign(warrior, { x: 330, y: 270, angle: 0, invuln: 0 });
+  Object.assign(rival, { x: 800, y: 270, angle: Math.PI, invuln: 0, hp: 30, maxHp: 30 });
+  Object.assign(other, { x: 800, y: 430, angle: Math.PI, invuln: 0, hp: 30, maxHp: 30 });
+  const inputs = new Map<string, Input>();
+  const step = (keys: Keys = {}, extra: Partial<Input> = {}, count = 1) => {
+    for (let i = 0; i < count; i++) duel.step(new Map([...inputs, [warrior.id, input(keys, extra)]]));
+  };
+  const finish = () => {
+    for (let i = 0; i < 90 && warrior.move; i++) step();
+  };
+  const charged = (slot: SkillSlot, seconds: number) => {
+    step({ [slot]: DOWN });
+    step({ [slot]: HOLD }, {}, ticks(seconds));
+    step({ [slot]: UP });
+  };
+  const inFront = (body: Player, gap = 50) =>
+    Object.assign(body, { x: warrior.x + gap, y: warrior.y, invuln: 0 });
+  const events = (kind: string) => duel.state.events.filter((event) => event.kind === kind);
+  return { duel, warrior, rival, other, inputs, step, finish, charged, inFront, events };
 }
-function run(d: Duel, count: number, warrior: Partial<Input> = {}) {
-  for (let i = 0; i < count; i++) d.step(new Map([['w', input(warrior)]]));
-}
-const ticks = (seconds: number) => Math.ceil(seconds / RULES.tick);
-/** Warrior facing an archer 200 px away. */
-function duel() {
-  const d = new Duel();
-  const w = d.add('w', 'W', 'vanguard'),
-    a = d.add('a', 'A', 'archer');
-  d.state.phase = 'playing';
-  Object.assign(w, { x: 400, y: 270, angle: Math.PI });
-  Object.assign(a, { x: 200, y: 270, angle: 0 });
-  return { d, w, a };
-}
-function clash(d: Duel, count: number, warrior: Partial<Input> = {}, archer: Partial<Input> = {}) {
-  for (let i = 0; i < count; i++) d.step(new Map([['w', input(warrior)], ['a', input(archer)]]));
-}
-describe('guerrero', () => {
-  it('esquiva con espacio con un dash más corto y camina más lento que antes', () => {
-    expect(CLASSES.vanguard.dash).toBe(true);
-    expect(CLASSES.guardian.dash).toBe(true);
-    expect(CLASSES.vanguard.speed).toBeLessThan(155);
-    expect(CLASSES.vanguard.speed).toBeGreaterThan(RULES.zombieSpeed);
-    const { d, w } = setup();
-    run(d, 1, { dash: true, x: 1 });
-    expect(w.dashCd).toBeGreaterThan(0);
-    expect(w.dashLeft).toBeCloseTo(RULES.dashDuration * RULES.vanguardDash - RULES.tick);
+
+describe('Guerrero · identidad', () => {
+  it('es el más lento y el que más aguanta, y su kit es todo suyo', () => {
+    expect(CLASSES.vanguard.hp).toBe(5);
+    expect(CLASSES.vanguard.speed).toBeLessThan(CLASSES.guardian.speed - 30);
+    expect(DEFAULT_LOADOUTS.vanguard).toEqual({
+      primary: 'vanguard.sword', secondary: null, mobility: 'vanguard.dash',
+      q: 'vanguard.slash', e: 'vanguard.counter', f: null, r: 'vanguard.reinforce',
+    });
+    // The archer keeps the shared dodge; the warrior launches himself instead.
+    expect(SKILLS['common.dash'].compatibleClasses).toEqual(['archer']);
   });
-  it('Q lanza un tajo que viaja y corta a todos los rivales en su camino', () => {
-    const { d, w, g, a } = setup();
-    Object.assign(g, { x: 260, y: 270, invuln: 0 });
-    Object.assign(a, { x: 330, y: 280, invuln: 0 });
-    run(d, 1, { slash: true });
-    expect(d.state.arrows).toHaveLength(1);
-    expect(d.state.arrows[0]).toMatchObject({ slash: true, classId: 'vanguard' });
-    expect(w.slashCd).toBeGreaterThan(RULES.slashCooldown - 0.1);
-    run(d, 20);
-    expect(g.hp).toBe(CLASSES.guardian.hp - RULES.slashDamage);
-    expect(a.hp).toBe(CLASSES.archer.hp - RULES.slashDamage);
+
+  it('arranca con inercia: tarda un instante en alcanzar su velocidad; los demás no', () => {
+    const heavy = newPlayer('w', 'W', 'blue', 'vanguard');
+    const light = newPlayer('k', 'K', 'blue', 'guardian');
+    Object.assign(heavy, { x: 300, y: 270 });
+    Object.assign(light, { x: 300, y: 270 });
+    movePlayer(heavy, input({}, { x: 1 }), false);
+    movePlayer(light, input({}, { x: 1 }), false);
+    expect(light.x - 300).toBeCloseTo(CLASSES.guardian.speed * RULES.tick);
+    expect(heavy.x - 300).toBeLessThan(CLASSES.vanguard.speed * RULES.tick * 0.5);
+    // Up to speed a moment later.
+    for (let i = 0; i < ticks(CLASSES.vanguard.accel) + 1; i++) movePlayer(heavy, input({}, { x: 1 }), false);
+    const from = heavy.x;
+    movePlayer(heavy, input({}, { x: 1 }), false);
+    expect(heavy.x - from).toBeCloseTo(CLASSES.vanguard.speed * RULES.tick);
+    // And it takes as long to stop.
+    movePlayer(heavy, input(), false);
+    expect(heavy.x - from).toBeGreaterThan(CLASSES.vanguard.speed * RULES.tick);
   });
-  it('el tajo tiene alcance corto y recarga', () => {
-    const { d, g } = setup();
-    Object.assign(g, { x: 200 + RULES.slashSpeed * RULES.slashLife + 80, y: 270, invuln: 0 });
-    run(d, 1, { slash: true });
-    run(d, ticks(RULES.slashLife) + 5);
-    expect(d.state.arrows).toHaveLength(0);
-    expect(g.hp).toBe(CLASSES.guardian.hp);
-    run(d, 1, { slash: true });
-    expect(d.state.arrows).toHaveLength(0);
+});
+
+describe('Guerrero · Mandoble Colosal', () => {
+  it('son dos golpes pesados en orden: un barrido y un martillazo desde arriba, lentos de preparar', () => {
+    const { warrior, rival, step, finish, inFront, events } = arena();
+    const dealt: number[] = [];
+    const moves: string[] = [];
+    for (let i = 0; i < 3; i++) {
+      inFront(rival);
+      const hp = rival.hp;
+      step({ primary: TAP });
+      moves.push(warrior.move);
+      finish();
+      dealt.push(hp - rival.hp);
+    }
+    expect(moves).toEqual(['vanguard.sword:0:0', 'vanguard.sword:1:0', 'vanguard.sword:0:0']);
+    expect(dealt).toEqual([2, 2.5, 2]);
+    expect(MOVES[moves[0]].strikes[0].shape).toMatchObject({ kind: 'arc' });
+    // The hammer comes down on the whole strip at once: a blow from overhead, not a thrust.
+    expect(MOVES[moves[1]].strikes[0].shape).toMatchObject({ kind: 'lane', drop: true });
+    expect(MOVES[moves[1]].enter).toBeCloseTo(MOVES[moves[0]].strikes[0].shape.kind === 'arc' ? MOVES[moves[0]].strikes[0].shape.to : 0);
+    expect(events('swing').map((event) => event.move)).toEqual(moves);
+    // Slower to start and longer to recover than anything the knight does.
+    const knight = MOVES['guardian.sword:0:0'];
+    for (const move of moves.slice(0, 2)) {
+      expect(MOVES[move].strikes[0].start).toBeGreaterThan(knight.strikes[0].start * 3);
+      expect(MOVES[move].duration).toBeGreaterThan(knight.duration * 1.9);
+      expect(MOVES[move].speed).toBeLessThan(knight.speed);
+    }
   });
-  it('solo el guerrero usa el tajo y la entrada se valida', () => {
-    const { d } = setup();
-    d.step(new Map([['g', input({ slash: true })]]));
-    expect(d.state.arrows).toHaveLength(0);
-    expect(sanitizeInput({ ...idleInput(), slash: 'sí' })).toMatchObject({ slash: false });
-    expect(projectileStats('vanguard').radius).toBeGreaterThan(projectileStats('archer').radius);
+
+  it('el golpe tarda en salir: nada pasa hasta que la hoja llega', () => {
+    const { rival, step, inFront } = arena();
+    inFront(rival);
+    step({ primary: TAP });
+    step({}, {}, 8);
+    expect(rival.hp).toBe(30);
+    step({}, {}, 6);
+    expect(rival.hp).toBe(28);
   });
-  it('E devuelve la flecha al arquero con el mismo daño', () => {
-    const { d, w, a } = duel();
-    clash(d, 1, { counter: true }, { shot: true });
-    clash(d, 12, { counter: true });
-    expect(d.state.arrows[0]).toMatchObject({ owner: 'w', team: w.team, reflected: 1 });
-    clash(d, 20, { counter: true });
-    expect(w.hp).toBe(CLASSES.vanguard.hp);
-    expect(a.hp).toBe(CLASSES.archer.hp - RULES.arrowDamage);
-    expect(d.state.events.some((e) => e.kind === 'counter')).toBe(true);
+
+  it('cargado pega hasta ×1,75, llega más lejos y manda una onda roja hacia adelante', () => {
+    expect(WARRIOR_SWORD_CHARGE.tiers.map((tier) => tier.id)).toEqual(['tap', 'low', 'mid', 'max']);
+    const { duel, warrior, rival, other, charged, finish, inFront } = arena();
+    // Out of a plain swing's reach, inside a fully charged one's.
+    inFront(rival, 108);
+    Object.assign(other, { x: warrior.x + 200, y: warrior.y + 20 });
+    charged('primary', 1.5);
+    expect(warrior.move).toBe('vanguard.sword:0:3');
+    finish();
+    // The blade hit the first one; the shockwave skipped him and went on to the one behind.
+    expect(30 - rival.hp).toBeCloseTo(2 * 1.75);
+    for (let i = 0; i < 20; i++) duel.step(new Map());
+    expect(other.hp).toBeLessThan(30);
+    expect(duel.state.events.filter((event) => event.kind === 'hit')).toHaveLength(2);
+    // A tap throws nothing and does not reach that far.
+    const plain = arena();
+    plain.inFront(plain.rival, 108);
+    plain.step({ primary: TAP });
+    plain.finish();
+    expect(plain.rival.hp).toBe(30);
+    expect(plain.duel.state.waves).toHaveLength(0);
   });
-  it('E mantenido hasta cargar devuelve al doble de velocidad y daño', () => {
-    const { d, a } = duel();
-    clash(d, ticks(RULES.counterChargeTime) + 1, { counter: true });
-    clash(d, 1, { counter: true }, { shot: true });
-    // The arrow is reflected around tick 7 and reaches the archer at tick 11: catch it mid-flight.
-    clash(d, 9, { counter: true });
-    expect(d.state.arrows[0]).toMatchObject({ owner: 'w', reflected: 2, damageScale: RULES.counterBoost });
-    clash(d, 15, { counter: true });
-    expect(a.hp).toBe(CLASSES.archer.hp - RULES.counterBoost * RULES.arrowDamage);
+
+  it('ya no corta proyectiles: eso es del Caballero', () => {
+    const { duel, warrior, rival, step, events } = arena('archer');
+    step({ primary: TAP });
+    step({}, {}, 10);
+    duel.state.arrows.push({ id: 1, owner: rival.id, team: rival.team, classId: 'archer', x: warrior.x + 62, y: warrior.y, angle: Math.PI, life: 1 });
+    step({}, {}, 4);
+    expect(events('projectileCut')).toHaveLength(0);
+    expect(warrior.hp).toBe(CLASSES.vanguard.hp - RULES.arrowDamage);
   });
-  it('al soltar E dura un instante y entra en recarga; sin contraataque recibe el golpe', () => {
-    const { d, w, a } = duel();
-    clash(d, 3, { counter: true });
-    clash(d, ticks(RULES.counterWindow) + 1);
-    expect(w.counterLeft).toBe(0);
-    expect(w.counterCd).toBeGreaterThan(RULES.counterCooldown - 0.2);
-    clash(d, 1, { counter: true }, { shot: true });
-    clash(d, 15, { counter: true });
-    expect(w.hp).toBe(CLASSES.vanguard.hp - RULES.arrowDamage);
-    expect(a.hp).toBe(CLASSES.archer.hp);
+
+  it('el martillazo empuja más que el barrido, y más que cualquier corte del Caballero', () => {
+    const blow = (step: number) => MOVES[`vanguard.sword:${step}:0`].strikes[0].knockback;
+    expect(blow(1)).toBeGreaterThan(blow(0));
+    expect(blow(0)).toBeGreaterThan(MOVES['guardian.sword:0:0'].strikes[0].knockback);
   });
-  it('mantener E más del máximo lo termina y hay que soltar para volver a usarlo', () => {
-    const { d, w } = duel();
-    clash(d, ticks(RULES.counterMaxHold + RULES.counterWindow) + 2, { counter: true });
-    expect(w.counterLeft).toBe(0);
-    expect(w.counterCd).toBeGreaterThan(0);
-    w.counterCd = 0;
-    clash(d, 3, { counter: true });
-    expect(w.counterLeft).toBe(0);
-    clash(d, 1);
-    clash(d, 1, { counter: true });
-    expect(w.counterLeft).toBeGreaterThan(0);
+});
+
+describe('Guerrero · Creciente Escarlata', () => {
+  it('un toque lanza la creciente de siempre: atraviesa a todos los rivales de su camino', () => {
+    const { duel, warrior, rival, other, step } = arena();
+    Object.assign(rival, { x: 400, y: 270 });
+    Object.assign(other, { x: 480, y: 280 });
+    step({ q: TAP });
+    expect(warrior.move).toBe('vanguard.slash:0');
+    expect(warrior.slashCd).toBeCloseTo(5);
+    step({}, {}, 30);
+    expect(duel.state.waves).toHaveLength(0);
+    expect(rival.hp).toBeLessThan(30);
+    expect(other.hp).toBeLessThan(30);
+    expect(30 - rival.hp).toBeGreaterThan(1.2);
+    // Short reach: nothing 320 u away.
+    const far = arena();
+    Object.assign(far.rival, { x: 330 + 320, y: 270 });
+    far.step({ q: TAP });
+    far.step({}, {}, 40);
+    expect(far.rival.hp).toBe(30);
+    // And it has a cooldown.
+    far.step({ q: TAP });
+    expect(far.warrior.move).toBe('');
   });
-  it('solo el guerrero contraataca y la entrada se valida', () => {
-    const { d, a } = duel();
-    clash(d, 5, {}, { counter: true });
-    expect(a.counterLeft).toBe(0);
-    expect(sanitizeInput({ ...idleInput(), counter: 'sí' })).toMatchObject({ counter: false });
+
+  it('la carga no tiene techo a los 3 s: sigue creciendo hasta cruzar el mapa', () => {
+    expect(WARRIOR_SLASH_CHARGE.full).toBe(3);
+    expect(WARRIOR_SLASH_CHARGE.cap).toBeGreaterThanOrEqual(7);
+    const stats = [0, 1, 3, 5, 7].map(warriorWave);
+    for (const key of ['halfWidth', 'range', 'damage', 'resist'] as const)
+      expect(stats.map((wave) => wave[key])).toEqual([...stats.map((wave) => wave[key])].sort((a, b) => a - b));
+    expect(stats[2].range).toBeLessThan(600);
+    // Overcharged, it fans out and outruns the arena's diagonal.
+    expect(stats[4].range).toBeGreaterThan(Math.hypot(RULES.width, RULES.height));
+    expect(waveHalfWidth({ x: 0, y: 0, angle: 0, ...stats[4] }, 800)).toBeGreaterThan(RULES.height / 2);
+    expect(stats[0].spread).toBe(0);
+    expect(stats[4].spread).toBeGreaterThan(0.3);
+  });
+
+  it('cargarla cuesta maná por segundo: la ola colosal pide casi todo el pozo', () => {
+    const cost = SKILLS['vanguard.slash'].cost!;
+    expect(cost.resource).toBe('mana');
+    expect(cost.amount + cost.perSecond! * WARRIOR_SLASH_CHARGE.cap).toBeLessThanOrEqual(CLASSES.vanguard.mana);
+    expect(cost.amount + cost.perSecond! * WARRIOR_SLASH_CHARGE.cap).toBeGreaterThan(CLASSES.vanguard.mana * 0.9);
+    const { warrior, charged } = arena();
+    warrior.mana = 40;
+    charged('q', 4);
+    // Twenty-five points bought about two seconds of hold; the release took the rest.
+    expect(warrior.moveCharge).toBeLessThan(2.3);
+    expect(warrior.moveCharge).toBeGreaterThan(1.8);
+    expect(warrior.mana).toBeLessThan(1);
+  });
+
+  it('el daño depende de la distancia: devastador de cerca, unos dos corazones al final', () => {
+    const colossal = warriorWave(7);
+    const { duel, warrior, rival, other } = arena();
+    Object.assign(warrior, { x: 60, y: 270 });
+    Object.assign(rival, { x: 110, y: 270, hp: 30 });
+    Object.assign(other, { x: 920, y: 270, hp: 30 });
+    duel.spawnWave(warrior, warrior, 0, colossal);
+    for (let i = 0; i < ticks(2.2); i++) duel.step(new Map());
+    expect(30 - rival.hp).toBeGreaterThan(4.5);
+    expect(30 - other.hp).toBeGreaterThan(1.8);
+    expect(30 - other.hp).toBeLessThan(3);
+  });
+
+  it('cargando es vulnerable: lento, sin espada ni parry, y un golpe lo interrumpe y le cuesta recarga', () => {
+    const { duel, warrior, rival, step } = arena();
+    step({ q: DOWN });
+    // The charge itself gives him away.
+    expect(warrior.revealLeft).toBeGreaterThan(0);
+    const from = warrior.x;
+    step({ q: HOLD }, { x: 1 }, 30);
+    expect(warrior.x - from).toBeLessThan(CLASSES.vanguard.speed * 0.45);
+    step({ q: HOLD, primary: TAP, e: TAP });
+    expect(warrior.buffered).toBe('');
+    expect(warrior.counterLeft).toBe(0);
+    expect(warrior.chargeT).toBeGreaterThan(1);
+    duel.damage(warrior, rival, 0, 0.5);
+    expect(warrior.chargeSkill).toBe('');
+    expect(warrior.slashCd).toBeCloseTo(2.5);
+    // Still holding the key does not start it over, and letting go throws nothing.
+    step({ q: HOLD });
+    expect(warrior.chargeSkill).toBe('');
+    step({ q: UP });
+    expect(duel.state.waves).toHaveLength(0);
+  });
+
+  it('la movilidad la cancela, y soltarla lanza el tajo con lo cargado hasta ahí', () => {
+    const cancelled = arena();
+    cancelled.step({ q: DOWN });
+    cancelled.step({ q: HOLD }, {}, 20);
+    cancelled.step({ q: HOLD, mobility: DOWN });
+    cancelled.step({ q: HOLD, mobility: UP });
+    expect(cancelled.warrior.dashCd).toBeGreaterThan(0);
+    expect(cancelled.warrior.chargeSkill).toBe('');
+    expect(cancelled.warrior.slashCd).toBe(0);
+    cancelled.step({ q: UP }, {}, 10);
+    expect(cancelled.duel.state.waves).toHaveLength(0);
+
+    const { duel, warrior, charged, step } = arena();
+    charged('q', 2);
+    expect(warrior.moveCharge).toBeCloseTo(2, 0);
+    step({}, {}, 8);
+    const wave = duel.state.waves[0];
+    expect(wave.halfWidth).toBeCloseTo(warriorWave(warrior.moveCharge).halfWidth);
+    expect(wave.halfWidth).toBeGreaterThan(40);
+    // The longer the hold, the longer the cooldown and the recovery.
+    expect(warrior.slashCd).toBeGreaterThan(5.5);
+    expect(MOVES['vanguard.slash:2'].duration).toBeGreaterThan(MOVES['vanguard.slash:0'].duration * 2);
+  });
+
+  it('los muros dan cobertura contra la gran ola', () => {
+    const { duel, warrior, rival, other } = arena();
+    const wall = MAPS.courtyard.walls.find((w) => w.x > 400 && w.y < 270 && w.x + w.w < 600)!;
+    Object.assign(warrior, { x: 330, y: wall.y + wall.h / 2 });
+    Object.assign(rival, { x: wall.x + wall.w + 30, y: wall.y + wall.h / 2 });
+    Object.assign(other, { x: wall.x + wall.w + 30, y: wall.y + wall.h + 45 });
+    duel.spawnWave(warrior, warrior, 0, warriorWave(5));
+    for (let i = 0; i < ticks(2); i++) duel.step(new Map());
+    expect(rival.hp).toBe(30);
+    expect(other.hp).toBeLessThan(30);
+  });
+});
+
+describe('Guerrero · Revancha de Hierro (parry)', () => {
+  const arrow = (from: Player, value: Partial<Arrow> = {}): Arrow => ({
+    id: 900, owner: from.id, team: from.team, classId: 'archer', x: 400, y: 270, angle: Math.PI, life: 1, ...value,
+  });
+
+  it('es una ventana corta al pulsar, sin frenar al Guerrero; fallarla cuesta 3 s', () => {
+    const { warrior, step } = arena();
+    step({ e: DOWN });
+    expect(warrior.counterLeft).toBeCloseTo(WARRIOR_PARRY.window);
+    expect(warrior.counterCd).toBeCloseTo(WARRIOR_PARRY.cooldown);
+    // Holding the key keeps nothing up.
+    const from = warrior.x;
+    step({ e: HOLD }, { x: 1 }, ticks(WARRIOR_PARRY.window) + 1);
+    expect(warrior.counterLeft).toBe(0);
+    expect(warrior.x - from).toBeGreaterThan(CLASSES.vanguard.speed * WARRIOR_PARRY.window * 0.6);
+    step({ e: TAP });
+    expect(warrior.counterLeft).toBe(0);
+  });
+
+  it('devuelve el proyectil hacia quien lo lanzó, aunque se haya movido, y más rápido', () => {
+    const { duel, warrior, rival, step, events } = arena('archer');
+    Object.assign(rival, { x: 600, y: 270, hp: 3, maxHp: 3 });
+    duel.state.arrows.push(arrow(rival, { x: 380 }));
+    // The archer has walked off the arrow's line since loosing it (clear of the middle wall).
+    Object.assign(rival, { x: 560, y: 225 });
+    step({ e: TAP });
+    step({}, {}, 3);
+    const back = duel.state.arrows[0];
+    expect(back).toMatchObject({ owner: warrior.id, team: warrior.team, reflected: 1, bounces: 1, speedScale: WARRIOR_PARRY.speed });
+    expect(back.angle).toBeCloseTo(Math.atan2(rival.y - back.y, rival.x - back.x), 1);
+    expect(events('counter')).toHaveLength(1);
+    expect(warrior.hp).toBe(CLASSES.vanguard.hp);
+    step({}, {}, 12);
+    expect(rival.hp).toBe(3 - RULES.arrowDamage);
+    // Success: back in the fight at once, and ready again soon.
+    expect(warrior.move).toBe('');
+    expect(warrior.counterCd).toBeLessThanOrEqual(WARRIOR_PARRY.successCooldown);
+  });
+
+  it('solo para lo que viene de frente', () => {
+    const { duel, warrior, rival, step, events } = arena('archer');
+    duel.state.arrows.push(arrow(rival, { x: warrior.x - 50, angle: 0 }));
+    step({ e: TAP });
+    step({}, {}, 3);
+    expect(events('counter')).toHaveLength(0);
+    expect(warrior.hp).toBe(CLASSES.vanguard.hp - RULES.arrowDamage);
+  });
+
+  it('una salva entera se puede devolver: cada éxito estira la ventana', () => {
+    const { duel, warrior, rival, step, events } = arena('archer');
+    for (let i = 0; i < 3; i++) duel.state.arrows.push(arrow(rival, { id: 900 + i, x: 370 + i * 110 }));
+    step({ e: TAP });
+    step({}, {}, 16);
+    expect(events('counter')).toHaveLength(3);
+    expect(warrior.hp).toBe(CLASSES.vanguard.hp);
+  });
+
+  it('frena un golpe cuerpo a cuerpo de frente y deja tambaleando a quien lo dio', () => {
+    const { duel, warrior, rival, inputs, step } = arena('guardian');
+    Object.assign(rival, { x: warrior.x + 40, y: warrior.y, hp: 3, maxHp: 3 });
+    // The knight cuts; the warrior parries as the blade arrives.
+    inputs.set(rival.id, input({ primary: TAP }, { angle: Math.PI }));
+    step();
+    inputs.delete(rival.id);
+    step();
+    step({ e: TAP });
+    step({}, {}, 4);
+    expect(warrior.hp).toBe(CLASSES.vanguard.hp);
+    expect(rival.stunLeft).toBeGreaterThan(0);
+    expect(rival.x).toBeGreaterThan(warrior.x + 40);
+    expect(duel.state.events.some((event) => event.kind === 'counter')).toBe(true);
+  });
+
+  it('devuelve un tajo hacia quien lo lanzó', () => {
+    const { duel, warrior, rival, step } = arena('guardian');
+    Object.assign(rival, { x: 520, y: 270, hp: 10, maxHp: 10 });
+    duel.spawnWave(rival, rival, Math.PI, { ...warriorWave(0), damage: 2, tint: 'violet' });
+    for (let i = 0; i < 20 && !duel.state.waves.some((w) => w.owner === warrior.id); i++)
+      step(duel.state.waves[0] && duel.state.waves[0].travelled > 120 ? { e: TAP } : {});
+    const back = duel.state.waves.find((w) => w.owner === warrior.id)!;
+    expect(back.reflected).toBe(1);
+    expect(back.angle).toBeCloseTo(0, 1);
+    step({}, {}, 20);
+    expect(warrior.hp).toBe(CLASSES.vanguard.hp);
+    expect(rival.hp).toBeLessThan(10);
+  });
+
+  it('no para trampas, y un proyectil no rebota para siempre', () => {
+    const { duel, warrior, rival, step } = arena('archer');
+    duel.state.traps.push({ id: 1, owner: rival.id, team: rival.team, x: warrior.x, y: warrior.y, armLeft: 0, life: 5 });
+    step({ e: TAP });
+    step();
+    expect(warrior.hp).toBe(CLASSES.vanguard.hp - RULES.trapDamage);
+    const bounced = arena('archer');
+    bounced.duel.state.arrows.push(arrow(bounced.rival, { x: 380, bounces: WARRIOR_PARRY.bounces }));
+    bounced.step({ e: TAP });
+    bounced.step({}, {}, 3);
+    expect(bounced.warrior.hp).toBe(CLASSES.vanguard.hp - RULES.arrowDamage);
+  });
+
+  it('corta la recuperación de su propio golpe, pero no su preparación', () => {
+    const { warrior, step } = arena();
+    step({ primary: TAP });
+    step({ e: TAP });
+    step({}, {}, 3);
+    expect(warrior.counterLeft).toBe(0);
+    step({}, {}, 12);
+    // The blow is out: from here the parry may cut in.
+    step({ e: TAP });
+    step();
+    expect(warrior.counterLeft).toBeGreaterThan(0);
+    expect(warrior.move).toBe('vanguard.counter:0');
+  });
+});
+
+describe('Guerrero · Avance Imparable', () => {
+  it('carga las piernas y sale hacia donde apunta, apartando a quien se cruce, sin invulnerabilidad', () => {
+    const { duel, warrior, rival, step, events } = arena();
+    Object.assign(rival, { x: warrior.x + 60, y: warrior.y });
+    // Aiming east while the feet point north: he goes where he aims.
+    step({ mobility: TAP }, { y: -1 });
+    expect(warrior.move).toBe('vanguard.dash:0');
+    // The legs load for a moment before he goes.
+    step({}, {}, 3);
+    expect(warrior.dashLeft).toBe(0);
+    step();
+    expect(warrior.dashLeft).toBeGreaterThan(0);
+    step();
+    expect(warrior.dashInvulnerable).toBe(false);
+    step({}, {}, 5);
+    expect(warrior.x).toBeGreaterThan(330 + WARRIOR_LAUNCH.near * 0.8);
+    expect(Math.abs(warrior.y - 270)).toBeLessThan(10);
+    expect(30 - rival.hp).toBeCloseTo(WARRIOR_LAUNCH.hit.damage);
+    expect(events('dash').length).toBeGreaterThan(0);
+    expect(warrior.dashCd).toBeGreaterThan(0);
+  });
+
+  it('mantenido llega más lejos y cuesta más maná', () => {
+    const tap = arena();
+    tap.step({ mobility: TAP });
+    tap.step({}, {}, 20);
+    const held = arena();
+    held.charged('mobility', WARRIOR_LAUNCH_CHARGE_CAP);
+    held.step({}, {}, 20);
+    expect(held.warrior.x - 330).toBeGreaterThan(tap.warrior.x - 330 + 90);
+    expect(held.warrior.mana).toBeLessThan(tap.warrior.mana);
+  });
+
+  it('se puede usar mientras carga el mandoble, y la carga sigue', () => {
+    const { warrior, step } = arena();
+    step({ primary: DOWN });
+    step({ primary: HOLD }, {}, 10);
+    step({ primary: HOLD, mobility: DOWN });
+    step({ primary: HOLD, mobility: UP });
+    expect(warrior.move).toBe('vanguard.dash:0');
+    expect(warrior.chargeSkill).toBe('vanguard.sword');
+  });
+});
+const WARRIOR_LAUNCH_CHARGE_CAP = 0.6;
+
+describe('Guerrero · Cuerpo de Hierro', () => {
+  it('cuesta maná, sube un mandala y lo refuerza unos segundos', () => {
+    const { warrior, step, events } = arena();
+    step({ r: TAP });
+    expect(warrior.move).toBe('vanguard.reinforce:0');
+    expect(warrior.empowered).toBe('reinforce');
+    expect(warrior.furyLeft).toBeCloseTo(WARRIOR_REINFORCE.duration);
+    expect(warrior.mana).toBe(CLASSES.vanguard.mana - SKILLS['vanguard.reinforce'].cost!.amount);
+    expect(events('fury')).toHaveLength(1);
+    expect(warrior.rage).toBe(0);
+    step({}, {}, ticks(WARRIOR_REINFORCE.duration) + 1);
+    expect(warrior.empowered).toBe('');
+    expect(warrior.reinforceCd).toBeGreaterThan(0);
+  });
+
+  it('reforzado recibe menos, nada lo empuja, no le rompen la carga ni lo aturden', () => {
+    const { duel, warrior, rival, step } = arena();
+    step({ r: TAP });
+    const at = { x: warrior.x, y: warrior.y };
+    duel.damage(warrior, rival, 0, 1);
+    expect(warrior.hp).toBeCloseTo(CLASSES.vanguard.hp - WARRIOR_REINFORCE.taken);
+    expect({ x: warrior.x, y: warrior.y }).toEqual(at);
+    step({}, {}, 12);
+    step({ q: DOWN });
+    step({ q: HOLD }, {}, 10);
+    warrior.invuln = 0;
+    duel.damage(warrior, rival, 0, 0.5);
+    expect(warrior.chargeSkill).toBe('vanguard.slash');
+    duel.state.traps.push({ id: 7, owner: rival.id, team: rival.team, x: warrior.x, y: warrior.y, armLeft: 0, life: 5 });
+    warrior.invuln = 0;
+    step({ q: HOLD });
+    expect(warrior.stunLeft).toBe(0);
+  });
+
+  it('reforzado, hasta un toque del mandoble manda su onda', () => {
+    const { duel, warrior, step, finish } = arena();
+    step({ r: TAP });
+    step({}, {}, 12);
+    step({ primary: TAP });
+    expect(warrior.move).toBe('vanguard.sword:0:0:iron');
+    step({}, {}, 14);
+    expect(duel.state.waves).toHaveLength(1);
+    finish();
+    expect(MOVES['vanguard.sword:0:0:iron'].waves).toHaveLength(1);
+    expect(MOVES['vanguard.sword:0:0'].waves).toHaveLength(0);
+  });
+});
+
+describe('Guerrero · límites', () => {
+  it('en una arena la espada vieja no se mueve con la entrada de antes', () => {
+    const { duel, warrior, rival, inFront } = arena();
+    inFront(rival);
+    for (let i = 0; i < 20; i++) duel.step(new Map([[warrior.id, { ...idleInput(1), sword: i === 0 }]]));
+    expect(warrior.windup).toBe(0);
+    expect(rival.hp).toBe(30);
+    expect(duel.state.arrows).toHaveLength(0);
+    expect(duel.state.waves).toHaveLength(0);
+    expect(warrior.counterLeft).toBe(0);
+  });
+
+  it('en Lugunica la maza conserva su golpe de siempre y camina sin inercia', () => {
+    const world = new World();
+    const hero = world.join(newCharacter('hero', 'account', 'Hero', 'vanguard'));
+    world.step(new Map([[hero.id, { ...idleInput(1), sword: true }]]));
+    expect(hero.windup).toBeGreaterThan(0);
+    expect(hero.move).toBe('');
+    const at = hero.x;
+    world.step(new Map([[hero.id, { ...idleInput(2), x: 1 }]]));
+    expect(hero.x - at).toBeGreaterThan(CLASSES.vanguard.speed * RULES.tick * 0.5);
   });
 });

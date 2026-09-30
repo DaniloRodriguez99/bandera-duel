@@ -7,7 +7,7 @@ import { Aim } from './aim.js';
 /** Which held key's aim preview wins: mobility and the big abilities over the steady attacks. */
 const TARGET_ORDER: readonly SkillSlot[] = ['mobility', 'f', 'r', 'e', 'q', 'secondary', 'primary'];
 
-type ActionState = Omit<Input, 'seq' | 'x' | 'y' | 'angle' | 'charge' | 'special' | 'guard' | 'counter' | 'aimX' | 'aimY' | 'slots' | 'worldBlink' | 'kit' | 'world'>;
+type ActionState = Omit<Input, 'seq' | 'x' | 'y' | 'angle' | 'charge' | 'special' | 'guard' | 'aimX' | 'aimY' | 'slots' | 'worldBlink' | 'kit' | 'world'>;
 
 const emptyActions = (): ActionState => ({
   sword: false,
@@ -24,7 +24,6 @@ const emptyActions = (): ActionState => ({
   command: false,
   mark: false,
   ice: false,
-  slash: false,
 });
 
 interface TouchGesture {
@@ -80,7 +79,6 @@ export class Controls {
   private chargeSources = new Set<string>();
   private specialSources = new Set<string>();
   private guardSources = new Set<string>();
-  private counterSources = new Set<string>();
   private guardPulse = false;
   private directionalDashPulse = false;
   private movePointers = new Map<number, { x: number; y: number; el: HTMLElement }>();
@@ -353,7 +351,6 @@ export class Controls {
         this.chargeSources.add(gesture.source);
       } else this.pressSpecial(gesture.source);
     }
-    if (mode === 'hold' && id === 'counter') this.counterSources.add(gesture.source);
     if (mode === 'press' && id === 'magic-shield') this.guardPulse = true;
     gesture.element.dataset.aiming = 'true';
   }
@@ -413,10 +410,7 @@ export class Controls {
         }
       }
     }
-    if (mode === 'hold') {
-      this.guardSources.delete(gesture.source);
-      this.counterSources.delete(gesture.source);
-    }
+    if (mode === 'hold') this.guardSources.delete(gesture.source);
     if (mode === 'release' && cast) this.releaseAction(id,performance.now()-gesture.started);
     gesture.element.dataset.aiming = 'false';
     gesture.element.dataset.cancel = 'false';
@@ -473,7 +467,6 @@ export class Controls {
       charge: this.chargeSources.size > 0,
       special: this.specialSources.size > 0,
       guard: this.guardSources.size > 0 || this.guardPulse,
-      counter: this.counterSources.size > 0,
       aimX: this.aimX,
       aimY: this.aimY,
       // Only `worldInput` sets these; the network never carries them.
@@ -491,7 +484,6 @@ export class Controls {
 
   clearCombat() {
     this.guardSources.clear();
-    this.counterSources.clear();
     this.chargeSources.clear();
     this.specialSources.clear();
     this.physical.clear();
@@ -513,7 +505,6 @@ export class Controls {
   clear() {
     this.keys.clear();
     this.guardSources.clear();
-    this.counterSources.clear();
     this.chargeSources.clear();
     this.specialSources.clear();
     this.physical.clear();this.slotPressed.clear();this.slotReleased.clear();this.touchHeld.clear();

@@ -400,8 +400,11 @@ describe('nigromante', () => {
     run(sword.d, 1, { 0: { summon: true } });
     const zombie = sword.d.state.zombies[0];
     Object.assign(zombie, { x: 480, y: 150 });
-    run(sword.d, 1, { 1: { sword: true, angle: Math.PI / 2 } });
-    run(sword.d, 12, { 1: { angle: Math.PI / 2 } });
+    // The warrior's sweep, from its own key.
+    const slots = idleInput().slots;
+    slots.primary = { pressed: true, held: false, released: true };
+    run(sword.d, 1, { 1: { slots, angle: Math.PI / 2 } });
+    run(sword.d, 20, { 1: { angle: Math.PI / 2 } });
     expect(sword.d.state.zombies.map((z) => z.id)).not.toContain(zombie.id);
     const arrow = setup(['necromancer', 'archer']);
     Object.assign(arrow.players[0], { x: 100, y: 500, angle: 0 });

@@ -1,6 +1,6 @@
 import type { Player, SkillId, SlotInputState } from '../index.js';
 import { chargeTier } from './defs.js';
-import { KIT, KNIGHT_AWAKEN, MOVES } from './kits.js';
+import { KIT, KNIGHT_AWAKEN, MOVES, WARRIOR_PARRY, WARRIOR_REINFORCE } from './kits.js';
 
 /**
  * Runs the kit skills of one player for one tick. Every such skill goes the same way:
@@ -25,6 +25,15 @@ export interface KitSweep {
   angle: number;
 }
 
+/** A launch beginning this tick. */
+export interface KitDash {
+  angle: number;
+  distance: number;
+  speed: number;
+  iframes: boolean;
+  hit?: { damage: number; knockback: number };
+}
+
 export interface KitResult {
   sweeps: KitSweep[];
   /** Slashes leaving the blade this tick. */
@@ -36,7 +45,9 @@ export interface KitResult {
   lungeAngle: number;
   /** The first tick of a hold, so everyone hears the charge begin. */
   chargeStarted: SkillId | null;
-  awakened: boolean;
+  /** The fighter's empowered state began: the knight's awakening, the warrior's reinforcement. */
+  empowered: boolean;
+  dash: KitDash | null;
 }
 
 export interface KitContext {
@@ -57,12 +68,22 @@ export interface KitContext {
 export const moveRecovering = (p: Pick<Player, 'move' | 'moveT'>) =>
   !p.move || p.moveT >= MOVES[p.move].recoverFrom - EPS;
 
-/** Drops whatever the player was winding up or charging, as a stun or a death does. */
-export function clearKit(p: Player) {
-  p.move = '';
-  p.moveT = 0;
+/**
+ * Drops the charge being held. A charge that something else ended stays ended while its key is
+ * still down: it takes a new press, so a release afterwards never fires what was left of it.
+ */
+export function dropCharge(p: Player) {
+  if (!p.chargeSkill) return;
+  p.chargeBroken = p.chargeSkill;
   p.chargeSkill = '';
   p.chargeT = 0;
+}
+
+/** Drops whatever the player was winding up or charging, as a stun or a death does. */
+export function clearKit(p: Player) {
+  dropCharge(p);
+  p.move = '';
+  p.moveT = 0;
   p.buffered = '';
   p.bufferLeft = 0;
   p.combo = 0;
@@ -73,7 +94,9 @@ function startMove(p: Player, id: SkillId, charge: number, ctx: KitContext, out:
   const skill = KIT[id];
   const tier = chargeTier(skill.charge, charge).index;
   const step = skill.chain > 1 ? p.combo % skill.chain : 0;
+  // Each kit decides what its empowered state changes in a move.
   const move = skill.move(step, tier, p.furyLeft > 0);
+  const def = MOVES[move];
   p.move = move;
   p.moveT = 0;
   // The aim is taken here, at the moment the move goes out, and kept until it ends.
@@ -81,15 +104,22 @@ function startMove(p: Player, id: SkillId, charge: number, ctx: KitContext, out:
   p.moveCharge = charge;
   if (skill.chain > 1) {
     p.combo = (step + 1) % skill.chain;
-    p.comboLeft = MOVES[move].duration + skill.chainReset;
+    p.comboLeft = def.duration + skill.chainReset;
   }
   const cooldown = skill.cooldown(tier, charge);
   if (cooldown > 0) ctx.cool(id, cooldown);
   ctx.pay(id);
-  if (MOVES[move].effect === 'awaken') {
-    p.furyLeft = KNIGHT_AWAKEN.duration;
-    out.awakened = true;
+  if (def.effect === 'awaken' || def.effect === 'reinforce') {
+    p.empowered = def.effect;
+    p.furyLeft = def.effect === 'awaken' ? KNIGHT_AWAKEN.duration : WARRIOR_REINFORCE.duration;
+    out.empowered = true;
+  } else if (def.effect === 'parry') {
+    // Hordas: each rank of the warrior's own upgrade holds the guard up longer.
+    p.counterLeft = WARRIOR_PARRY.window * (1 + (p.pve?.classRanks.vanguard ?? 0) * 0.15);
   }
+  // Mobility drops the charge of a skill that cannot survive it.
+  if (skill.alongside && p.chargeSkill && p.chargeSkill !== id && KIT[p.chargeSkill].charge.cancelOnMobility)
+    dropCharge(p);
   out.started = move;
 }
 
@@ -106,7 +136,8 @@ export function stepKit(
     lunge: 0,
     lungeAngle: p.moveAngle,
     chargeStarted: null,
-    awakened: false,
+    empowered: false,
+    dash: null,
   };
   const { dt } = ctx;
   // The chain waits while its own skill is being charged: a full charge outlasts the wait, and
@@ -132,6 +163,7 @@ export function stepKit(
     const move = MOVES[p.move];
     const since = p.moveT;
     const until = Math.min(move.duration, since + dt);
+    const crosses = (at: number) => since - EPS <= at && at < until - EPS;
     move.strikes.forEach((strike, index) => {
       if (until <= strike.start + EPS || since >= strike.end - EPS) return;
       const from = Math.max(since, strike.start);
@@ -140,9 +172,16 @@ export function stepKit(
       if (strike.lunge) out.lunge += (strike.lunge * (to - from)) / (strike.end - strike.start);
     });
     move.waves.forEach((wave, index) => {
-      if (since - EPS <= wave.at && wave.at < until - EPS)
-        out.waves.push({ move: p.move, index, angle: p.moveAngle, charge: p.moveCharge });
+      if (crosses(wave.at)) out.waves.push({ move: p.move, index, angle: p.moveAngle, charge: p.moveCharge });
     });
+    if (move.dash && crosses(move.dash.at))
+      out.dash = {
+        angle: p.moveAngle,
+        distance: move.dash.distance(p.moveCharge),
+        speed: move.dash.speed,
+        iframes: move.dash.iframes,
+        hit: move.dash.hit,
+      };
     p.moveT = until;
     if (until >= move.duration - EPS) {
       p.move = '';
@@ -165,6 +204,20 @@ export function stepKit(
       continue;
     }
     const held = state.held || state.pressed;
+    // A charge that something else ended waits for its key to be pressed again.
+    if (p.chargeBroken === id) {
+      if (held && !state.pressed) continue;
+      p.chargeBroken = '';
+    }
+    // Mobility never waits for another charge: let go, it goes out as it is.
+    if (skill.alongside && p.chargeSkill && p.chargeSkill !== id) {
+      if (state.released && ctx.ready(id)) {
+        p.buffered = id;
+        p.bufferCharge = 0;
+        p.bufferLeft = INPUT_BUFFER;
+      }
+      continue;
+    }
     if (held && !p.chargeSkill && ctx.ready(id)) {
       p.chargeSkill = id;
       p.chargeT = 0;
@@ -186,7 +239,7 @@ export function stepKit(
   }
 
   // A request waits for the running move to end, then goes out with the aim of that moment. A
-  // parry does not wait that long: it cuts into a recovery.
+  // parry or a launch does not wait that long: it cuts into a recovery.
   if (p.buffered && (!p.move || (KIT[p.buffered]?.interrupts && moveRecovering(p)))) {
     const id = p.buffered;
     p.buffered = '';

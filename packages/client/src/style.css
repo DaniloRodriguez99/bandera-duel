@@ -1353,6 +1353,7 @@ select:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
     box-shadow: 0 0 13px #eac78788;
   }
   .stage[data-fury=true] [data-touch-ability=fury] { background: #3c2168e8; box-shadow: 0 0 15px #a76cf077; }
+  .stage[data-iron=true] [data-touch-ability=reinforce] { background: #4a0f0ce8; box-shadow: 0 0 15px #e0473e77; }
   .stage[data-class=necromancer] [data-touch-ability=summon] { box-shadow: 0 0 11px #a070e066; }
   [data-touch-ability=black-hole][data-active=true] { border-color: #c58cff; box-shadow: 0 0 13px #a66cffaa; }
   #practice-toolbar {

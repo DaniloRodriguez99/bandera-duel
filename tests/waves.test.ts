@@ -205,19 +205,31 @@ describe('tajos contra otras habilidades', () => {
     expect(10 - near.hp).toBeCloseTo(2);
   });
 
-  it('el contraataque del guerrero devuelve el tajo con lo que traía', () => {
+  it('el parry del guerrero devuelve el tajo con lo que traía, y más rápido', () => {
     const { duel, caster, near, run } = arena('vanguard');
     caster.hp = caster.maxHp = 10;
+    // His guard up, facing the slash as it comes.
     near.counterLeft = 5;
-    duel.spawnWave(caster, caster, 0, slash({ damage: 2, falloff: [[0, 1], [1, 0.5]] }));
-    run(ticks(0.2), [['near', { counter: true }]]);
+    const facing: [string, Partial<Input>][] = [['near', { angle: Math.PI }]];
+    const sent = slash({ damage: 2, falloff: [[0, 1], [1, 0.5]] });
+    duel.spawnWave(caster, caster, 0, sent);
+    run(ticks(0.2), facing);
     const back = duel.state.waves.find((w) => w.owner === 'near');
-    expect(back).toMatchObject({ reflected: 1, team: near.team });
+    expect(back).toMatchObject({ reflected: 1, team: near.team, speed: sent.speed * 1.25 });
     expect(duel.state.events.some((e) => e.kind === 'counter')).toBe(true);
-    run(ticks(0.6), [['near', { counter: true }]]);
+    run(ticks(0.6), facing);
     expect(near.hp).toBe(10);
     // It left at 2 and had lost a little by the time it was turned.
     expect(10 - caster.hp).toBeGreaterThan(1.6);
     expect(10 - caster.hp).toBeLessThan(2);
+  });
+
+  it('el parry solo cubre el frente: de espaldas el tajo entra', () => {
+    const { duel, caster, near, run } = arena('vanguard');
+    near.counterLeft = 5;
+    duel.spawnWave(caster, caster, 0, slash({ damage: 2, falloff: [[0, 1]] }));
+    run(ticks(0.4), [['near', { angle: 0 }]]);
+    expect(duel.state.waves.some((w) => w.owner === 'near')).toBe(false);
+    expect(near.hp).toBe(8);
   });
 });

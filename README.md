@@ -42,13 +42,13 @@ Todas las clases hablan el mismo lenguaje de controles: cambia el personaje, no 
 | -------------- | ---------------------------- | ------------- | ------------- | ------------------- | ---------------- | -------------- |
 | WASD / flechas | Mover                        | ·             | ·             | ·                   | ·                | ·              |
 | Mouse          | Apuntar                      | ·             | ·             | ·                   | ·                | ·              |
-| Clic izquierdo | Ataque básico                | Flecha        | Orbe de fuego | Fuego               | Tres Cortes      | Espada pesada  |
+| Clic izquierdo | Ataque básico                | Flecha        | Orbe de fuego | Fuego               | Tres Cortes      | Mandoble Colosal |
 | Clic derecho   | Secundario                   | Daga          | —             | Marcar (un zombie)  | Ráfaga de Acero  | —              |
-| Espacio        | Movilidad                    | Esquivar      | Parpadeo      | —                   | Paso Relámpago   | Esquivar       |
-| Q              | Básica, de uso frecuente     | Triple        | Saeta glacial | —                   | —                | Tajo viajero   |
-| E              | Secundaria                   | Cepo          | Égida         | Mando               | —                | Contraataque   |
+| Espacio        | Movilidad                    | Esquivar      | Parpadeo      | —                   | Paso Relámpago   | Avance Imparable |
+| Q              | Básica, de uso frecuente     | Triple        | Saeta glacial | —                   | —                | Creciente Escarlata |
+| E              | Secundaria                   | Cepo          | Égida         | Mando               | —                | Revancha de Hierro (parry) |
 | F              | Poderosa                     | —             | Singularidad  | Invocar zombies     | —                | —              |
-| R              | Definitiva                   | —             | —             | —                   | Despertar        | —              |
+| R              | Definitiva                   | —             | —             | —                   | Despertar        | Cuerpo de Hierro |
 
 Tocar una tecla usa las habilidades instantáneas; mantenerla carga las que se cargan (la flecha, el orbe, Parpadeo, Singularidad, la invocación) y soltarla las lanza. Las habilidades se combinan: por ejemplo, el mago puede caminar, parpadear con Espacio y seguir cargando Singularidad con F. Cada una declara qué deja ocupado mientras carga: Singularidad deja las manos ocupadas para los clics, pero no para Q, E ni Espacio. El panel de habilidades muestra siempre las siete posiciones (las vacías, con «—») y, debajo de la arena, cómo se usa cada una con tus teclas. Los controles se pueden reasignar en Personalizar.
 
@@ -204,7 +204,7 @@ Al crear una sala podés elegir título, mapa, formato, objetivo PvP, regla de D
 
 ## Práctica local
 
-En la pantalla inicial, elegí una clase y uno de los cuatro mapas, y pulsá **Probar contra un rival inmóvil**. No requiere apodo, sala ni servidor. El rival recibe daño y reaparece, pero no se mueve ni ataca. Podés probar armas, movilidad, arbustos y banderas con las reglas habituales.
+En la pantalla inicial, elegí una clase y uno de los cuatro mapas, y pulsá **Probar contra un rival inmóvil**. No requiere apodo, sala ni servidor. El rival recibe daño y reaparece en su lugar. En la barra se elige qué hace: quedarse inmóvil, disparar flechas, lanzar orbes cargados, atacar con espada o lanzar Crecientes Escarlata cargadas; sirve para probar cortes y parrys. Podés probar armas, movilidad, arbustos y banderas con las reglas habituales.
 
 ### Maná y controles de prueba
 
@@ -234,7 +234,7 @@ Mantener clic izquierdo durante 0,8 s carga el arco; soltar dispara. En móvil, 
 Mantener clic o Espacio carga la habilidad y soltar la ejecuta; un toque rápido conserva la habilidad normal. Un círculo rúnico bajo el personaje crece y gira más rápido mientras carga, y destella al llegar al máximo (1,5 s).
 
 - Mago: gran bola de fuego (daño de 1 a 2,5, doble tamaño) que explota al impactar y quema a los cercanos con la mitad del daño.
-- Nigromante (clic): fuego cargado de 1 a 2 de daño y casi el doble de tamaño. Caballero y guerrero: golpe cargado con más daño (×2 y ×1,75) y más alcance. Arquero y mago (Espacio): dash hasta 1,8 veces más largo. La embestida del caballero es inmediata, siempre recorre unas 190 unidades y conserva la carga de espada para atacar durante el recorrido. La flecha cargada del arquero mantiene su regla propia.
+- Nigromante (clic): fuego cargado de 1 a 2 de daño y casi el doble de tamaño. Caballero y guerrero: sus cargas tienen estados propios (ver sus secciones). Arquero y mago (Espacio): dash hasta 1,8 veces más largo. La embestida del caballero es inmediata, siempre recorre unas 190 unidades y conserva la carga de espada para atacar durante el recorrido. La flecha cargada del arquero mantiene su regla propia.
 - Nigromante (Espacio): una carga corta invoca un solo **zombie con gorro** (máximo uno): tiene 5 de vida, se cura, cada 5 s invoca un zombie que no respeta el tope normal y lanza con los dos brazos un hechizo doble de fuego y hielo (0,5 de daño cada uno); el hielo congela 1,2 s al que golpea. Si se mantiene hasta llenar el aura (2,5 s, cambia a verde) con un rival muerto a menos de 200 px, lo **resucita como esclavo** con su clase y su nombre; el jugador reaparece normalmente y el nigromante puede volver a invocar a ese esclavo con el aura completa 20 s después de que muera.
 
 ### Panel de habilidades
@@ -269,9 +269,13 @@ Espadachín veloz: el más rápido de la arena, sin escudo. Se defiende moviénd
 
 ### Guerrero
 
-- **Espacio:** dash, más corto que el del arquero y el mago (mantener para uno más largo). Camina un poco más lento que antes (145).
-- **Q · tajo viajero:** lanza una media luna que avanza unos 270 px, atraviesa y corta a todos los rivales y zombies en su camino (1,5 de daño a cada uno), hasta chocar con un muro. Recarga de 5 s. Los escudos lo bloquean.
-- **E · contraataque:** mientras está activo, todo proyectil que lo alcance (flechas, fuego, hielo, bolas de fuego, flechas de viento, tajos) vuelve en sentido contrario y pasa a ser del guerrero, con el mismo daño. Un toque lo deja activo 0,45 s; mantener E lo sostiene hasta 2,5 s (a mitad de velocidad). Si se mantiene **1 s o más**, lo que devuelve sale **al doble de velocidad y de daño**. Al terminar entra en recarga de 4 s y hay que soltar E para volver a usarlo.
+Una potencia reforzada: su magia no lanza nada, le endurece el cuerpo. Es el más lento (145) y el que más aguanta (5 de vida), y tarda 0,15 s en alcanzar su velocidad y en frenar. Todo lo suyo es rojo.
+
+- **Clic · Mandoble Colosal:** dos golpes pesados que se alternan: un *barrido* ancho de derecha a izquierda (2 de daño, alcance 82) y un *martillazo* desde arriba (2,5) que cae de una vez sobre una franja de 100 hacia donde se apunta y empuja lejos. Tardan en salir (0,3 y 0,4 s) y en volver; el martillazo arranca desde donde el barrido dejó la hoja. La cadena vuelve a empezar 1,2 s después. Mantener carga el golpe que toca en cuatro estados (toque, 0,22, 0,75 y 1,5 s): hasta ×1,75 de daño y 30 % más de alcance, y desde la carga baja manda una onda roja hacia adelante, más larga cuanto más se cargó (la del martillazo es angosta y rasante). Cargando camina al 60 % y un golpe recibido la rompe. No corta proyectiles.
+- **Q · Creciente Escarlata:** un tajo rojo que viaja y atraviesa. El toque es corto (unos 270 de alcance, 1,5 de daño). Mantenido crece: a los 3 s está completo (unos 520 de alcance, 3 de daño) y, si se sigue, se sobrecarga hasta los 7 s y se abre en abanico hasta cruzar el mapa (5 de daño). Pega más cerca que lejos: pierde hasta el 60 % en el último tramo. Los muros le hacen sombra: quien se cubre detrás no lo recibe. Cuesta 15 de maná más 12 por segundo de carga (la ola colosal pide casi todo el pozo) y la recarga va de 5 a 12 s según lo cargado. Cargando camina al 40 %, no puede usar el mandoble ni el parry, se lo ve en los arbustos, un golpe lo interrumpe y le cuesta media recarga, y la movilidad lo cancela sin gastar la recarga.
+- **E · Revancha de Hierro:** un parry. Al pulsar, durante 0,30 s cubre el frente (180° hacia donde apunta) sin frenarlo. Un proyectil o un tajo que llega de frente vuelve un 25 % más rápido hacia quien lo lanzó (si se movió hasta 60° de su camino de vuelta; si no, por donde vino), como del guerrero; puede rebotar tres veces como máximo. Un golpe cuerpo a cuerpo de frente se frena y el atacante queda tambaleando 0,5 s y empujado. Cada acierto le devuelve 0,15 s de ventana (una salva entera se puede devolver), termina la pose al instante y deja la recarga en 0,6 s; fallar cuesta 3 s. No para trampas, agujeros negros ni ejecuciones. Corta la recuperación de sus propios golpes, nunca su preparación.
+- **Espacio · Avance Imparable:** carga las piernas un instante y sale despedido hacia donde apunta: 90 unidades con un toque, hasta 210 manteniendo 0,6 s. Aparta a quien se cruza (0,5 de daño y un empujón) y no da invulnerabilidad. Cuesta 10 de maná más 15 por segundo de carga; recarga de 2,5 s. Se puede usar mientras carga el mandoble sin perder esa carga.
+- **R · Cuerpo de Hierro:** un mandala rojo sube por el cuerpo y lo refuerza 6 s: recibe 40 % menos de daño, nada lo empuja, no le rompen las cargas ni lo aturden trampas o hielo, y cada golpe del mandoble manda su onda (un estado más fuerte que su carga). Cuesta 40 de maná; recarga de 16 s.
 
 ### Combos del arquero
 

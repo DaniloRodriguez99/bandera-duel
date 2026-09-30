@@ -2,6 +2,20 @@
 
 ## 2026-09-30
 
+### Guerrero: potencia reforzada
+
+El Guerrero cambia su contraataque sostenido y su tajo de siempre por un kit propio. Su magia le refuerza el cuerpo: todo lo suyo es fuerza física, en rojo. Versión de prototipo: la jugabilidad está completa, los efectos visuales y de sonido son provisorios.
+
+- **Mandoble Colosal (clic).** Dos golpes pesados que se alternan: un barrido ancho y un martillazo desde arriba que cae de una vez sobre la franja de adelante. Tardan en salir y en volver; el segundo arranca desde donde el primero dejó la hoja. Cargado pega hasta ×1,75, llega más lejos y manda una onda roja hacia adelante. Ya no corta proyectiles: eso es del Caballero.
+- **Creciente Escarlata (Q).** El tajo que viaja ahora crece mientras se carga: completo a los 3 s y, si se sigue, se sobrecarga hasta una ola que cruza el mapa. Pega más cerca que lejos y los muros cubren. Cuesta maná por segundo de carga, y cargando el Guerrero es lento, visible en los arbustos e interrumpible; la movilidad lo cancela.
+- **Revancha de Hierro (E).** Un parry de 0,3 s que cubre el frente sin frenarlo: devuelve proyectiles y tajos hacia quien los lanzó, más rápido, y frena los golpes cuerpo a cuerpo dejando tambaleando al atacante. Acertar devuelve parte de la ventana y la recarga es corta; fallar cuesta 3 s. Reemplaza al contraataque que se mantenía.
+- **Avance Imparable (Espacio).** Carga las piernas y sale despedido hacia donde apunta, apartando a quien se cruce. Mantener lo alarga. No da invulnerabilidad. Los perfiles guardados cambian el esquive compartido por esta embestida.
+- **Cuerpo de Hierro (R, nuevo).** Un mandala rojo sube por el cuerpo: 6 s de menos daño recibido, sin empujes, sin cargas rotas ni aturdimientos, y cada golpe del mandoble manda su onda. Los perfiles guardados lo reciben en R si estaba libre.
+- Tarda un instante en alcanzar su velocidad y en frenar.
+- Práctica: un rival nuevo lanza Crecientes Escarlata cargadas, para cortarlas o devolverlas.
+- El Guerrero revivido por un Nigromante devuelve proyectiles hacia quien los lanzó y lanza la creciente de un toque.
+- Lugunica no cambia: la maza conserva su golpe y la parada su regla.
+
 ### Maná en la arena
 
 - El Caballero y el Guerrero traen 100 de maná a la arena. Se ve como una barra azul bajo la vida y vuelve solo a 14 por segundo, 0,8 s después del último gasto. Las demás clases todavía no tienen habilidades que lo gasten.

@@ -1367,16 +1367,15 @@ function render(s: Snapshot) {
     updateClasses($('room-classes'), me.classId, !overlay || s.paused);
     $('room-picker').hidden = !overlay;
     $('stage').dataset.class = me.classId;
-    $('stage').dataset.fury = String(me.furyLeft > 0);
+    $('stage').dataset.fury = String(me.empowered === 'awaken');
+    $('stage').dataset.iron = String(me.empowered === 'reinforce');
     $('stage').dataset.magicShield = String(me.magicShieldHits);
     $('stage').dataset.frozen = String(me.frozenLeft > 0);
     $('cd-ice').textContent = `❄ ${me.iceCd > 0 ? me.iceCd.toFixed(1) + 's' : 'Listo'}`;
     $('cd-ice').hidden = !Object.values(me.loadout).includes('mage.ice');
     $('cd-black-hole').hidden = !Object.values(me.loadout).includes('mage.blackHole');
     $('cd-black-hole').textContent = `◉ ${me.blackHoleCharge > 0 ? `Cargando ${Math.round(blackHoleStats(me.blackHoleCharge).power * 100)} %` : holeLive ? `Detonar · ${me.blackHoleCd.toFixed(1)}s` : me.blackHoleCd > 0 ? `${me.blackHoleCd.toFixed(1)}s` : 'Lista'}`;
-    $('stage').dataset.dashing = String(
-      me.dashInvulnerable || (me.classId === 'guardian' && me.dashLeft > 0),
-    );
+    $('stage').dataset.dashing = String(me.dashInvulnerable || (me.dashLeft > 0 && me.dashHit > 0));
     $('health').textContent = `♥ ${me.hp}/${me.maxHp}`;
     $('health').setAttribute('aria-label', `Vida: ${me.hp} de ${me.maxHp}`);
     $('mobile-player-status').hidden = false;
@@ -1390,11 +1389,15 @@ function render(s: Snapshot) {
           ? me.revealLeft > 0
             ? 'REVELADO'
             : 'OCULTO'
-          : me.furyLeft > 0
+          : me.empowered === 'awaken'
             ? `DESPIERTO ${me.furyLeft.toFixed(1)}s`
-            : me.classId === 'guardian'
-              ? `FURIA ${Math.floor(me.rage)} %`
-              : '';
+            : me.empowered === 'reinforce'
+              ? `HIERRO ${me.furyLeft.toFixed(1)}s`
+              : me.classId === 'guardian'
+                ? `FURIA ${Math.floor(me.rage)} %`
+                : me.maxMana > 0
+                  ? `MANÁ ${Math.floor(me.mana)}`
+                  : '';
     $('lives').textContent = `☠ ${me.deaths}`;
     $('lives').setAttribute('aria-label', `Muertes: ${me.deaths}; reapariciones ilimitadas`);
     $('stealth-state').textContent = me.bushId

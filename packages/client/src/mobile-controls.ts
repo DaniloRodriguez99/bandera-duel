@@ -1,4 +1,4 @@
-import { CLASSES, DEFAULT_LOADOUTS, KIT, RULES, affordable, chargeProgress, type ClassId, type Player, type SkillSlot } from '@bandera/shared';
+import { CLASSES, DEFAULT_LOADOUTS, KIT, RULES, affordable, chargeProgress, overcharge, type ClassId, type Player, type SkillSlot } from '@bandera/shared';
 import { abilityCards, type AbilitySlot } from './abilities.js';
 
 /** Thumb order: the big attack button first, mobility beside it, then the class's abilities. */
@@ -28,8 +28,10 @@ const TOUCH_META: Record<string, Omit<TouchAbilitySlot, keyof AbilitySlot>> = {
   mark: { mode: 'release', directional: true, primary: false },
   flurry: { mode: 'charge', directional: true, primary: false },
   fury: { mode: 'release', directional: false, primary: false },
-  slash: { mode: 'release', directional: true, primary: false },
-  counter: { mode: 'hold', directional: true, primary: false },
+  slash: { mode: 'charge', directional: true, primary: false },
+  // A parry goes up the moment the finger lands; dragging still turns the guard.
+  counter: { mode: 'press', directional: true, primary: false },
+  reinforce: { mode: 'press', directional: false, primary: false },
 };
 export const touchMeta=(id:string,classId:ClassId)=>{const meta=TOUCH_META[id];if(!meta)throw new Error(`Falta configuración táctil para ${classId}/${id}`);return {...meta,mode:id==='dash'&&classId==='guardian'?'release' as const:meta.mode};};
 
@@ -59,14 +61,15 @@ function chargeFor(slot: TouchAbilitySlot, p: Player) {
   if (slot.id === 'black-hole') return p.blackHoleCharge / RULES.blackHoleChargeTime;
   if (slot.id === 'summon') return p.specialCharge / RULES.raiseCharge;
   if (slot.id === 'dash') return p.specialCharge / RULES.overchargeTime;
-  if (slot.id === 'counter') return p.counterCharge / RULES.counterChargeTime;
   return 0;
 }
 
 function activeFor(id: string, p: Player) {
   if (id === 'counter') return p.counterLeft > 0;
-  if (id === 'fury') return p.furyLeft > 0;
+  if (id === 'fury') return p.empowered === 'awaken';
+  if (id === 'reinforce') return p.empowered === 'reinforce';
   if (id === 'flurry') return p.move.startsWith('guardian.flurry:');
+  if (id === 'slash') return p.move.startsWith('vanguard.slash:');
   if (id === 'magic-shield') return p.magicShieldHits > 0;
   if (id === 'trap') return p.trapLeft > 0;
   if (id === 'dash') return p.dashLeft > 0;
@@ -75,10 +78,13 @@ function activeFor(id: string, p: Player) {
 
 function statusFor(slot: TouchAbilitySlot, p: Player, cooldown: number) {
   const charge = chargeFor(slot, p);
+  // Past a full charge the number keeps climbing.
+  const over = slot.skillId && p.chargeSkill === slot.skillId ? overcharge(KIT[slot.skillId].charge, p.chargeT) : 0;
+  if (over > 0) return `${100 + Math.round(over * 100)}%`;
   if (charge > 0) return `${Math.round(Math.min(1, charge) * 100)}%`;
-  if (slot.id === 'fury' && p.furyLeft <= 0 && p.classId === 'guardian') return `${Math.floor(p.rage)}%`;
-  if (slot.id === 'counter' && p.counterLeft > 0) return p.counterCharge >= RULES.counterChargeTime ? 'MÁX' : 'ACTIVO';
-  if (slot.id === 'fury' && p.furyLeft > 0) return `${p.furyLeft.toFixed(1)}s`;
+  if (slot.id === 'fury' && p.empowered !== 'awaken' && p.classId === 'guardian') return `${Math.floor(p.rage)}%`;
+  if (slot.id === 'counter' && p.counterLeft > 0) return 'ACTIVO';
+  if ((slot.id === 'fury' || slot.id === 'reinforce') && p.furyLeft > 0) return `${p.furyLeft.toFixed(1)}s`;
   if (slot.id === 'magic-shield' && p.magicShieldHits > 0) return `${p.magicShieldHits}/2`;
   if (slot.id === 'trap' && p.trapLeft > 0) return p.trapLeft.toFixed(1);
   if (cooldown > 0) return cooldown < 10 ? cooldown.toFixed(1) : String(Math.ceil(cooldown));

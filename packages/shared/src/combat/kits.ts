@@ -1,5 +1,6 @@
 import type { SkillId } from '../index.js';
 import type { ChargeSpec, WaveSpec, WaveTint } from './defs.js';
+import { curve, type Curve } from './geometry.js';
 import { frames, type KitSkill, type MoveDef, type StrikeDef } from './moves.js';
 
 /**
@@ -29,9 +30,9 @@ export const KNIGHT_SWORD_CHARGE: ChargeSpec = {
   tiers: [
     { id: 'tap', at: 0, label: 'Toque · corte' },
     { id: 'low', at: 0.22, label: 'Carga baja · filo corto' },
-    { id: 'mid', at: 0.6, label: 'Carga media · corta a medias' },
-    { id: 'high', at: 1, label: 'Carga alta · casi corta del todo' },
-    { id: 'max', at: 1.4, label: '100 % · corte absoluto' },
+    { id: 'mid', at: 0.6, label: 'Carga media · corta a medias', tint: 'gold' },
+    { id: 'high', at: 1, label: 'Carga alta · casi corta del todo', tint: 'gold' },
+    { id: 'max', at: 1.4, label: '100 % · corte absoluto', tint: 'violet' },
   ],
   cap: 1.4,
   breakOnDamage: { cooldown: 0 },
@@ -112,8 +113,8 @@ for (let step = 0; step < 3; step++)
 export const KNIGHT_FLURRY_CHARGE: ChargeSpec = {
   tiers: [
     { id: 'low', at: 0, label: 'Toque · Tres Relámpagos' },
-    { id: 'mid', at: 0.45, label: 'Media · Cruz Gemela' },
-    { id: 'max', at: 1.1, label: 'Máxima · Juicio Carmesí' },
+    { id: 'mid', at: 0.45, label: 'Media · Cruz Gemela', tint: 'gold' },
+    { id: 'max', at: 1.1, label: 'Máxima · Juicio Carmesí', tint: 'crimson' },
   ],
   cap: 1.1,
   breakOnDamage: { cooldown: 0 },
@@ -209,6 +210,270 @@ const PRESS: ChargeSpec = {
   cancelOnMobility: false,
 };
 
+// ── Warrior ────────────────────────────────────────────────────────────────────────────────────
+// A reinforced body: his magic makes him stronger instead of casting anything. Two slow blows of a
+// greatsword that, charged, send a red shockwave ahead; a parry that sends an attack back at
+// whoever threw it; a slash that keeps growing for as long as he dares to hold it; a launch off
+// reinforced legs; and a state where his body turns to iron.
+
+/** Seconds the warrior's chain waits for its second blow before starting over. */
+const WARRIOR_CHAIN_RESET = 1.2;
+
+export const WARRIOR_SWORD_CHARGE: ChargeSpec = {
+  tiers: [
+    { id: 'tap', at: 0, label: 'Toque · golpe pesado' },
+    { id: 'low', at: 0.22, label: 'Carga baja · ×1,25' },
+    { id: 'mid', at: 0.75, label: 'Carga media · ×1,5 y más alcance', tint: 'scarlet' },
+    { id: 'max', at: 1.5, label: 'Carga completa · ×1,75', tint: 'scarlet' },
+  ],
+  cap: 1.5,
+  breakOnDamage: { cooldown: 0 },
+  cancelOnMobility: false,
+};
+
+/** By charge tier: tap, low, mid, max. */
+const GREATSWORD = {
+  damage: [1, 1.25, 1.5, 1.75],
+  reach: [1, 1.1, 1.2, 1.3],
+  /** The shockwave the blow sends ahead; a tap sends none unless the body is reinforced. */
+  shock: [null, 0, 1, 2] as (number | null)[],
+};
+const GREATSWORD_STEPS = ['Barrido', 'Martillo'];
+/** The red shockwaves of the charged blows, weakest to strongest; the last one only reinforced. */
+const SHOCKWAVES = [
+  { range: 100, halfWidth: 26, damage: 0.75, knockback: 20, resist: 0.75 },
+  { range: 160, halfWidth: 34, damage: 1.25, knockback: 30, resist: 1 },
+  { range: 230, halfWidth: 44, damage: 2, knockback: 42, resist: 1.25 },
+  { range: 300, halfWidth: 54, damage: 2.5, knockback: 50, resist: 1.5 },
+];
+
+/**
+ * Force thrown off a blow. The sweep sends a crescent that opens as it goes; the overhead blow
+ * drives a narrow wave along the ground, farther and harder.
+ */
+const warriorShock = (level: number, hammer: boolean): WaveSpec => {
+  const base = SHOCKWAVES[level];
+  return {
+    halfWidth: base.halfWidth * (hammer ? 0.6 : 1),
+    spread: hammer ? 0 : 0.08,
+    bow: hammer ? 4 : 12,
+    thickness: hammer ? 18 : 14,
+    range: base.range * (hammer ? 1.3 : 1),
+    speed: 480,
+    damage: base.damage * (hammer ? 1.2 : 1),
+    falloff: [[0, 1], [1, 0.45]],
+    knockback: base.knockback,
+    cut: 0,
+    resist: base.resist,
+    tint: 'scarlet',
+  };
+};
+
+function warriorBlow(step: number, tier: number, reinforced: boolean): MoveDef {
+  const hammer = step === 1;
+  // A long wind-up and a longer way back: every blow is a commitment.
+  const start = hammer ? frames(12) : frames(9);
+  const end = hammer ? frames(14) : frames(13);
+  const reach = GREATSWORD.reach[tier];
+  // Reinforced, every blow throws its shockwave, one step stronger than the charge alone.
+  const shock = GREATSWORD.shock[tier];
+  const level = reinforced ? Math.min(SHOCKWAVES.length - 1, (shock ?? -1) + 1) : shock;
+  return {
+    name: GREATSWORD_STEPS[step],
+    duration: hammer ? frames(30) : frames(24),
+    // The overhead blow starts where the sweep left the blade, on the left.
+    enter: hammer ? deg(-65) : undefined,
+    strikes: [{
+      start,
+      end,
+      // A wide sweep across the front, then the blade brought down from overhead along the aim.
+      shape: hammer
+        ? { kind: 'lane', length: 100 * reach, halfWidth: 18, drop: true }
+        : { kind: 'arc', from: deg(65), to: deg(-65), inner: 8, reach: 82 * reach },
+      damage: (hammer ? 2.5 : 2) * GREATSWORD.damage[tier],
+      knockback: (hammer ? 50 : 34) * (reinforced ? 1.3 : 1),
+      // A greatsword breaks bodies, not spells: it cuts nothing out of the air.
+      cut: 0,
+      lunge: hammer ? 14 : 10,
+    }],
+    waves: level === null ? [] : [{ at: end, wave: warriorShock(level, hammer) }],
+    speed: 0.5,
+    recoverFrom: end,
+    tint: 'scarlet',
+  };
+}
+
+for (let step = 0; step < GREATSWORD_STEPS.length; step++)
+  for (let tier = 0; tier < WARRIOR_SWORD_CHARGE.tiers.length; tier++)
+    for (const reinforced of [false, true])
+      register(`vanguard.sword:${step}:${tier}${reinforced ? ':iron' : ''}`, warriorBlow(step, tier, reinforced));
+
+export const WARRIOR_SLASH_CHARGE: ChargeSpec = {
+  tiers: [
+    { id: 'tap', at: 0, label: 'Toque · creciente corta' },
+    { id: 'low', at: 1, label: '1 s · más ancha y más lejos', tint: 'scarlet' },
+    { id: 'mid', at: 2, label: '2 s · casi el doble de daño', tint: 'scarlet' },
+    { id: 'max', at: 3, label: '3 s · carga completa', tint: 'scarlet' },
+    { id: 'over', at: 3.5, label: 'Seguir · sobrecarga, se abre en abanico', tint: 'scarlet' },
+    { id: 'colossal', at: 7, label: '7 s · ola que cruza el mapa', tint: 'scarlet' },
+  ],
+  cap: 7,
+  full: 3,
+  // A blow ends the charge and costs half of the cooldown a tap would have left.
+  breakOnDamage: { cooldown: 0.5 },
+  cancelOnMobility: true,
+  reveals: true,
+};
+
+/**
+ * The crescent by the seconds it was held. One table drives its size, its reach, its damage, what
+ * it takes to cut it and how long its cooldown is, so they never drift apart: 3 s is a full charge,
+ * and from there to 7 s it overcharges into a wave that crosses the arena.
+ */
+const CRESCENT = {
+  halfWidth: [[0, 24], [3, 60], [7, 110]],
+  spread: [[0, 0], [3, 0.06], [7, 0.45]],
+  bow: [[0, 8], [3, 16], [7, 40]],
+  thickness: [[0, 14], [3, 18], [7, 26]],
+  range: [[0, 273], [3, 520], [7, 1150]],
+  speed: [[0, 420], [3, 460], [7, 520]],
+  damage: [[0, 1.5], [3, 3], [7, 5]],
+  knockback: [[0, 24], [3, 40], [7, 60]],
+  resist: [[0, 0.5], [3, 1], [7, 2]],
+  cooldown: [[0, 5], [3, 7], [7, 12]],
+} satisfies Record<string, Curve>;
+
+/** The share of its damage the crescent keeps by the share of its reach it has travelled. */
+const CRESCENT_FALLOFF: Curve = [[0, 1], [0.3, 0.85], [0.6, 0.6], [1, 0.4]];
+
+/** The cooldown a tap leaves; a longer hold leaves a longer one. */
+export const WARRIOR_SLASH_COOLDOWN = curve(CRESCENT.cooldown, 0);
+
+/** The warrior's travelling slash after holding it this many seconds. */
+export const warriorWave = (charge: number): WaveSpec => ({
+  halfWidth: curve(CRESCENT.halfWidth, charge),
+  spread: curve(CRESCENT.spread, charge),
+  bow: curve(CRESCENT.bow, charge),
+  thickness: curve(CRESCENT.thickness, charge),
+  range: curve(CRESCENT.range, charge),
+  speed: curve(CRESCENT.speed, charge),
+  damage: curve(CRESCENT.damage, charge),
+  falloff: CRESCENT_FALLOFF,
+  knockback: curve(CRESCENT.knockback, charge),
+  // It crushes whoever it reaches; it does not cut their skills.
+  cut: 0,
+  resist: curve(CRESCENT.resist, charge),
+  tint: 'scarlet',
+});
+
+/** A turn of the whole body that lets the crescent go at `at`; the bigger ones take longer to come back from. */
+const crescent = (name: string, at: number, duration: number, speed: number): MoveDef => ({
+  name,
+  duration: frames(duration),
+  strikes: [],
+  waves: [{ at: frames(at), wave: warriorWave }],
+  speed,
+  recoverFrom: frames(at),
+  tint: 'scarlet',
+  flourish: {
+    start: frames(at - 3),
+    end: frames(at),
+    shape: { kind: 'arc', from: deg(80), to: deg(-80), inner: 8, reach: 86 },
+  },
+});
+register('vanguard.slash:0', crescent('Creciente', 4, 12, 0.6));
+register('vanguard.slash:1', crescent('Creciente Escarlata', 5, 18, 0.4));
+register('vanguard.slash:2', crescent('Ola Carmesí', 7, 30, 0.25));
+
+/** The parry. */
+export const WARRIOR_PARRY = {
+  /** Seconds the guard stays up after the press. */
+  window: 0.3,
+  /** Each attack turned gives this much of the window back, never past its full length: a whole volley can be returned. */
+  extend: 0.15,
+  /** The front it covers, centred on the aim. */
+  arc: Math.PI,
+  /** Seconds before the next one: after a parry that met nothing, and after one that worked. */
+  cooldown: 3,
+  successCooldown: 0.6,
+  /** How much faster an attack flies back, and how far off its way back it turns to find whoever threw it. */
+  speed: 1.25,
+  turn: deg(60),
+  /** Times one attack can be turned; after that nothing stops it. */
+  bounces: 3,
+  /** A blade stopped on the guard: the seconds its owner staggers, and how far back. */
+  stagger: 0.5,
+  push: 40,
+};
+register('vanguard.counter:0', {
+  name: 'Revancha',
+  duration: frames(9),
+  strikes: [],
+  waves: [],
+  // The guard goes up without slowing him down.
+  speed: 1,
+  recoverFrom: frames(9),
+  effect: 'parry',
+  tint: 'gold',
+});
+
+/** The launch: the legs load for a moment, then the body goes off like a thrown boulder. */
+export const WARRIOR_LAUNCH_CHARGE: ChargeSpec = {
+  tiers: [
+    { id: 'tap', at: 0, label: 'Toque · embestida corta' },
+    { id: 'max', at: 0.6, label: 'Mantener · embestida larga', tint: 'scarlet' },
+  ],
+  cap: 0.6,
+  breakOnDamage: { cooldown: 0 },
+  cancelOnMobility: false,
+};
+export const WARRIOR_LAUNCH = {
+  cooldown: 2.5,
+  /** Units travelled on a tap and after a full hold. */
+  near: 90,
+  far: 210,
+  speed: 620,
+  /** Whoever he runs into takes a little and is thrown out of the way. */
+  hit: { damage: 0.5, knockback: 40 },
+};
+register('vanguard.dash:0', {
+  name: 'Avance Imparable',
+  // Three frames of loading the legs; the launch itself outlasts the move.
+  duration: frames(4),
+  strikes: [],
+  waves: [],
+  speed: 0.2,
+  recoverFrom: frames(4),
+  tint: 'scarlet',
+  dash: {
+    at: frames(3),
+    speed: WARRIOR_LAUNCH.speed,
+    distance: (charge) =>
+      WARRIOR_LAUNCH.near + (WARRIOR_LAUNCH.far - WARRIOR_LAUNCH.near) * Math.min(1, charge / WARRIOR_LAUNCH_CHARGE.cap),
+    // No i-frames: he goes through things by being harder than them.
+    iframes: false,
+    hit: WARRIOR_LAUNCH.hit,
+  },
+});
+
+/** The reinforced body: a red mandala climbs it, and for a while nothing moves him. */
+export const WARRIOR_REINFORCE = {
+  duration: 6,
+  /** Share of every blow he still takes. */
+  taken: 0.6,
+  cooldown: 16,
+};
+register('vanguard.reinforce:0', {
+  name: 'Cuerpo de Hierro',
+  duration: frames(12),
+  strikes: [],
+  waves: [],
+  speed: 0.3,
+  recoverFrom: frames(12),
+  effect: 'reinforce',
+  tint: 'scarlet',
+});
+
 /** The skills that run as moves, and how each turns a press into one. */
 export const KIT: Record<string, KitSkill> = {
   'guardian.sword': {
@@ -231,6 +496,47 @@ export const KIT: Record<string, KitSkill> = {
     chainReset: 0,
     move: () => 'guardian.fury:0',
     cooldown: () => 0,
+    instant: true,
+  },
+  'vanguard.sword': {
+    charge: WARRIOR_SWORD_CHARGE,
+    chain: GREATSWORD_STEPS.length,
+    chainReset: WARRIOR_CHAIN_RESET,
+    move: (step, tier, reinforced) => `vanguard.sword:${step}:${tier}${reinforced ? ':iron' : ''}`,
+    cooldown: () => 0,
+  },
+  'vanguard.slash': {
+    charge: WARRIOR_SLASH_CHARGE,
+    chain: 1,
+    chainReset: 0,
+    // A tap, a charge up to full, and everything past it.
+    move: (_step, tier) => `vanguard.slash:${tier === 0 ? 0 : tier <= 3 ? 1 : 2}`,
+    cooldown: (_tier, charge) => curve(CRESCENT.cooldown, charge),
+  },
+  'vanguard.counter': {
+    charge: PRESS,
+    chain: 1,
+    chainReset: 0,
+    move: () => 'vanguard.counter:0',
+    cooldown: () => WARRIOR_PARRY.cooldown,
+    instant: true,
+    interrupts: true,
+  },
+  'vanguard.dash': {
+    charge: WARRIOR_LAUNCH_CHARGE,
+    chain: 1,
+    chainReset: 0,
+    move: () => 'vanguard.dash:0',
+    cooldown: () => WARRIOR_LAUNCH.cooldown,
+    interrupts: true,
+    alongside: true,
+  },
+  'vanguard.reinforce': {
+    charge: PRESS,
+    chain: 1,
+    chainReset: 0,
+    move: () => 'vanguard.reinforce:0',
+    cooldown: () => WARRIOR_REINFORCE.cooldown,
     instant: true,
   },
 };

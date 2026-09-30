@@ -69,20 +69,12 @@ describe('sobrecarga', () => {
     expect(far).toBeGreaterThan(880);
     expect(projectileStats('mage').life * projectileStats('mage').speed).toBeLessThan(880);
   });
-  it('sin la habilidad lista no carga; el golpe cargado pega más fuerte y más lejos', () => {
+  it('sin la habilidad lista no carga', () => {
+    // The knight's and the warrior's charged blows run through their kits: guardian and vanguard tests.
     const waiting = setup(['mage', 'vanguard']);
     waiting.players[0].shotCd = 1;
     run(waiting.d, 10, { 0: { charge: true } });
     expect(waiting.players[0].shotCharge).toBe(0);
-    // The warrior's heavy swing; the knight's charged cuts are in guardian.test.ts.
-    const { d, players: [v, target] } = setup(['vanguard', 'mage']);
-    Object.assign(v, { x: 200, y: 270, angle: 0 });
-    Object.assign(target, { x: 200 + CLASSES.vanguard.meleeRange + 10, y: 270, magicShieldHits: 0, hp: 9, maxHp: 9 });
-    run(d, ticks(RULES.overchargeTime) + 1, { 0: { charge: true } });
-    run(d, 1, { 0: { sword: true } });
-    run(d, ticks(CLASSES.vanguard.windup) + 2);
-    expect(target.hp).toBeCloseTo(9 - CLASSES.vanguard.meleeDamage * 1.75);
-    expect(d.state.events.some((e) => e.kind === 'sword' && (e.power ?? 0) > 0.9)).toBe(true);
   });
   it('el dash cargado recorre más distancia', () => {
     const tap = setup(['archer', 'guardian']);
