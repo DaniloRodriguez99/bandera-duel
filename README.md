@@ -206,6 +206,14 @@ Al crear una sala podés elegir título, mapa, formato, objetivo PvP, regla de D
 
 En la pantalla inicial, elegí una clase y uno de los cuatro mapas, y pulsá **Probar contra un rival inmóvil**. No requiere apodo, sala ni servidor. El rival recibe daño y reaparece, pero no se mueve ni ataca. Podés probar armas, movilidad, arbustos y banderas con las reglas habituales.
 
+### Maná y controles de prueba
+
+El Caballero y el Guerrero traen 100 de maná a la arena; las otras clases todavía no tienen habilidades que lo gasten, así que no tienen barra. El maná se ve como una barra azul bajo la vida (y bajo la Furia del Caballero) y vuelve solo a 14 por segundo, 0,8 s después del último gasto. Morir en la arena lo devuelve lleno; en Lugunica el maná sigue siendo el del personaje.
+
+Cada habilidad declara su costo como datos: lo que gasta al salir, lo mínimo para empezar y lo que gasta por segundo mientras se carga. Cargar nunca se come lo que cuesta soltar: si el maná no alcanza para seguir, la carga se queda donde está. La Ráfaga de Acero cuesta 20 al salir y 15 por segundo de carga.
+
+Para probar habilidades hay una franja **PRUEBAS** con el maná actual, **Límite de maná** (apagado, todos los pozos de la sala quedan llenos, aunque las recargas siguen corriendo) y **Recargar maná**, que llena el tuyo al instante. Aparece siempre en la práctica y en las salas de un servidor que no corre en producción (`NODE_ENV` distinto de `production`); en producción no existe.
+
 ### Combates en vivo
 
 Las salas públicas en cuenta regresiva, combate o pausa de captura aparecen en **Combates en vivo**, con nombres, marcador y tiempo restante. **Ver combate** prepara el acceso como espectador. Las privadas siguen accesibles solo por invitación; las contraseñas y el cupo de espectadores siguen vigentes.
@@ -254,7 +262,7 @@ Espadachín veloz: el más rápido de la arena, sin escudo. Se defiende moviénd
 - **El golpe sigue a la hoja.** Los horizontales barren un arco de 120° al frente, con alcance 58; golpean primero a quien está a la derecha. El remate es una franja angosta de 84 de largo hacia donde se apunta. Cada corte golpea una vez a cada rival, no atraviesa muros y nunca alcanza detrás.
 - **Carga:** mantener el clic carga el corte que toca, en cinco estados (toque, baja a 0,22 s, media a 0,6 s, alta a 1 s y 100 % a 1,4 s). Cargado pega hasta el doble y lanza un tajo que sale de la hoja, más largo y fuerte con cada estado (de 100 a 250 de alcance). Cargando camina al 70 %, no puede usar la Ráfaga, y un golpe recibido o un aturdimiento rompen la carga. La cadena espera mientras se carga.
 - **Corte de habilidades:** la hoja y sus tajos cortan las habilidades enemigas que cruzan, según la carga. Un toque apenas las debilita; al 100 % las parte en el aire. Una flecha común se corta del todo con menos carga que un orbe cargado. Un tajo enemigo cortado queda con un hueco por donde pasó la hoja. Hay que interceptar: solo se corta mientras la hoja pasa.
-- **Clic derecho · Ráfaga de Acero:** una técnica con tres formas según la carga. Toque, *Tres Relámpagos*: tres cortes veloces de 0,5 que entran todos y avanzan hacia el rival. Media carga (0,45 s), *Cruz Gemela*: dos cortes de 1, cada uno con su tajo corto. Carga máxima (1,1 s), *Juicio Carmesí*: un solo corte de 2,5, crítico, cuyo tajo largo parte habilidades. Recarga de 5 s.
+- **Clic derecho · Ráfaga de Acero:** una técnica con tres formas según la carga. Toque, *Tres Relámpagos*: tres cortes veloces de 0,5 que entran todos y avanzan hacia el rival. Media carga (0,45 s), *Cruz Gemela*: dos cortes de 1, cada uno con su tajo corto. Carga máxima (1,1 s), *Juicio Carmesí*: un solo corte de 2,5, crítico, cuyo tajo largo parte habilidades. Recarga de 5 s; cuesta 20 de maná más 15 por segundo de carga.
 - **Espacio · Paso Relámpago:** recorre unas 190 unidades hacia donde se mueve (o apunta, si está quieto), hace 1 de daño una vez a cada enemigo atravesado, se detiene en paredes, no da invulnerabilidad y recarga en 3 s. Puede cortar la recuperación de un corte, nunca su preparación ni su filo.
 - **Furia:** se llena al golpear (12 por corte, 18 por el remate) y al cortar habilidades (hasta 15). Se ve como una barra bajo la vida. Tras 4 s sin ganarla empieza a bajar.
 - **R · Despertar del Juramento:** con la Furia llena, un mandala recorre el cuerpo de los pies a la cabeza y la espada despierta 8 s: cada corte lanza su tajo (el del remate es el más fuerte) y el daño sube 20 %. La barra pasa a ser el tiempo que queda. Morir lo apaga.

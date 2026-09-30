@@ -78,16 +78,18 @@ describe('mundo', () => {
     expect(world.spendPoint('c1', 'might')).toBe(false);
   });
 
-  it('el maná se regenera hasta su tope y el de duelo se queda en cero', () => {
+  it('el maná se regenera hasta su tope; en un duelo el pozo es el de la clase', () => {
     const { world, p } = setup('mage');
     p.mana = 0;
     run(world, ticks(2));
     expect(p.mana).toBeGreaterThan(0);
     expect(p.mana).toBeLessThanOrEqual(p.maxMana);
-    // The guard that keeps the duel simulation untouched: no pool, nothing to tick.
+    // A duel knows nothing of the sheet: each class brings its own arena pool, or none.
     const duel = new Duel();
     const duelista = duel.add('a', 'A', 'guardian');
-    expect(duelista.maxMana).toBe(0);
+    const arquero = duel.add('b', 'B', 'archer');
+    expect(duelista.maxMana).toBe(CLASSES.guardian.mana);
+    expect(arquero.maxMana).toBe(0);
     expect(duelista.maxHp).toBe(CLASSES.guardian.hp);
   });
 

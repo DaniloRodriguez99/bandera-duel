@@ -39,6 +39,7 @@ import {
   WAVE_SAMPLES,
   chargeProgress,
   chargeTier,
+  devRefill,
   kitSkills,
   wavePoint,
   waveStrength,
@@ -845,7 +846,7 @@ export class Arena extends Phaser.Scene {
         this.controls.clearCombat();
       this.predicted = { ...own };
       if ((snapshot.phase === 'playing' || snapshot.phase === 'rewards') && !snapshot.paused)
-        for (const input of this.pending)
+        for (const input of this.pending) {
           movePlayer(
             this.predicted,
             snapshot.phase === 'rewards' ? movementInput(input) : resolveSlotInput(this.predicted, this.shape(input)),
@@ -853,6 +854,8 @@ export class Arena extends Phaser.Scene {
             RULES.tick,
             this.terrain(),
           );
+          devRefill(snapshot, this.predicted);
+        }
     }
     this.phase = snapshot.phase;
     this.controls.enabled =
@@ -2001,15 +2004,24 @@ export class Arena extends Phaser.Scene {
         v.hp.fillStyle(COLORS[p.team]);
         v.hp.fillRect(left + i * 8, v.y - 25, 6 * fill, 3);
       }
+      // The pools under the hearts, for everyone to read: what the fighter can still afford.
+      const width = p.maxHp * 8 - 2;
+      let row = v.y - 20;
       if (kit && p.classId === 'guardian') {
-        // Rage, under the hearts, for everyone to read: gold while it fills, violet while it burns.
-        const width = p.maxHp * 8 - 2;
+        // Rage: gold while it fills, violet while it burns.
         const share = Math.min(1, p.rage / RESOURCES.rage.max);
         const full = share >= 1 && p.furyLeft <= 0;
         v.hp.fillStyle(0x1a282c);
-        v.hp.fillRect(left, v.y - 20, width, 2);
+        v.hp.fillRect(left, row, width, 2);
         v.hp.fillStyle(p.furyLeft > 0 ? 0xa76cf0 : full && Math.sin(time * 0.02) > 0 ? 0xffffff : GOLD);
-        v.hp.fillRect(left, v.y - 20, width * share, 2);
+        v.hp.fillRect(left, row, width * share, 2);
+        row += 3;
+      }
+      if (!look && p.maxMana > 0) {
+        v.hp.fillStyle(0x1a282c);
+        v.hp.fillRect(left, row, width, 2);
+        v.hp.fillStyle(0x62b6ff);
+        v.hp.fillRect(left, row, width * Math.min(1, p.mana / p.maxMana), 2);
       }
       if (local) {
         v.hp.lineStyle(1, GOLD, 0.6);
@@ -2541,7 +2553,7 @@ export class Arena extends Phaser.Scene {
         if (this.pending.length > 90) this.pending.shift();
         // Predicting against the arena's walls in a zone clamped the body at x 940 every frame,
         // and every snapshot then yanked it back to where the server had it.
-        if (this.predicted)
+        if (this.predicted) {
           movePlayer(
             this.predicted,
             resolveSlotInput(this.predicted, this.shape(input)),
@@ -2549,6 +2561,8 @@ export class Arena extends Phaser.Scene {
             RULES.tick,
             this.terrain(),
           );
+          devRefill(s, this.predicted);
+        }
       }
     }
     for (const p of s.players)
@@ -2571,6 +2585,7 @@ export class Arena extends Phaser.Scene {
               chargeSkill: this.predicted.chargeSkill,
               chargeT: this.predicted.chargeT,
               combo: this.predicted.combo,
+              mana: this.predicted.mana,
             }
           : p,
         p.id === this.localId,

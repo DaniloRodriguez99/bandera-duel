@@ -2,6 +2,14 @@
 
 ## 2026-09-30
 
+### Maná en la arena
+
+- El Caballero y el Guerrero traen 100 de maná a la arena. Se ve como una barra azul bajo la vida y vuelve solo a 14 por segundo, 0,8 s después del último gasto. Las demás clases todavía no tienen habilidades que lo gasten.
+- Los costos son datos de cada habilidad: lo que gasta al salir, lo mínimo para empezar y lo que gasta por segundo mientras se carga. Cargar nunca se come lo que cuesta soltar: sin maná para seguir, la carga se queda donde está.
+- La Ráfaga de Acero cuesta 20 al salir y 15 por segundo de carga.
+- Morir en la arena devuelve el maná lleno. Lugunica no cambia: el maná sigue siendo el del personaje.
+- Controles de prueba: una franja **PRUEBAS** muestra el maná y permite apagar el límite de maná (todos los pozos quedan llenos) o recargarlo al instante. Está en la práctica y en las salas de servidores que no corren en producción.
+
 ### Puntería unificada
 
 - Todas las habilidades leen una sola puntería, sin importar de dónde venga: el mouse, una palanca táctil, las flechas de Lugunica o, más adelante, un mando.

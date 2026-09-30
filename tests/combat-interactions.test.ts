@@ -115,8 +115,8 @@ describe('recursos', () => {
     expect(p.rage).toBe(before + 1);
   });
 
-  it('un modo sin maná no tiene ese recurso, y nada queda sin poder pagarse', () => {
-    const p = knight();
+  it('una clase sin maná no tiene ese recurso, y nada queda sin poder pagarse', () => {
+    const p = newPlayer('a', 'A', 'blue', 'archer');
     expect(resourcePool(p, 'mana')).toBeNull();
     const ids = Object.keys(SKILLS) as (keyof typeof SKILLS)[];
     expect(ids.filter((id) => !affordable(p, id))).toEqual(['guardian.fury']);

@@ -21,6 +21,8 @@ import {
 } from '@bandera/shared';
 
 const listedRooms = new Map<string, DuelRoom>();
+/** Development controls (the mana limit switch and refill) exist only outside production. */
+const DEV_TOOLS = process.env.NODE_ENV !== 'production';
 export const publicRooms = () => [...listedRooms.values()].filter(r => r.publicInfo().visibility === 'public').map(r => r.publicInfo());
 
 export class DuelRoom extends Room {
@@ -128,6 +130,7 @@ export class DuelRoom extends Room {
     this.visibility = options.visibility === 'public' ? 'public' : 'private';
     this.allowSpectators = options.allowSpectators !== false;
     this.game=new Duel((options.mapId as MapId)??DEFAULT_MAP,mode,objective as 'ctf' | 'deathmatch',deathmatch as DeathmatchRule);
+    if (DEV_TOOLS) this.game.enableDevTools();
     if (options.password) this.passwordHash = createHmac('sha256', this.passwordKey).update(options.password as string).digest();
     this.roomId = randomBytes(16).toString('hex');
     void this.setPrivate(true); // Discovery uses our password-free public DTO only.
@@ -144,6 +147,15 @@ export class DuelRoom extends Room {
       if (queue.length < 6) queue.push(input);
       this.queues.set(client.sessionId, queue);
       this.receivedAt.set(client.sessionId, Date.now());
+    });
+    // Development only: switch the room's mana limit, or refill your own pool.
+    this.onMessage('devMana', (client, raw: unknown) => {
+      if (this.closing || !this.game.state.devTools || !raw || typeof raw !== 'object') return;
+      const value = raw as { limit?: unknown; refill?: unknown };
+      if (typeof value.limit === 'boolean') this.game.setManaLimit(value.limit);
+      if (value.refill === true) this.game.refillMana(client.sessionId);
+      this.touchActivity();
+      this.sendSnapshots();
     });
     this.onMessage('ready', (client) => { if (this.closing) return; this.game.ready(client.sessionId); this.touchActivity(); });
     this.onMessage('configureRoom', (client, raw: unknown) => {

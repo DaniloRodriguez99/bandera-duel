@@ -26,7 +26,7 @@ import {
 import { clearKit, moveRecovering, stepKit, type KitResult, type KitSweep } from './combat/run.js';
 import {
   INTERACTIONS, RESOURCES, WAVE_COLORS, cutOutcome,
-  type ChargeSpec, type CutOutcome, type InteractionProfile, type ResourceCost, type ResourceGain, type ResourceId, type WaveSpec,
+  type ChargeSpec, type CutOutcome, type DevTools, type InteractionProfile, type ResourceCost, type ResourceGain, type ResourceId, type WaveSpec,
 } from './combat/defs.js';
 import {
   MOB_STATS, availableMobs, waveBudget, emptyUpgrades, makeUpgradeChoices,
@@ -79,6 +79,8 @@ export const CLASSES = {
     label: 'ARCO Y DAGA',
     description: 'Distancia, precisión y una salida rápida.',
     hp: 3,
+    /** Arena mana; 0 for a class with no skill that costs any. */
+    mana: 0,
     speed: 190,
     meleeDamage: 0.5,
     meleeRange: 30,
@@ -95,6 +97,7 @@ export const CLASSES = {
     label: 'FUEGO Y ESCUDO',
     description: 'Bolas de fuego. Escudo que absorbe dos golpes.',
     hp: 3,
+    mana: 0,
     speed: 180,
     meleeDamage: 0,
     meleeRange: 0,
@@ -111,6 +114,7 @@ export const CLASSES = {
     label: 'FUEGO Y NO-MUERTOS',
     description: 'Quemá de lejos. Invocá zombies que cazan solos.',
     hp: 3,
+    mana: 0,
     speed: 170,
     meleeDamage: 0,
     meleeRange: 0,
@@ -127,6 +131,7 @@ export const CLASSES = {
     label: 'ESPADA VELOZ',
     description: 'Tres cortes, técnicas cargadas y un filo que parte hechizos.',
     hp: 3,
+    mana: 100,
     speed: 195,
     meleeDamage: 1,
     meleeRange: 60,
@@ -143,6 +148,7 @@ export const CLASSES = {
     label: 'ESPADA DE DOS MANOS',
     description: 'Más alcance. Más daño. Acero pesado.',
     hp: 5,
+    mana: 100,
     speed: 145,
     meleeDamage: 2,
     meleeRange: 80,
@@ -402,7 +408,7 @@ export interface SkillDefinition {
   blocks?: readonly SkillSlot[];
   /** Movement speed factor while it charges. Several charges never stack: the slowest wins. */
   chargeSlow?: number;
-  /** Mana it costs, for modes with mana. Arenas have none yet, so no skill sets it. */
+  /** Mana it costs: the short form of `cost` for a plain price paid on use. */
   mana?: number;
   /** What it takes from its user: Rage, Mana or whatever a mode brings. `mana` is its short form. */
   cost?: ResourceCost;
@@ -425,7 +431,7 @@ export const SKILLS: Record<SkillId, SkillDefinition> = {
   'necromancer.fire': skill({id:'necromancer.fire',name:'Llama de ultratumba',branch:'necromancer',description:'Fuego espectral que puede canalizarse.',icon:'necromancer-fire',compatibleClasses:['mage','necromancer'],compatibleSlots:['primary'],trigger:'hold-release',animationAction:'castForward',cooldown:RULES.fireCooldown,damage:'1–2',grants:['ranged'],howTo:'Pulsá {key} para fuego espectral; mantené para canalizarlo.'}),
   'necromancer.summon': skill({id:'necromancer.summon',name:'Alzar a los caídos',branch:'necromancer',description:'Invoca zombies, arcanistas y esclavos.',icon:'necromancer-summon',compatibleClasses:['mage','necromancer'],compatibleSlots:['f','r'],trigger:'hold-release',animationAction:'castGround',cooldown:RULES.summonCooldown,damage:'1 por golpe',grants:['summon','companionControl'],howTo:'Pulsá {key} para 2 zombies; mantené para el zombie mago, y hasta el final para resucitar.'}),
   'guardian.sword': skill({id:'guardian.sword',name:'Tres Cortes',branch:'guardian',description:'Dos cortes horizontales y un remate vertical que es crítico si conecta. Mantené para cargar el corte que toca: pega más, lanza un tajo y corta habilidades enemigas según la carga.',icon:'guardian-slash',compatibleClasses:['guardian'],compatibleSlots:['primary'],trigger:'hold-release',animationAction:'attack',cooldown:0,damage:'1 · 1 · 1,5; hasta ×2 cargado',grants:['melee'],howTo:'Pulsá {key} para encadenar tres cortes; mantené para cargar el que sigue.',blocks:['secondary'],chargeSlow:0.7,charge:KNIGHT_SWORD_CHARGE,gain:{resource:'rage',hit:12,crit:18,cut:15}}),
-  'guardian.flurry': skill({id:'guardian.flurry',name:'Ráfaga de Acero',branch:'guardian',description:'Una técnica con tres formas según la carga: tres cortes veloces, dos potenciados o uno devastador que parte habilidades.',icon:'vanguard-slash',compatibleClasses:['guardian'],compatibleSlots:['secondary','q','e'],trigger:'hold-release',animationAction:'attack',cooldown:KNIGHT_FLURRY_COOLDOWN,damage:'3 × 0,5 · 2 × 1 · 2,5',howTo:'Pulsá {key} para tres cortes veloces; mantené para dos potenciados y, a fondo, uno devastador.',blocks:['primary'],chargeSlow:0.6,charge:KNIGHT_FLURRY_CHARGE,gain:{resource:'rage',hit:10}}),
+  'guardian.flurry': skill({id:'guardian.flurry',name:'Ráfaga de Acero',branch:'guardian',description:'Una técnica con tres formas según la carga: tres cortes veloces, dos potenciados o uno devastador que parte habilidades.',icon:'vanguard-slash',compatibleClasses:['guardian'],compatibleSlots:['secondary','q','e'],trigger:'hold-release',animationAction:'attack',cooldown:KNIGHT_FLURRY_COOLDOWN,damage:'3 × 0,5 · 2 × 1 · 2,5',howTo:'Pulsá {key} para tres cortes veloces; mantené para dos potenciados y, a fondo, uno devastador.',blocks:['primary'],chargeSlow:0.6,charge:KNIGHT_FLURRY_CHARGE,gain:{resource:'rage',hit:10},cost:{resource:'mana',amount:20,perSecond:15}}),
   'guardian.dash': skill({id:'guardian.dash',name:'Paso Relámpago',branch:'guardian',description:'Un paso fulminante que corta a quien atraviesa.',icon:'guardian-bash',compatibleClasses:['guardian'],compatibleSlots:['mobility'],trigger:'press',animationAction:'dash',cooldown:RULES.guardianDashCooldown,damage:'1',grants:['mobility'],howTo:'Pulsá {key} para cruzar hacia donde te movés, cortando a quien atravieses.'}),
   'guardian.fury': skill({id:'guardian.fury',name:'Despertar del Juramento',branch:'guardian',description:`La Furia se llena al golpear y al cortar habilidades. Llena, despierta la espada ${KNIGHT_AWAKEN.duration} s: cada corte lanza su tajo y pega más fuerte.`,icon:'guardian-fury',compatibleClasses:['guardian'],compatibleSlots:['r','f'],trigger:'press',animationAction:'castChannel',cooldown:0,damage:`+${Math.round((KNIGHT_AWAKEN.damage-1)*100)} %`,howTo:'Con la Furia llena, pulsá {key} para despertar la espada.',cost:{resource:'rage',amount:0,min:KNIGHT_AWAKEN.rage}}),
   'vanguard.sword': skill({id:'vanguard.sword',name:'Mandoble colosal',branch:'vanguard',description:'Barrido pesado de gran alcance.',icon:'vanguard-sword',compatibleClasses:['vanguard'],compatibleSlots:['primary'],trigger:'hold-release',animationAction:'attack',cooldown:CLASSES.vanguard.meleeCooldown,damage:'2–4',grants:['melee'],howTo:'Pulsá {key} para un barrido; mantené para cargarlo.'}),
@@ -567,9 +573,8 @@ export function chargingSkills(p:Pick<Player,'blackHoleCharge'|'blinkCharge'|'ch
 /** The equipped skills that run as moves, in slot order. */
 export const kitSkills = (p:{loadout:CharacterLoadout}):SkillId[] => SKILL_SLOTS.map((slot)=>p.loadout[slot]).filter((id):id is SkillId=>!!id&&id in KIT);
 /**
- * Whether the player can pay for a skill. A skill without a cost, or a mode without that pool (the
- * arenas have no mana), never blocks. An ability that cannot be paid does not start at all rather
- * than half-activating.
+ * Whether the player can pay for a skill. A skill without a cost, or a player without that pool,
+ * never blocks. An ability that cannot be paid does not start at all rather than half-activating.
  */
 export function affordable(p: Pick<Player, 'mana' | 'maxMana' | 'rage'>, id: SkillId) {
   const cost = skillCost(id);
@@ -583,8 +588,8 @@ export function skillCost(id: SkillId): ResourceCost | undefined {
 }
 /**
  * A player's pool of a resource, or null where there is none. The simulation owns these numbers;
- * the HUD only reads them. A match has no mana (`maxMana` stays 0), and Rage is every player's,
- * though only the knight's kit fills it.
+ * the HUD only reads them. Mana exists for the classes that bring a pool (`maxMana` above 0), and
+ * Rage is every player's, though only the knight's kit fills it.
  */
 export function resourcePool(p: Pick<Player, 'mana' | 'maxMana' | 'rage'>, resource: ResourceId) {
   if (resource === 'mana') return p.maxMana > 0 ? { value: p.mana, max: p.maxMana } : null;
@@ -603,12 +608,43 @@ export function gainResource(p: Player, resource: ResourceId, amount: number) {
     p.rageIdle = 0;
   } else if (resource === 'mana' && p.maxMana > 0) p.mana = Math.min(p.maxMana, p.mana + amount);
 }
+/** Takes from a pool. Spending mana makes it wait before it starts coming back. */
+function spend(p: Player, resource: ResourceId, amount: number) {
+  if (!(amount > 0)) return;
+  if (resource === 'rage') p.rage = Math.max(0, p.rage - amount);
+  else if (resource === 'mana') {
+    p.mana = Math.max(0, p.mana - amount);
+    p.manaIdle = 0;
+  }
+}
 /** Takes a skill's cost from its user. Ask `affordable` first. */
 export function payCost(p: Player, id: SkillId) {
   const cost = skillCost(id);
-  if (!cost || !resourcePool(p, cost.resource)) return;
-  if (cost.resource === 'rage') p.rage = Math.max(0, p.rage - cost.amount);
-  else if (cost.resource === 'mana') p.mana = Math.max(0, p.mana - cost.amount);
+  if (cost && resourcePool(p, cost.resource)) spend(p, cost.resource, cost.amount);
+}
+/**
+ * Pays for holding a skill `seconds` longer, and says whether it could. Holding never eats into
+ * what the release costs: when the pool cannot cover both, the charge stops growing instead.
+ */
+export function payCharge(p: Player, id: SkillId, seconds: number) {
+  const cost = skillCost(id);
+  const pool = cost?.perSecond ? resourcePool(p, cost.resource) : null;
+  if (!cost || !pool) return true;
+  const due = cost.perSecond! * seconds;
+  if (pool.value - due < cost.amount - 1e-8) return false;
+  spend(p, cost.resource, due);
+  return true;
+}
+/** Arena mana comes back by itself a moment after it was last spent. */
+function regenerate(p: Player, dt: number) {
+  if (p.maxMana <= 0) return;
+  p.manaIdle += dt;
+  if (p.manaIdle >= RESOURCES.mana.regenDelay - 1e-8 && p.mana < p.maxMana)
+    p.mana = Math.min(p.maxMana, p.mana + RESOURCES.mana.regen * dt);
+}
+/** With the development mana limit off, every pool stays full. */
+export function devRefill(s: Pick<Snapshot, 'devTools'>, p: Player) {
+  if (s.devTools && !s.devTools.manaLimit) p.mana = p.maxMana;
 }
 export const TEAMS: Team[] = ['blue', 'red', 'green', 'violet'];
 export const TEAM_NAMES: Record<Team, string> = {
@@ -945,12 +981,14 @@ export interface Player extends Vec {
   pveDamage: number;
   /**
    * The RPG sheet, mirrored from the saved character so the simulation and the other players'
-   * views can read it cheaply. A duel player keeps `maxMana` at 0, and that zero is the guard
-   * that leaves the duel simulation byte for byte as it was.
+   * views can read it cheaply. In an arena `maxMana` is the class's pool (`CLASSES.*.mana`), 0 for
+   * the classes whose skills cost none.
    */
   level: number;
   mana: number;
   maxMana: number;
+  /** Seconds since mana was last spent: it only comes back after a moment. */
+  manaIdle: number;
   /** Rage, 0 to 100: earned by fighting, and the seconds since any was last earned. */
   rage: number;
   rageIdle: number;
@@ -1254,6 +1292,8 @@ export interface Snapshot {
   reason: string;
   events: GameEvent[];
   pve: PveState | null;
+  /** Present only where development controls are allowed: practice, and servers not in production. */
+  devTools?: DevTools;
 }
 export const distance = (a: Vec, b: Vec) => Math.hypot(a.x - b.x, a.y - b.y);
 export function playerVisibleTo(state: Snapshot, target: Player, viewerTeam: Team): boolean {
@@ -1707,6 +1747,8 @@ export function movePlayer(
     if (p.rageIdle > RESOURCES.rage.decayDelay)
       p.rage = Math.max(0, p.rage - RESOURCES.rage.decayRate * dt);
   }
+  // Arena mana; Lugunica refills its own pools.
+  if (!input.world) regenerate(p, dt);
   if (p.stunLeft > 0) {
     p.stunLeft = Math.max(0, p.stunLeft - dt);
     p.shotCharge = 0;
@@ -2074,6 +2116,8 @@ export function movePlayer(
         const key = KIT_COOLDOWN[id];
         if (key) p[key] = seconds;
       },
+      pay: (id) => payCost(p, id),
+      hold: (id, seconds) => payCharge(p, id, seconds),
     });
     if (kit.lunge > 0 && frozenDt === 0)
       translate(p, Math.cos(kit.lungeAngle) * kit.lunge, Math.sin(kit.lungeAngle) * kit.lunge, walls);
@@ -2186,8 +2230,9 @@ export function newPlayer(
     pveKills: 0,
     pveDamage: 0,
     level: 1,
-    mana: 0,
-    maxMana: 0,
+    mana: CLASSES[classId].mana,
+    maxMana: CLASSES[classId].mana,
+    manaIdle: 0,
     rage: 0,
     rageIdle: 0,
   };
@@ -2409,10 +2454,13 @@ export class Duel {
       pveDamage: p.pveDamage,
       // Progression must survive death. Anything missing from this list resets in silence.
       level: p.level,
-      mana: p.mana,
-      maxMana: p.maxMana,
+      ...this.poolsAfterDeath(p),
     });
     p.maxHp=CLASSES[p.classId].hp*(1+(p.pve?.maxHpBonus??0));p.hp=p.maxHp;
+  }
+  /** The pools a player comes back with: an arena body returns whole. */
+  protected poolsAfterDeath(p: Player): Pick<Player, 'mana' | 'maxMana'> {
+    return { mana: CLASSES[p.classId].mana, maxMana: CLASSES[p.classId].mana };
   }
   configurePvp(config: PvpConfig): boolean {
     const s = this.state;
@@ -2630,6 +2678,23 @@ export class Duel {
     const alive = s.players.filter((q) => !q.eliminated);
     if (alive.length === 1 && s.phase !== 'lobby' && s.phase !== 'finished')
       this.finish(alive[0].team, reason);
+  }
+  /** Allows the development controls in this room: the mana limit switch and the refill. */
+  enableDevTools() {
+    this.state.devTools ??= { manaLimit: true };
+  }
+  /** Development: with the limit off every pool stays full, for everyone in the room. */
+  setManaLimit(on: boolean) {
+    if (!this.state.devTools) return false;
+    this.state.devTools.manaLimit = on;
+    return true;
+  }
+  /** Development: fills one player's mana at once. */
+  refillMana(id: string) {
+    const p = this.state.players.find((player) => player.id === id);
+    if (!this.state.devTools || !p) return false;
+    p.mana = p.maxMana;
+    return true;
   }
   /** Returns whether the hit landed (not blocked, shielded or ignored by protection). */
   damage(
@@ -4258,6 +4323,7 @@ export class Duel {
       }
       if (equippedSkill(p, 'necromancer.summon') && (input.command || input.mark)) this.commandZombies(p, input);
       const resolvedInput = resolveSlotInput(p, input);
+      devRefill(s, p);
       const action = movePlayer(
         p,
         resolvedInput,
@@ -4265,6 +4331,7 @@ export class Duel {
         dt,
         this.terrainFor(p),
       );
+      devRefill(s, p);
       p.bushId = pointBush(this.map, p);
       if (
         (input.sword && p.windup > 0) ||

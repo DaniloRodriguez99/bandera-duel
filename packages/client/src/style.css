@@ -1030,6 +1030,13 @@ select:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
 #practice-toolbar > span { margin-right: auto; }
 #practice-rival-label { display: flex; align-items: center; gap: 6px; font-size: 10px; letter-spacing: 1px; }
 #practice-rival { font: inherit; font-size: 11px; padding: 6px 8px; color: var(--gold); background: #1a2a25; border: 1px solid #5d6f5c; border-radius: 4px; }
+/* Development controls: a dashed strip, so nobody mistakes them for part of the game. */
+#dev-tools { display: flex; align-items: center; gap: 10px; padding: 6px 12px; background: #1d2a33; color: #9fd1ff; font-size: 10px; letter-spacing: 1px; border-top: 1px dashed #4f7390; }
+#dev-tools[hidden] { display: none; }
+#dev-tools > span { margin-right: auto; }
+#dev-mana { min-width: 104px; font-weight: 700; color: #cfe8ff; font-variant-numeric: tabular-nums; }
+#dev-tools label { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+#dev-tools button { font-size: 11px; padding: 6px 8px; }
 @media (max-height:600px) and (orientation:landscape) { .practicing .stage { height: calc(100dvh - 92px); } .practicing .arena-section { max-width: calc((100dvh - 92px)*16/9); } #practice-toolbar { min-height: 46px; padding: 4px; } #practice-toolbar>span { font-size: 8px; } }
 
 #live-rooms-list { display: grid; grid-template-columns: repeat(auto-fit,minmax(240px,1fr)); gap: 12px; }
@@ -1361,6 +1368,20 @@ select:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
   }
   #practice-toolbar > span { display: none; }
   #practice-toolbar button { min-height: 27px; padding: 4px 7px; font-size: 8px; }
+  #dev-tools {
+    position: absolute;
+    z-index: 34;
+    top: max(84px, calc(env(safe-area-inset-top) + 80px));
+    right: max(8px, env(safe-area-inset-right));
+    padding: 3px 6px;
+    gap: 6px;
+    border: 1px dashed #4f7390;
+    border-radius: 6px;
+    background: #0b1d22c7;
+    font-size: 8px;
+  }
+  #dev-tools > span { display: none; }
+  #dev-tools button { min-height: 27px; padding: 4px 7px; font-size: 8px; }
   #stage > #room-perspective-choice { top: 50px; }
 }
 
