@@ -106,6 +106,18 @@ const ICONS = {
     `<path d="${bolt(42, 14, 35, 48, 5, 5, 5)}" fill="none" stroke="#ffffff" stroke-width="1.1" stroke-linejoin="round"/>` +
     glint(32, 8, 3.5, '#ffffff')),
 
+  // M1 · Vínculo de Sangre: a drop of blood on the cord that ties two souls together.
+  'necromancer-bloodbond': card('#c21f3a', ['#2a0810', '#080204'],
+    `<path d="M9 52 Q30 64 55 13" fill="none" stroke="#5a0612" stroke-width="6" stroke-linecap="round" opacity=".75"/>` +
+    `<path d="M9 52 Q30 64 55 13" fill="none" stroke="#c21f3a" stroke-width="3" stroke-linecap="round"/>` +
+    `<path d="M9 52 Q30 64 55 13" fill="none" stroke="#ff8a9a" stroke-width="1" stroke-linecap="round" stroke-dasharray="3 5"/>` +
+    `<circle cx="9" cy="52" r="5" fill="#2a0810" stroke="#ff6b80" stroke-width="1.6"/>` +
+    `<circle cx="55" cy="13" r="5" fill="#2a0810" stroke="#ff6b80" stroke-width="1.6"/>` +
+    `<path d="M31 9 C37 19 43 25 43 33 A12 12 0 0 1 19 33 C19 25 25 19 31 9 Z" fill="#c21f3a" opacity=".7" filter="url(#glow)"/>` +
+    `<path d="M31 9 C37 19 43 25 43 33 A12 12 0 0 1 19 33 C19 25 25 19 31 9 Z" fill="#b0142e" stroke="#ff6b80" stroke-width="1.3"/>` +
+    `<path d="M25.5 32 A6 6 0 0 0 29.5 39" fill="none" stroke="#ffd9e0" stroke-width="2" stroke-linecap="round"/>` +
+    glint(45, 52, 2.4, '#ff8a9a') + glint(20, 17, 2, '#ff8a9a')),
+
   // M1 · Mandoble del Titán: a fist around a greatsword, and the red force its blows throw.
   'vanguard-titan': card('#e0473e', ['#3a1010', '#0a0404'],
     `<path d="M6 54 Q30 30 58 40" fill="none" stroke="#e0473e" stroke-width="7" opacity=".45" filter="url(#haze)"/>` +

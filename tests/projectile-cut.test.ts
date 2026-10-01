@@ -65,7 +65,7 @@ describe('sword cuts', () => {
   it('destroys multiple incoming enemy shots without taking damage', () => {
     const { game, defender } = duel();
     const hp = defender.hp;
-    game.state.arrows.push(arrow('archer', 1), arrow('mage', 2, { ice: true, skillId: 'mage.ice', y: 273 }), arrow('necromancer', 3, { skillId: 'necromancer.fire', power: 0.5, y: 267 }));
+    game.state.arrows.push(arrow('archer', 1), arrow('mage', 2, { ice: true, skillId: 'mage.ice', y: 273 }), arrow('necromancer', 3, { skillId: 'necromancer.bloodBond', power: 0.5, y: 267 }));
     impact(game);
     expect(game.state.arrows).toHaveLength(0);
     expect(game.state.events.filter(e => e.kind === 'projectileCut')).toHaveLength(3);

@@ -2037,7 +2037,7 @@ export class World extends Duel {
    * bystander in the wild must not collect someone else's kill, buffs or drain.
    */
   override damageZombie(z: Zombie, team: Team, amount = 1, angle?: number, by?: string, execute = false) {
-    if (by && this.duelOf(by)) return;
+    if (by && this.duelOf(by)) return false;
     const alive = z.hp > 0;
     const credit = this.creditFor(z, by);
     const own = credit.own && credit.killer ? credit.killer : undefined;
@@ -2045,13 +2045,13 @@ export class World extends Duel {
     const towards = angle ?? (own ? Math.atan2(z.y - own.y, z.x - own.x) : 0);
     const base = imbue ? this.imbued(imbue, z, towards, amount) : amount;
     const scaled = execute ? z.hp : own ? base * this.damageMultiplier(own.id) : amount;
-    super.damageZombie(z, team, scaled, angle, by, execute);
+    const landed = super.damageZombie(z, team, scaled, angle, by, execute);
     if (own && alive && !execute) this.heal(own.id, scaled);
     if (imbue && own) this.pour(own.id, z, towards, scaled);
-    if (!alive || z.hp > 0 || !z.family) return;
+    if (!alive || z.hp > 0 || !z.family) return landed;
     this.corpses.push({ x: z.x, y: z.y, left: CORPSE_LIFE });
     const killer = credit.killer ?? (by === undefined ? this.nearestRival(z, Infinity) : undefined);
-    if (!killer) return;
+    if (!killer) return landed;
     const character = this.characters.get(killer.id)!;
     const won = xpFor(z.family, z.level, character.level);
     const eligible = [...new Set(this.partyRecipients(killer.id))]
@@ -2071,6 +2071,7 @@ export class World extends Duel {
     // every kill with power 0 painted "NV 0" over each dead monster.
     if (subidaLevel !== null)
       this.event('levelup', killer, team, undefined, killer.classId, subidaLevel);
+    return landed;
   }
 
   // ─── The loop ─────────────────────────────────────────────────────────────────────────────────

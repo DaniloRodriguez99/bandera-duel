@@ -1,4 +1,4 @@
-import { CELESTIAL_CUT, CLASS_IDS, CLASSES, DEFAULT_CLASS, curve, KNIGHT_AWAKEN, KNIGHT_FLURRY_COOLDOWN, KNIGHT_STEP, RULES, WARRIOR_LAUNCH, WARRIOR_PARRY, WARRIOR_REINFORCE, WARRIOR_SLASH_COOLDOWN, validClass, type ClassId } from '@bandera/shared';
+import { BLOOD_BOND, CELESTIAL_CUT, CLASS_IDS, CLASSES, DEFAULT_CLASS, curve, KNIGHT_AWAKEN, KNIGHT_FLURRY_COOLDOWN, KNIGHT_STEP, RULES, WARRIOR_LAUNCH, WARRIOR_PARRY, WARRIOR_REINFORCE, WARRIOR_SLASH_COOLDOWN, validClass, type ClassId } from '@bandera/shared';
 import { classIllustration } from './art.js';
 
 interface SkillPreview {
@@ -28,7 +28,7 @@ const CLASS_SKILLS: Record<ClassId, SkillPreview[]> = {
     { name: 'Singularidad', icon: icon('mage-blackhole'), description: `El conjuro prohibido: un punto que atrae a los enemigos y consume a quien llega a su centro. Cargalo hasta ${seconds(RULES.blackHoleChargeTime)} para que crezca y llegue más lejos; al final estalla.`, damage: '0,75–2,25; letal en el centro', cooldown: seconds(RULES.blackHoleCooldown) },
   ],
   necromancer: [
-    { name: 'Llama de ultratumba', icon: icon('necromancer-fire'), description: `Fuego pálido de los que ya no respiran; canalizado ${seconds(RULES.overchargeTime)} arde con el doble de fuerza y casi el doble de tamaño.`, damage: `${RULES.fireDamage}–2`, cooldown: seconds(RULES.fireCooldown) },
+    { name: 'Vínculo de Sangre', icon: icon('necromancer-bloodbond'), description: `Un hilo de sangre atado a quien alcanza, rival, zombie o monstruo: mientras siga a menos de ${BLOOD_BOND.reach} u, cada segundo le roba ${String(BLOOD_BOND.drain).replace('.', ',')} de vida y te la da. Dura ${seconds(BLOOD_BOND.duration[0])}, ${seconds(BLOOD_BOND.duration[1])} cargado; se corta si se aleja.`, damage: `${String(BLOOD_BOND.damage[0]).replace('.', ',')} y ${String(BLOOD_BOND.drain).replace('.', ',')} por segundo`, cooldown: seconds(BLOOD_BOND.cooldown) },
     { name: 'Guardia de cadáveres', icon: icon('necromancer-summon'), description: `La tierra devuelve a sus muertos: dos zombies (${RULES.zombieHp} de vida) custodian tu círculo y muerden a quien lo pise.`, damage: `${RULES.zombieDamage} por golpe`, cooldown: seconds(RULES.summonCooldown) },
     { name: 'Campeón putrefacto', icon: icon('vanguard-sword'), description: `Si cae uno de tus zombies, el próximo vuelve con espada (${RULES.swordZombieHp} de vida): cada muerte que cobra lo hace más fuerte, hasta golpear a todos a su alrededor.`, damage: `${String(RULES.swordZombieDamage).replace('.', ',')}–2,5`, cooldown: seconds(RULES.summonCooldown) },
     { name: 'Arcanista no-muerto', icon: icon('necromancer-mage'), description: `Mantené la invocación: un hechicero no-muerto (${RULES.hatHp} de vida) que lanza fuego y hielo, se cura y levanta lacayos.`, damage: `${String(RULES.gustDamage).replace('.', ',')}–${String(RULES.spellDamage).replace('.', ',')}`, cooldown: seconds(RULES.summonCooldown) },

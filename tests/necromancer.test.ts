@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  BLOOD_BOND,
   Duel,
   CLASSES,
   CLASS_IDS,
@@ -37,28 +38,162 @@ function summonSword(d: Duel) {
   run(d, Math.ceil(RULES.zombieRise / RULES.tick) + 1);
   return sword;
 }
+describe('nigromante · Vínculo de Sangre', () => {
+  /** The necromancer at (200, 270) looking east, the rival `gap` ahead; the bolt has already landed. */
+  function bound(gap = 120, rival: ClassId = 'guardian') {
+    const game = setup(['necromancer', rival]);
+    const [n, r] = game.players;
+    Object.assign(n, { x: 200, y: 270, angle: 0, hp: 2, invuln: 0 });
+    Object.assign(r, { x: 200 + gap, y: 270, hp: 10, maxHp: 10, invuln: 0 });
+    run(game.d, 1, { 0: { shot: true } });
+    for (let i = 0; i < 30 && game.d.state.bonds.length === 0; i++) run(game.d, 1);
+    return game;
+  }
+  const events = (d: Duel, kind: string) => d.state.events.filter((e) => e.kind === kind);
+
+  it('al impactar ata al rival con un vínculo de sangre', () => {
+    const { d, players: [n, r] } = bound();
+    expect(d.state.bonds).toHaveLength(1);
+    expect(d.state.bonds[0]).toMatchObject({ owner: n.id, target: r.id, total: BLOOD_BOND.duration[0] });
+    expect(events(d, 'bond')).toHaveLength(1);
+    expect(r.hp).toBe(10 - BLOOD_BOND.damage[0]);
+  });
+
+  it('cada segundo le roba 1 de vida y se la da al nigromante, hasta que el vínculo se agota', () => {
+    const { d, players: [n, r] } = bound();
+    const hp = r.hp;
+    run(d, Math.round(BLOOD_BOND.every / RULES.tick));
+    expect(r.hp).toBe(hp - BLOOD_BOND.drain);
+    expect(n.hp).toBe(Math.min(n.maxHp, 2 + BLOOD_BOND.drain));
+    expect(events(d, 'drain')).toHaveLength(1);
+    // It holds for its whole time: as many drains as seconds, then it snaps.
+    run(d, Math.round(BLOOD_BOND.duration[0] / RULES.tick));
+    expect(hp - r.hp).toBe(BLOOD_BOND.drain * BLOOD_BOND.duration[0]);
+    expect(d.state.bonds).toHaveLength(0);
+    expect(events(d, 'bondBreak')).toHaveLength(1);
+    // Never past the caster's own life.
+    expect(n.hp).toBeLessThanOrEqual(n.maxHp);
+  });
+
+  it('roba exactamente una vez por segundo, aunque lo renueven a mitad de camino', () => {
+    const { d, players: [, r] } = bound(100);
+    const drains = () => events(d, 'drain').length;
+    // Struck again half a second in: it lasts longer, but the drains keep their beat.
+    run(d, Math.round(0.5 / RULES.tick));
+    d.state.players[0].shotCd = 0;
+    run(d, 1, { 0: { shot: true } });
+    run(d, Math.round(0.5 / RULES.tick) - 1);
+    expect(drains()).toBe(1);
+    // The next one comes a full second after the first, not sooner.
+    const hp = r.hp;
+    run(d, Math.round(BLOOD_BOND.every / RULES.tick) - 2);
+    expect(drains()).toBe(1);
+    run(d, 1);
+    expect(drains()).toBe(2);
+    expect(hp - r.hp).toBe(BLOOD_BOND.drain);
+  });
+
+  it('se corta si el rival se aleja más allá de su alcance', () => {
+    const { d, players: [, r] } = bound();
+    r.x = 200 + BLOOD_BOND.reach + 20;
+    run(d, 1);
+    expect(d.state.bonds).toHaveLength(0);
+    expect(events(d, 'bondBreak')).toHaveLength(1);
+    const hp = r.hp;
+    run(d, Math.round(2 / RULES.tick));
+    expect(r.hp).toBe(hp);
+  });
+
+  it('un vínculo a la vez: atar a otro corta el primero, y acertarle otra vez al mismo lo renueva', () => {
+    const game = setup(['necromancer', 'guardian', 'vanguard']);
+    const [n, a, b] = game.players;
+    Object.assign(n, { x: 200, y: 270, angle: 0, invuln: 0 });
+    Object.assign(a, { x: 320, y: 270, hp: 10, maxHp: 10, invuln: 0 });
+    Object.assign(b, { x: 200, y: 400, hp: 10, maxHp: 10, invuln: 0 });
+    run(game.d, 1, { 0: { shot: true } });
+    run(game.d, 12);
+    expect(game.d.state.bonds.map((bond) => bond.target)).toEqual([a.id]);
+    // Half a second later, struck again: it holds on as long as at the start.
+    run(game.d, Math.ceil(BLOOD_BOND.cooldown / RULES.tick));
+    run(game.d, 1, { 0: { shot: true } });
+    run(game.d, 12);
+    expect(game.d.state.bonds[0].left).toBeGreaterThan(BLOOD_BOND.duration[0] - 0.5);
+    // Now someone else: the cord moves.
+    run(game.d, Math.ceil(BLOOD_BOND.cooldown / RULES.tick));
+    run(game.d, 1, { 0: { shot: true, angle: Math.PI / 2 } });
+    run(game.d, 12);
+    expect(game.d.state.bonds.map((bond) => bond.target)).toEqual([b.id]);
+  });
+
+  it('cargado pega más y el vínculo dura más', () => {
+    const { d, players: [n, r] } = setup(['necromancer', 'guardian']);
+    Object.assign(n, { x: 200, y: 270, angle: 0, invuln: 0 });
+    Object.assign(r, { x: 320, y: 270, hp: 10, maxHp: 10, invuln: 0 });
+    run(d, Math.ceil(RULES.overchargeTime / RULES.tick) + 1, { 0: { charge: true } });
+    run(d, 1, { 0: { shot: true } });
+    for (let i = 0; i < 30 && d.state.bonds.length === 0; i++) run(d, 1);
+    expect(r.hp).toBe(10 - BLOOD_BOND.damage[1]);
+    expect(d.state.bonds[0].total).toBeCloseTo(BLOOD_BOND.duration[1]);
+  });
+
+  it('también ata zombies: los drena cada segundo hasta que caen', () => {
+    const game = setup(['necromancer', 'necromancer']);
+    const [n, rival] = game.players;
+    Object.assign(rival, { x: 700, y: 430 });
+    run(game.d, 1, { 1: { summon: true } });
+    run(game.d, Math.ceil((RULES.zombieRise + 0.3) / RULES.tick));
+    const zombie = game.d.state.zombies.find((z) => z.owner === rival.id)!;
+    expect(zombie).toBeDefined();
+    // Held still in front of the necromancer, with life to spare.
+    Object.assign(n, { x: 200, y: 270, angle: 0, hp: 1, invuln: 0 });
+    Object.assign(zombie, { x: 300, y: 270, hp: 4, maxHp: 4, frozenLeft: 99 });
+    run(game.d, 1, { 0: { shot: true } });
+    for (let i = 0; i < 30 && game.d.state.bonds.length === 0; i++) run(game.d, 1);
+    expect(game.d.state.bonds[0]).toMatchObject({ owner: n.id, target: zombie.id, kind: 'zombie' });
+    expect(zombie.hp).toBe(4 - BLOOD_BOND.damage[0]);
+    run(game.d, Math.round(BLOOD_BOND.every / RULES.tick));
+    expect(zombie.hp).toBe(4 - BLOOD_BOND.damage[0] - BLOOD_BOND.drain);
+    expect(n.hp).toBe(1 + BLOOD_BOND.drain);
+    // It drains until the zombie falls, and then the cord snaps.
+    zombie.hp = BLOOD_BOND.drain;
+    run(game.d, Math.round(BLOOD_BOND.every / RULES.tick) + 1);
+    expect(zombie.hp).toBe(0);
+    expect(game.d.state.bonds).toHaveLength(0);
+    expect(game.d.state.events.some((e) => e.kind === 'bondBreak')).toBe(true);
+  });
+
+  it('se corta si alguno muere', () => {
+    const { d, players: [, r] } = bound();
+    r.hp = BLOOD_BOND.drain;
+    run(d, Math.round(BLOOD_BOND.every / RULES.tick) + 1);
+    expect(r.hp).toBe(0);
+    expect(d.state.bonds).toHaveLength(0);
+  });
+});
+
 describe('nigromante', () => {
-  it('lanza fuego con velocidad, vida y recarga propias', () => {
+  it('lanza el Vínculo de Sangre con velocidad, alcance y recarga propios', () => {
     const { d, players: [n, g] } = setup();
     Object.assign(n, { x: 200, y: 270, angle: 0 });
     Object.assign(g, { x: 200, y: 470 });
     run(d, 1, { 0: { shot: true } });
-    const fire = d.state.arrows[0];
-    expect(fire.classId).toBe('necromancer');
-    expect(fire.x - 200).toBeCloseTo(RULES.fireSpeed / 30);
-    expect(n.shotCd).toBeCloseTo(RULES.fireCooldown);
-    run(d, 30);
+    const bolt = d.state.arrows[0];
+    expect(bolt).toMatchObject({ classId: 'necromancer', skillId: 'necromancer.bloodBond' });
+    expect(bolt.x - 200).toBeCloseTo(BLOOD_BOND.speed / 30);
+    expect(n.shotCd).toBeCloseTo(BLOOD_BOND.cooldown);
+    // It flies as far as its range, and no farther.
+    run(d, Math.floor(BLOOD_BOND.range / BLOOD_BOND.speed / RULES.tick) - 2);
     expect(d.state.arrows).toHaveLength(1);
-    run(d, 10);
+    run(d, 4);
     expect(d.state.arrows).toHaveLength(0);
   });
-  it('el fuego daña, lo frenan los muros y lo absorbe el escudo mágico', () => {
+  it('el vínculo daña al impactar, lo frenan los muros y lo absorbe el escudo mágico', () => {
     const hit = setup();
     Object.assign(hit.players[0], { x: 200, y: 270, angle: 0 });
     Object.assign(hit.players[1], { x: 300, y: 270 });
     run(hit.d, 1, { 0: { shot: true } });
     run(hit.d, 10);
-    expect(hit.players[1].hp).toBe(2);
+    expect(hit.players[1].hp).toBe(3 - BLOOD_BOND.damage[0]);
     const wall = setup();
     Object.assign(wall.players[0], { x: 200, y: 150, angle: 0 });
     Object.assign(wall.players[1], { x: 330, y: 150 });

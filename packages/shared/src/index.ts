@@ -118,8 +118,8 @@ export const CLASSES = {
   },
   necromancer: {
     name: 'Nigromante',
-    label: 'FUEGO Y NO-MUERTOS',
-    description: 'Quemá de lejos. Invocá zombies que cazan solos.',
+    label: 'SANGRE Y NO-MUERTOS',
+    description: 'Atá a tus rivales con un vínculo de sangre que les roba la vida. Invocá zombies que cazan solos.',
     hp: 3,
     mana: 0,
     speed: 170,
@@ -380,7 +380,7 @@ export type SkillSlot = (typeof SKILL_SLOTS)[number];
 export type SkillId =
   | 'archer.arrow' | 'archer.dagger' | 'archer.trap' | 'archer.volley'
   | 'mage.fireball' | 'mage.magicShield' | 'mage.ice' | 'mage.blink' | 'mage.blackHole'
-  | 'necromancer.fire' | 'necromancer.summon'
+  | 'necromancer.bloodBond' | 'necromancer.summon'
   | 'guardian.sword' | 'guardian.flurry' | 'guardian.dash' | 'guardian.fury'
   | 'vanguard.sword' | 'vanguard.slash' | 'vanguard.counter' | 'vanguard.dash' | 'vanguard.reinforce'
   | 'common.dash';
@@ -417,6 +417,40 @@ export interface SkillDefinition {
   charge?: ChargeSpec;
 }
 const skill = (definition: SkillDefinition) => definition;
+/**
+ * Vínculo de Sangre: the necromancer's bolt binds whoever it hits to him with a cord of blood. For
+ * as long as the cord holds (its duration, and its victim within reach) it drains them every
+ * `every` seconds and heals him by as much. One bond per caster: a new hit on the same victim
+ * refreshes it, a hit on someone else moves it.
+ */
+export const BLOOD_BOND = {
+  /** The bolt: damage on impact for a tap and a full charge, its speed, how far it flies and its size. */
+  damage: [0.5, 1] as [number, number],
+  speed: 420,
+  range: 360,
+  radius: 7,
+  cooldown: 1.1,
+  /** Life taken from the bound one, and given to the caster, every `every` seconds. */
+  drain: 1,
+  every: 1,
+  /** Seconds a bond holds at most, for a tap and a full charge. */
+  duration: [3, 5] as [number, number],
+  /** Farther apart than this, the cord snaps. */
+  reach: 380,
+};
+/** A cord of blood between a caster and what their bolt hit: a player, a zombie or a monster. */
+export interface BloodBond {
+  id: number;
+  owner: string;
+  target: string;
+  kind: 'player' | 'zombie' | 'mob';
+  team: Team;
+  /** Seconds it still holds, out of `total`. */
+  left: number;
+  total: number;
+  /** Seconds until it next drains. */
+  nextDrain: number;
+}
 /** A number as the game writes it: a decimal comma, at most two decimals. */
 const es = (value: number) => String(Math.round(value * 100) / 100).replace('.', ',');
 export const SKILLS: Record<SkillId, SkillDefinition> = {
@@ -429,7 +463,7 @@ export const SKILLS: Record<SkillId, SkillDefinition> = {
   'mage.ice': skill({id:'mage.ice',name:'Saeta glacial',branch:'mage',description:`Hielo del fondo del éter, afilado como una aguja. No hace daño: quien la recibe queda congelado ${es(RULES.freezeDuration)} s, sin moverse ni atacar. Recarga de ${es(RULES.iceCooldown)} s.`,icon:'mage-ice',compatibleClasses:['mage'],compatibleSlots:['q','e','secondary'],trigger:'press',animationAction:'castForward',cooldown:RULES.iceCooldown,damage:'0',howTo:'Pulsá {key} para una saeta que inmoviliza 1 s.'}),
   'mage.blink': skill({id:'mage.blink',name:'Parpadeo',branch:'mage',description:`El mago pliega el espacio y lo cruza. Mantené: el sello tarda ${es(RULES.mageBlinkMinCharge)} s en abrirse y se aleja hasta ${RULES.mageBlinkRange} u en ${RULES.mageBlinkChargeTime} s. Al soltar reaparecés junto al cursor, incluso detrás de un muro, intocable un instante. Recarga de ${es(RULES.dashCooldown)} s.`,icon:'mage-blink',compatibleClasses:['mage'],compatibleSlots:['mobility'],trigger:'hold-release',animationAction:'dash',cooldown:RULES.dashCooldown,damage:'0',grants:['mobility'],howTo:'Mantené {key} para ampliar el alcance y soltá: aparecés junto al cursor.',chargeSlow:RULES.chargeMoveSpeed}),
   'mage.blackHole': skill({id:'mage.blackHole',name:'Singularidad',branch:'mage',description:`El conjuro prohibido: un punto donde el mundo se pliega sobre sí mismo. Mantené hasta ${RULES.blackHoleChargeTime} s para que crezca: llega de ${RULES.blackHoleRangeMin} a ${RULES.blackHoleRangeMax} u y su estallido pasa de ${es(RULES.blackHoleDamageMin)} a ${es(RULES.blackHoleDamageMax)} de daño. Soltalo y viaja atrayendo enemigos; quien llega a su centro es consumido. Estalla contra un muro, al volver a pulsarlo o tras ${es(RULES.blackHoleLinger)} s en su destino. Recarga de ${RULES.blackHoleCooldown} s.`,icon:'mage-blackhole',compatibleClasses:['mage'],compatibleSlots:['f','r'],trigger:'hold-release',animationAction:'castChannel',cooldown:RULES.blackHoleCooldown,damage:'0,75–2,25 en área; letal en el centro',howTo:'Mantené {key} para cargar; soltá para lanzar. Volvé a pulsar para detonar.',blocks:['primary','secondary'],chargeSlow:RULES.chargeMoveSpeed}),
-  'necromancer.fire': skill({id:'necromancer.fire',name:'Llama de ultratumba',branch:'necromancer',description:`Fuego pálido de los que ya no respiran: ${es(RULES.fireDamage)} de daño. Mantené ${es(RULES.overchargeTime)} s para canalizarlo hasta 2 de daño y casi el doble de tamaño. Recarga de ${es(RULES.fireCooldown)} s.`,icon:'necromancer-fire',compatibleClasses:['mage','necromancer'],compatibleSlots:['primary'],trigger:'hold-release',animationAction:'castForward',cooldown:RULES.fireCooldown,damage:'1–2',grants:['ranged'],howTo:'Pulsá {key} para fuego espectral; mantené para canalizarlo.'}),
+  'necromancer.bloodBond': skill({id:'necromancer.bloodBond',name:'Vínculo de Sangre',branch:'necromancer',description:`Un hilo de sangre que el nigromante arroja como una lanza: lo que alcanza, sea un rival, un zombie o un monstruo, queda atado a él. El proyectil hace ${es(BLOOD_BOND.damage[0])} de daño (${es(BLOOD_BOND.damage[1])} cargado ${es(RULES.overchargeTime)} s) y, mientras el vínculo dure y el atado siga a menos de ${BLOOD_BOND.reach} u, cada ${es(BLOOD_BOND.every)} s le roba ${es(BLOOD_BOND.drain)} de vida y se la da al nigromante. Dura ${BLOOD_BOND.duration[0]} s (${BLOOD_BOND.duration[1]} s cargado) y se corta si se aleja, si alguno muere o si el nigromante ata a otro: un vínculo a la vez, y acertarle otra vez al mismo lo renueva. Recarga de ${es(BLOOD_BOND.cooldown)} s.`,icon:'necromancer-bloodbond',compatibleClasses:['mage','necromancer'],compatibleSlots:['primary'],trigger:'hold-release',animationAction:'castForward',cooldown:BLOOD_BOND.cooldown,damage:`${es(BLOOD_BOND.damage[0])}–${es(BLOOD_BOND.damage[1])} y ${es(BLOOD_BOND.drain)} por segundo`,grants:['ranged'],howTo:'Pulsá {key} para lanzar el vínculo; mantené para que pegue más y dure más.'}),
   'necromancer.summon': skill({id:'necromancer.summon',name:'Alzar a los caídos',branch:'necromancer',description:`La tierra devuelve a sus muertos. Un toque levanta 2 zombies (${RULES.zombieHp} de vida, ${es(RULES.zombieDamage)} de daño por mordida) que custodian tu círculo. Mantené para un arcanista no-muerto (${RULES.hatHp} de vida) que lanza fuego y hielo, se cura y levanta lacayos. Con el aura llena (${es(RULES.raiseCharge)} s) junto a la tumba de un rival, su alma vuelve como esclavo con su clase y sus técnicas. Recarga de ${RULES.summonCooldown} s; el esclavo, ${RULES.thrallCooldown} s.`,icon:'necromancer-summon',compatibleClasses:['mage','necromancer'],compatibleSlots:['f','r'],trigger:'hold-release',animationAction:'castGround',cooldown:RULES.summonCooldown,damage:'1 por golpe',grants:['summon','companionControl'],howTo:'Pulsá {key} para 2 zombies; mantené para el zombie mago, y hasta el final para resucitar.'}),
   'guardian.sword': skill({id:'guardian.sword',name:'Tres Cortes',branch:'guardian',description:`La esgrima del relámpago. Un corte de derecha a izquierda y su regreso (1 de daño cada uno), y el Tajo Descendente, que cae desde lo alto como un rayo sobre la tierra (1,5, crítico si conecta). Mantené para cargar solo el corte que sigue: hasta el doble de daño en ${es(KNIGHT_SWORD_CHARGE.cap)} s, un tajo que sale de la hoja (el del descendente, una grieta a ras del suelo, más larga y fuerte) y el poder de partir en el aire los hechizos enemigos. Un golpe de hasta ${es(KNIGHT_SWORD_CHARGE.breakOnDamage!.over!)} de daño no rompe la carga. Sin recarga.`,icon:'guardian-slash',compatibleClasses:['guardian'],compatibleSlots:['primary'],trigger:'hold-release',animationAction:'attack',cooldown:0,damage:'1 · 1 · 1,5; hasta ×2 cargado',grants:['melee'],howTo:'Pulsá {key} para encadenar tres cortes; mantené para cargar el que sigue.',blocks:['secondary'],chargeSlow:0.7,charge:KNIGHT_SWORD_CHARGE}),
   'guardian.flurry': skill({id:'guardian.flurry',name:'Ráfaga de Acero',branch:'guardian',description:`La espada se vuelve tormenta. Un toque: Tres Relámpagos que avanzan (0,5, 0,5 y 0,75 de daño); cada uno electriza y los tres juntos aturden. A media carga: la Cruz Gemela, dos cortes de 1 con su tajo. A fondo (${es(KNIGHT_FLURRY_CHARGE.cap)} s): el Corte Celestial, un tajo de luz dorada que cruza el mapa y parte lo que encuentra: ${es(CELESTIAL_CUT.damage)} de daño de cerca, mucho menos de lejos. Solo un golpe de más de ${es(KNIGHT_FLURRY_CHARGE.breakOnDamage!.over!)} interrumpe la carga. Cuesta 20 de maná más 15 por segundo de carga. Recarga de ${KNIGHT_FLURRY_COOLDOWN} s.`,icon:'guardian-flurry',compatibleClasses:['guardian'],compatibleSlots:['q','e','secondary'],trigger:'hold-release',animationAction:'attack',cooldown:KNIGHT_FLURRY_COOLDOWN,damage:`0,5 · 0,5 · 0,75 · 2 × 1 · ${String(CELESTIAL_CUT.damage).replace('.', ',')} de cerca`,howTo:'Pulsá {key} para tres golpes eléctricos; mantené para dos cortes y, a fondo, el Corte Celestial.',blocks:['primary'],chargeSlow:0.6,charge:KNIGHT_FLURRY_CHARGE,cost:{resource:'mana',amount:20,perSecond:15}}),
@@ -525,7 +559,7 @@ export const DEFAULT_LOADOUTS: Record<ClassId, CharacterLoadout> = {
   archer:loadout({primary:'archer.arrow',secondary:'archer.dagger',mobility:'common.dash',q:'archer.volley',e:'archer.trap'}),
   mage:loadout({primary:'mage.fireball',mobility:'mage.blink',q:'mage.ice',e:'mage.magicShield',f:'mage.blackHole'}),
   // No mobility of its own: Space stays empty. The summon is its powerful F.
-  necromancer:loadout({primary:'necromancer.fire',f:'necromancer.summon'}),
+  necromancer:loadout({primary:'necromancer.bloodBond',f:'necromancer.summon'}),
   // No shield: the lightning flurry on Q; M2, E and F are left free for techniques to come.
   guardian:loadout({primary:'guardian.sword',mobility:'guardian.dash',q:'guardian.flurry',r:'guardian.fury'}),
   vanguard:loadout({primary:'vanguard.sword',mobility:'vanguard.dash',q:'vanguard.slash',e:'vanguard.counter',r:'vanguard.reinforce'}),
@@ -1210,7 +1244,11 @@ export interface GameEvent extends Vec {
     | 'upgrade'
     | 'imbue'
     /** A body full of lightning discharges. */
-    | 'shock';
+    | 'shock'
+    /** Vínculo de Sangre: the cord ties, drains, or snaps. `tx`,`ty` say where the caster is. */
+    | 'bond'
+    | 'drain'
+    | 'bondBreak';
   team: Team;
   angle?: number;
   classId?: ClassId;
@@ -1218,10 +1256,10 @@ export interface GameEvent extends Vec {
   power?: number;
   /** Area effects (world area spells, Singularidad's burst): the radius used for damage and its visual. */
   radius?: number;
-  /** Blink only: where the teleport lands (the event's x/y stay at the origin). */
+  /** Blink: where the teleport lands (the event's x/y stay at the origin). A blood bond: where its caster is. */
   tx?: number;
   ty?: number;
-  /** Blink only: which player teleported, so the client can snap its body. */
+  /** Blink: which player teleported, so the client can snap its body. A blood bond: its caster. */
   playerId?: string;
   /** World only: the colour of the element or skill behind it, so an explosion of lightning is not fire. */
   color?: string;
@@ -1296,6 +1334,8 @@ export interface Snapshot {
   /** Travelling slashes. */
   waves: Wave[];
   blackHoles: BlackHole[];
+  /** Vínculos de Sangre holding right now. */
+  bonds: BloodBond[];
   zombies: Zombie[];
   mobs: Mob[];
   mobProjectiles: MobProjectile[];
@@ -1497,7 +1537,17 @@ export function arrowMotion(a: Arrow) {
   };
 }
 export function projectileSkillStats(skillId: SkillId | undefined, casterClassId: ClassId, charged = false, power = 0) {
-  if (skillId === 'necromancer.fire') return projectileStats('necromancer', charged, power);
+  if (skillId === 'necromancer.bloodBond') {
+    // Charged, the cord flies a little faster and thicker; it always reaches as far.
+    const speed = BLOOD_BOND.speed * (1 + 0.3 * power);
+    return {
+      speed,
+      life: BLOOD_BOND.range / speed,
+      damage: BLOOD_BOND.damage[0] + (BLOOD_BOND.damage[1] - BLOOD_BOND.damage[0]) * power,
+      radius: BLOOD_BOND.radius * (1 + 0.5 * power),
+      cooldown: BLOOD_BOND.cooldown,
+    };
+  }
   if (skillId === 'mage.fireball') return projectileStats('mage', charged, power);
   if (skillId === 'mage.ice') return projectileStats('mage', false, 0);
   if (skillId === 'archer.arrow' || skillId === 'archer.volley') return projectileStats('archer', charged, power);
@@ -1651,7 +1701,7 @@ export function resolveSlotInput(p: Player, input: Input): Input {
     }
     const pulse = state.pressed || state.released;
     switch (skillId) {
-      case 'mage.fireball': case 'necromancer.fire': case 'archer.arrow':
+      case 'mage.fireball': case 'necromancer.bloodBond': case 'archer.arrow':
         resolved.charge ||= state.held; resolved.shot ||= state.released; break;
       case 'common.dash':
         resolved.special ||= state.held; resolved.dash ||= state.released; break;
@@ -2062,7 +2112,7 @@ export function movePlayer(
       result.ice = true;
       result.skillId = 'mage.ice';
       result.angle = p.angle;
-    } else if (input.shot && (equippedSkill(p, 'mage.fireball') || equippedSkill(p, 'necromancer.fire') || equippedSkill(p, 'archer.arrow')) && p.shotCd <= 0 && free(p.loadout.primary)) {
+    } else if (input.shot && (equippedSkill(p, 'mage.fireball') || equippedSkill(p, 'necromancer.bloodBond') || equippedSkill(p, 'archer.arrow')) && p.shotCd <= 0 && free(p.loadout.primary)) {
       p.invuln = 0;
       result.skillId = p.loadout.primary ?? undefined;
       p.shotCd = projectileSkillStats(result.skillId, p.classId).cooldown;
@@ -2348,6 +2398,7 @@ export class Duel {
     arrows: [],
     waves: [],
     blackHoles: [],
+    bonds: [],
     zombies: [],
     mobs: [],
     mobProjectiles: [],
@@ -2363,6 +2414,7 @@ export class Duel {
   protected arrowId = 0;
   protected waveId = 0;
   protected blackHoleId = 0;
+  protected bondId = 0;
   protected trapId = 0;
   protected zombieId = 0;
   private mobId = 0;
@@ -2660,6 +2712,7 @@ export class Duel {
     s.arrows = [];
     s.waves = [];
     s.blackHoles = [];
+    s.bonds = [];
     s.zombies = [];
     s.mobs = [];
     s.mobProjectiles = [];
@@ -3015,6 +3068,79 @@ export class Duel {
     this.event('counter', by, by.team, angle, by.classId, 1);
     this.event('blackhole', hole, by.team, angle, by.classId, 1, 'mage.blackHole');
   }
+  /** A blood bolt landed: its victim is bound to `owner`, in place of the last one `owner` had bound. */
+  protected bind(owner: Player, target: { id: string } & Vec, kind: BloodBond['kind'], power: number) {
+    const total = BLOOD_BOND.duration[0] + (BLOOD_BOND.duration[1] - BLOOD_BOND.duration[0]) * power;
+    const held = this.state.bonds.find((bond) => bond.owner === owner.id && bond.left > 0);
+    if (held && held.target === target.id) {
+      // Struck again: the cord holds on longer.
+      held.left = Math.max(held.left, total);
+      held.total = Math.max(held.total, held.left);
+      return;
+    }
+    if (held) this.snapBond(held);
+    this.state.bonds.push({ id: ++this.bondId, owner: owner.id, target: target.id, kind, team: owner.team, left: total, total, nextDrain: BLOOD_BOND.every });
+    this.bondEvent('bond', target, owner);
+  }
+  /** An event at the bound one, carrying where the caster is, so the cord can be drawn between them. */
+  private bondEvent(kind: 'bond' | 'drain' | 'bondBreak', at: Vec, owner: Pick<Player, 'id' | 'team' | 'classId'> & Vec) {
+    this.event(kind, at, owner.team, Math.atan2(owner.y - at.y, owner.x - at.x), owner.classId);
+    const event = this.state.events.at(-1)!;
+    event.tx = owner.x;
+    event.ty = owner.y;
+    event.playerId = owner.id;
+  }
+  /** What a cord is tied to: the player, zombie or monster it bound, while it still exists. */
+  private bondTarget(bond: BloodBond): ({ id: string; hp: number } & Vec) | undefined {
+    const s = this.state;
+    if (bond.kind === 'zombie') return s.zombies.find((z) => z.id === bond.target);
+    if (bond.kind === 'mob') return s.mobs.find((mob) => mob.id === bond.target);
+    return s.players.find((p) => p.id === bond.target);
+  }
+  /** The cord snaps where it is. */
+  private snapBond(bond: BloodBond) {
+    bond.left = 0;
+    const owner = this.state.players.find((p) => p.id === bond.owner);
+    const target = this.bondTarget(bond);
+    if (owner && target) this.bondEvent('bondBreak', target, owner);
+  }
+  /** One drain of a cord: what the bound one loses. False when nothing was taken (a shield, i-frames). */
+  private drainBond(bond: BloodBond, owner: Player, target: { id: string } & Vec) {
+    const angle = Math.atan2(target.y - owner.y, target.x - owner.x);
+    if (bond.kind === 'zombie') return this.damageZombie(target as Zombie, owner.team, BLOOD_BOND.drain, angle, owner.id);
+    if (bond.kind === 'mob') return this.damageMob(target as Mob, owner, BLOOD_BOND.drain);
+    // Through the protection a blow leaves: the cord does not let go between two hits.
+    return this.damage(target as Player, owner, angle, BLOOD_BOND.drain, { ignoreInvuln: true, knockback: 0 });
+  }
+  /** Every cord of blood: it snaps when they part, when either falls or when its time is up; meanwhile it drains. */
+  protected stepBonds(dt: number) {
+    const s = this.state;
+    for (const bond of s.bonds) {
+      if (bond.left <= 0) continue;
+      const owner = s.players.find((p) => p.id === bond.owner);
+      const target = this.bondTarget(bond);
+      if (!owner || !target || owner.hp <= 0 || target.hp <= 0 || distance(owner, target) > BLOOD_BOND.reach) {
+        this.snapBond(bond);
+        continue;
+      }
+      bond.left = Math.max(0, bond.left - dt);
+      bond.nextDrain -= dt;
+      if (bond.nextDrain <= 1e-8) {
+        // Exactly once a second, whatever happens to that drain.
+        bond.nextDrain += BLOOD_BOND.every;
+        if (this.drainBond(bond, owner, target)) {
+          owner.hp = Math.min(owner.maxHp, owner.hp + BLOOD_BOND.drain);
+          this.bondEvent('drain', target, owner);
+        }
+        if (target.hp <= 0) {
+          this.snapBond(bond);
+          continue;
+        }
+      }
+      if (bond.left <= 1e-8) this.snapBond(bond);
+    }
+    s.bonds = s.bonds.filter((bond) => bond.left > 0);
+  }
   /** Bursts a hole where it is now: on arrival's end, against a wall, or pressed again by its mage. */
   protected detonateBlackHole(hole: BlackHole) {
     hole.traveling = false;
@@ -3133,17 +3259,19 @@ export class Duel {
     return g.team !== raiser.team;
   }
   /** `by` names the striking entity (a player or a zombie id); matches ignore it, the world credits kills with it. */
+  /** Hurts a zombie; false when its shield took the blow instead. */
   damageZombie(z: Zombie, team: Team, amount = 1, angle?: number, _by?: string, execute = false) {
     // A revived mage's magic shield absorbs hits.
     if (!execute && z.shieldHits > 0 && amount > 0) {
       z.shieldHits--;
       if (z.shieldHits === 0) z.skillCd.shield = RULES.magicShieldCooldown;
       this.event('block', z, z.team, angle, z.classId);
-      return;
+      return false;
     }
     z.hp = Math.max(0, z.hp - amount);
     this.event('hit', z, team);
     if (z.hp === 0) this.event('death', z, z.team);
+    return true;
   }
   /** Only id, team and angle are read, so a wild monster can be born without an owning player. */
   protected newZombie(
@@ -4431,6 +4559,7 @@ export class Duel {
     this.stepWaves(dt);
     this.stepZombies(dt);
     this.stepBlackHoles(dt);
+    this.stepBonds(dt);
     this.stepTraps(placements, dt);
     if (s.winner) {
       this.syncParticipants();
@@ -5130,11 +5259,10 @@ export class Duel {
         }
         if (target) {
           this.markVolley(a, target.id);
-          if (
-            this.damage(target, owner, a.angle, a.ice ? 0 : amount, { freeze: a.ice }) &&
-            a.element === 'ice'
-          )
-            this.freeze(target);
+          const landed = this.damage(target, owner, a.angle, a.ice ? 0 : amount, { freeze: a.ice });
+          if (landed && a.element === 'ice') this.freeze(target);
+          // A blood bolt that lands binds its victim to whoever threw it.
+          if (landed && a.skillId === 'necromancer.bloodBond' && target.hp > 0) this.bind(owner, target, 'player', a.power ?? 0);
           this.explode(a, owner, amount, target.id);
           return false;
         }
@@ -5167,7 +5295,8 @@ export class Duel {
         if (zombie) {
           this.markVolley(a, zombie.id);
           if (a.ice) zombie.frozenLeft = RULES.freezeDuration;
-          else this.damageZombie(zombie, a.team, amount, a.angle, owner.id);
+          else if (this.damageZombie(zombie, a.team, amount, a.angle, owner.id) && a.skillId === 'necromancer.bloodBond' && zombie.hp > 0)
+            this.bind(owner, zombie, 'zombie', a.power ?? 0);
           if (a.wind || a.blast) {
             a.hits!.push(zombie.id);
             continue;
@@ -5190,7 +5319,8 @@ export class Duel {
         if (mob) {
           this.markVolley(a, mob.id);
           const freeze = a.ice ? RULES.freezeDuration : a.element === 'ice' ? RULES.freeze : 0;
-          this.damageMob(mob, owner, a.ice ? 0 : amount, freeze);
+          const landed = this.damageMob(mob, owner, a.ice ? 0 : amount, freeze);
+          if (landed && a.skillId === 'necromancer.bloodBond' && mob.hp > 0) this.bind(owner, mob, 'mob', a.power ?? 0);
           if (freeze > 0) this.event('freeze', mob, 'red');
           if (a.wind || a.blast) {
             a.hits!.push(mob.id);

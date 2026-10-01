@@ -97,6 +97,10 @@ const SPELL_NOTES: Record<string, number[]> = {
   projectileCut: [740, 495],
   // Someone spoke in the room.
   chat: [1047, 1319],
+  // Vínculo de Sangre: the cord ties low, drinks with a throb, and snaps high.
+  bond: [147, 220, 294],
+  drain: [196, 147],
+  bondBreak: [784, 196],
   swing: [560],
   // The warrior's greatsword: low and heavy. His parry rings like struck metal, deeper after a
   // held guard. His crescent roars lower the more it was charged.

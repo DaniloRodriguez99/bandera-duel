@@ -45,7 +45,7 @@ test('el mago aparece y muestra sus controles',async({page})=>{
   await page.locator('#game canvas').click();
   await expect(page.locator('#cd-shot')).toHaveText(/✦ 0\.\ds/);
 });
-test('el nigromante lanza fuego e invoca zombies con F',async({page,browser})=>{
+test('el nigromante lanza su Vínculo de Sangre e invoca zombies con F',async({page,browser})=>{
   const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));await enter(page,'/','Morgana','necromancer');
   await expect(page.locator('#control-guide')).toContainText('Invocar zombies');
   const context=await browser.newContext();const rival=await context.newPage();rival.on('pageerror',e=>errors.push(e.message));await enter(rival,page.url(),'Rival','guardian');
