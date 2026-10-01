@@ -71,3 +71,55 @@ test('Enter abre el chat listo para escribir, Enter lo manda y todos lo ven sobr
   expect(errors).toEqual([]);
   await context.close();
 });
+
+test('tres jugadores hablan a la vez: cada uno ve las tres burbujas, una por personaje', async ({ browser }) => {
+  const errors: string[] = [];
+  const contexts = await Promise.all([0, 1, 2].map(() => browser.newContext()));
+  const pages = await Promise.all(contexts.map((c) => c.newPage()));
+  for (const p of pages) p.on('pageerror', (error) => errors.push(error.message));
+  const [host, ...guests] = pages;
+  await host.goto('/');
+  await host.locator('#name').fill('Uno');
+  await host.locator('#entry-classes [data-class="archer"]').click();
+  await host.locator('#game-mode').selectOption('ffa3');
+  await host.locator('#enter').click();
+  await expect(host.locator('#overlay')).toBeVisible();
+  for (const [i, guest] of guests.entries()) await enter(guest, host.url(), ['Dos', 'Tres'][i], ['vanguard', 'guardian'][i]);
+  for (const p of pages) await p.locator('#ready').click();
+  for (const p of pages) await expect(p.locator('#stage')).toHaveAttribute('data-phase', 'playing', { timeout: 7000 });
+  const ids = await Promise.all(
+    pages.map((p) =>
+      p.evaluate(async () => {
+        const { arena } = await import('/src/main.ts');
+        return (arena as unknown as { localId: string }).localId;
+      }),
+    ),
+  );
+  // All three speak at about the same time.
+  await Promise.all(
+    pages.map(async (p, i) => {
+      await p.locator('#game canvas').hover();
+      await p.keyboard.press('Enter');
+      await expect(p.locator('#chat-input')).toBeFocused();
+      await p.keyboard.type(['cuidado atrás!', 'voy por la bandera', 'cubro el centro'][i]);
+      await p.keyboard.press('Enter');
+    }),
+  );
+  // Every player sees all three, at once: in the log and as one bubble over each speaker.
+  await Promise.all(
+    pages.map(async (p) => {
+      for (const text of ['cuidado atrás!', 'voy por la bandera', 'cubro el centro'])
+        await expect(p.locator('#chat-messages')).toContainText(text);
+      await expect.poll(() => bubbles(p).then((list) => [...list].sort()), { timeout: 2500 }).toEqual([...ids].sort());
+    }),
+  );
+  // Speaking again replaces the bubble: still one per character.
+  await pages[0].keyboard.press('Enter');
+  await pages[0].keyboard.type('otra vez');
+  await pages[0].keyboard.press('Enter');
+  await expect(pages[1].locator('#chat-messages')).toContainText('otra vez');
+  expect((await bubbles(pages[1])).filter((id) => id === ids[0])).toHaveLength(1);
+  expect(errors).toEqual([]);
+  await Promise.all(contexts.map((c) => c.close()));
+});
+

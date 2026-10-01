@@ -1024,8 +1024,12 @@ export class Arena extends Phaser.Scene {
     const p = this.snapshot?.players.find((q) => q.id === id);
     if (!v || !p || p.hp <= 0 || !v.body.visible) return false;
     this.bubbles.get(id)?.box.destroy();
+    // Who speaks, in their team's colour, and what they said: `Robin: "cuidado atrás!"`.
+    const speaker = this.add
+      .text(0, 0, `${p.name}:`, { fontFamily: 'DM Sans, sans-serif', fontSize: '10px', fontStyle: 'bold', color: LIGHT[p.team] })
+      .setOrigin(0.5, 0);
     const label = this.add
-      .text(0, 0, text, {
+      .text(0, 0, `“${text}”`, {
         fontFamily: 'DM Sans, sans-serif',
         fontSize: '11px',
         color: '#1d2427',
@@ -1033,9 +1037,12 @@ export class Arena extends Phaser.Scene {
         wordWrap: { width: BUBBLE.width, useAdvancedWrap: true },
         maxLines: 4,
       })
-      .setOrigin(0.5, 0.5);
-    const width = Math.max(28, label.width + 14);
-    const height = label.height + 10;
+      .setOrigin(0.5, 0);
+    const width = Math.max(40, Math.max(label.width, speaker.width) + 16);
+    const height = speaker.height + label.height + 10;
+    speaker.setPosition(0, -height / 2 + 4);
+    label.setPosition(0, -height / 2 + 4 + speaker.height);
+    speaker.setStroke('#1d2427', 2);
     const frame = this.add.graphics();
     frame.fillStyle(0xf6f1e3, 0.96);
     frame.fillRoundedRect(-width / 2, -height / 2, width, height, 6);
@@ -1047,7 +1054,7 @@ export class Arena extends Phaser.Scene {
     frame.lineStyle(2, COLORS[p.team], 1);
     frame.lineBetween(-5, height / 2, 0, height / 2 + 6);
     frame.lineBetween(5, height / 2, 0, height / 2 + 6);
-    const box = this.add.container(v.x, v.y - 44 - height / 2, [frame, label]).setDepth(LAYER.celebration);
+    const box = this.add.container(v.x, v.y - 44 - height / 2, [frame, speaker, label]).setDepth(LAYER.celebration);
     const seconds = Math.min(BUBBLE.max, BUBBLE.base + text.length * BUBBLE.perChar);
     const now = this.time.now;
     this.bubbles.set(id, { box, height, born: now, until: now + seconds * 1000 });

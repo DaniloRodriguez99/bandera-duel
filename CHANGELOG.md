@@ -24,7 +24,8 @@
 ### Chat rápido
 
 - **Enter abre el chat** listo para escribir y **Enter lo manda**: el chat se cierra solo y las teclas vuelven al combate. Escape descarta el mensaje.
-- Cada mensaje aparece al instante para todos: en el registro de la sala y en una **burbuja sobre el personaje** que habla, del color de su equipo. Lo de los espectadores (o de alguien escondido en un arbusto) pasa como una línea breve sobre la arena.
+- Cada mensaje aparece al instante para todos: en el registro de la sala y en una **burbuja sobre el personaje** que habla (`Robin: "cuidado atrás!"`), del color de su equipo. Si vuelve a hablar, la burbuja se reemplaza: nunca hay dos sobre el mismo personaje.
+- Enter abre el chat aunque un botón del menú haya quedado con el foco al empezar la partida. Lo de los espectadores (o de alguien escondido en un arbusto) pasa como una línea breve sobre la arena.
 
 ### Descripciones de habilidades y Parry
 

@@ -672,7 +672,11 @@ $<HTMLInputElement>('chat-input').onkeydown = (event) => {
 window.addEventListener('keydown', (event) => {
   if ((event.code !== 'Enter' && event.code !== 'NumpadEnter') || event.repeat || event.isComposing) return;
   if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
-  if ((event.target as HTMLElement)?.matches?.('input, textarea, select, button, a, [contenteditable]')) return;
+  // A control that has the focus keeps its Enter, unless it is no longer on screen (the menu's
+  // buttons stay focused after the match hides them).
+  const target = event.target as HTMLElement | null;
+  const onScreen = !!target && target !== document.body && target.getClientRects().length > 0;
+  if (onScreen && target.matches('input, textarea, select, button, a, [contenteditable]')) return;
   if (!room || !online || $('chat-toggle').hidden || !chatEnabled || arena.controls?.bound(event.code)) return;
   event.preventDefault();
   setChatOpen(true);
