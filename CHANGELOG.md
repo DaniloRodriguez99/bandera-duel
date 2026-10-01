@@ -2,6 +2,12 @@
 
 ## 2026-10-01
 
+### Descripciones completas e íconos propios
+
+- Las habilidades del arquero, el mago, la invocación del Nigromante y los Tres Cortes del Caballero detallan, como las demás, qué hacen, daño, alcance, área, duración, condiciones especiales y qué cambia al cargarlas. La Flecha del cazador muestra su recarga real (0,7 s) y la Traslación del arquero, cuánto avanza y que abre el combo aéreo.
+- Íconos nuevos para lo que usaba uno prestado de otra clase: la **Daga veloz** y la **Flecha del vendaval** del arquero; el **Campeón putrefacto**, la **Voluntad del amo** y la **Marca funeraria** del Nigromante (también en sus botones de Mando y Marcar); y el **Filo cargado** del Caballero.
+- Se quitan seis íconos viejos que ya nada usaba.
+
 ### Parry en PvP
 
 - Levantar o sostener el Parry tiene su propio sonido, en vez del golpe del mandoble.

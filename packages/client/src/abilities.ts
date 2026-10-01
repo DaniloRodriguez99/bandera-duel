@@ -303,7 +303,7 @@ function companionCard(action: Companion, key: string): AbilitySlot {
     companion: action,
     key,
     name: COMPANION_NAMES[action],
-    icon: skillIcon(action === 'companionCommand' ? 'necromancer-mage' : 'necromancer-resurrection'),
+    icon: skillIcon(action === 'companionCommand' ? 'necromancer-command' : 'necromancer-mark'),
     cooldown: () => 0,
     max: 1,
     detail: action === 'companionCommand' ? (p) => (p.zombieAuto ? 'Auto' : 'Mando') : undefined,
