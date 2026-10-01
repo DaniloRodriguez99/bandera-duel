@@ -1,0 +1,16 @@
+{
+  "name": "Bandera Duel",
+  "short_name": "Bandera Duel",
+  "description": "Un castillo. Dos rivales. Tu bandera en juego. Duelo medieval online.",
+  "lang": "es",
+  "start_url": "/",
+  "scope": "/",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#101b21",
+  "theme_color": "#101b21",
+  "icons": [
+    { "src": "/app/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/app/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

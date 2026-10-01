@@ -68,6 +68,37 @@ el cliente sin permitir conexiones inseguras y entrega
 Conservar la clave para futuras actualizaciones e incrementar `versionCode` antes
 de cada publicación. No se creó una clave de producción ni se publicó en tiendas.
 
+## En el navegador del celular
+
+Al entrar a una partida, una sala, el mundo o la práctica desde un celular o una
+tableta, el juego pide **pantalla completa** (sin pestañas ni barra de direcciones)
+y **fija la pantalla en horizontal**. Los navegadores solo lo permiten justo
+después de un toque: si la partida empezó sin uno (una reconexión, un servidor
+lento), lo pide el primer toque dentro de ella. Al salir de la partida devuelve
+la pantalla como estaba.
+
+- Si el jugador sale de la pantalla completa a propósito, el juego no lo vuelve a
+  meter: el botón ⛶ bajo el engranaje, o **Pantalla completa** en los ajustes del
+  juego, la recuperan.
+- En vertical, la arena pide girar el teléfono; tocar ese aviso ya la pone en
+  horizontal y a pantalla completa donde el navegador lo permite.
+- La arena se ve entera en cualquier proporción: en pantallas más anchas que
+  16:9 sobran franjas a los costados, donde caen la palanca y los botones; en
+  tabletas más altas, arriba y abajo. Nunca se estira ni se recorta.
+- Marcadores, botones, palanca, chat y ajustes respetan las zonas seguras
+  (notch, esquinas redondeadas, barra de inicio).
+- La sala de espera entra en una sola pantalla horizontal: las cinco clases en
+  una fila y «Estoy listo» debajo, sin desplazarse.
+- iPhone: Safari no permite pantalla completa a una página. Con **Compartir →
+  Agregar a inicio**, el juego se abre desde el ícono a pantalla completa y sin
+  barras (manifiesto web en `packages/client/public/manifest.webmanifest`). Los
+  ajustes del juego lo explican en el iPhone.
+
+La app de Android ya es una ventana horizontal propia (`sensorLandscape`); este
+comportamiento aplica al navegador. Ocultar también la barra de estado de Android
+en la app requiere el modo inmersivo en `MainActivity`, pendiente de compilarse y
+probarse con el SDK.
+
 ## Animaciones y opciones
 
 Jugadores: ocho direcciones, seis cuadros de caminar y dos de reposo. Los atlas
@@ -84,4 +115,4 @@ visibles. Se respeta la preferencia de reducción de movimiento del dispositivo.
 
 Resultados y límites de la validación de esta entrega en `MOBILE-VALIDATION.md`.
 Para repetir la lógica: `npm test`. Para navegador:
-`npx playwright test tests/browser/mobile-visuals.spec.ts tests/browser/practice.spec.ts tests/browser/classes.spec.ts tests/browser/world-keyboard.spec.ts`.
+`npx playwright test tests/browser/mobile-visuals.spec.ts tests/browser/mobile-fullscreen.spec.ts tests/browser/practice.spec.ts tests/browser/classes.spec.ts tests/browser/world-keyboard.spec.ts`.

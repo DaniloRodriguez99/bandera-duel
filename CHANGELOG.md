@@ -2,6 +2,14 @@
 
 ## 2026-10-01
 
+### Celular: horizontal y pantalla completa
+
+- **Al entrar a jugar desde el celular, el juego ocupa toda la pantalla**, sin pestañas ni barra de direcciones, y se fija en horizontal donde el navegador lo permite. Si la partida empezó sin un toque, lo hace el primer toque en ella; al salir, devuelve la pantalla como estaba.
+- Si el jugador sale de la pantalla completa, no se lo fuerza a volver: el botón ⛶ bajo el engranaje o la opción **Pantalla completa** de los ajustes la recuperan. En vertical, tocar el aviso de girar el teléfono la activa en horizontal.
+- La arena se ve entera y sin deformarse en cualquier proporción de pantalla, y los controles respetan el notch y los bordes. Probado en pantallas de 667×375 a 1366×1024 con zonas seguras simuladas.
+- **La sala de espera entra en una pantalla horizontal**: las cinco clases en una fila y «Estoy listo» justo debajo, sin desplazarse; el reloj y la vida ya no tapan la sala, y la tarjeta deja libres el engranaje y el chat. «Falta 1 jugador.» en singular.
+- En iPhone, agregado a la pantalla de inicio, el juego se abre a pantalla completa y sin barras; los ajustes del juego lo explican.
+
 ### Descripciones completas e íconos propios
 
 - Las habilidades del arquero, el mago, la invocación del Nigromante y los Tres Cortes del Caballero detallan, como las demás, qué hacen, daño, alcance, área, duración, condiciones especiales y qué cambia al cargarlas. La Flecha del cazador muestra su recarga real (0,7 s) y la Traslación del arquero, cuánto avanza y que abre el combo aéreo.

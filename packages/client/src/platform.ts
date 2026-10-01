@@ -2,6 +2,7 @@ import { Capacitor } from '@capacitor/core';
 import { App } from '@capacitor/app';
 import { healthUrl, normalizeServer, roomCode } from './mobile-connection';
 import { visualSettings } from './visual-effects';
+import { chooseFullscreen, fullscreenSupported, homeScreenHint, isFullscreen, touchScreen } from './fullscreen';
 
 export const native = Capacitor.isNativePlatform();
 const storageKey = 'bandera-mobile-server';
@@ -40,9 +41,18 @@ export function installPlatform(hooks: {
     if (!dialog.open) dialog.showModal();
   }
   inGame.onclick = () => {
-    show('<h2>Ajustes del juego</h2><button id="game-effects">Pantalla y efectos</button>' + (native ? '<button id="game-server">Servidor</button>' : ''));
+    const screen = touchScreen() && fullscreenSupported()
+      ? `<button id="game-fullscreen">${isFullscreen() ? 'Salir de pantalla completa' : 'Pantalla completa'}</button>`
+      : homeScreenHint()
+        ? '<p>Para jugar sin las barras de Safari, agregá el juego a tu pantalla de inicio: Compartir → Agregar a inicio, y abrilo desde ahí.</p>'
+        : '';
+    show('<h2>Ajustes del juego</h2><button id="game-effects">Pantalla y efectos</button>' + (native ? '<button id="game-server">Servidor</button>' : '') + screen);
     dialog.querySelector('#game-effects')!.addEventListener('click', () => (bar.querySelector('#display-settings') as HTMLButtonElement).click());
     dialog.querySelector('#game-server')?.addEventListener('click', settings);
+    dialog.querySelector('#game-fullscreen')?.addEventListener('click', () => {
+      dialog.close();
+      chooseFullscreen(!isFullscreen());
+    });
   };
   bar.querySelector('#display-settings')!.addEventListener('click', () => {
     show('<h2>Pantalla y efectos</h2><label>Calidad de efectos <select id="fx-quality"><option value="normal">Normal</option><option value="low">Baja</option></select></label><label><input type="checkbox" id="fx-shake"> Sacudidas de cámara</label><p>La reducción de movimiento del dispositivo se respeta automáticamente.</p>');
