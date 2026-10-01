@@ -2,6 +2,12 @@
 
 ## 2026-10-01
 
+### Parry en PvP
+
+- Levantar o sostener el Parry tiene su propio sonido, en vez del golpe del mandoble.
+- La vida en el HUD se muestra con un decimal como máximo: un tiro devuelto por un Parry sostenido o un Vínculo de Sangre quitan medios corazones, y antes se veían números como 1,022222.
+- Prueba con dos navegadores: el Parry sostenido devuelve la flecha del arquero, los dos clientes lo ven y la guardia se suelta sola a su tope.
+
 ### Guerrero: tajos cargados
 
 - **El mandoble cargado es un solo tajo de fuerza**: ya no golpea y lanza una onda aparte. Al soltar sale la *Media Luna del Titán* (del barrido) o la *Falla Sísmica* (de la caída), que crecen con la carga hasta media arena: más largas, anchas, rápidas, fuertes y encendidas cuanto más se sostuvo. Un toque sigue siendo el golpe pesado. Reforzado, cada golpe es un tajo.

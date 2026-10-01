@@ -107,6 +107,8 @@ const SPELL_NOTES: Record<string, number[]> = {
   swingHeavy: [196, 131],
   counter: [1320, 990],
   counterHeavy: [990, 660, 330],
+  // The guard coming up: steel set against what is coming.
+  guard: [659, 880],
   // His slashes leaving the blade: a crack, a roar, a quake.
   slashLight: [330, 247],
   slashHeavy: [220, 165, 123],
