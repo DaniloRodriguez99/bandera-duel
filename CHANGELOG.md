@@ -2,6 +2,12 @@
 
 ## 2026-10-01
 
+### Nigromante: Vínculo de Sangre
+
+- El fuego del Nigromante se reemplaza por el **Vínculo de Sangre**: un hilo de sangre que, si alcanza a un rival, un zombie o un monstruo, lo ata al nigromante. Mientras el rival siga cerca, cada segundo le roba 1 de vida y se la da al nigromante. El vínculo dura 3 s (5 s cargado), se corta si el rival se aleja, si alguno muere o al atar a otro, y acertarle otra vez lo renueva.
+- Se ve el cordón de sangre entre los dos; el atado late en rojo y gotea, cada robo corre como una gota hasta el nigromante con su −1 y su +1, y al cortarse el cordón se parte. Roba exactamente una vez por segundo. Sonidos propios.
+- Ícono nuevo, y la carta del Nigromante pasa a «Sangre y no-muertos». Los perfiles guardados cambian el fuego por el vínculo solos.
+
 ### Chat rápido
 
 - **Enter abre el chat** listo para escribir y **Enter lo manda**: el chat se cierra solo y las teclas vuelven al combate. Escape descarta el mensaje.

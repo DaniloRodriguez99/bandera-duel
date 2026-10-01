@@ -16,13 +16,13 @@ describe('character customization model',()=>{
   });
   it('maps logical slots through a validated hybrid mage loadout',()=>{
     const customization=defaultCustomization('mage');const preset=activePreset(customization);
-    preset.loadout.primary='necromancer.fire';preset.loadout.f='necromancer.summon';
+    preset.loadout.primary='necromancer.bloodBond';preset.loadout.f='necromancer.summon';
     // The mage's free R and M2 hold Mando and Marcar, so the hybrid is valid out of the box.
     expect(validCustomization('mage',customization)).toBe(true);
     const player=newPlayer('m','Mago','blue','mage',undefined,customization);
     const fire=idleInput();fire.slots.primary.released=true;
     const cast=resolveSlotInput(player,fire);expect(cast.shot).toBe(true);
-    const result=projectileSkillStats('necromancer.fire','mage');expect(result.damage).toBe(projectileSkillStats('necromancer.fire','necromancer').damage);
+    const result=projectileSkillStats('necromancer.bloodBond','mage');expect(result.damage).toBe(projectileSkillStats('necromancer.bloodBond','necromancer').damage);
     const summon=idleInput();summon.slots.f.released=true;expect(resolveSlotInput(player,summon).summon).toBe(true);
   });
   it('Parpadeo carga mientras se mantiene y se lanza al soltar',()=>{
@@ -152,5 +152,14 @@ describe('character customization model',()=>{
   it('keeps contextual necromancer actions inside the summon skill',()=>{
     expect(SKILLS['necromancer.summon'].grants).toContain('companionControl');
     expect(Object.keys(DEFAULT_LOADOUTS.mage)).toEqual(['primary','secondary','mobility','q','e','f','r']);
+  });
+  it('el fuego del nigromante se vuelve su Vínculo de Sangre en los perfiles guardados',()=>{
+    const saved=defaultCustomization('necromancer');const preset=activePreset(saved);
+    (preset.loadout as Record<string,string|null>).primary='necromancer.fire';
+    preset.skillTreeSelection=['necromancer.fire' as never,'necromancer.summon'];
+    const migrated=migrateCustomization('necromancer',saved) as CharacterCustomization;
+    expect(activePreset(migrated).loadout.primary).toBe('necromancer.bloodBond');
+    expect(activePreset(migrated).skillTreeSelection).toContain('necromancer.bloodBond');
+    expect(validCustomization('necromancer',migrated)).toBe(true);
   });
 });

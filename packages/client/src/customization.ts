@@ -18,7 +18,12 @@ export function loadCustomization(classId:ClassId):CharacterCustomization {
   return defaultCustomization(classId);
 }
 /** Skills that no longer exist, and what took their place in the kit; null when nothing did. */
-const RETIRED: Record<string, SkillId | null> = { 'guardian.guard': 'guardian.flurry', 'guardian.shieldBash': null };
+const RETIRED: Record<string, SkillId | null> = {
+  'guardian.guard': 'guardian.flurry',
+  'guardian.shieldBash': null,
+  // The necromancer's fire became his Vínculo de Sangre.
+  'necromancer.fire': 'necromancer.bloodBond',
+};
 /** Skills a class no longer uses, by class, and what took their place. */
 const REPLACED: Partial<Record<ClassId, Record<string, SkillId>>> = { vanguard: { 'common.dash': 'vanguard.dash' } };
 /** Skills that moved to another default slot: from the old one to the new, if the new one is free. */

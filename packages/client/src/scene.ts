@@ -21,6 +21,7 @@ import {
   layout,
   projectileStats,
   arrowMotion,
+  BLOOD_BOND,
   chargePower,
   distance,
   movePlayer,
@@ -72,6 +73,18 @@ const EMPOWERED_TINT: Partial<Record<Player['empowered'], WaveTint>> = { awaken:
 /** The knight's lightning, in its two tones. */
 const BOLT = 0x5cc8ff;
 const BOLT_CORE = 0xe8f8ff;
+/** Vínculo de Sangre. */
+const BLOOD = 0xc21f3a;
+const BLOOD_DARK = 0x5a0612;
+const BLOOD_LIGHT = 0xff6b80;
+/**
+ * A point `t` of the way along a cord from `from` to `to`, hanging `sag` below the straight line in
+ * the middle, as a rope does.
+ */
+const cordPoint = (from: { x: number; y: number }, to: { x: number; y: number }, t: number, sag: number) => ({
+  x: from.x + (to.x - from.x) * t,
+  y: from.y + (to.y - from.y) * t + Math.sin(Math.PI * t) * sag,
+});
 /** The warrior's held guard: an orange mandala. */
 const GUARD = 0xff8c1a;
 const GUARD_LIGHT = 0xffd9a8;
@@ -221,6 +234,8 @@ export class Arena extends Phaser.Scene {
   private arrows!: Phaser.GameObjects.Graphics;
   private mobs!: Phaser.GameObjects.Graphics;
   private holes!: Phaser.GameObjects.Graphics;
+  /** Vínculos de Sangre: the cords between a caster and the ones it binds. */
+  private cords!: Phaser.GameObjects.Graphics;
   private aim!: Phaser.GameObjects.Graphics;
   private bases!: Phaser.GameObjects.Graphics;
   private baseLabels: Phaser.GameObjects.Text[] = [];
@@ -269,6 +284,7 @@ export class Arena extends Phaser.Scene {
     this.arrows = this.add.graphics().setDepth(LAYER.projectiles);
     this.mobs = this.add.graphics().setDepth(LAYER.lowFx);
     this.holes = this.add.graphics().setDepth(LAYER.groundFx);
+    this.cords = this.add.graphics().setDepth(LAYER.strikes);
     this.aim = this.add.graphics().setDepth(LAYER.ground);
     this.duelRings = this.add.graphics().setDepth(LAYER.underlay);
     this.controls = new Controls();
@@ -932,7 +948,7 @@ export class Arena extends Phaser.Scene {
           duration: 180,
           onComplete: () => slash.destroy(),
         });
-      } else if (e.kind !== 'projectileCut') {
+      } else if (e.kind !== 'projectileCut' && e.kind !== 'bond' && e.kind !== 'drain' && e.kind !== 'bondBreak') {
         const color = e.kind === 'block' ? GOLD : COLORS[e.team];
         this.particles.burst(e.x, e.y, color, e.kind === 'capture' ? 24 : 8, e.kind === 'capture' ? 120 : 65);
       }
@@ -1215,6 +1231,50 @@ export class Arena extends Phaser.Scene {
       flash.arc(e.x, e.y - 4, 30, (e.angle ?? 0) - 1.2, (e.angle ?? 0) + 1.2);
       flash.strokePath();
       this.fade(flash, {}, 260);
+    } else if (e.kind === 'bond' && e.tx !== undefined && e.ty !== undefined) {
+      // The cord takes: a brand of blood opens on the bound one.
+      this.fade(this.add.circle(e.x, e.y - 4, 8).setStrokeStyle(3, BLOOD, 0.95).setDepth(LAYER.effects), { scale: 2.6 }, 380);
+      this.fade(this.add.ellipse(e.x, e.y + 8, 30, 12, BLOOD_DARK, 0.45).setDepth(LAYER.underlay), { scale: 1.6 }, 520);
+      this.bloodSpray(e.x, e.y - 4, Math.atan2(e.ty - e.y, e.tx - e.x), 6);
+    } else if (e.kind === 'drain' && e.tx !== undefined && e.ty !== undefined) {
+      // A drop of life torn out of the bound one runs along the cord into its caster.
+      const from = { x: e.x, y: e.y - 6 };
+      const to = { x: e.tx, y: e.ty - 6 };
+      const orb = this.add.circle(from.x, from.y, 5, BLOOD_LIGHT, 1).setDepth(LAYER.bursts);
+      const halo = this.add.circle(from.x, from.y, 10, BLOOD, 0.4).setDepth(LAYER.bursts);
+      this.bloodSpray(from.x, from.y, Math.atan2(to.y - from.y, to.x - from.x) + Math.PI, 7);
+      this.tweens.addCounter({
+        from: 0,
+        to: 1,
+        duration: visualSettings.reduced ? 120 : 360,
+        ease: 'Sine.In',
+        onUpdate: (tween) => {
+          const at = cordPoint(from, to, tween.getValue() ?? 0, 0);
+          orb.setPosition(at.x, at.y);
+          halo.setPosition(at.x, at.y);
+        },
+        onComplete: () => {
+          orb.destroy();
+          halo.destroy();
+          this.fade(this.add.circle(to.x, to.y, 9, BLOOD_LIGHT, 0.55).setDepth(LAYER.effects), { scale: 2.2 }, 320);
+          this.floatNumber(to.x, to.y - 30, `+${String(BLOOD_BOND.drain).replace('.', ',')}`, '#ff8a9a');
+        },
+      });
+      this.floatNumber(from.x, from.y - 26, `−${String(BLOOD_BOND.drain).replace('.', ',')}`, '#c21f3a');
+    } else if (e.kind === 'bondBreak' && e.tx !== undefined && e.ty !== undefined) {
+      // The cord snaps: each half whips back to its end, and what it carried falls.
+      const mid = cordPoint({ x: e.x, y: e.y - 6 }, { x: e.tx, y: e.ty - 6 }, 0.5, 10);
+      for (const end of [{ x: e.x, y: e.y - 6 }, { x: e.tx, y: e.ty - 6 }]) {
+        const half = this.add.graphics().setDepth(LAYER.strikes);
+        half.lineStyle(3, BLOOD, 0.9);
+        half.lineBetween(mid.x - end.x, mid.y - end.y, 0, 0);
+        half.setPosition(end.x, end.y);
+        this.fade(half, { scale: 0.05 }, visualSettings.reduced ? 120 : 280);
+      }
+      for (let i = 0; i < 6; i++) {
+        const drop = this.add.circle(mid.x + (Math.random() - 0.5) * 14, mid.y, 2 + Math.random() * 1.5, i % 2 ? BLOOD : BLOOD_DARK, 0.95).setDepth(LAYER.sparks);
+        this.fade(drop, { y: mid.y + 14 + Math.random() * 12 }, 420 + i * 30);
+      }
     } else if (e.kind === 'shock') {
       // A full charge discharges: a white flash and lightning thrown out in every direction.
       this.fade(this.add.circle(e.x, e.y - 4, 10, BOLT_CORE, 0.8).setDepth(LAYER.effects), { scale: 2.6 }, 240);
@@ -1750,6 +1810,98 @@ export class Arena extends Phaser.Scene {
     }
   }
   /** Charged fire: roaring core, long flickering flame trail, corona and orbiting embers. */
+  /** A blood bolt in flight: a dark drop with a bright heart and a thread of blood behind it. */
+  private drawBloodBolt(p: { x: number; y: number }, angle: number, power: number, time: number) {
+    const g = this.arrows;
+    const size = 1 + power * 0.5;
+    const dx = Math.cos(angle);
+    const dy = Math.sin(angle);
+    g.lineStyle(2 * size, BLOOD, 0.55);
+    g.beginPath();
+    g.moveTo(p.x, p.y);
+    for (let i = 1; i <= 6; i++) {
+      const back = i * 5 * size;
+      const sway = Math.sin(time * 0.02 - i * 0.9) * 2.5;
+      g.lineTo(p.x - dx * back - dy * sway, p.y - dy * back + dx * sway);
+    }
+    g.strokePath();
+    g.fillStyle(BLOOD_DARK, 0.5);
+    g.fillCircle(p.x, p.y, 8 * size);
+    g.fillStyle(BLOOD, 1);
+    g.fillCircle(p.x, p.y, 5 * size);
+    g.fillStyle(BLOOD_LIGHT, 1);
+    g.fillCircle(p.x + dx * 1.5, p.y + dy * 1.5, 2.2 * size);
+  }
+  /**
+   * The cords of blood: a sagging, living strand from each caster's hand to whoever it binds, that
+   * swells as its next drain comes, with drops crawling along it toward the caster.
+   */
+  private drawCords(s: Snapshot, time: number) {
+    const g = this.cords;
+    g.clear();
+    for (const bond of s.bonds ?? []) {
+      const owner = this.visuals.get(bond.owner);
+      const target =
+        bond.kind === 'zombie'
+          ? this.zombieVisuals.get(bond.target)
+          : bond.kind === 'mob'
+            ? this.mobVisuals.get(bond.target)
+            : this.visuals.get(bond.target);
+      if (!owner || !target || !owner.body.visible || !target.body.visible) continue;
+      const from = { x: target.x, y: target.y - 6 };
+      const to = { x: owner.x, y: owner.y - 6 };
+      // 0 just after a drain, 1 as the next one arrives.
+      const swell = 1 - Math.max(0, Math.min(1, bond.nextDrain / BLOOD_BOND.every));
+      const sag = 10 + Math.sin(time * 0.004 + bond.id) * 4;
+      const points = Array.from({ length: 17 }, (_, i) => {
+        const at = cordPoint(from, to, i / 16, sag);
+        const wobble = Math.sin(time * 0.012 + i * 0.8) * (1.5 + swell * 1.5);
+        return { x: at.x, y: at.y + wobble };
+      });
+      g.lineStyle(7 + swell * 4, BLOOD_DARK, 0.3 + swell * 0.15);
+      g.strokePoints(points);
+      g.lineStyle(3 + swell * 1.5, BLOOD, 0.85);
+      g.strokePoints(points);
+      g.lineStyle(1.2, BLOOD_LIGHT, 0.5 + swell * 0.45);
+      g.strokePoints(points);
+      // Drops crawling from the bound one toward the caster.
+      for (let k = 0; k < 3; k++) {
+        const along = (time * 0.0011 + k / 3 + bond.id * 0.17) % 1;
+        const at = points[Math.round(along * 16)];
+        g.fillStyle(BLOOD_LIGHT, 0.9);
+        g.fillCircle(at.x, at.y, 2 + swell);
+      }
+      // The brand at the bound one's feet, fading as the bond runs out, and blood dripping off them.
+      const left = bond.total > 0 ? bond.left / bond.total : 0;
+      g.lineStyle(2, BLOOD, 0.35 + 0.45 * left);
+      g.strokeEllipse(target.x, target.y + 8, 30 + swell * 6, 12 + swell * 2);
+      g.lineStyle(1, BLOOD_LIGHT, 0.25 + 0.35 * left);
+      g.strokeEllipse(target.x, target.y + 8, 20 + swell * 4, 8 + swell);
+      for (let k = 0; k < 3; k++) {
+        const fall = (time * 0.0016 + k * 0.37 + bond.id * 0.11) % 1;
+        const side = Math.sin(bond.id * 3.7 + k * 2.1) * 9;
+        g.fillStyle(k % 2 ? BLOOD : BLOOD_LIGHT, 0.85 * (1 - fall));
+        g.fillCircle(target.x + side, target.y - 14 + fall * 22, 1.6);
+      }
+    }
+  }
+  /** A number that rises and fades: life taken or given. */
+  private floatNumber(x: number, y: number, text: string, color: string) {
+    const label = this.add
+      .text(x, y, text, { fontFamily: 'monospace', fontSize: '12px', fontStyle: 'bold', color, stroke: '#15080b', strokeThickness: 3 })
+      .setOrigin(0.5)
+      .setDepth(LAYER.celebration);
+    this.fade(label, { y: y - 18 }, visualSettings.reduced ? 400 : 750);
+  }
+  /** Droplets of blood thrown from a point, around `angle`. */
+  private bloodSpray(x: number, y: number, angle: number, count: number) {
+    for (let i = 0; i < count; i++) {
+      const a = angle + (Math.random() - 0.5) * 1.4;
+      const reach = 10 + Math.random() * 14;
+      const drop = this.add.circle(x, y, 1.6 + Math.random() * 1.4, i % 2 ? BLOOD : BLOOD_LIGHT, 0.95).setDepth(LAYER.sparks);
+      this.fade(drop, { x: x + Math.cos(a) * reach, y: y + Math.sin(a) * reach + 6 }, 300 + Math.random() * 160);
+    }
+  }
   private drawBlaze(
     p: { x: number; y: number },
     angle: number,
@@ -2175,8 +2327,20 @@ export class Arena extends Phaser.Scene {
                 ? 0.55 + Math.sin(time * 0.025) * 0.25
                 : 1,
       );
+    // Bound by a Vínculo de Sangre: the body throbs blood-red, harder as the next drain comes.
+    const bond = p.hp > 0 ? this.snapshot?.bonds?.find((b) => b.target === p.id) : undefined;
     if (p.hitFlash > 0) v.body.setTintFill(0xffe6ba);
-    else v.body.clearTint();
+    else if (bond) {
+      const throb = 1 - Math.max(0, Math.min(1, bond.nextDrain / BLOOD_BOND.every));
+      const pulse = 0.5 + 0.5 * Math.sin(time * (0.008 + throb * 0.02));
+      const color = Phaser.Display.Color.Interpolate.ColorWithColor(
+        Phaser.Display.Color.ValueToColor(0xffd0d6),
+        Phaser.Display.Color.ValueToColor(0xff5a72),
+        100,
+        Math.round((0.35 + 0.65 * throb * pulse) * 100),
+      );
+      v.body.setTint(Phaser.Display.Color.GetColor(color.r, color.g, color.b));
+    } else v.body.clearTint();
     v.shadow.setPosition(v.x, v.y + 8).setScale(moving ? 1 + Math.sin(v.locomotion.phase * Math.PI / 3) * .05 : 1);
     v.name.setPosition(v.x, v.y - 34).setText(local ? `${p.name} · VOS` : p.name);
     v.stun
@@ -3000,6 +3164,7 @@ export class Arena extends Phaser.Scene {
         delta,
       );
     this.updateBubbles(time);
+    this.drawCords(s, time);
     for (const z of s.zombies) this.drawZombie(z, time, delta);
     this.mobs.clear();
     for (const mob of s.mobs) this.drawPveMob(mob, time, delta);
@@ -3206,15 +3371,17 @@ export class Arena extends Phaser.Scene {
           p.x + dy * 4,
           p.y - dx * 4,
         );
-      } else if ((a.skillId === 'mage.fireball' || a.skillId === 'necromancer.fire' || a.classId === 'mage' || a.classId === 'necromancer') && (a.power ?? 0) > 0.05) {
+      } else if (a.skillId === 'necromancer.bloodBond') {
+        this.drawBloodBolt(p, a.angle, a.power ?? 0, time);
+      } else if ((a.skillId === 'mage.fireball' || a.classId === 'mage' || a.classId === 'necromancer') && (a.power ?? 0) > 0.05) {
         this.drawBlaze(
           p,
           a.angle,
           a.power!,
           time,
-          a.skillId === 'necromancer.fire' || (!a.skillId&&a.classId === 'necromancer') ? 0xc26bff : 0xff6a1f,
+          !a.skillId && a.classId === 'necromancer' ? 0xc26bff : 0xff6a1f,
         );
-      } else if (a.skillId === 'necromancer.fire' || (!a.skillId&&a.classId === 'necromancer')) {
+      } else if (!a.skillId && a.classId === 'necromancer') {
         const size = grow * (a.element === 'fire' ? 0.6 : 1);
         this.arrows.lineStyle(6 * size, 0xff7a2f, 0.25);
         this.arrows.lineBetween(

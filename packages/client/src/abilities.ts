@@ -1,4 +1,4 @@
-import { CLASSES, DEFAULT_BINDINGS, KIT, KNIGHT_AWAKEN, MOVES, RULES, WAVE_COLORS, curve, SKILLS, WARRIOR_PARRY, WARRIOR_REINFORCE, affordable, blackHoleStats, chargePower, chargeProgress, chargeTier, kitCooldown, overcharge, projectileSkillStats, skillCost, type ClassId, type InputBindings, type PhysicalBinding, type Player, type ResourceCost, type SkillId, type SkillSlot, type Snapshot } from '@bandera/shared';
+import { BLOOD_BOND, CLASSES, DEFAULT_BINDINGS, KIT, KNIGHT_AWAKEN, MOVES, RULES, WAVE_COLORS, curve, SKILLS, WARRIOR_PARRY, WARRIOR_REINFORCE, affordable, blackHoleStats, chargePower, chargeProgress, chargeTier, kitCooldown, overcharge, projectileSkillStats, skillCost, type ClassId, type InputBindings, type PhysicalBinding, type Player, type ResourceCost, type SkillId, type SkillSlot, type Snapshot } from '@bandera/shared';
 import { hasFaces, showFace } from './combo-icons.js';
 
 /**
@@ -57,7 +57,7 @@ type Companion = (typeof COMPANIONS)[number];
 export const ABILITY_IDS: Record<SkillId, string> = {
   'archer.arrow': 'shot', 'archer.dagger': 'dagger', 'archer.trap': 'trap', 'archer.volley': 'volley',
   'mage.fireball': 'shot', 'mage.magicShield': 'magic-shield', 'mage.ice': 'ice', 'mage.blink': 'dash',
-  'mage.blackHole': 'black-hole', 'necromancer.fire': 'shot', 'necromancer.summon': 'summon',
+  'mage.blackHole': 'black-hole', 'necromancer.bloodBond': 'shot', 'necromancer.summon': 'summon',
   'guardian.sword': 'sword', 'guardian.flurry': 'flurry', 'guardian.dash': 'dash',
   'guardian.fury': 'fury', 'vanguard.sword': 'sword',
   'vanguard.slash': 'slash', 'vanguard.counter': 'counter', 'vanguard.dash': 'dash',
@@ -67,7 +67,7 @@ export const ABILITY_IDS: Record<SkillId, string> = {
 const CARD_NAMES: Record<SkillId, string> = {
   'archer.arrow': 'Flecha', 'archer.dagger': 'Daga', 'archer.trap': 'Trampa', 'archer.volley': 'Triple',
   'mage.fireball': 'Orbe de fuego', 'mage.magicShield': 'Égida de dos sellos', 'mage.ice': 'Flecha de hielo',
-  'mage.blink': 'Parpadeo', 'mage.blackHole': 'Singularidad', 'necromancer.fire': 'Fuego',
+  'mage.blink': 'Parpadeo', 'mage.blackHole': 'Singularidad', 'necromancer.bloodBond': 'Vínculo de Sangre',
   'necromancer.summon': 'Invocar zombies', 'guardian.sword': 'Tres Cortes', 'guardian.flurry': 'Ráfaga de Acero',
   'guardian.dash': 'Paso Relámpago', 'guardian.fury': 'Despertar',
   'vanguard.sword': 'Mandoble del Titán', 'vanguard.slash': 'Creciente Escarlata', 'vanguard.counter': 'Parry',
@@ -102,7 +102,7 @@ function cooldownOf(id: SkillId, p: Player): number {
   }
 }
 function maxCooldown(id: SkillId, classId: ClassId) {
-  if (id === 'archer.arrow' || id === 'mage.fireball' || id === 'necromancer.fire')
+  if (id === 'archer.arrow' || id === 'mage.fireball' || id === 'necromancer.bloodBond')
     return projectileSkillStats(id, classId).cooldown;
   if (id === 'archer.dagger') return CLASSES[classId].meleeCooldown;
   return SKILLS[id].cooldown || 1;
@@ -143,7 +143,7 @@ export function chargeGlow(id: SkillId | undefined, p: Player): string | null {
     id === 'mage.blink' ? p.blinkCharge :
     id === 'mage.blackHole' ? p.blackHoleCharge :
     id === 'necromancer.summon' || id === 'common.dash' ? p.specialCharge :
-    id === 'archer.arrow' || id === 'mage.fireball' || id === 'necromancer.fire' ? p.shotCharge : 0;
+    id === 'archer.arrow' || id === 'mage.fireball' || id === 'necromancer.bloodBond' ? p.shotCharge : 0;
   return held > 0 ? '#f3ce86' : null;
 }
 /** Each ability's branches: what a tap, a hold or a full charge does, lit while it applies. */
@@ -160,14 +160,24 @@ function tiersOf(id: SkillId, classId: ClassId): AbilityTier[] | undefined {
         },
         { label: 'Carga completa · flecha de viento', active: windFull },
       ];
-    case 'mage.fireball': case 'necromancer.fire':
+    case 'mage.fireball':
       return [
         { label: `Toque · ${name}`, active: (p) => tapped(p.shotCharge) },
         {
-          label: classId === 'mage' ? 'Mantener · gran bola explosiva' : 'Mantener · bola de fuego gigante',
+          label: 'Mantener · gran bola explosiva',
           active: (p) => p.shotCharge >= RULES.overchargeTap,
           state: (p) => (p.shotCharge > 0 ? percent(chargePower(p.shotCharge)) : null),
         },
+      ];
+    case 'necromancer.bloodBond':
+      return [
+        { label: `Toque · vínculo de ${BLOOD_BOND.duration[0]} s`, active: (p) => tapped(p.shotCharge) },
+        {
+          label: `Mantener · más daño y ${BLOOD_BOND.duration[1]} s de vínculo`,
+          active: (p) => p.shotCharge >= RULES.overchargeTap,
+          state: (p) => (p.shotCharge > 0 ? percent(chargePower(p.shotCharge)) : null),
+        },
+        { label: `Atado · roba ${String(BLOOD_BOND.drain).replace('.', ',')} de vida por segundo` },
       ];
     case 'guardian.fury':
       return [
