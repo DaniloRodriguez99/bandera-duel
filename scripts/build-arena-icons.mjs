@@ -56,6 +56,15 @@ const sword = (blade = '#eef3f6', edge = '#10151a') =>
   `<path d="M-7.6 -3.2 L17 -3.2 L25 0 L17 3.2 L-7.6 3.2 Z" fill="${blade}" stroke="${edge}" stroke-width="1.4" stroke-linejoin="round"/>` +
   `<path d="M-6 0 L16 0" stroke="#8fa3b0" stroke-width="1.1"/>`;
 
+/** The same longsword, rusted and notched: what a dead guard comes back holding. */
+const rustySword =
+  `<circle cx="-22" cy="0" r="3.2" fill="#8a6a3a" stroke="#1b1206" stroke-width="1.2"/>` +
+  `<rect x="-20" y="-2.2" width="9" height="4.4" rx="1.4" fill="#3d2a16" stroke="#1b1206" stroke-width="1.2"/>` +
+  `<rect x="-11.5" y="-8.5" width="3.6" height="17" rx="1.4" fill="#8f7a4a" stroke="#1b1206" stroke-width="1.2"/>` +
+  `<path d="M-7.6 -3.2 L4 -3.2 L6 -1.6 L8 -3.2 L17 -3.2 L25 0 L17 3.2 L11 3.2 L9.5 1.6 L7.5 3.2 L-7.6 3.2 Z" fill="#b8a888" stroke="#10151a" stroke-width="1.4" stroke-linejoin="round"/>` +
+  `<path d="M-6 0 L16 0" stroke="#6f6450" stroke-width="1.1"/>` +
+  `<circle cx="0" cy="1" r="1.3" fill="#8a4a22" opacity=".8"/><circle cx="13" cy="-1.2" r="1.1" fill="#8a4a22" opacity=".8"/>`;
+
 /** A lightning bolt from one point to another, broken into `steps` jags. */
 function bolt(x1, y1, x2, y2, steps, jag, seed) {
   let s = seed;
@@ -105,6 +114,43 @@ const ICONS = {
     `<path d="${bolt(22, 16, 30, 50, 5, 5, 11)}" fill="none" stroke="#d9a6ff" stroke-width="1.6" stroke-linejoin="round" filter="url(#glow)"/>` +
     `<path d="${bolt(42, 14, 35, 48, 5, 5, 5)}" fill="none" stroke="#ffffff" stroke-width="1.1" stroke-linejoin="round"/>` +
     glint(32, 8, 3.5, '#ffffff')),
+
+  // M2 · Daga veloz: a short blade in the hunter's green.
+  'archer-dagger': card('#7fd69a', ['#16301f', '#050c07'],
+    `<path d="M10 54 L54 10" stroke="#7fd69a" stroke-width="5" opacity=".35" filter="url(#haze)"/>` +
+    glyph('plain-dagger', 10, 10, 44, '#e9f6ec')),
+
+  // Flecha del vendaval: an arrow carried by a whirlwind, the archer's air combo.
+  'archer-gale': card('#8fe3ff', ['#123040', '#04090d'],
+    glyph('whirlwind', 14, 12, 40, '#8fe3ff', '#04090d') +
+    `<path d="M8 50 L56 14" stroke="#f4feff" stroke-width="2.6" stroke-linecap="round"/>` +
+    `<path d="M56 14 L47 15 L53 21 Z" fill="#f4feff"/>` +
+    `<path d="M8 50 L13 43 M8 50 L15 49" stroke="#d8fbff" stroke-width="2" stroke-linecap="round"/>` +
+    glint(50, 46, 3, '#d8fbff')),
+
+  // Campeón putrefacto: a dead hand clawing out of the grave with a notched, rusted blade.
+  'necromancer-champion': card('#9b7bd8', ['#211833', '#07050b'],
+    `<circle cx="32" cy="28" r="20" fill="#5b3d8a" opacity=".45" filter="url(#haze)"/>` +
+    `<ellipse cx="32" cy="52" rx="24" ry="7" fill="#7fbf4a" opacity=".5" filter="url(#haze)"/>` +
+    `<g transform="translate(30 30) rotate(-50) scale(1.2)">${rustySword}</g>` +
+    glyph('raise-skeleton', 16, 20, 36, '#cfe0b0')),
+
+  // Voluntad del amo: the hand that commands the dead.
+  'necromancer-command': card('#9b7bd8', ['#211833', '#07050b'],
+    `<ellipse cx="32" cy="50" rx="20" ry="6" fill="none" stroke="#c78bff" stroke-width="1.5" opacity=".8"/>` +
+    glyph('shadow-grasp', 11, 8, 42, '#e3d4ff')),
+
+  // Marca funeraria: the eye that marks which of the dead goes where.
+  'necromancer-mark': card('#9b7bd8', ['#211833', '#07050b'],
+    glyph('all-seeing-eye', 11, 11, 42, '#e3d4ff')),
+
+  // Filo cargado: the knight's blade gathering lightning before it is let go.
+  'guardian-charged': card('#5cc8ff', ['#14263a', '#04070c'],
+    `<g transform="translate(32 32) rotate(-45) scale(.95)">${sword('#f2fbff', '#0b1a26')}</g>` +
+    `<path d="${bolt(14, 20, 30, 12, 4, 4, 13)}" fill="none" stroke="#5cc8ff" stroke-width="1.6" stroke-linejoin="round" filter="url(#glow)"/>` +
+    `<path d="${bolt(36, 52, 52, 38, 4, 4, 17)}" fill="none" stroke="#f2fbff" stroke-width="1.2" stroke-linejoin="round"/>` +
+    `<path d="${bolt(42, 16, 54, 26, 3, 3, 23)}" fill="none" stroke="#9fe1ff" stroke-width="1.1" stroke-linejoin="round"/>` +
+    glint(50, 12, 3.5, '#ffffff')),
 
   // M1 · Vínculo de Sangre: a drop of blood on the cord that ties two souls together.
   'necromancer-bloodbond': card('#c21f3a', ['#2a0810', '#080204'],
@@ -161,7 +207,7 @@ writeFileSync(
   `${OUT}/CREDITS.md`,
   `# Íconos de habilidades de la arena
 
-Los del Caballero y el Guerrero se dibujan con \`scripts/build-arena-icons.mjs\`. Los del Guerrero
+Se dibujan con \`scripts/build-arena-icons.mjs\`. Varios
 llevan glifos de [game-icons.net](https://game-icons.net), repositorio
 [game-icons/icons](https://github.com/game-icons/icons), bajo licencia
 [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/), recoloreados y enmarcados:
@@ -170,6 +216,11 @@ llevan glifos de [game-icons.net](https://game-icons.net), repositorio
 - sword-clash, de lorc (Parry)
 - quake-stomp, de lorc (Embestida Sísmica)
 - muscle-up, de lorc (Cuerpo de Titán)
+- plain-dagger, de lorc (Daga veloz)
+- whirlwind, de lorc (Flecha del vendaval)
+- raise-skeleton, de skoll (Campeón putrefacto)
+- shadow-grasp, de lorc (Voluntad del amo)
+- all-seeing-eye, de delapouite (Marca funeraria)
 `,
 );
 console.log(`${Object.keys(ICONS).length} íconos en ${OUT}`);
