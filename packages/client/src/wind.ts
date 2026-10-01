@@ -77,6 +77,7 @@ export class WindManager {
       this.nodes[slot] = { x, y, crown, score, height: crown ? 5 + score % 5 : 6 + score % 7, phase: (score % 628) / 100, bend: priorBends.get(score) ?? 0, variant: score % 4 };
     };
 
+    for (const point of spec.grassPatches ?? []) offer(point.x, point.y, false);
     if (spec.arena) {
       for (const bush of spec.bushes ?? []) {
         // Six pixels of horizontal inset retain the footprint even at full gust amplitude.
@@ -99,7 +100,6 @@ export class WindManager {
         }
       }
     } else {
-      for (const point of spec.grassPatches ?? []) offer(point.x, point.y, false);
       if (spec.theme !== 'bosque' && spec.theme !== 'forest') {
         this.nodes.sort((a, b) => a.score - b.score);
         return;

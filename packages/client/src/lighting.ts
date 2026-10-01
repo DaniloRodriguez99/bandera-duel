@@ -80,7 +80,8 @@ export class LightingManager {
     for (const surface of this.surfaces) if (surface.scene) surface.resetPipeline();
     this.surfaces.clear();
     const dark = ['ceniza', 'ruins', 'ruinas', 'cripta'].includes(environment.theme);
-    this.ambient = dark ? [.64, .62, .68] : environment.theme === 'cienaga' ? [.72, .8, .77] : [.8, .82, .86];
+    this.ambient = dark ? [.64, .62, .68] : environment.theme === 'cienaga' ? [.72, .8, .77]
+      : environment.theme === 'stone' ? [.76, .8, .9] : [.8, .82, .86];
     for (const light of this.flashes) { light.life = 0; light.image.setVisible(false); }
     for (const light of this.pools) light.image.setVisible(false);
     this.shadows.clear(); this.shadowElapsed = 100;

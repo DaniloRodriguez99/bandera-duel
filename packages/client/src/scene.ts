@@ -10,6 +10,8 @@ import { WindManager } from './wind';
 import { ForestEnvironment, ensureForestFrames, FOREST_BRAZIERS } from './forest-environment';
 import forestTerrainUrl from './assets/environment/forest-terrain.png';
 import forestPropsUrl from './assets/environment/forest-props.png';
+import { CourtyardEnvironment, ensureCourtyardFrames, COURTYARD_FIRES } from './courtyard-environment';
+import courtyardArtUrl from './assets/environment/courtyard-art.png';
 import Phaser from 'phaser';
 import { ELEMENT_COLORS, ELEMENT_CORES, hex } from '@bandera/shared/rpg/colors';
 import { Settlement, drawAltar, drawProp, drawSettlementGround } from './village';
@@ -302,6 +304,7 @@ export class Arena extends Phaser.Scene {
   private settlement?: Settlement;
   private mapObjects: Phaser.GameObjects.GameObject[] = [];
   private forestEnvironment?: ForestEnvironment;
+  private courtyardEnvironment?: CourtyardEnvironment;
   private duelRings!: Phaser.GameObjects.Graphics;
   private longPress?: { timer: number; x: number; y: number; pointer: number };
   private cameraKey = '';
@@ -311,9 +314,11 @@ export class Arena extends Phaser.Scene {
   preload() {
     this.load.image('forest-terrain-atlas', forestTerrainUrl);
     this.load.image('forest-props-atlas', forestPropsUrl);
+    this.load.image('courtyard-art-atlas', courtyardArtUrl);
   }
   create() {
     ensureForestFrames(this);
+    ensureCourtyardFrames(this);
     this.lighting = new LightingManager(this);
     this.torches = new TorchEffects(this, this.lighting);
     this.abilityLighting = new AbilityLightingController(this.lighting);
@@ -332,6 +337,7 @@ export class Arena extends Phaser.Scene {
       this.environment?.destroy();
       this.environment = undefined;
       this.forestEnvironment?.destroy();
+      this.courtyardEnvironment?.destroy();
       this.torches.destroy();
       this.abilityLighting.destroy();
       this.wind.destroy();
@@ -444,7 +450,7 @@ export class Arena extends Phaser.Scene {
       }
   }
   private drawBases(bases: Base[], objective: Snapshot['objective'] = 'ctf') {
-    if (this.forestEnvironment) {
+    if (this.forestEnvironment || this.courtyardEnvironment) {
       for (const team of TEAMS) this.lighting.removeLight(`forest-base-${team}`);
       for (const base of bases) this.lighting.setLight(`forest-base-${base.team}`, {
         x: base.home.x, y: base.home.y, color: COLORS[base.team], radius: 100, intensity: .35,
@@ -549,6 +555,8 @@ export class Arena extends Phaser.Scene {
    * and running its noise grid over eight million pixels would cost a frame for nothing.
    */
   private drawZone(zoneId: ZoneId) {
+    this.courtyardEnvironment?.destroy();
+    this.courtyardEnvironment = undefined;
     this.forestEnvironment?.destroy();
     this.forestEnvironment = undefined;
     this.currentZoneId = zoneId;
@@ -702,16 +710,17 @@ export class Arena extends Phaser.Scene {
     g.destroy();
   }
 
-  private setEnvironment(spec: EnvironmentSpec, authoredForest = false) {
+  private setEnvironment(spec: EnvironmentSpec, authored = false) {
     this.abilityLighting.clear();
     this.environment?.destroy();
-    this.environment = authoredForest ? undefined : decorateEnvironment(this, spec);
+    this.environment = authored ? undefined : decorateEnvironment(this, spec);
     this.environment?.bakeInto(this.mapObjects.filter((object): object is Phaser.GameObjects.RenderTexture => object instanceof Phaser.GameObjects.RenderTexture));
     this.lighting.setEnvironment(spec);
     for (const object of this.mapObjects) {
       if (object instanceof Phaser.GameObjects.RenderTexture) this.lighting.attachSurface(object);
     }
-    this.wind.setEnvironment({ ...spec, richerArt: authoredForest, bushes: spec.arena ? MAPS[this.currentMapId].bushes : [] });
+    this.wind.setEnvironment({ ...spec, richerArt: authored, bushes: spec.arena ? MAPS[this.currentMapId].bushes : [],
+      grassPatches: this.courtyardEnvironment?.windPoints });
   }
 
   /** Feet sort within the body band; labels and attack telegraphs keep their own layers. */
@@ -879,6 +888,8 @@ export class Arena extends Phaser.Scene {
   }
 
   private drawMap(mapId: MapId) {
+    this.courtyardEnvironment?.destroy();
+    this.courtyardEnvironment = undefined;
     this.forestEnvironment?.destroy();
     this.forestEnvironment = undefined;
     this.currentZoneId = '';
@@ -888,6 +899,15 @@ export class Arena extends Phaser.Scene {
     this.mapObjects.forEach((object) => object.destroy());
     this.mapObjects = [];
     const map = MAPS[mapId];
+    if (mapId === 'courtyard' && ensureCourtyardFrames(this)) {
+      this.courtyardEnvironment = new CourtyardEnvironment(this, map);
+      this.mapObjects = [...this.courtyardEnvironment.surfaces];
+      this.setEnvironment({ width: 960, height: 540, theme: map.theme, walls: map.walls, arena: true }, true);
+      this.torches.setSources(COURTYARD_FIRES.map(({ x, y, scale }, index) => ({
+        id: `courtyard-fire-${index}`, x, y, scale, lightIntensity: 2.2, radius: 100,
+      })));
+      return;
+    }
     if (mapId === 'forest' && ensureForestFrames(this)) {
       this.forestEnvironment = new ForestEnvironment(this, map);
       this.mapObjects = [...this.forestEnvironment.surfaces];
@@ -3171,6 +3191,7 @@ export class Arena extends Phaser.Scene {
       .map(p => { const visual = this.visuals.get(p.id); return { x: visual?.x ?? p.x, y: visual?.y ?? p.y }; }) ?? [];
     this.wind?.setActors(environmentalActors);
     this.forestEnvironment?.update(time, delta, environmentalActors);
+    this.courtyardEnvironment?.update(time, delta, environmentalActors);
     this.torches?.update(time, delta);
     this.wind?.update(time, delta);
     this.abilityLighting.setView(this.cameras.main.worldView);

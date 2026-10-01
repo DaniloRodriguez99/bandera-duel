@@ -39,7 +39,7 @@ varying vec4 outTint;
 void main () {
   vec4 base = texture2D(uMainSampler, outTexCoord) * vec4(outTint.bgr * outTint.a, outTint.a);
   vec2 lightUV = (outWorld - uLightBounds.xy) / uLightBounds.zw;
-  vec3 illumination = min(texture2D(uLightMap, clamp(lightUV, 0.0, 1.0)).rgb * 2.0, vec3(1.75));
+  vec3 illumination = min(texture2D(uLightMap, clamp(lightUV, 0.0, 1.0)).rgb * 4.0, vec3(3.5));
   gl_FragColor = vec4(mix(base.rgb, base.rgb * illumination, uStrength), base.a);
 }`;
 let serial = 0;
@@ -85,7 +85,8 @@ export class TerrainLightingPipeline extends Phaser.Renderer.WebGL.Pipelines.Sin
     const ctx = this.lightmap.context;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.globalCompositeOperation = 'copy';
-    ctx.fillStyle = `rgb(${Math.round(this.ambient[0] * 127.5)},${Math.round(this.ambient[1] * 127.5)},${Math.round(this.ambient[2] * 127.5)})`;
+    // Quarter-range encoding preserves warm high-energy lamps without clipping red to ambient gray.
+    ctx.fillStyle = `rgb(${Math.round(this.ambient[0] * 63.75)},${Math.round(this.ambient[1] * 63.75)},${Math.round(this.ambient[2] * 63.75)})`;
     ctx.fillRect(0, 0, 320, 192);
     if (this.strength > 0) {
       const sx = 320 / this.bounds.width, sy = 192 / this.bounds.height;
@@ -94,9 +95,9 @@ export class TerrainLightingPipeline extends Phaser.Renderer.WebGL.Pipelines.Sin
       for (const light of this.lights) {
         const radius = light.radius;
         const gradient = ctx.createRadialGradient(light.x, light.y, 0, light.x, light.y, radius);
-        const r = Math.round(((light.color >> 16) & 255) * Math.min(2, light.intensity) / 2);
-        const g = Math.round(((light.color >> 8) & 255) * Math.min(2, light.intensity) / 2);
-        const b = Math.round((light.color & 255) * Math.min(2, light.intensity) / 2);
+        const r = Math.round(((light.color >> 16) & 255) * Math.min(3, light.intensity) / 4);
+        const g = Math.round(((light.color >> 8) & 255) * Math.min(3, light.intensity) / 4);
+        const b = Math.round((light.color & 255) * Math.min(3, light.intensity) / 4);
         for (let i = 0; i <= 4; i++) {
           const fraction = i / 4, alpha = (1 - fraction) ** (light.falloff ?? 1.6);
           gradient.addColorStop(fraction, `rgba(${r},${g},${b},${alpha})`);
