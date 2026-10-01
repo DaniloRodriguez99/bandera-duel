@@ -2,6 +2,8 @@ import { COMBAT_LINGER, Locomotion, fighting } from './locomotion';
 import { bladePose, drawKitBlade, drawStreak, drawTrail, onScreen } from './combat-fx';
 import { ensureActorAtlas } from './directional-art';
 import { ParticlePool, visualSettings } from './visual-effects';
+import { decorateEnvironment, type EnvironmentSpec } from './environment';
+import { LightingManager } from './lighting';
 import Phaser from 'phaser';
 import { ELEMENT_COLORS, ELEMENT_CORES, hex } from '@bandera/shared/rpg/colors';
 import { Settlement, drawAltar, drawProp, drawSettlementGround } from './village';
@@ -225,6 +227,8 @@ export class Arena extends Phaser.Scene {
   surfer = false;
   send: (input: Input) => void = () => {};
   private particles!: ParticlePool;
+  private lighting!: LightingManager;
+  private environment?: ReturnType<typeof decorateEnvironment>;
   private trailTick = -1;
   private emitTrail = false;
   private visuals = new Map<
@@ -294,10 +298,18 @@ export class Arena extends Phaser.Scene {
     super('arena');
   }
   create() {
+    this.lighting = new LightingManager(this);
     this.drawMap(this.currentMapId);
     this.bases = this.add.graphics().setDepth(LAYER.floor);
     this.makeTextures();
     this.particles = new ParticlePool(this);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.environment?.destroy();
+      this.environment = undefined;
+      this.lighting.destroy();
+      this.particles.destroy();
+      this.settlement?.destroy();
+    });
     this.flags = this.add.graphics().setDepth(LAYER.flags);
     this.traps = this.add.graphics().setDepth(LAYER.ground);
     this.arrows = this.add.graphics().setDepth(LAYER.projectiles);
@@ -616,6 +628,7 @@ export class Arena extends Phaser.Scene {
         g.strokePath();
       }
     this.bake(g, width, height);
+    this.setEnvironment({ width, height, theme, walls: definition.terrain.walls, arena: false });
     this.settlement?.destroy();
     this.settlement = new Settlement(this, definition);
   }
@@ -635,6 +648,24 @@ export class Arena extends Phaser.Scene {
         this.mapObjects.push(texture);
       }
     g.destroy();
+  }
+
+  private setEnvironment(spec: EnvironmentSpec) {
+    this.environment?.destroy();
+    this.environment = decorateEnvironment(this, spec);
+    this.environment.bakeInto(this.mapObjects.filter((object): object is Phaser.GameObjects.RenderTexture => object instanceof Phaser.GameObjects.RenderTexture));
+    this.lighting.setEnvironment(spec);
+  }
+
+  /** Feet sort within the body band; labels and attack telegraphs keep their own layers. */
+  private bodyDepth(y: number) {
+    return LAYER.bodies + Math.floor(Math.max(0, y) / 2) / 100000;
+  }
+
+  private sortBody<T extends Phaser.GameObjects.Sprite | Phaser.GameObjects.Graphics>(body: T, y: number, offset = 0): T {
+    const depth = this.bodyDepth(y) + offset;
+    if (body.depth !== depth) body.setDepth(depth);
+    return body;
   }
 
   /** A forest's obstacle: a thicket of canopies you cannot walk through. */
@@ -798,8 +829,7 @@ export class Arena extends Phaser.Scene {
     this.mapObjects.forEach((object) => object.destroy());
     this.mapObjects = [];
     const map = MAPS[mapId];
-    const g = this.add.graphics();
-    this.mapObjects.push(g);
+    const g = this.make.graphics({}, false);
     const ground =
       map.theme === 'forest'
         ? 0x193329
@@ -813,8 +843,13 @@ export class Arena extends Phaser.Scene {
     for (let y = 20; y < 520; y += 20)
       for (let x = 20; x < 940; x += 20) {
         const n = ((x * 37 + y * 19) % 113) / 113;
-        g.fillStyle(n > 0.62 ? 0x30423c : n > 0.32 ? 0x2b3d38 : 0x293a36);
-        g.fillRect(x, y, 19, 19);
+        // Connected tonal islands replace the old one-pixel checkerboard gutters.
+        const island = Math.sin(x * .017 + Math.sin(y * .013) * 2) + Math.cos(y * .023 + x * .004);
+        const tones = map.theme === 'ruins' ? [0x343a3a, 0x303635, 0x2b3132]
+          : map.theme === 'forest' ? [0x294635, 0x243d30, 0x21372c]
+            : [0x30423c, 0x2b3d38, 0x293a36];
+        g.fillStyle(tones[island > .7 ? 0 : island > -.6 ? 1 : 2]);
+        g.fillRect(x, y, 20, 20);
         if (n > 0.85) {
           g.fillStyle(0x52614a, 0.5);
           g.fillRect(x + 5, y + 6, 2, 4);
@@ -871,16 +906,15 @@ export class Arena extends Phaser.Scene {
       g.fillRect(x - 3, y - 8, 6, 9);
       g.fillStyle(0xffe0a0);
       g.fillRect(x - 1, y - 11, 3, 9);
-      const glow = this.add.circle(x, y - 4, 19, 0xffb35c, 0.07);
-      this.mapObjects.push(glow);
-      this.tweens.add({ targets: glow, alpha: 0.35, duration: 850 + x, yoyo: true, repeat: -1 });
     }
+    this.bake(g, 960, 540);
+    this.setEnvironment({ width: 960, height: 540, theme: map.theme, walls: map.walls, arena: true });
   }
   receive(snapshot: Snapshot, id: string) {
     if (!this.controls) return;
     // A world snapshot carries its zone; a match snapshot only ever has a map.
     const zoneId = (snapshot as Snapshot & { zoneId?: ZoneId }).zoneId;
-    if ((zoneId && zoneId !== this.currentZoneId) || (!zoneId && snapshot.mapId !== this.currentMapId)) {
+    if ((zoneId && zoneId !== this.currentZoneId) || (!zoneId && (this.currentZoneId || snapshot.mapId !== this.currentMapId))) {
       this.particles.clear();
       for (const v of this.visuals.values()) { v.locomotion = new Locomotion(); v.alive = false; }
     }
@@ -892,7 +926,7 @@ export class Arena extends Phaser.Scene {
         // crossing a portal would silently skip every effect of the new zone until its ids caught up.
         this.lastEvent = snapshot.events.at(-1)?.id ?? 0;
       }
-    } else if (snapshot.mapId !== this.currentMapId) {
+    } else if (this.currentZoneId || snapshot.mapId !== this.currentMapId) {
       this.drawMap(snapshot.mapId);
       this.layoutKey = '';
     }
@@ -946,6 +980,9 @@ export class Arena extends Phaser.Scene {
       if (e.id <= this.lastEvent) continue;
       this.lastEvent = e.id;
       sound(soundOf(e));
+      if (e.kind === 'hit' || e.kind === 'block' || e.kind === 'capture') {
+        this.lighting.flash(e.x, e.y, e.kind === 'block' ? GOLD : COLORS[e.team]);
+      }
       if (e.kind === 'sword') {
         const slash = this.add.graphics().setDepth(LAYER.strikes);
         const power = e.power ?? 0;
@@ -2364,7 +2401,7 @@ export class Arena extends Phaser.Scene {
     const launch = p.move ? MOVES[p.move].dash : undefined;
     const crouch = launch && p.moveT + age < launch.at ? 1 : 0;
     const breathe = p.shotCharge > 0 || p.specialCharge > 0 || p.chargeSkill ? Math.sin(time * 0.018) * 0.045 : 0;
-    v.body
+    this.sortBody(v.body, v.y)
       .setPosition(v.x, v.y)
       .setTexture(atlas, frame)
       .setFlipX(false)
@@ -2408,7 +2445,7 @@ export class Arena extends Phaser.Scene {
     // A blade raised overhead stands up the screen, held a little up off the body.
     const shown = pose ? { ...pose, ...onScreen(pose) } : null;
     const held = shown ? shown.angle : p.angle;
-    w.setDepth(Math.sin(held) < -0.25 ? LAYER.bodies - .1 : LAYER.weapons);
+    this.sortBody(w, v.y, Math.sin(held) < -0.25 ? -.000001 : .000001);
     w.setPosition(v.x, v.y + (moving ? Math.sin(v.locomotion.phase * Math.PI / 3) : 0) - (pose?.lift ?? 0) * 6);
     w.setRotation(held);
     if (p.hp > 0 && p.imbue) {
@@ -2663,7 +2700,7 @@ export class Arena extends Phaser.Scene {
     const bob = moving ? Math.abs(Math.sin(time * (family === 'espiritu_ceniza' ? 0.02 : 0.012) + z.slot)) * 2 : 0;
     const hover = family === 'espiritu_ceniza' ? Math.sin(time * 0.006 + z.slot) * 4 - 6 : 0;
     const painted = scale * MONSTER_DISPLAY;
-    v.body
+    this.sortBody(v.body, v.y)
       .setTexture(texture)
       .setOrigin(0.5, MONSTER_ORIGIN_Y)
       .setPosition(v.x, v.y + 6 + bob + hover + rising * 12)
@@ -2767,7 +2804,7 @@ export class Arena extends Phaser.Scene {
           ? `${z.team}-${z.classId ?? 'guardian'}-undead-${frame}`
           : `${z.team}-zombie-${frame}`;
     if (z.family) return this.drawMonster(z, v, texture, moving, time, rising);
-    v.body
+    this.sortBody(v.body, v.y)
       .setPosition(
         v.x,
         v.y + (moving ? Math.abs(Math.sin(time * 0.012 + z.slot)) * 2 : 0) + rising * 12,
@@ -2982,7 +3019,7 @@ export class Arena extends Phaser.Scene {
     const baseScale = m.boss ? 1.75 : m.kind === 'brute' ? 1.38 : m.kind === 'wolf' ? 1.08 : 1;
     const appearing = Math.max(0, Math.min(1, 1 - m.spawnLeft / 0.8));
     const bob = moving ? Math.abs(Math.sin(time * (m.kind === 'wolf' ? 0.018 : 0.011) + seed)) * 2 : pulse;
-    v.body
+    this.sortBody(v.body, v.y)
       .setTexture(`pve-${m.kind}-${frame}`)
       .setPosition(v.x, v.y + bob + (1 - appearing) * 10)
       .setFlipX(Math.cos(m.angle) < 0)
@@ -3054,6 +3091,8 @@ export class Arena extends Phaser.Scene {
     }
   }
   update(time: number, delta: number) {
+    this.environment?.update(time, delta);
+    this.lighting?.update(time, delta);
     this.particles?.update(Math.min(delta, 100));
     const tick = Math.floor(time / 75);
     this.emitTrail = tick !== this.trailTick;

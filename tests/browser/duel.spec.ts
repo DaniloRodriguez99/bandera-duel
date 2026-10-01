@@ -106,6 +106,8 @@ test('celular horizontal, multitouch, cancelación y aviso vertical', async ({ b
   await page.waitForTimeout(250);
   await page.locator('#touch-dash').tap();
   await expect(page.locator('#cd-dash')).toHaveText(/➟ [01]\.\ds/);
+  // Joining now enters fullscreen on touch devices; Chromium cannot resize that window.
+  await page.evaluate(async () => { if (document.fullscreenElement) await document.exitFullscreen(); });
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.locator('#rotate')).toBeVisible();
   expect(errors).toEqual([]);
