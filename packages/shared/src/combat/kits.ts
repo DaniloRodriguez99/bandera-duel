@@ -372,63 +372,84 @@ const WARRIOR_CHAIN_RESET = 1.2;
 
 export const WARRIOR_SWORD_CHARGE: ChargeSpec = {
   tiers: [
-    { id: 'tap', at: 0, label: 'Toque · golpe pesado' },
-    { id: 'low', at: 0.22, label: 'Carga baja · ×1,25' },
-    { id: 'mid', at: 0.75, label: 'Carga media · ×1,5 y más alcance', tint: 'scarlet' },
-    { id: 'max', at: 1.5, label: 'Carga completa · ×1,75', tint: 'scarlet' },
+    { id: 'tap', at: 0, label: 'Toque · golpe pesado cuerpo a cuerpo' },
+    { id: 'low', at: 0.22, label: 'Carga baja · un tajo de fuerza que viaja', tint: 'crimson' },
+    { id: 'mid', at: 0.75, label: 'Carga media · más largo, ancho y fuerte', tint: 'scarlet' },
+    { id: 'max', at: 1.5, label: 'Carga completa · hasta media arena', tint: 'blaze' },
   ],
   cap: 1.5,
   breakOnDamage: { cooldown: 0 },
   cancelOnMobility: false,
 };
 
-/** By charge tier: tap, low, mid, max. */
-const GREATSWORD = {
-  damage: [1, 1.25, 1.5, 1.75],
-  reach: [1, 1.1, 1.2, 1.3],
-  /** The shockwave the blow sends ahead; a tap sends none unless the body is reinforced. */
-  shock: [null, 0, 1, 2] as (number | null)[],
-};
 const GREATSWORD_STEPS = ['Barrido del Titán', 'Caída de Montaña'];
-/** The red shockwaves of the charged blows, weakest to strongest; the last one only reinforced. */
-const SHOCKWAVES = [
-  { range: 100, halfWidth: 26, damage: 0.75, knockback: 20, resist: 0.75 },
-  { range: 160, halfWidth: 34, damage: 1.25, knockback: 30, resist: 1 },
-  { range: 230, halfWidth: 44, damage: 2, knockback: 42, resist: 1.25 },
-  { range: 300, halfWidth: 54, damage: 2.5, knockback: 50, resist: 1.5 },
-];
+/** The same blows let go after a charge: one slash of force each. */
+const TITAN_RELEASES = ['Media Luna del Titán', 'Falla Sísmica'];
 
 /**
- * Force thrown off a blow. The sweep sends a crescent that opens as it goes; the overhead blow
- * drives a narrow wave along the ground, farther and harder.
+ * The greatsword let go after a charge: not a blow and a wave besides, but one slash of force that
+ * leaves the blade and carries on, growing with every moment it was held, out to half the arena.
+ * By seconds held. Nothing in the way stops it: it goes through walls.
  */
-const warriorShock = (level: number, hammer: boolean): WaveSpec => {
-  const base = SHOCKWAVES[level];
-  return {
-    halfWidth: base.halfWidth * (hammer ? 0.6 : 1),
-    spread: hammer ? 0 : 0.08,
-    bow: hammer ? 4 : 12,
-    thickness: hammer ? 18 : 14,
-    range: base.range * (hammer ? 1.3 : 1),
-    speed: 480,
-    damage: base.damage * (hammer ? 1.2 : 1),
-    falloff: [[0, 1], [1, 0.45]],
-    knockback: base.knockback,
-    cut: 0,
-    resist: base.resist,
-    tint: 'scarlet',
-  };
+export const TITAN_SLASH = {
+  range: [[0.22, 170], [0.75, 300], [1.5, 480]] as Curve,
+  halfWidth: [[0.22, 34], [1.5, 70]] as Curve,
+  spread: [[0.22, 0.02], [1.5, 0.07]] as Curve,
+  thickness: [[0.22, 16], [1.5, 28]] as Curve,
+  speed: [[0.22, 470], [1.5, 560]] as Curve,
+  damage: [[0.22, 2.25], [0.75, 2.75], [1.5, 3.5]] as Curve,
+  knockback: [[0.22, 34], [1.5, 64]] as Curve,
+  /** The share it keeps at the end of its reach: a full charge still hits hard far away. */
+  falloff: [[0.22, 0.45], [1.5, 0.6]] as Curve,
+  /** The overhead blow's line hits this much harder than the sweep's crescent. */
+  hammer: 1.2,
+  /** Reinforced, every blow is a slash, carrying this many seconds of charge more than it had. */
+  reinforced: 0.4,
 };
 
-function warriorBlow(step: number, tier: number, reinforced: boolean): MoveDef {
+/**
+ * The slash a charged greatsword throws after `charge` seconds: the sweep's wide crescent, or the
+ * overhead blow's narrow line that splits the ground.
+ */
+export function titanSlash(charge: number, hammer: boolean): WaveSpec {
+  const end = curve(TITAN_SLASH.falloff, charge);
+  const tint: WaveTint = charge >= 1.5 - 1e-6 ? 'blaze' : charge >= 0.75 - 1e-6 ? 'scarlet' : 'crimson';
+  const shared = {
+    range: curve(TITAN_SLASH.range, charge),
+    speed: curve(TITAN_SLASH.speed, charge),
+    damage: curve(TITAN_SLASH.damage, charge) * (hammer ? TITAN_SLASH.hammer : 1),
+    falloff: [[0, 1], [0.5, (1 + end) / 2], [1, end]] as Curve,
+    knockback: curve(TITAN_SLASH.knockback, charge),
+    // A greatsword breaks bodies, not spells: it cuts nothing out of the air.
+    cut: 0,
+    resist: 1 + charge * 0.5,
+    tint,
+    piercing: true,
+  };
+  if (hammer)
+    return {
+      ...shared,
+      halfWidth: curve(TITAN_SLASH.halfWidth, charge) * 0.35,
+      spread: 0,
+      bow: 0,
+      thickness: curve(TITAN_SLASH.thickness, charge) * 2.4,
+      form: 'rend',
+    };
+  return {
+    ...shared,
+    halfWidth: curve(TITAN_SLASH.halfWidth, charge),
+    spread: curve(TITAN_SLASH.spread, charge),
+    bow: 10 + charge * 8,
+    thickness: curve(TITAN_SLASH.thickness, charge),
+  };
+}
+
+/** A tap: the heavy blow itself, in reach of the blade. */
+function warriorBlow(step: number): MoveDef {
   const hammer = step === 1;
   // A long wind-up and a longer way back: every blow is a commitment.
   const start = hammer ? frames(12) : frames(9);
   const end = hammer ? frames(14) : frames(13);
-  const reach = GREATSWORD.reach[tier];
-  // Reinforced, every blow throws its shockwave, one step stronger than the charge alone.
-  const shock = GREATSWORD.shock[tier];
-  const level = reinforced ? Math.min(SHOCKWAVES.length - 1, (shock ?? -1) + 1) : shock;
   return {
     name: GREATSWORD_STEPS[step],
     duration: hammer ? frames(30) : frames(24),
@@ -439,25 +460,57 @@ function warriorBlow(step: number, tier: number, reinforced: boolean): MoveDef {
       end,
       // A wide sweep across the front, then the blade brought down from overhead along the aim.
       shape: hammer
-        ? { kind: 'lane', length: 100 * reach, halfWidth: 18, drop: true }
-        : { kind: 'arc', from: deg(65), to: deg(-65), inner: 8, reach: 82 * reach },
-      damage: (hammer ? 2.5 : 2) * GREATSWORD.damage[tier],
-      knockback: (hammer ? 50 : 34) * (reinforced ? 1.3 : 1),
-      // A greatsword breaks bodies, not spells: it cuts nothing out of the air.
+        ? { kind: 'lane', length: 100, halfWidth: 18, drop: true }
+        : { kind: 'arc', from: deg(65), to: deg(-65), inner: 8, reach: 82 },
+      damage: hammer ? 2.5 : 2,
+      knockback: hammer ? 50 : 34,
       cut: 0,
       lunge: hammer ? 14 : 10,
     }],
-    waves: level === null ? [] : [{ at: end, wave: warriorShock(level, hammer) }],
+    waves: [],
     speed: 0.5,
     recoverFrom: end,
     tint: 'scarlet',
   };
 }
 
+/**
+ * Let go after a charge (or any blow of a reinforced body): the blade swings through and what
+ * leaves it is a single slash of force, as strong as the seconds held.
+ */
+function titanRelease(step: number, reinforced: boolean): MoveDef {
+  const hammer = step === 1;
+  const at = hammer ? frames(10) : frames(8);
+  return {
+    name: TITAN_RELEASES[step],
+    duration: hammer ? frames(26) : frames(22),
+    enter: hammer ? deg(-65) : undefined,
+    strikes: [],
+    waves: [{
+      at,
+      wave: (charge) =>
+        titanSlash(Math.min(WARRIOR_SWORD_CHARGE.cap, charge + (reinforced ? TITAN_SLASH.reinforced : 0)), hammer),
+    }],
+    speed: 0.45,
+    recoverFrom: at,
+    tint: 'scarlet',
+    flourish: {
+      start: at - frames(4),
+      end: at,
+      shape: hammer
+        ? { kind: 'lane', length: 110, halfWidth: 18, drop: true }
+        : { kind: 'arc', from: deg(80), to: deg(-80), inner: 8, reach: 92 },
+    },
+  };
+}
+
 for (let step = 0; step < GREATSWORD_STEPS.length; step++)
   for (let tier = 0; tier < WARRIOR_SWORD_CHARGE.tiers.length; tier++)
     for (const reinforced of [false, true])
-      register(`vanguard.sword:${step}:${tier}${reinforced ? ':iron' : ''}`, warriorBlow(step, tier, reinforced));
+      register(
+        `vanguard.sword:${step}:${tier}${reinforced ? ':iron' : ''}`,
+        tier === 0 && !reinforced ? warriorBlow(step) : titanRelease(step, reinforced),
+      );
 
 export const WARRIOR_SLASH_CHARGE: ChargeSpec = {
   tiers: [
@@ -482,13 +535,15 @@ export const WARRIOR_SLASH_CHARGE: ChargeSpec = {
  * and from there to 7 s it overcharges into a wave that crosses the arena.
  */
 const CRESCENT = {
-  halfWidth: [[0, 24], [3, 60], [7, 110]],
-  spread: [[0, 0], [3, 0.06], [7, 0.45]],
-  bow: [[0, 8], [3, 16], [7, 40]],
-  thickness: [[0, 14], [3, 18], [7, 26]],
+  halfWidth: [[0, 22], [1, 32], [3, 64], [7, 120]],
+  spread: [[0, 0], [1, 0.02], [3, 0.07], [7, 0.5]],
+  bow: [[0, 8], [3, 18], [7, 44]],
+  thickness: [[0, 12], [3, 20], [7, 34]],
   range: [[0, 273], [3, 520], [7, 1150]],
-  speed: [[0, 420], [3, 460], [7, 520]],
-  damage: [[0, 1.5], [3, 3], [7, 5]],
+  speed: [[0, 420], [3, 480], [7, 560]],
+  damage: [[0, 1.5], [1, 2], [3, 3], [7, 5]],
+  /** The share of its damage it keeps at the end of its reach: the more it was held, the more. */
+  keeps: [[0, 0.4], [3, 0.5], [7, 0.62]],
   knockback: [[0, 24], [3, 40], [7, 60]],
   resist: [[0, 0.5], [3, 1], [7, 2]],
   /**
@@ -508,7 +563,10 @@ const crescentTint = (charge: number): WaveTint =>
   charge >= 7 - 1e-6 ? 'inferno' : charge >= 3 - 1e-6 ? 'blaze' : charge >= 1 - 1e-6 ? 'scarlet' : 'bloodViolet';
 
 /** The share of its damage the crescent keeps by the share of its reach it has travelled. */
-const CRESCENT_FALLOFF: Curve = [[0, 1], [0.3, 0.85], [0.6, 0.6], [1, 0.4]];
+const crescentFalloff = (charge: number): Curve => {
+  const end = curve(CRESCENT.keeps, charge);
+  return [[0, 1], [0.3, 0.85 + (end - 0.4) * 0.3], [0.6, 0.6 + (end - 0.4) * 0.6], [1, end]];
+};
 
 /** The cooldown a tap leaves; a longer hold leaves a longer one. */
 export const WARRIOR_SLASH_COOLDOWN = curve(CRESCENT.cooldown, 0);
@@ -522,11 +580,13 @@ export const warriorWave = (charge: number): WaveSpec => ({
   range: curve(CRESCENT.range, charge),
   speed: curve(CRESCENT.speed, charge),
   damage: curve(CRESCENT.damage, charge),
-  falloff: CRESCENT_FALLOFF,
+  falloff: crescentFalloff(charge),
   knockback: curve(CRESCENT.knockback, charge),
   cut: curve(CRESCENT.cut, charge),
   resist: curve(CRESCENT.resist, charge),
   tint: crescentTint(charge),
+  // Aimed where it will go, it goes all the way: walls do not stop it.
+  piercing: true,
 });
 
 /** A turn of the whole body that lets the crescent go at `at`; the bigger ones take longer to come back from. */

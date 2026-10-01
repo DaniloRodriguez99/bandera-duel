@@ -22,6 +22,9 @@ import {
   projectileStats,
   arrowMotion,
   BLOOD_BOND,
+  titanSlash,
+  warriorWave,
+  WARRIOR_SWORD_CHARGE,
   chargePower,
   distance,
   movePlayer,
@@ -116,6 +119,19 @@ import type { MobFamilyId } from '@bandera/shared/rpg/zones';
 import type { WeaponLook } from '@bandera/shared/rpg/weapons';
 
 const GOLD = 0xf3ce86;
+/**
+ * How much was held behind a warrior's slash, from 0 (a tap) to 1 (all it can take): the Creciente
+ * charges for up to 7 s, the greatsword for 1,5 s.
+ */
+function slashHeat(e: Snapshot['events'][number]) {
+  const charge = e.power ?? 0;
+  return e.skillId === 'vanguard.slash' ? Math.min(1, charge / 7) : Math.min(1, charge / WARRIOR_SWORD_CHARGE.cap);
+}
+/** The colour of a warrior's slash, as the simulation threw it. */
+function slashTint(e: Snapshot['events'][number]): WaveTint {
+  const charge = e.power ?? 0;
+  return e.skillId === 'vanguard.slash' ? warriorWave(charge).tint : titanSlash(charge, false).tint;
+}
 /** A chat bubble stays up this long, plus a little per character, never past `max`. */
 const BUBBLE = { base: 3.2, perChar: 0.045, max: 7, width: 180, fade: 0.4 };
 /**
@@ -123,10 +139,11 @@ const BUBBLE = { base: 3.2, perChar: 0.045, max: 7, width: 180, fade: 0.4 };
  * their own: the descending cut, the celestial cut and the awakening.
  */
 function soundOf(e: Snapshot['events'][number]) {
-  if (e.kind === 'swing' && e.classId === 'vanguard') {
-    if (e.move?.startsWith('vanguard.slash:2')) return 'crescentColossal';
-    if (e.move?.startsWith('vanguard.slash:')) return 'crescent';
-    return 'swingHeavy';
+  if (e.kind === 'swing' && e.classId === 'vanguard') return 'swingHeavy';
+  // A warrior's slash leaving the blade: three voices, by how much was held.
+  if (e.kind === 'slash') {
+    const heat = slashHeat(e);
+    return heat >= 0.75 ? 'slashColossal' : heat >= 0.35 ? 'slashHeavy' : 'slashLight';
   }
   // A guard held long returns things with a deeper ring.
   if (e.kind === 'counter' && e.power) return 'counterHeavy';
@@ -1224,13 +1241,42 @@ export class Arena extends Phaser.Scene {
         380,
       );
     } else if (e.kind === 'slash') {
-      // The warrior's slash leaves the blade as a white crescent.
+      // A warrior's slash leaves the blade: the more it was held, the bigger the burst, the
+      // harder the ground shakes and the hotter its colour.
+      const heat = slashHeat(e);
+      const angle = e.angle ?? 0;
+      const colors = WAVE_COLORS[slashTint(e)];
+      const glow = hex(colors.glow);
+      const core = hex(colors.core);
       const flash = this.add.graphics().setDepth(LAYER.effects);
-      flash.lineStyle(4, 0xfff3d6, 0.9);
+      flash.lineStyle(4 + heat * 7, core, 0.9);
       flash.beginPath();
-      flash.arc(e.x, e.y - 4, 30, (e.angle ?? 0) - 1.2, (e.angle ?? 0) + 1.2);
+      flash.arc(e.x, e.y - 4, 30 + heat * 40, angle - 1.2, angle + 1.2);
       flash.strokePath();
-      this.fade(flash, {}, 260);
+      flash.lineStyle(10 + heat * 14, glow, 0.35);
+      flash.beginPath();
+      flash.arc(e.x, e.y - 4, 30 + heat * 40, angle - 1.2, angle + 1.2);
+      flash.strokePath();
+      this.fade(flash, { scale: 1 + heat * 0.3 }, 260 + heat * 200);
+      // The ground gives under the swing.
+      const ring = this.add.ellipse(e.x, e.y + 6, 24, 10).setStrokeStyle(2 + heat * 3, glow, 0.85).setDepth(LAYER.groundFx);
+      this.fade(ring, { scaleX: 2 + heat * 5, scaleY: 2 + heat * 5 }, 300 + heat * 300);
+      if (colors.edge) {
+        const rim = this.add.ellipse(e.x, e.y + 6, 30, 12).setStrokeStyle(1.5, hex(colors.edge), 0.7).setDepth(LAYER.groundFx);
+        this.fade(rim, { scaleX: 1.5 + heat * 4, scaleY: 1.5 + heat * 4 }, 380 + heat * 300);
+      }
+      // Embers thrown forward with it.
+      const embers = visualSettings.reduced ? 4 : Math.round(6 + heat * 20);
+      for (let i = 0; i < embers; i++) {
+        const a = angle + (Math.random() - 0.5) * (0.8 + heat * 1.2);
+        const reach = 30 + Math.random() * (40 + heat * 90);
+        const ember = this.add.circle(e.x, e.y - 4, 1.5 + Math.random() * (1 + heat * 2), i % 3 ? glow : core, 0.95).setDepth(LAYER.sparks);
+        this.fade(ember, { x: e.x + Math.cos(a) * reach, y: e.y - 4 + Math.sin(a) * reach }, 260 + Math.random() * 260);
+      }
+      if (heat > 0.35 && visualSettings.shake && !visualSettings.reduced)
+        this.cameras.main.shake(80 + heat * 220, 0.002 + heat * 0.006);
+      if (heat > 0.9 && !visualSettings.reduced)
+        this.fade(this.add.rectangle(480, 270, 960, 540, core, 0.14).setDepth(LAYER.screen), {}, 240);
     } else if (e.kind === 'bond' && e.tx !== undefined && e.ty !== undefined) {
       // The cord takes: a brand of blood opens on the bound one.
       this.fade(this.add.circle(e.x, e.y - 4, 8).setStrokeStyle(3, BLOOD, 0.95).setDepth(LAYER.effects), { scale: 2.6 }, 380);
@@ -1645,9 +1691,10 @@ export class Arena extends Phaser.Scene {
         g.fillCircle(point.x - dx * (6 + drift) + Math.sin(k * 3.1 + time * 0.01) * 3, point.y - dy * (6 + drift) + Math.cos(k * 2.3 + time * 0.01) * 3, 1.2 + (k % 2));
       }
     }
-    if (w.tint === 'radiant' && front.length > 2) {
-      // The celestial cut is fast: its front leaves afterimages behind it.
-      for (let k = 1; k <= 3; k++) {
+    const afterimages = w.tint === 'radiant' || w.tint === 'inferno' ? 3 : w.tint === 'blaze' ? 2 : 0;
+    if (afterimages && front.length > 2) {
+      // The fastest and hottest slashes leave afterimages behind their front.
+      for (let k = 1; k <= afterimages; k++) {
         g.lineStyle(2.5 - k * 0.5, glow, (0.4 / k) * fade);
         g.strokePoints(front.map((point) => ({ x: point.x - dx * (10 + k * 16), y: point.y - dy * (10 + k * 16) })));
       }
@@ -3632,8 +3679,16 @@ export class Arena extends Phaser.Scene {
       else this.aim.strokeCircle(ex, ey, Math.max(3, radius));
     };
     // The slash the move will throw, past the blade: a dimmer corridor as wide as its front.
+    // A slash that goes through walls shows all of its reach; any other stops at the first one.
     if (spec.wave)
-      corridor(angle, clipRay(p, angle, spec.wave.range, walls, 2), spec.wave.radius, color, bright, spec.wave.spread);
+      corridor(
+        angle,
+        spec.wave.piercing ? spec.wave.range : clipRay(p, angle, spec.wave.range, walls, 2),
+        spec.wave.radius,
+        color,
+        bright,
+        spec.wave.spread,
+      );
     if (spec.kind === 'line' || spec.kind === 'dash')
       corridor(angle, center.length, Math.max(4, spec.radius));
     else if (spec.kind === 'triple')

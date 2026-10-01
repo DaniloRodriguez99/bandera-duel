@@ -277,4 +277,6 @@ export interface WaveSpec {
    * a blow brought down from overhead drives along the ground.
    */
   form?: 'crescent' | 'rend';
+  /** Nothing stops it: walls neither cut its front short nor shelter whoever stands behind them. */
+  piercing?: boolean;
 }

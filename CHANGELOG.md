@@ -2,6 +2,13 @@
 
 ## 2026-10-01
 
+### Guerrero: tajos cargados
+
+- **El mandoble cargado es un solo tajo de fuerza**: ya no golpea y lanza una onda aparte. Al soltar sale la *Media Luna del Titán* (del barrido) o la *Falla Sísmica* (de la caída), que crecen con la carga hasta media arena: más largas, anchas, rápidas, fuertes y encendidas cuanto más se sostuvo. Un toque sigue siendo el golpe pesado. Reforzado, cada golpe es un tajo.
+- **Los tajos del Guerrero atraviesan muros**, y la guía muestra siempre su alcance real en vez de cortarse donde la dirección choca con algo.
+- **Creciente Escarlata**: la diferencia entre carga baja, media y máxima es mucho más clara en tamaño, ángulo, velocidad, color y daño; cuanto más se cargó, menos daño pierde con la distancia.
+- Al soltar cualquiera de los dos, el suelo cede, saltan brasas, tiembla la pantalla en las cargas altas y suena en tres intensidades.
+
 ### Nigromante: Vínculo de Sangre
 
 - El fuego del Nigromante se reemplaza por el **Vínculo de Sangre**: un hilo de sangre que, si alcanza a un rival, un zombie o un monstruo, lo ata al nigromante. Mientras el rival siga cerca, cada segundo le roba 1 de vida y se la da al nigromante. El vínculo dura 3 s (5 s cargado), se corta si el rival se aleja, si alguno muere o al atar a otro, y acertarle otra vez lo renueva.
