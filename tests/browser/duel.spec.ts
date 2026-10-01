@@ -54,6 +54,11 @@ test('dos navegadores: invitación, tres capturas y revancha', async ({ page, br
   await expect(page.locator('#stage')).toHaveAttribute('data-phase', 'playing', { timeout: 7000 });
   await expect(page.locator('#score-blue')).toHaveText('0');
   // A reload recovers the same seat and does not create a new player.
+  // Slow art must not abort the room binding before the scene's controls exist.
+  await page.route('**/forest-*.png*', async route => {
+    await new Promise(resolve => setTimeout(resolve, 1200));
+    await route.continue();
+  });
   await page.reload();
   await expect(page.locator('#stage')).toHaveAttribute('data-phase', 'playing', { timeout: 12000 });
   await expect(page.locator('#arena-label')).toContainText('AZUL');
