@@ -97,6 +97,8 @@ export class Controls {
   }
 
   private mouseBinding(button:number):PhysicalBinding|undefined{return button===0?'MouseLeft':button===1?'MouseMiddle':button===2?'MouseRight':undefined;}
+  /** Whether a key drives one of the player's skills, so nothing else should take it. */
+  bound(code: string) { return !!this.keyBinding(code); }
   private keyBinding(code:string):PhysicalBinding|undefined{const value=code==='ControlLeft'||code==='ControlRight'?'Ctrl':code==='ShiftLeft'||code==='ShiftRight'?'Shift':code;return Object.values(this.bindings).includes(value as PhysicalBinding)?value as PhysicalBinding:undefined;}
   private pressPhysical(binding:PhysicalBinding){
     this.physical.add(binding);
