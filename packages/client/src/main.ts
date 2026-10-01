@@ -523,6 +523,14 @@ async function warmup() {
     clearTimeout(slow);
   }
 }
+/**
+ * Life as the HUD writes it: whole hearts as they are, anything else to one decimal (a returned shot
+ * or a cord of blood can take half a heart and more), never a long tail of digits.
+ */
+const lifeText = (value: number) => {
+  const rounded = Math.round(value * 10) / 10;
+  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1).replace('.', ',');
+};
 let chatOpen = false;
 /** The chat was opened with Enter: sending (or Escape) closes it and hands the keys back to the game. */
 let quickChat = false;
@@ -1438,10 +1446,10 @@ function render(s: Snapshot) {
     $('cd-black-hole').hidden = !Object.values(me.loadout).includes('mage.blackHole');
     $('cd-black-hole').textContent = `◉ ${me.blackHoleCharge > 0 ? `Cargando ${Math.round(blackHoleStats(me.blackHoleCharge).power * 100)} %` : holeLive ? `Detonar · ${me.blackHoleCd.toFixed(1)}s` : me.blackHoleCd > 0 ? `${me.blackHoleCd.toFixed(1)}s` : 'Lista'}`;
     $('stage').dataset.dashing = String(me.dashInvulnerable || (me.dashLeft > 0 && me.dashHit > 0));
-    $('health').textContent = `♥ ${me.hp}/${me.maxHp}`;
-    $('health').setAttribute('aria-label', `Vida: ${me.hp} de ${me.maxHp}`);
+    $('health').textContent = `♥ ${lifeText(me.hp)}/${lifeText(me.maxHp)}`;
+    $('health').setAttribute('aria-label', `Vida: ${lifeText(me.hp)} de ${lifeText(me.maxHp)}`);
     $('mobile-player-status').hidden = false;
-    $('mobile-health').textContent = `♥ ${me.hp}/${me.maxHp}`;
+    $('mobile-health').textContent = `♥ ${lifeText(me.hp)}/${lifeText(me.maxHp)}`;
     const carrying = s.flags.some((flag) => flag.carrier === me.id);
     $('mobile-state').textContent = carrying
       ? '⚑ BANDERA'

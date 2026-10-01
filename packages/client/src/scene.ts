@@ -139,7 +139,9 @@ const BUBBLE = { base: 3.2, perChar: 0.045, max: 7, width: 180, fade: 0.4 };
  * their own: the descending cut, the celestial cut and the awakening.
  */
 function soundOf(e: Snapshot['events'][number]) {
-  if (e.kind === 'swing' && e.classId === 'vanguard') return 'swingHeavy';
+  if (e.kind === 'swing' && e.classId === 'vanguard') return e.move?.startsWith('vanguard.counter') ? 'guard' : 'swingHeavy';
+  // Starting to hold the guard sounds like it too.
+  if (e.kind === 'cast' && e.skillId === 'vanguard.counter') return 'guard';
   // A warrior's slash leaving the blade: three voices, by how much was held.
   if (e.kind === 'slash') {
     const heat = slashHeat(e);
