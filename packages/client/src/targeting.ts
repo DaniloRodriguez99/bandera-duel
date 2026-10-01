@@ -28,8 +28,11 @@ export interface BlueprintSpec {
   arc?: number;
   offsets?: number[];
   origin?: boolean;
-  /** A slash that will leave the blade: how far it goes, how wide it is to each side and how fast it opens. */
-  wave?: { range: number; radius: number; spread: number };
+  /**
+   * A slash that will leave the blade: how far it goes, how wide it is to each side, how fast it
+   * opens, and whether it goes through walls (then its preview is not cut short by them).
+   */
+  wave?: { range: number; radius: number; spread: number; piercing?: boolean };
 }
 
 /**
@@ -56,7 +59,9 @@ function kitBlueprint(p: Player, id: SkillId): BlueprintSpec | null {
   );
   const thrown = move.waves[0]?.wave;
   const slash = thrown && (typeof thrown === 'function' ? thrown(held) : thrown);
-  const wave = slash ? { range: slash.range + RULES.waveLead, radius: slash.halfWidth, spread: slash.spread } : undefined;
+  const wave = slash
+    ? { range: slash.range + RULES.waveLead, radius: slash.halfWidth, spread: slash.spread, piercing: slash.piercing }
+    : undefined;
   if (reach.lane > 0 && !reach.range) return { kind: 'line', range: reach.lane, radius: reach.radius, wave };
   if (reach.range) return { kind: 'cone', range: reach.range, radius: 0, arc: reach.arc, wave };
   // A slash thrown with no blade of its own to show: only its path.

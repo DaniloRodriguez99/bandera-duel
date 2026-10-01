@@ -16,6 +16,7 @@ import {
   WARRIOR_SLASH_CHARGE,
   WARRIOR_SWORD_CHARGE,
   curve,
+  titanSlash,
   idleInput,
   movePlayer,
   newPlayer,
@@ -151,27 +152,64 @@ describe('Guerrero · Mandoble del Titán', () => {
     expect(rival.hp).toBe(28);
   });
 
-  it('cargado pega hasta ×1,75, llega más lejos y manda una onda roja hacia adelante', () => {
+  it('cargado es un solo tajo de fuerza que viaja, no un golpe y una onda', () => {
     expect(WARRIOR_SWORD_CHARGE.tiers.map((tier) => tier.id)).toEqual(['tap', 'low', 'mid', 'max']);
     const { duel, warrior, rival, other, charged, finish, inFront } = arena();
-    // Out of a plain swing's reach, inside a fully charged one's.
     inFront(rival, 108);
-    Object.assign(other, { x: warrior.x + 200, y: warrior.y + 20 });
+    Object.assign(other, { x: warrior.x + 420, y: warrior.y });
     charged('primary', 1.5);
     expect(warrior.move).toBe('vanguard.sword:0:3');
+    expect(MOVES['vanguard.sword:0:3'].name).toBe('Media Luna del Titán');
+    // No blade of its own to hit with: one slash leaves it.
+    expect(MOVES['vanguard.sword:0:3'].strikes).toHaveLength(0);
+    expect(MOVES['vanguard.sword:0:3'].waves).toHaveLength(1);
     finish();
-    // The blade hit the first one; the shockwave skipped him and went on to the one behind.
-    expect(30 - rival.hp).toBeCloseTo(2 * 1.75);
-    for (let i = 0; i < 20; i++) duel.step(new Map());
-    expect(other.hp).toBeLessThan(30);
+    for (let i = 0; i < 30; i++) duel.step(new Map());
+    // Each one it crossed was hit once, the near one harder than the far one.
     expect(duel.state.events.filter((event) => event.kind === 'hit')).toHaveLength(2);
-    // A tap throws nothing and does not reach that far.
+    expect(30 - rival.hp).toBeGreaterThan(30 - other.hp);
+    expect(30 - other.hp).toBeGreaterThan(1.5);
+    // A tap is still the heavy blow, in reach of the blade, and throws nothing.
     const plain = arena();
-    plain.inFront(plain.rival, 108);
+    plain.inFront(plain.rival, 60);
     plain.step({ primary: TAP });
     plain.finish();
-    expect(plain.rival.hp).toBe(30);
+    expect(plain.rival.hp).toBe(28);
     expect(plain.duel.state.waves).toHaveLength(0);
+  });
+
+  it('crece con la carga: más largo, ancho, rápido y fuerte, hasta media arena', () => {
+    const [low, mid, max] = [0.22, 0.75, 1.5].map((seconds) => titanSlash(seconds, false));
+    for (const key of ['range', 'halfWidth', 'speed', 'damage', 'thickness'] as const) {
+      expect(mid[key]).toBeGreaterThan(low[key]);
+      expect(max[key]).toBeGreaterThan(mid[key]);
+    }
+    expect(max.range).toBeCloseTo(RULES.width / 2, -1);
+    // Its colour tells how much was held.
+    expect([low.tint, mid.tint, max.tint]).toEqual(['crimson', 'scarlet', 'blaze']);
+    // The overhead blow splits the ground in a narrow, deep line that hits harder.
+    const line = titanSlash(1.5, true);
+    expect(line.form).toBe('rend');
+    expect(line.halfWidth).toBeLessThan(max.halfWidth / 2);
+    expect(line.damage).toBeGreaterThan(max.damage);
+    // Held a little, it goes a little: a target at 300 u is out of reach.
+    const { duel, warrior, rival, charged, finish } = arena();
+    Object.assign(rival, { x: warrior.x + 300, y: warrior.y, invuln: 0 });
+    charged('primary', 0.3);
+    finish();
+    for (let i = 0; i < 30; i++) duel.step(new Map());
+    expect(rival.hp).toBe(30);
+  });
+
+  it('ningún muro lo frena: el tajo cargado llega a quien está detrás', () => {
+    const { duel, warrior, rival, charged, finish } = arena();
+    const wall = MAPS.courtyard.walls.find((w) => w.x > 400 && w.y < 270 && w.x + w.w < 600)!;
+    Object.assign(warrior, { x: wall.x - 60, y: wall.y + wall.h / 2 });
+    Object.assign(rival, { x: wall.x + wall.w + 40, y: wall.y + wall.h / 2, invuln: 0 });
+    charged('primary', 1.5);
+    finish();
+    for (let i = 0; i < 30; i++) duel.step(new Map());
+    expect(rival.hp).toBeLessThan(30);
   });
 
   it('el mandoble no corta proyectiles: para eso está la Creciente', () => {
@@ -252,8 +290,11 @@ describe('Guerrero · Creciente Escarlata', () => {
     duel.spawnWave(warrior, warrior, 0, colossal);
     for (let i = 0; i < ticks(2.2); i++) duel.step(new Map());
     expect(30 - rival.hp).toBeGreaterThan(4.5);
-    expect(30 - other.hp).toBeGreaterThan(1.8);
-    expect(30 - other.hp).toBeLessThan(3);
+    // Far across the arena a full overcharge still hits hard, but less than up close.
+    expect(30 - other.hp).toBeGreaterThan(3);
+    expect(30 - other.hp).toBeLessThan(30 - rival.hp);
+    // The longer it was held, the more of its damage it keeps at the end.
+    expect(curve(warriorWave(7).falloff, 1)).toBeGreaterThan(curve(warriorWave(0).falloff, 1));
   });
 
   it('cargando es vulnerable: lento, sin espada ni parry, y un golpe lo interrumpe y le cuesta recarga', () => {
@@ -302,7 +343,7 @@ describe('Guerrero · Creciente Escarlata', () => {
     expect(MOVES['vanguard.slash:2'].duration).toBeGreaterThan(MOVES['vanguard.slash:0'].duration * 2);
   });
 
-  it('los muros dan cobertura contra la gran ola', () => {
+  it('los muros no la frenan: llega hasta su alcance real', () => {
     const { duel, warrior, rival, other } = arena();
     const wall = MAPS.courtyard.walls.find((w) => w.x > 400 && w.y < 270 && w.x + w.w < 600)!;
     Object.assign(warrior, { x: 330, y: wall.y + wall.h / 2 });
@@ -310,7 +351,7 @@ describe('Guerrero · Creciente Escarlata', () => {
     Object.assign(other, { x: wall.x + wall.w + 30, y: wall.y + wall.h + 45 });
     duel.spawnWave(warrior, warrior, 0, warriorWave(5));
     for (let i = 0; i < ticks(2); i++) duel.step(new Map());
-    expect(rival.hp).toBe(30);
+    expect(rival.hp).toBeLessThan(30);
     expect(other.hp).toBeLessThan(30);
   });
 });

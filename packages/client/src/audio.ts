@@ -107,8 +107,10 @@ const SPELL_NOTES: Record<string, number[]> = {
   swingHeavy: [196, 131],
   counter: [1320, 990],
   counterHeavy: [990, 660, 330],
-  crescent: [262, 196, 147],
-  crescentColossal: [196, 147, 98, 65],
+  // His slashes leaving the blade: a crack, a roar, a quake.
+  slashLight: [330, 247],
+  slashHeavy: [220, 165, 123],
+  slashColossal: [147, 110, 82, 55],
   // The knight's: sharp and fast, with lightning in it. The descending cut falls in pitch; the
   // celestial cut rings clear and high; the awakening climbs.
   swingLight: [988, 1319],
