@@ -70,7 +70,7 @@ const CARD_NAMES: Record<SkillId, string> = {
   'mage.blink': 'Parpadeo', 'mage.blackHole': 'Singularidad', 'necromancer.fire': 'Fuego',
   'necromancer.summon': 'Invocar zombies', 'guardian.sword': 'Tres Cortes', 'guardian.flurry': 'Ráfaga de Acero',
   'guardian.dash': 'Paso Relámpago', 'guardian.fury': 'Despertar',
-  'vanguard.sword': 'Mandoble del Titán', 'vanguard.slash': 'Creciente Escarlata', 'vanguard.counter': 'Represalia del Coloso',
+  'vanguard.sword': 'Mandoble del Titán', 'vanguard.slash': 'Creciente Escarlata', 'vanguard.counter': 'Parry',
   'vanguard.dash': 'Embestida Sísmica', 'vanguard.reinforce': 'Cuerpo de Titán', 'common.dash': 'Esquivar',
 };
 const COMPANION_NAMES: Record<Companion, string> = { companionCommand: 'Mando', companionMark: 'Marcar' };

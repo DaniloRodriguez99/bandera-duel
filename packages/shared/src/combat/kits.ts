@@ -584,7 +584,7 @@ export const WARRIOR_PARRY_CHARGE: ChargeSpec = {
     { id: 'tap', at: 0, label: 'Toque · parry justo a tiempo' },
     { id: 'firm', at: 0.4, label: 'Firme · devuelve orbes cargados', tint: 'gold' },
     { id: 'unbroken', at: 1, label: 'Inquebrantable · más rápido y más fuerte', tint: 'blaze' },
-    { id: 'reprisal', at: 1.6, label: 'Represalia total · hasta una Singularidad', tint: 'inferno' },
+    { id: 'absolute', at: 1.6, label: 'Absoluto · devuelve hasta una Singularidad', tint: 'inferno' },
   ],
   cap: 2.2,
   // Hit from where the guard does not cover, the stance breaks and the guard costs its cooldown.
@@ -594,7 +594,7 @@ export const WARRIOR_PARRY_CHARGE: ChargeSpec = {
   autoRelease: true,
 };
 register('vanguard.counter:0', {
-  name: 'Represalia',
+  name: 'Parry',
   duration: frames(9),
   strikes: [],
   waves: [],

@@ -14,7 +14,7 @@ test('el guerrero carga la Creciente más allá del 100 % y la ola alcanza al ri
   const abilities = page.locator('#abilities');
   await expect(abilities.locator('[data-ability="sword"]')).toContainText('Mandoble del Titán');
   await expect(abilities.locator('[data-ability="slash"]')).toContainText('Creciente Escarlata');
-  await expect(abilities.locator('[data-ability="counter"]')).toContainText('Represalia del Coloso');
+  await expect(abilities.locator('[data-ability="counter"]')).toContainText('Parry');
   await expect(abilities.locator('[data-ability="dash"]')).toContainText('Embestida Sísmica');
   await expect(abilities.locator('[data-ability="reinforce"]')).toContainText('Cuerpo de Titán');
   await expect(page.locator('#practice-toolbar')).toHaveAttribute('data-dummy-hp', '3');
