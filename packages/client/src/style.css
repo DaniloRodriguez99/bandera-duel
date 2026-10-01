@@ -805,7 +805,8 @@ footer b {
     display: flex;
     position: fixed;
     inset: 0;
-    z-index: 30;
+    /* Over everything in the match, the in-game buttons included. */
+    z-index: 90;
     background: #101b21;
     flex-direction: column;
     align-items: center;
@@ -926,6 +927,29 @@ footer b {
 #selection-status{color:var(--red)}#health{color:#e4bb92}#cd-guard{color:var(--gold)}
 @media(max-width:760px){.intro{grid-template-columns:1fr;gap:25px}.class-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.class-card small{font-size:8px}.class-card strong{font-size:18px}.class-card svg{height:48px}.entry-card{padding:18px}.class-stats{font-size:7px}#cooldowns{gap:9px;font-size:9px}}
 @media(max-height:600px) and (orientation:landscape){.in-room .overlay-card{display:grid;grid-template-columns:1fr 1.15fr;column-gap:16px;align-items:start;width:min(660px,96%);padding:10px 14px}.overlay-card #overlay-kicker,.overlay-card #overlay-title,.overlay-card #overlay-description,.overlay-card #room-heading,.overlay-card #room-rules{grid-column:1}.overlay-card #room-picker{grid-column:2;grid-row:1/6;align-self:center}.overlay-card #roster{grid-column:1}.overlay-card #invitation{grid-column:1}.overlay-card #ready,.overlay-card #leave{grid-column:2}.overlay-card #host-settings{grid-column:1/-1}.in-room .compact .class-card svg{height:36px}.in-room .overlay-card h2{font-size:24px}.in-room .overlay-card .roster-player{font-size:9px;padding:5px}.in-room .roster-player small{font-size:6px}.in-room .compact legend{font-size:7px}.in-room .compact .class-card strong{font-size:14px}.in-room .compact .class-stats{font-size:6px}}
+/* A short landscape screen, like a phone held sideways: the room fits one screen. The five classes go
+   in one row with their names, their skills are left to the customization, and the ready button sits
+   right under them. */
+@media (max-height:600px) and (orientation:landscape){
+  .in-room #room-classes{grid-template-columns:repeat(5,minmax(0,1fr));gap:5px}
+  .in-room #room-picker .class-skills,.in-room #room-picker .class-equipment{display:none}
+  .in-room #room-picker .class-card svg{height:30px}
+  .in-room #room-picker .customize-class{padding:4px 1px;font-size:6px;letter-spacing:0}
+  /* Ready (and the horde's start) under the classes, leaving under them; the host's settings last. */
+  .in-room .overlay-card #ready{grid-row:6;margin-top:6px}
+  .in-room .overlay-card #pve-start{grid-column:2;grid-row:7}
+  .in-room .overlay-card #leave{grid-row:8}
+  .in-room .overlay-card #team-choice{grid-column:1}
+  .in-room .overlay-card #host-settings{order:1}
+}
+/* While the room waits, the match clock and the life readout would sit on top of its card, and the
+   card itself keeps clear of the gear on the left and the chat on the right. */
+@media (pointer:coarse) and (orientation:landscape){
+  .arena-section:has(#stage[data-phase='lobby']) :is(.clock,#mobile-player-status){visibility:hidden}
+  .in-room .overlay{padding:0 calc(max(14px,env(safe-area-inset-right)) + 44px) 0 calc(max(8px,env(safe-area-inset-left)) + 50px)}
+  .in-room .overlay-card{width:min(660px,100%)}
+  .in-room #room-picker .class-card strong{font-size:12px}
+}
 
 #spectator-choice { display: flex; align-items: center; gap: 10px; margin: 12px 0; }
 #spectator-choice[hidden] { display: none; }
@@ -1931,3 +1955,8 @@ body.world-choosing #game,body.world-choosing .hud,body.world-choosing .arena-he
 .platform-close { float:right; }
 .platform-dialog p { line-height:1.5; font-size:14px; }
 .platform-game-settings { position:absolute; top:max(44px,env(safe-area-inset-top)); left:max(8px,env(safe-area-inset-left)); z-index:70; width:44px; min-height:44px; padding:4px; background:#142127d9; color:#f3ce86; }
+/* Below the gear, only while a match on a touch screen is not fullscreen (see fullscreen.ts). */
+.platform-fullscreen { position:absolute; top:calc(max(44px,env(safe-area-inset-top)) + 52px); left:max(8px,env(safe-area-inset-left)); z-index:70; width:44px; min-height:44px; padding:4px; background:#142127d9; color:#f3ce86; font-size:20px; line-height:1; }
+.platform-fullscreen[hidden] { display:none; }
+.rotate-tap { display:none; }
+body.can-fullscreen #rotate .rotate-tap { display:block; margin-top:14px; color:var(--gold); }
