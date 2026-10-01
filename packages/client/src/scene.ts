@@ -103,6 +103,8 @@ import type { MobFamilyId } from '@bandera/shared/rpg/zones';
 import type { WeaponLook } from '@bandera/shared/rpg/weapons';
 
 const GOLD = 0xf3ce86;
+/** A chat bubble stays up this long, plus a little per character, never past `max`. */
+const BUBBLE = { base: 3.2, perChar: 0.045, max: 7, width: 180, fade: 0.4 };
 /**
  * What an event sounds like. Each class's blade has its voice, and the knight's great techniques
  * their own: the descending cut, the celestial cut and the awakening.
@@ -868,6 +870,8 @@ export class Arena extends Phaser.Scene {
     this.drawBases(snapshot.bases, snapshot.objective);
     for (const [key, v] of this.visuals) {
       if (snapshot.players.some((p) => p.id === key)) continue;
+      this.bubbles.get(key)?.box.destroy();
+      this.bubbles.delete(key);
       v.body.destroy();
       v.name.destroy();
       v.stun.destroy();
@@ -971,6 +975,65 @@ export class Arena extends Phaser.Scene {
     const point = this.cameras.main.getWorldPoint(screenX, screenY);
     const bounds = this.bounds();
     return { x: Math.max(bounds.minX, Math.min(bounds.maxX, point.x)), y: Math.max(bounds.minY, Math.min(bounds.maxY, point.y)) };
+  }
+  /** Chat bubbles over the fighters who just spoke, by player id. */
+  private bubbles = new Map<string, { box: Phaser.GameObjects.Container; height: number; born: number; until: number }>();
+
+  /**
+   * Someone in the room spoke: a bubble pops up over their character, in the colour of their
+   * team, and stays a while. False when that character is not on the field for this viewer
+   * (a spectator, or someone hidden in a bush), so the message can be shown elsewhere instead.
+   */
+  say(id: string, text: string): boolean {
+    const v = this.visuals.get(id);
+    const p = this.snapshot?.players.find((q) => q.id === id);
+    if (!v || !p || p.hp <= 0 || !v.body.visible) return false;
+    this.bubbles.get(id)?.box.destroy();
+    const label = this.add
+      .text(0, 0, text, {
+        fontFamily: 'DM Sans, sans-serif',
+        fontSize: '11px',
+        color: '#1d2427',
+        align: 'center',
+        wordWrap: { width: BUBBLE.width, useAdvancedWrap: true },
+        maxLines: 4,
+      })
+      .setOrigin(0.5, 0.5);
+    const width = Math.max(28, label.width + 14);
+    const height = label.height + 10;
+    const frame = this.add.graphics();
+    frame.fillStyle(0xf6f1e3, 0.96);
+    frame.fillRoundedRect(-width / 2, -height / 2, width, height, 6);
+    frame.lineStyle(2, COLORS[p.team], 1);
+    frame.strokeRoundedRect(-width / 2, -height / 2, width, height, 6);
+    // The tail, pointing down at whoever is talking.
+    frame.fillStyle(0xf6f1e3, 0.96);
+    frame.fillTriangle(-5, height / 2 - 1, 5, height / 2 - 1, 0, height / 2 + 6);
+    frame.lineStyle(2, COLORS[p.team], 1);
+    frame.lineBetween(-5, height / 2, 0, height / 2 + 6);
+    frame.lineBetween(5, height / 2, 0, height / 2 + 6);
+    const box = this.add.container(v.x, v.y - 44 - height / 2, [frame, label]).setDepth(LAYER.celebration);
+    const seconds = Math.min(BUBBLE.max, BUBBLE.base + text.length * BUBBLE.perChar);
+    const now = this.time.now;
+    this.bubbles.set(id, { box, height, born: now, until: now + seconds * 1000 });
+    box.setScale(0.6);
+    this.tweens.add({ targets: box, scale: 1, duration: visualSettings.reduced ? 1 : 160, ease: 'Back.Out' });
+    sound('chat');
+    return true;
+  }
+  /** Keeps each bubble over its speaker, and lets it fade when its time is up. */
+  private updateBubbles(time: number) {
+    for (const [id, bubble] of this.bubbles) {
+      const v = this.visuals.get(id);
+      if (!v || time >= bubble.until) {
+        bubble.box.destroy();
+        this.bubbles.delete(id);
+        continue;
+      }
+      bubble.box.setPosition(v.x, v.y - 44 - bubble.height / 2);
+      bubble.box.setAlpha(Math.min(1, (bubble.until - time) / (BUBBLE.fade * 1000)));
+      bubble.box.setVisible(v.body.visible);
+    }
   }
   /** A five-pointed seal inside its ring, drawn into the given graphics. */
   /** A spinning rune circle marking where the blink will land. */
@@ -2936,6 +2999,7 @@ export class Arena extends Phaser.Scene {
         time,
         delta,
       );
+    this.updateBubbles(time);
     for (const z of s.zombies) this.drawZombie(z, time, delta);
     this.mobs.clear();
     for (const mob of s.mobs) this.drawPveMob(mob, time, delta);

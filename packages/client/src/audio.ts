@@ -95,6 +95,8 @@ const SPELL_NOTES: Record<string, number[]> = {
   bash: [130, 86],
   fury: [92, 138, 69],
   projectileCut: [740, 495],
+  // Someone spoke in the room.
+  chat: [1047, 1319],
   swing: [560],
   // The warrior's greatsword: low and heavy. His parry rings like struck metal, deeper after a
   // held guard. His crescent roars lower the more it was charged.

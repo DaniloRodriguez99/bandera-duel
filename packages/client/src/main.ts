@@ -81,7 +81,7 @@ document.querySelector('#app')!.innerHTML = `
 <div id="practice-toolbar" hidden><span>PRÁCTICA</span><label id="practice-rival-label">RIVAL <select id="practice-rival" aria-label="Qué hace el rival de práctica">${Object.entries(SPARRING).map(([id, mode]) => `<option value="${id}" title="${mode.text}">${mode.label}</option>`).join('')}</select></label><button id="practice-reset" class="secondary">Reiniciar</button><button id="practice-exit" class="secondary">Salir</button></div><div id="dev-tools" hidden aria-label="Controles de prueba"><span>PRUEBAS</span><b id="dev-mana" aria-live="off"></b><label><input id="dev-mana-limit" type="checkbox" checked> Límite de maná</label><button id="dev-mana-refill" class="secondary">Recargar maná</button></div><div id="hud" class="hud" hidden>${hudTeam('blue')}${hudTeam('green')}<div class="clock"><span id="timer">3:00</span><small id="clock-note">PRIMERO A 3</small></div>${hudTeam('violet', true)}${hudTeam('red', true)}<span id="spectator-count" hidden aria-live="polite"></span><div id="pve-hud" hidden><b id="pve-wave">OLEADA 0</b><span id="pve-enemies">0 enemigos</span><span id="pve-alive"></span></div><div id="pve-upgrades" hidden aria-label="Mejoras elegidas"></div><div id="boss-hud" hidden><span>GUARDIÁN DE LA CRIPTA</span><i><b id="boss-health"></b></i></div><div id="mobile-player-status" hidden><b id="mobile-health"></b><span id="mobile-state"></span></div></div>
 <div id="stage" class="stage"><section id="pve-rewards" class="pve-rewards" hidden><header><span id="reward-wave"></span><b id="reward-time"></b></header><p>Elegí una recompensa. Si el tiempo termina, no recibirás ninguna.</p><div id="reward-cards"></div></section><label id="room-perspective-choice" hidden>PERSPECTIVA<select id="room-perspective"></select></label><div id="game"></div><div id="abilities" class="abilities" hidden aria-label="Habilidades"></div><div class="preview-tag" id="preview-tag">HASTA CUATRO ESTANDARTES. UNA SOLA GLORIA.</div>
 <button id="chat-toggle" class="chat-toggle" type="button" hidden aria-expanded="false" aria-controls="chat-panel"><span aria-hidden="true">◈</span><span class="chat-label">CHAT</span><b id="chat-unread" hidden></b></button>
-<aside id="chat-panel" class="chat-panel" hidden aria-label="Chat de sala"><header><div><span>CHAT DE SALA</span><small id="chat-players"></small></div><button id="chat-close" type="button" aria-label="Cerrar chat">×</button></header><ol id="chat-messages" role="log" aria-live="polite"></ol><p id="chat-status" role="status"></p><form id="chat-form"><input id="chat-input" maxlength="240" autocomplete="off" placeholder="Escribí un mensaje…" aria-label="Mensaje"><button id="chat-send" type="submit">Enviar</button></form></aside>
+<ol id="chat-feed" class="chat-feed" aria-hidden="true"></ol><aside id="chat-panel" class="chat-panel" hidden aria-label="Chat de sala"><header><div><span>CHAT DE SALA</span><small id="chat-players"></small></div><button id="chat-close" type="button" aria-label="Cerrar chat">×</button></header><ol id="chat-messages" role="log" aria-live="polite"></ol><p id="chat-status" role="status"></p><form id="chat-form"><input id="chat-input" maxlength="240" autocomplete="off" placeholder="Escribí un mensaje…" aria-label="Mensaje"><button id="chat-send" type="submit">Enviar</button></form></aside>
 <div id="overlay" class="overlay" hidden><div class="overlay-card"><span id="overlay-kicker" class="tiny">SALA</span><h2 id="overlay-title">Esperando jugadores</h2><p id="overlay-description"></p><p id="room-heading"></p><p id="room-rules"></p><fieldset id="host-settings" class="pvp-settings" hidden><legend>AJUSTES DEL ANFITRION</legend><div class="option-row"><label>FORMATO<select id="host-game-mode"><option value="duel">Duelo 1v1</option><option value="teams">Equipos 2v2</option><option value="ffa3">Todos contra todos 3</option><option value="ffa4">Todos contra todos 4</option></select></label><label>VISIBILIDAD<select id="host-visibility"><option value="private">Privada</option><option value="public">Publica</option></select></label></div><div class="option-row"><label>OBJETIVO<select id="host-objective"><option value="ctf">Captura la bandera</option><option value="deathmatch">Deathmatch</option></select></label><label id="host-deathmatch-kind" hidden>REGLA<select id="host-kind"><option value="kills">Por bajas</option><option value="time">Por tiempo</option></select></label><label id="host-kill-target" hidden>META<select id="host-target"><option value="3">3 bajas</option><option value="5">5 bajas</option><option value="10">10 bajas</option></select></label><label id="host-time-duration" hidden>DURACION<select id="host-duration"><option value="180">3 minutos</option><option value="300">5 minutos</option><option value="600">10 minutos</option></select></label></div><button id="host-save" class="secondary" type="button">Guardar ajustes</button><small id="host-settings-status" role="status"></small></fieldset><div id="roster" class="roster"></div><label id="team-choice" hidden>TU EQUIPO<select id="team-select"><option value="blue">Azul</option><option value="red">Carmesí</option></select></label><fieldset id="room-picker" class="class-picker compact"><legend>TU CLASE · PODÉS CAMBIAR ANTES DE JUGAR</legend><div id="room-classes" class="class-grid"></div></fieldset><p id="selection-status" role="status" hidden></p><div id="invitation"><label for="invite">LINK DE INVITACIÓN</label><div class="invite-row"><input id="invite" readonly aria-label="Link de invitación"><button id="copy" class="secondary">Copiar</button></div></div><button id="world-return" class="primary" type="button" hidden>Volver a entrar <span>↗</span></button><button id="ready" class="primary">Estoy listo <span>⚔</span></button><button id="pve-start" class="primary" hidden>Comenzar expedición ↗</button><button id="leave" class="text-btn">Salir de la sala</button></div></div>
 <div id="announcement" class="announcement" hidden aria-live="polite"></div>
 <div id="social-menu" class="social-menu" hidden role="menu"></div>
@@ -524,6 +524,8 @@ async function warmup() {
   }
 }
 let chatOpen = false;
+/** The chat was opened with Enter: sending (or Escape) closes it and hands the keys back to the game. */
+let quickChat = false;
 let chatUnread = 0;
 let chatClosedReason: RoomClosingReason | undefined;
 let chatEnabled = false;
@@ -537,6 +539,7 @@ function updateUnread() {
 }
 function setChatOpen(open: boolean) {
   chatOpen = open;
+  if (!open) quickChat = false;
   $('chat-panel').hidden = !open;
   $('chat-toggle').setAttribute('aria-expanded', String(open));
   if (open) {
@@ -550,6 +553,7 @@ function resetChat() {
   chatEnabled = false;
   chatUnread = 0;
   $('chat-messages').replaceChildren();
+  $('chat-feed').replaceChildren();
   updateUnread();
   setChatOpen(false);
   $('chat-toggle').hidden = true;
@@ -628,14 +632,64 @@ $('chat-close').onclick = () => setChatOpen(false);
 $<HTMLInputElement>('chat-input').onfocus = () => {
   arena.controls.clear();
 };
+/** Closes a chat opened with Enter and gives the keyboard back to the fight. */
+function endQuickChat() {
+  if (!quickChat) return;
+  $<HTMLInputElement>('chat-input').blur();
+  setChatOpen(false);
+}
 $('chat-form').onsubmit = (event) => {
   event.preventDefault();
   const input = $<HTMLInputElement>('chat-input'),
     text = input.value;
-  if (!room || !online || !chatEnabled || !text.trim()) return;
-  room.send('chat', text);
-  input.value = '';
+  if (room && online && chatEnabled && text.trim()) {
+    room.send('chat', text);
+    input.value = '';
+  }
+  endQuickChat();
 };
+$<HTMLInputElement>('chat-input').onkeydown = (event) => {
+  if (event.key !== 'Escape') return;
+  event.preventDefault();
+  // A quick message given up is dropped; a long one typed in the open chat stays for later.
+  if (quickChat) {
+    $<HTMLInputElement>('chat-input').value = '';
+    endQuickChat();
+  } else $<HTMLInputElement>('chat-input').blur();
+};
+/**
+ * Quick chat: in a room, Enter opens the chat ready to type and Enter again sends it. Not while
+ * typing somewhere else, not over a focused button, and not when Enter is bound to a skill.
+ */
+window.addEventListener('keydown', (event) => {
+  if ((event.code !== 'Enter' && event.code !== 'NumpadEnter') || event.repeat || event.isComposing) return;
+  if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+  if ((event.target as HTMLElement)?.matches?.('input, textarea, select, button, a, [contenteditable]')) return;
+  if (!room || !online || $('chat-toggle').hidden || !chatEnabled || arena.controls?.bound(event.code)) return;
+  event.preventDefault();
+  setChatOpen(true);
+  quickChat = true;
+  $<HTMLInputElement>('chat-input').focus();
+});
+/**
+ * A line over the arena for a message that has no bubble (a spectator, someone out of sight) or a
+ * notice about the chat, while the chat itself is closed. It fades on its own.
+ */
+function feedChat(name: string, text: string, kind: 'message' | 'notice' = 'message') {
+  if (chatOpen) return;
+  const line = document.createElement('li');
+  line.className = kind === 'notice' ? 'chat-feed-notice' : '';
+  if (name) {
+    const who = document.createElement('strong');
+    who.textContent = `${name}: `;
+    line.append(who);
+  }
+  line.append(document.createTextNode(text));
+  $('chat-feed').append(line);
+  while ($('chat-feed').children.length > 4) $('chat-feed').firstElementChild?.remove();
+  window.setTimeout(() => line.classList.add('fading'), 5200);
+  window.setTimeout(() => line.remove(), 6000);
+}
 function showUpgradeOffer(offer: UpgradeOffer | null) {
   currentOffer = offer;
   const panel = $('pve-rewards'),
@@ -796,10 +850,16 @@ function bind(joined: Room) {
     updateUnread();
     renderChatStatus(history);
   });
-  room.onMessage('chatMessage', (message: ChatMessage) => appendChat(message, joined.sessionId));
+  room.onMessage('chatMessage', (message: ChatMessage) => {
+    appendChat(message, joined.sessionId);
+    // Everyone sees it at once: over the speaker's head in the arena, or as a passing line.
+    if (!arena.say(message.senderId, message.text))
+      feedChat(message.role === 'spectator' ? `${message.name} (espectador)` : message.name, message.text);
+  });
   room.onMessage('chatStatus', (status: ChatStatus) => renderChatStatus(status));
   room.onMessage('chatError', (message: string) => {
     $('chat-status').textContent = message;
+    feedChat('', message, 'notice');
   });
   room.onMessage('roomClosing', ({ reason }: { reason: RoomClosingReason }) => {
     chatClosedReason = reason;
