@@ -121,8 +121,8 @@ const ICONS = {
     [[22, 40, 1.6], [30, 33, 1.2], [38, 25, 1.5], [18, 30, 1]].map(([x, y, r]) => `<circle cx="${x}" cy="${y}" r="${r}" fill="#ffb080"/>`).join('') +
     glint(55, 9, 4, '#fff4dd')),
 
-  // E · Represalia del Coloso: the orange mandala of the held guard, and two blades meeting on it.
-  'vanguard-reprisal': card('#ff8c1a', ['#3a2008', '#0a0602'],
+  // E · Parry: the orange mandala of the held guard, and two blades meeting on it.
+  'vanguard-parry': card('#ff8c1a', ['#3a2008', '#0a0602'],
     mandala(32, 32, 24, '#ff8c1a', '#ffd9a8') +
     glyph('sword-clash', 11, 11, 42, '#ffe7c4')),
 
@@ -155,7 +155,7 @@ llevan glifos de [game-icons.net](https://game-icons.net), repositorio
 [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/), recoloreados y enmarcados:
 
 - sword-brandish, de delapouite (Mandoble del Titán)
-- sword-clash, de lorc (Represalia del Coloso)
+- sword-clash, de lorc (Parry)
 - quake-stomp, de lorc (Embestida Sísmica)
 - muscle-up, de lorc (Cuerpo de Titán)
 `,

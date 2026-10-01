@@ -1,5 +1,17 @@
 # Registro de cambios
 
+## 2026-10-01
+
+### Chat rápido
+
+- **Enter abre el chat** listo para escribir y **Enter lo manda**: el chat se cierra solo y las teclas vuelven al combate. Escape descarta el mensaje.
+- Cada mensaje aparece al instante para todos: en el registro de la sala y en una **burbuja sobre el personaje** que habla, del color de su equipo. Lo de los espectadores (o de alguien escondido en un arbusto) pasa como una línea breve sobre la arena.
+
+### Descripciones de habilidades y Parry
+
+- Todas las habilidades se describen con una línea propia y, después, qué hacen exactamente: daño, duración, alcance, costo y recarga.
+- La guardia del Guerrero se llama **Parry**: nunca tuvo talento para la magia, así que entrenó lo único que tenía, parar, hasta dominarlo como nadie. Su estado más alto de carga se llama Absoluto.
+
 ## 2026-09-30
 
 ### Cargas que se ven y se oyen

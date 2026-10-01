@@ -86,7 +86,7 @@ describe('Guerrero · identidad', () => {
   it('sus técnicas tienen nombres de fuerza y contragolpe, y un ícono propio cada una', () => {
     const ids = ['vanguard.sword', 'vanguard.slash', 'vanguard.counter', 'vanguard.dash', 'vanguard.reinforce'] as const;
     expect(ids.map((id) => SKILLS[id].name)).toEqual([
-      'Mandoble del Titán', 'Creciente Escarlata', 'Represalia del Coloso', 'Embestida Sísmica', 'Cuerpo de Titán',
+      'Mandoble del Titán', 'Creciente Escarlata', 'Parry', 'Embestida Sísmica', 'Cuerpo de Titán',
     ]);
     expect(new Set(ids.map((id) => SKILLS[id].icon)).size).toBe(ids.length);
     expect(['vanguard.sword:0:0', 'vanguard.sword:1:0'].map((id) => MOVES[id].name)).toEqual(['Barrido del Titán', 'Caída de Montaña']);
@@ -315,7 +315,7 @@ describe('Guerrero · Creciente Escarlata', () => {
   });
 });
 
-describe('Guerrero · Represalia del Coloso (parry)', () => {
+describe('Guerrero · Parry', () => {
   const arrow = (from: Player, value: Partial<Arrow> = {}): Arrow => ({
     id: 900, owner: from.id, team: from.team, classId: 'archer', x: 400, y: 270, angle: Math.PI, life: 1, ...value,
   });
