@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import type { Vec } from '@bandera/shared';
 import type { Prop, ZoneDefinition } from '@bandera/shared/rpg/zones';
-import { palette } from './art';
+import { CLASS_ART, palette } from './art';
 
 /**
  * Settlements, drawn the way a Warcraft III human town reads from above: plastered walls under
@@ -430,6 +430,12 @@ const VILLAGER_LOOKS = [
 ];
 
 export function makeVillagerTextures(scene: Phaser.Scene) {
+  // Player art now uses directional atlases; the old blue-guardian-0 key no longer exists.
+  if (!scene.textures.exists('settlement-guard-blue')) scene.textures.generate('settlement-guard-blue', {
+    data: CLASS_ART.guardian,
+    pixelWidth: 2,
+    palette: palette('#548cb7', '#8cc5e7') as Phaser.Types.Create.Palette,
+  });
   VILLAGER_LOOKS.forEach((look, i) => {
     for (let frame = 0; frame < 2; frame++) {
       const key = `villager-${i}-${frame}`;
@@ -471,16 +477,7 @@ export class Settlement {
     scene.tweens.add({ targets: glow, scale: 1.6, alpha: 0.05, duration: 1400, yoyo: true, repeat: -1 });
     scene.tweens.add({ targets: crystal, y: y - 28, angle: 45, duration: 1600, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
     this.objects.push(glow, crystal);
-    for (const fire of props.filter((p) => p.kind === 'fogata' || p.kind === 'herreria')) {
-      const fx = fire.kind === 'fogata' ? fire.x + fire.w / 2 : fire.x + fire.w - 20;
-      const fy = fire.kind === 'fogata' ? fire.y + fire.h / 2 - 4 : fire.y + fire.h - 22;
-      const size = fire.kind === 'fogata' ? 1 : 0.5;
-      const outer = scene.add.circle(fx, fy, 11 * size, 0xff7a2f, 0.85).setDepth(5);
-      const inner = scene.add.circle(fx, fy - 3 * size, 6 * size, 0xffd27a, 1).setDepth(5);
-      scene.tweens.add({ targets: outer, scaleY: 1.35, scaleX: 0.85, duration: 180, yoyo: true, repeat: -1 });
-      scene.tweens.add({ targets: inner, scaleY: 1.5, y: fy - 6 * size, duration: 140, yoyo: true, repeat: -1 });
-      this.objects.push(outer, inner);
-    }
+    // Flames and their illumination are owned by Arena's shared TorchEffects controller.
     // Open spots of the square: within reach of the altar and away from everything solid.
     this.stops = [];
     for (let r = 90; r <= 260; r += 45)
@@ -505,7 +502,7 @@ export class Settlement {
         ? [{ x: gate.x + 20, y: gate.y - 28 }, { x: gate.x + gate.w - 20, y: gate.y - 28 }]
         : [{ x: gate.x - 26, y: gate.y + 22 }, { x: gate.x - 26, y: gate.y + gate.h - 22 }];
       for (const spot of inside) {
-        const guard = scene.add.sprite(spot.x, spot.y, 'blue-guardian-0').setOrigin(0.5, 0.7).setDepth(9);
+        const guard = scene.add.sprite(spot.x, spot.y, 'settlement-guard-blue').setOrigin(0.5, 0.7).setDepth(9);
         guard.setFlipX(gate.w < gate.h ? false : spot.x > gate.x + gate.w / 2);
         this.objects.push(guard);
       }

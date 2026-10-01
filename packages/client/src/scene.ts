@@ -2,6 +2,16 @@ import { COMBAT_LINGER, Locomotion, fighting } from './locomotion';
 import { bladePose, drawKitBlade, drawStreak, drawTrail, onScreen } from './combat-fx';
 import { ensureActorAtlas } from './directional-art';
 import { ParticlePool, visualSettings } from './visual-effects';
+import { decorateEnvironment, type EnvironmentSpec } from './environment';
+import { LightingManager } from './lighting';
+import { TorchEffects, type TorchSource } from './torch-effects';
+import { AbilityLightingController } from './ability-lighting';
+import { WindManager } from './wind';
+import { ForestEnvironment, ensureForestFrames, FOREST_BRAZIERS } from './forest-environment';
+import forestTerrainUrl from './assets/environment/forest-terrain.png';
+import forestPropsUrl from './assets/environment/forest-props.png';
+import { CourtyardEnvironment, ensureCourtyardFrames, COURTYARD_FIRES } from './courtyard-environment';
+import courtyardArtUrl from './assets/environment/courtyard-art.png';
 import Phaser from 'phaser';
 import { ELEMENT_COLORS, ELEMENT_CORES, hex } from '@bandera/shared/rpg/colors';
 import { Settlement, drawAltar, drawProp, drawSettlementGround } from './village';
@@ -21,6 +31,7 @@ import {
   layout,
   projectileStats,
   arrowMotion,
+  playerVisibleTo,
   BLOOD_BOND,
   titanSlash,
   warriorWave,
@@ -225,6 +236,11 @@ export class Arena extends Phaser.Scene {
   surfer = false;
   send: (input: Input) => void = () => {};
   private particles!: ParticlePool;
+  private lighting!: LightingManager;
+  private torches!: TorchEffects;
+  private abilityLighting!: AbilityLightingController;
+  private wind!: WindManager;
+  private environment?: ReturnType<typeof decorateEnvironment>;
   private trailTick = -1;
   private emitTrail = false;
   private visuals = new Map<
@@ -287,17 +303,48 @@ export class Arena extends Phaser.Scene {
   /** The moving life of the zone's settlement (villagers, fire, altar glow), when it has one. */
   private settlement?: Settlement;
   private mapObjects: Phaser.GameObjects.GameObject[] = [];
+  private forestEnvironment?: ForestEnvironment;
+  private courtyardEnvironment?: CourtyardEnvironment;
   private duelRings!: Phaser.GameObjects.Graphics;
   private longPress?: { timer: number; x: number; y: number; pointer: number };
   private cameraKey = '';
   constructor() {
     super('arena');
   }
+  preload() {
+    this.load.image('forest-terrain-atlas', forestTerrainUrl);
+    this.load.image('forest-props-atlas', forestPropsUrl);
+    this.load.image('courtyard-art-atlas', courtyardArtUrl);
+  }
   create() {
+    ensureForestFrames(this);
+    ensureCourtyardFrames(this);
+    this.lighting = new LightingManager(this);
+    this.torches = new TorchEffects(this, this.lighting);
+    this.abilityLighting = new AbilityLightingController(this.lighting);
+    this.abilityLighting.setProjectileSampler(arrow => {
+      const age = this.snapshot?.paused ? 0 : Math.min((performance.now() - this.receivedAt) / 1000, 1 / 15);
+      const next = { x: arrow.x + Math.cos(arrow.angle) * arrowMotion(arrow).speed * age,
+        y: arrow.y + Math.sin(arrow.angle) * arrowMotion(arrow).speed * age };
+      return lineClear(arrow, next, this.terrain()) ? next : arrow;
+    });
+    this.wind = new WindManager(this);
     this.drawMap(this.currentMapId);
     this.bases = this.add.graphics().setDepth(LAYER.floor);
     this.makeTextures();
     this.particles = new ParticlePool(this);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.environment?.destroy();
+      this.environment = undefined;
+      this.forestEnvironment?.destroy();
+      this.courtyardEnvironment?.destroy();
+      this.torches.destroy();
+      this.abilityLighting.destroy();
+      this.wind.destroy();
+      this.lighting.destroy();
+      this.particles.destroy();
+      this.settlement?.destroy();
+    });
     this.flags = this.add.graphics().setDepth(LAYER.flags);
     this.traps = this.add.graphics().setDepth(LAYER.ground);
     this.arrows = this.add.graphics().setDepth(LAYER.projectiles);
@@ -403,6 +450,12 @@ export class Arena extends Phaser.Scene {
       }
   }
   private drawBases(bases: Base[], objective: Snapshot['objective'] = 'ctf') {
+    if (this.forestEnvironment || this.courtyardEnvironment) {
+      for (const team of TEAMS) this.lighting.removeLight(`forest-base-${team}`);
+      for (const base of bases) this.lighting.setLight(`forest-base-${base.team}`, {
+        x: base.home.x, y: base.home.y, color: COLORS[base.team], radius: 100, intensity: .35,
+      });
+    }
     const key = JSON.stringify([bases, objective]);
     if (key === this.layoutKey) return;
     this.layoutKey = key;
@@ -502,6 +555,10 @@ export class Arena extends Phaser.Scene {
    * and running its noise grid over eight million pixels would cost a frame for nothing.
    */
   private drawZone(zoneId: ZoneId) {
+    this.courtyardEnvironment?.destroy();
+    this.courtyardEnvironment = undefined;
+    this.forestEnvironment?.destroy();
+    this.forestEnvironment = undefined;
     this.currentZoneId = zoneId;
     this.currentMapId = 'courtyard';
     this.mapObjects.forEach((object) => object.destroy());
@@ -511,6 +568,13 @@ export class Arena extends Phaser.Scene {
     const b = definition.terrain.bounds;
     const width = b.maxX + b.minX;
     const height = b.maxY + b.minY;
+    const fires: TorchSource[] = (definition.props ?? [])
+      .filter(prop => prop.kind === 'fogata' || prop.kind === 'herreria')
+      .map((prop, index) => ({ id: `prop-fire-${index}`,
+        x: prop.kind === 'fogata' ? prop.x + prop.w / 2 : prop.x + prop.w - 20,
+        y: prop.kind === 'fogata' ? prop.y + prop.h / 2 - 4 : prop.y + prop.h - 22,
+        scale: prop.kind === 'fogata' ? 1.4 : .9 }));
+    const grassPatches: Vec[] = [];
     // Drawn off the display list and baked below: tens of thousands of shapes replayed every frame
     // took the world from 44 to 5 frames per second.
     const g = this.make.graphics({}, false);
@@ -558,6 +622,10 @@ export class Arena extends Phaser.Scene {
         const x = col * TILE;
         const y = row * TILE;
         const n = speck(col, row, 17);
+        if (['grass', 'grassDark', 'grassLight', 'moss'].includes(name) && n < 110 &&
+            !definition.terrain.walls.some(w => x >= w.x - 10 && x <= w.x + w.w && y >= w.y && y <= w.y + w.h + 10)) {
+          grassPatches.push({ x: x + 14, y: y + 26 });
+        }
         if ((name === 'grass' || name === 'grassDark' || name === 'grassLight' || name === 'moss') && n < 260) {
           g.fillStyle(0x000000, 0.14);
           g.fillTriangle(x + (n % 30), y + 30, x + (n % 30) + 3, y + 22 - ((n >> 3) % 6), x + (n % 30) + 6, y + 30);
@@ -572,10 +640,9 @@ export class Arena extends Phaser.Scene {
           g.fillStyle(0xffffff, 0.16);
           g.fillRect(x + (n % 24), y + ((n >> 3) % 30), 14, 2);
         } else if (name === 'ember') {
-          g.fillStyle(0xff8a3a, 0.8);
-          g.fillCircle(x + 18, y + 20, 4);
-          g.fillStyle(0xffd27a, 0.7);
-          g.fillCircle(x + 18, y + 20, 1.5);
+          g.fillStyle(0x662b21, 0.8);
+          g.fillRect(x + 15, y + 18, 6, 4);
+          fires.push({ id: `ember-${col}-${row}`, x: x + 18, y: y + 20, scale: .4 });
         }
       }
     // A settlement's ground goes under everything that stands on it.
@@ -589,6 +656,7 @@ export class Arena extends Phaser.Scene {
       else if (theme === 'ceniza') this.ruin(g, w.x, w.y, w.w, w.h);
       else if (theme === 'cienaga') this.deadGrove(g, w.x, w.y, w.w, w.h);
       else this.boulder(g, w.x, w.y, w.w, w.h);
+      if (theme === 'ceniza') fires.push({ id: `ruin-${w.x}-${w.y}`, x: w.x + w.w * .36, y: w.y + w.h * .4 + 3, scale: .55 });
     }
     const edge = b.minX;
     for (const [x, y, w, h] of [[0, 0, width, edge], [0, b.maxY, width, edge], [0, edge, edge, b.maxY - edge], [b.maxX, edge, edge, b.maxY - edge]])
@@ -616,6 +684,11 @@ export class Arena extends Phaser.Scene {
         g.strokePath();
       }
     this.bake(g, width, height);
+    this.setEnvironment({ width, height, theme, walls: definition.terrain.walls, arena: false });
+    this.wind.setEnvironment({ width, height, theme, arena: false,
+      walls: definition.terrain.walls.filter(w => !built.has(`${w.x},${w.y},${w.w},${w.h}`)), grassPatches });
+    this.torches.setSources(fires);
+    this.lighting.setLight('shrine', { x: definition.shrine.x, y: definition.shrine.y - 18, color: 0x7fd6ff, radius: 145, intensity: .9 });
     this.settlement?.destroy();
     this.settlement = new Settlement(this, definition);
   }
@@ -635,6 +708,30 @@ export class Arena extends Phaser.Scene {
         this.mapObjects.push(texture);
       }
     g.destroy();
+  }
+
+  private setEnvironment(spec: EnvironmentSpec, authored = false) {
+    this.abilityLighting.clear();
+    this.environment?.destroy();
+    this.environment = authored ? undefined : decorateEnvironment(this, spec);
+    this.environment?.bakeInto(this.mapObjects.filter((object): object is Phaser.GameObjects.RenderTexture => object instanceof Phaser.GameObjects.RenderTexture));
+    this.lighting.setEnvironment(spec);
+    for (const object of this.mapObjects) {
+      if (object instanceof Phaser.GameObjects.RenderTexture) this.lighting.attachSurface(object);
+    }
+    this.wind.setEnvironment({ ...spec, richerArt: authored, bushes: spec.arena ? MAPS[this.currentMapId].bushes : [],
+      grassPatches: this.courtyardEnvironment?.windPoints });
+  }
+
+  /** Feet sort within the body band; labels and attack telegraphs keep their own layers. */
+  private bodyDepth(y: number) {
+    return LAYER.bodies + Math.floor(Math.max(0, y) / 2) / 100000;
+  }
+
+  private sortBody<T extends Phaser.GameObjects.Sprite | Phaser.GameObjects.Graphics>(body: T, y: number, offset = 0): T {
+    const depth = this.bodyDepth(y) + offset;
+    if (body.depth !== depth) body.setDepth(depth);
+    return body;
   }
 
   /** A forest's obstacle: a thicket of canopies you cannot walk through. */
@@ -791,6 +888,10 @@ export class Arena extends Phaser.Scene {
   }
 
   private drawMap(mapId: MapId) {
+    this.courtyardEnvironment?.destroy();
+    this.courtyardEnvironment = undefined;
+    this.forestEnvironment?.destroy();
+    this.forestEnvironment = undefined;
     this.currentZoneId = '';
     this.settlement?.destroy();
     this.settlement = undefined;
@@ -798,8 +899,25 @@ export class Arena extends Phaser.Scene {
     this.mapObjects.forEach((object) => object.destroy());
     this.mapObjects = [];
     const map = MAPS[mapId];
-    const g = this.add.graphics();
-    this.mapObjects.push(g);
+    if (mapId === 'courtyard' && ensureCourtyardFrames(this)) {
+      this.courtyardEnvironment = new CourtyardEnvironment(this, map);
+      this.mapObjects = [...this.courtyardEnvironment.surfaces];
+      this.setEnvironment({ width: 960, height: 540, theme: map.theme, walls: map.walls, arena: true }, true);
+      this.torches.setSources(COURTYARD_FIRES.map(({ x, y, scale }, index) => ({
+        id: `courtyard-fire-${index}`, x, y, scale, lightIntensity: 2.2, radius: 100,
+      })));
+      return;
+    }
+    if (mapId === 'forest' && ensureForestFrames(this)) {
+      this.forestEnvironment = new ForestEnvironment(this, map);
+      this.mapObjects = [...this.forestEnvironment.surfaces];
+      this.setEnvironment({ width: 960, height: 540, theme: map.theme, walls: map.walls, arena: true }, true);
+      this.torches.setSources(FOREST_BRAZIERS.map(({ x, y }, index) => ({
+        id: `forest-fire-${index}`, x, y, scale: index < 4 ? 1.3 : index < 6 ? 1 : .8,
+      })));
+      return;
+    }
+    const g = this.make.graphics({}, false);
     const ground =
       map.theme === 'forest'
         ? 0x193329
@@ -813,8 +931,13 @@ export class Arena extends Phaser.Scene {
     for (let y = 20; y < 520; y += 20)
       for (let x = 20; x < 940; x += 20) {
         const n = ((x * 37 + y * 19) % 113) / 113;
-        g.fillStyle(n > 0.62 ? 0x30423c : n > 0.32 ? 0x2b3d38 : 0x293a36);
-        g.fillRect(x, y, 19, 19);
+        // Connected tonal islands replace the old one-pixel checkerboard gutters.
+        const island = Math.sin(x * .017 + Math.sin(y * .013) * 2) + Math.cos(y * .023 + x * .004);
+        const tones = map.theme === 'ruins' ? [0x343a3a, 0x303635, 0x2b3132]
+          : map.theme === 'forest' ? [0x294635, 0x243d30, 0x21372c]
+            : [0x30423c, 0x2b3d38, 0x293a36];
+        g.fillStyle(tones[island > .7 ? 0 : island > -.6 ? 1 : 2]);
+        g.fillRect(x, y, 20, 20);
         if (n > 0.85) {
           g.fillStyle(0x52614a, 0.5);
           g.fillRect(x + 5, y + 6, 2, 4);
@@ -867,20 +990,17 @@ export class Arena extends Phaser.Scene {
     ]) {
       g.fillStyle(0x4a3a2b);
       g.fillRect(x - 3, y, 6, 12);
-      g.fillStyle(0xf4b765);
-      g.fillRect(x - 3, y - 8, 6, 9);
-      g.fillStyle(0xffe0a0);
-      g.fillRect(x - 1, y - 11, 3, 9);
-      const glow = this.add.circle(x, y - 4, 19, 0xffb35c, 0.07);
-      this.mapObjects.push(glow);
-      this.tweens.add({ targets: glow, alpha: 0.35, duration: 850 + x, yoyo: true, repeat: -1 });
     }
+    this.bake(g, 960, 540);
+    this.setEnvironment({ width: 960, height: 540, theme: map.theme, walls: map.walls, arena: true });
+    this.torches.setSources([[225, 96], [735, 96], [225, 440], [735, 440], [400, 150], [560, 390]]
+      .map(([x, y], index) => ({ id: `arena-torch-${index}`, x, y, scale: 1 })));
   }
   receive(snapshot: Snapshot, id: string) {
     if (!this.controls) return;
     // A world snapshot carries its zone; a match snapshot only ever has a map.
     const zoneId = (snapshot as Snapshot & { zoneId?: ZoneId }).zoneId;
-    if ((zoneId && zoneId !== this.currentZoneId) || (!zoneId && snapshot.mapId !== this.currentMapId)) {
+    if ((zoneId && zoneId !== this.currentZoneId) || (!zoneId && (this.currentZoneId || snapshot.mapId !== this.currentMapId))) {
       this.particles.clear();
       for (const v of this.visuals.values()) { v.locomotion = new Locomotion(); v.alive = false; }
     }
@@ -892,7 +1012,7 @@ export class Arena extends Phaser.Scene {
         // crossing a portal would silently skip every effect of the new zone until its ids caught up.
         this.lastEvent = snapshot.events.at(-1)?.id ?? 0;
       }
-    } else if (snapshot.mapId !== this.currentMapId) {
+    } else if (this.currentZoneId || snapshot.mapId !== this.currentMapId) {
       this.drawMap(snapshot.mapId);
       this.layoutKey = '';
     }
@@ -946,6 +1066,7 @@ export class Arena extends Phaser.Scene {
       if (e.id <= this.lastEvent) continue;
       this.lastEvent = e.id;
       sound(soundOf(e));
+      this.abilityLighting.event(e);
       if (e.kind === 'sword') {
         const slash = this.add.graphics().setDepth(LAYER.strikes);
         const power = e.power ?? 0;
@@ -2235,8 +2356,11 @@ export class Arena extends Phaser.Scene {
     this.pending = [];
     this.seq = 0;
     this.phase = '';
-    this.controls.enabled = false;
-    this.controls.clear();
+    // A reconnect can arrive while the authored map atlases are still preloading.
+    if (this.controls) {
+      this.controls.enabled = false;
+      this.controls.clear();
+    }
   }
   private paintFlags(flags: Snapshot['flags']) {
     const g = this.flags;
@@ -2364,7 +2488,7 @@ export class Arena extends Phaser.Scene {
     const launch = p.move ? MOVES[p.move].dash : undefined;
     const crouch = launch && p.moveT + age < launch.at ? 1 : 0;
     const breathe = p.shotCharge > 0 || p.specialCharge > 0 || p.chargeSkill ? Math.sin(time * 0.018) * 0.045 : 0;
-    v.body
+    this.sortBody(v.body, v.y)
       .setPosition(v.x, v.y)
       .setTexture(atlas, frame)
       .setFlipX(false)
@@ -2408,7 +2532,7 @@ export class Arena extends Phaser.Scene {
     // A blade raised overhead stands up the screen, held a little up off the body.
     const shown = pose ? { ...pose, ...onScreen(pose) } : null;
     const held = shown ? shown.angle : p.angle;
-    w.setDepth(Math.sin(held) < -0.25 ? LAYER.bodies - .1 : LAYER.weapons);
+    this.sortBody(w, v.y, Math.sin(held) < -0.25 ? -.000001 : .000001);
     w.setPosition(v.x, v.y + (moving ? Math.sin(v.locomotion.phase * Math.PI / 3) : 0) - (pose?.lift ?? 0) * 6);
     w.setRotation(held);
     if (p.hp > 0 && p.imbue) {
@@ -2663,7 +2787,7 @@ export class Arena extends Phaser.Scene {
     const bob = moving ? Math.abs(Math.sin(time * (family === 'espiritu_ceniza' ? 0.02 : 0.012) + z.slot)) * 2 : 0;
     const hover = family === 'espiritu_ceniza' ? Math.sin(time * 0.006 + z.slot) * 4 - 6 : 0;
     const painted = scale * MONSTER_DISPLAY;
-    v.body
+    this.sortBody(v.body, v.y)
       .setTexture(texture)
       .setOrigin(0.5, MONSTER_ORIGIN_Y)
       .setPosition(v.x, v.y + 6 + bob + hover + rising * 12)
@@ -2767,7 +2891,7 @@ export class Arena extends Phaser.Scene {
           ? `${z.team}-${z.classId ?? 'guardian'}-undead-${frame}`
           : `${z.team}-zombie-${frame}`;
     if (z.family) return this.drawMonster(z, v, texture, moving, time, rising);
-    v.body
+    this.sortBody(v.body, v.y)
       .setPosition(
         v.x,
         v.y + (moving ? Math.abs(Math.sin(time * 0.012 + z.slot)) * 2 : 0) + rising * 12,
@@ -2982,7 +3106,7 @@ export class Arena extends Phaser.Scene {
     const baseScale = m.boss ? 1.75 : m.kind === 'brute' ? 1.38 : m.kind === 'wolf' ? 1.08 : 1;
     const appearing = Math.max(0, Math.min(1, 1 - m.spawnLeft / 0.8));
     const bob = moving ? Math.abs(Math.sin(time * (m.kind === 'wolf' ? 0.018 : 0.011) + seed)) * 2 : pulse;
-    v.body
+    this.sortBody(v.body, v.y)
       .setTexture(`pve-${m.kind}-${frame}`)
       .setPosition(v.x, v.y + bob + (1 - appearing) * 10)
       .setFlipX(Math.cos(m.angle) < 0)
@@ -3054,6 +3178,7 @@ export class Arena extends Phaser.Scene {
     }
   }
   update(time: number, delta: number) {
+    this.environment?.update(time, delta);
     this.particles?.update(Math.min(delta, 100));
     const tick = Math.floor(time / 75);
     this.emitTrail = tick !== this.trailTick;
@@ -3061,6 +3186,17 @@ export class Arena extends Phaser.Scene {
     if (!this.controls) return;
     this.settlement?.update(time, delta);
     this.updateCamera(delta);
+    const environmentalActors = this.snapshot?.players
+      .filter(p => p.hp > 0 && !p.eliminated && (!this.snapshot!.perspective || playerVisibleTo(this.snapshot!, p, this.snapshot!.perspective)))
+      .map(p => { const visual = this.visuals.get(p.id); return { x: visual?.x ?? p.x, y: visual?.y ?? p.y }; }) ?? [];
+    this.wind?.setActors(environmentalActors);
+    this.forestEnvironment?.update(time, delta, environmentalActors);
+    this.courtyardEnvironment?.update(time, delta, environmentalActors);
+    this.torches?.update(time, delta);
+    this.wind?.update(time, delta);
+    this.abilityLighting.setView(this.cameras.main.worldView);
+    if (this.snapshot) this.abilityLighting.sync(this.snapshot, performance.now());
+    this.lighting?.update(time, delta);
     if (!this.snapshot) return;
     let s = this.snapshot;
     this.holes.clear();

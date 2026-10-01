@@ -55,10 +55,13 @@ export function installPlatform(hooks: {
     });
   };
   bar.querySelector('#display-settings')!.addEventListener('click', () => {
-    show('<h2>Pantalla y efectos</h2><label>Calidad de efectos <select id="fx-quality"><option value="normal">Normal</option><option value="low">Baja</option></select></label><label><input type="checkbox" id="fx-shake"> Sacudidas de cámara</label><p>La reducción de movimiento del dispositivo se respeta automáticamente.</p>');
+    show('<h2>Pantalla y efectos</h2><label>Calidad visual <select id="fx-quality"><option value="high">Alta</option><option value="medium">Media</option><option value="low">Baja</option></select></label><label>Intensidad de efectos <input id="fx-intensity" type="range" min="0" max="100" step="10"></label><label><input type="checkbox" id="fx-shake"> Sacudidas de cámara</label><p>La información de combate se mantiene en todas las calidades. La reducción de movimiento del dispositivo se respeta automáticamente.</p>');
     const quality = dialog.querySelector<HTMLSelectElement>('#fx-quality')!;
-    quality.value = visualSettings.low ? 'low' : 'normal';
-    quality.onchange = () => { visualSettings.low = quality.value === 'low'; localStorage.setItem('bandera-fx', quality.value); };
+    quality.value = visualSettings.quality;
+    quality.onchange = () => { visualSettings.quality = quality.value as 'low' | 'medium' | 'high'; };
+    const intensity = dialog.querySelector<HTMLInputElement>('#fx-intensity')!;
+    intensity.value = String(Math.round(visualSettings.intensity * 100));
+    intensity.oninput = () => { visualSettings.intensity = Number(intensity.value) / 100; };
     const shake = dialog.querySelector<HTMLInputElement>('#fx-shake')!;
     shake.checked = visualSettings.shake;
     shake.onchange = () => { visualSettings.shake = shake.checked; localStorage.setItem('bandera-shake', shake.checked ? 'on' : 'off'); };

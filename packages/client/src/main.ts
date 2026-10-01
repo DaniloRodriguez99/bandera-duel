@@ -1425,7 +1425,7 @@ function render(s: Snapshot) {
     selectedClass = me.classId;
     saveClass(me.classId);
     showClassControls(me.classId);
-    arena.controls.configure(
+    arena.controls?.configure(
       me.classId,
       customizationFor(me.classId),
     );
