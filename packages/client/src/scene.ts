@@ -358,7 +358,11 @@ export class Arena extends Phaser.Scene {
     this.input.mouse?.disableContextMenu();
     this.input.on('pointermove', (p: Phaser.Input.Pointer) => {
       // Only where the cursor is: `update` turns it into a direction from the body, every frame.
-      if (!p.wasTouch) this.controls.aim.pointer(p.x, p.y);
+      // Kept where the page saw it, not on the canvas: the canvas can still move under a cursor
+      // that stays put (the page scrolling to the arena when a match starts), and Phaser's cached
+      // canvas position lags behind that, so its own `p.x`/`p.y` would aim at the wrong place.
+      const event = p.event as MouseEvent | undefined;
+      if (!p.wasTouch && event && 'clientX' in event) this.controls.aim.pointer(event.clientX, event.clientY);
     });
     this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
       if (p.wasTouch || !this.controls.enabled) return;
@@ -1122,6 +1126,15 @@ export class Arena extends Phaser.Scene {
       duration,
       onComplete: () => target.destroy(),
     });
+  }
+
+  /** A point of the page on the arena, through the canvas where it is right now; not clamped. */
+  private pageToWorld(clientX: number, clientY: number) {
+    const rect = this.game.canvas.getBoundingClientRect();
+    return this.cameras.main.getWorldPoint(
+      ((clientX - rect.left) * this.scale.width) / Math.max(1, rect.width),
+      ((clientY - rect.top) * this.scale.height) / Math.max(1, rect.height),
+    );
   }
 
   screenToWorld(clientX: number, clientY: number): { x: number; y: number } {
@@ -3286,12 +3299,7 @@ export class Arena extends Phaser.Scene {
           : this.predicted.blackHoleCharge > 0
             ? RULES.blackHoleRangeMax
             : 150;
-      this.controls.aim.resolve(
-        this.predicted,
-        (x, y) => this.cameras.main.getWorldPoint(x, y),
-        this.bounds(),
-        reach,
-      );
+      this.controls.aim.resolve(this.predicted, (x, y) => this.pageToWorld(x, y), this.bounds(), reach);
     }
     while (this.accumulator >= 1000 / 30) {
       this.accumulator -= 1000 / 30;

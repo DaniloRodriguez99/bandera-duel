@@ -1,5 +1,11 @@
 # Registro de cambios
 
+## 2026-10-02
+
+### Puntería
+
+- La puntería con mouse ya no queda desviada cuando la página se mueve bajo un cursor quieto: al empezar una partida o una práctica la página baja hasta la arena, y si el mouse no se movía después, el personaje podía apuntar a otro lado (por ejemplo, hacia arriba) hasta volver a moverlo. Ahora el cursor se lee siempre contra la posición actual de la arena.
+
 ## 2026-10-01
 
 ### Celular: horizontal y pantalla completa
