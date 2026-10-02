@@ -22,7 +22,7 @@ export class Aim {
   x = -1;
   y = -1;
   source: AimSource = 'pointer';
-  /** The cursor, in screen coordinates: its world point changes as the camera and the body move. */
+  /** The cursor, where the page reports it: its world point changes as the canvas, the camera and the body move. */
   private cursor: Vec | null = null;
   /** A spot of the map picked by hand (a finger dragged onto the arena). */
   private spot: Vec | null = null;
